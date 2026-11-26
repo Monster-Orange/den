@@ -1342,6 +1342,12 @@
     "set.server.server_log_max": "警告ログの最大サイズ",
     "set.server.server_log_max.d":
       "__DEN_TITLE__ がサービスとして動いている間、警告は状態フォルダーの logs/server.log にも書かれるので、再起動後も残ります。このサイズに達すると server.log.1 に移し（1 回だけ）、新しく書き始めます。__DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "遅いリクエストを記録するまでの時間",
+    "set.server.slow_request_ms.d":
+      "リクエストがこれより長くかかると、__DEN_TITLE__ のログにそのルート、依頼元、かかった時間を 1 行で書きます。アドレス、クエリ、ヘッダー、本文は書きません。__DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "停止を記録するまでの時間",
+    "set.server.event_loop_lag_ms.d":
+      "__DEN_TITLE__ が忙しく、これより長く他の処理を何も実行しないと、その時間をログに 1 行で書きます。__DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max":
       "報告のスクリーンショットの最大サイズ（保存）",
     "set.server.report_screenshot_max.d":
@@ -1811,6 +1817,9 @@
     "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
     "set.workspace.hub_delivery_loop.o.on": "オン",
     "set.workspace.hub_delivery_loop.o.off": "オフ",
+    "set.workspace.agents_max_per_project": "プロジェクトごとのエージェント数: このプロジェクト",
+    "set.workspace.agents_max_per_project.d":
+      "このプロジェクトのエージェントを同時に動かせる数です。空か 0 なら「プロジェクトごとのエージェント数」を使います。それより低い値だけ設定できます。これを超える起動は拒否され、どの上限で止まったかが表示されます。",
     "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
     "set.workspace.hub_delivery_loop_extra.d":
       "このプロジェクト独自のテキスト。エージェントの指示で、Den のループの後に追加されます。Den の文面は編集できません。空なら何も追加しません。",
@@ -1911,8 +1920,6 @@
     "ag.none": "このプロジェクトにはまだエージェントがありません",
     "ag.personaOf": "ペルソナ {persona}",
     "ag.state.running": "実行中",
-    "ag.activity.working": "作業中",
-    "ag.activity.idle": "アイドル",
     "ag.state.stopping": "停止中…",
     "ag.state.stopped": "停止済み",
     "ag.state.ended": "終了",
@@ -2171,6 +2178,7 @@
     "ag.mcp.restart": "再起動",
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.by.label": "一覧の表示",
+    "ag.by.need": "対応順",
     "ag.by.project": "プロジェクト別",
     "ag.by.group": "グループ別",
     "ag.grp.noHub": "グループは Den Hub の機能です。",
@@ -2271,6 +2279,9 @@
     "ap.det.den_sandbox_on.off":
       "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
+    "ap.do.project_agent_cap": "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
+    "ap.det.project_agent_cap.now": "現在: {v}",
+    "ap.det.project_agent_cap.then": "変更後: {v}",
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
@@ -2548,6 +2559,21 @@
     "ap.hl.then": "変更後: {hub}",
     "ap.hl.filed":
       "エージェントの Hub での作業は、次の呼び出しからそこに記録されます。",
+    "ap.do.state_folder_own":
+      "このインストールに専用の状態フォルダーを用意する",
+    "ap.sf.new":
+      "共有フォルダーの隣に、このインストール用の新しい空の状態フォルダーを作ります。",
+    "ap.sf.empty":
+      "何もコピーも移動もしません。エージェント、サインイン、履歴はもう一方のコピーに残り、この Den には再度サインインします。",
+    "ap.sf.other": "もう一方のコピーは共有フォルダーをそのまま使い続けます。",
+    "ap.sf.restart":
+      "Den は専用フォルダーで再起動し、{hub} への接続を続けます。",
+    "ap.sf.restartNone": "Den は専用フォルダーで再起動します。",
+    "hub.sf.shared":
+      "このコンピューター上の別の Den のコピーがこのインストールの状態フォルダーを共有しており、別の Hub に接続しています。",
+    "hub.sf.offer": "このインストールに専用の状態フォルダーを用意する",
+    "hub.sf.allow":
+      "ダイアログで許可してください。Den は再起動し、接続を続けます。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":
@@ -2932,7 +2958,6 @@
     "ag.sub.agent": "エージェント {n}",
     "ag.sub.shells": "シェル {n}",
     "ag.sub.shell": "シェル {n}",
-    "ag.sub.waiting": "対応待ち {w}",
     "ag.all": "すべてのプロジェクト",
     "ag.waiting": "対応待ち",
     "ag.waiting.approval": "許可待ち",
@@ -2940,6 +2965,41 @@
     "ag.waiting.input": "入力待ち",
     "ag.waiting.asked": "質問があります",
     "ag.waiting.trust": "待機中: このフォルダを信頼しますか?",
+    "ag.band.needs": "対応が必要",
+    "ag.band.done": "完了・未確認",
+    "ag.band.working": "作業中",
+    "ag.band.idle": "待機中",
+    "ag.chip.needs": "対応が必要",
+    "ag.chip.needsWhy": "対応が必要 · {why}",
+    "ag.chip.done": "完了",
+    "ag.chip.working": "作業中",
+    "ag.chip.idle": "待機中",
+    "ag.why.permission": "許可",
+    "ag.why.asked": "質問",
+    "ag.why.approval": "承認",
+    "ag.why.trust": "フォルダの信頼",
+    "ag.whyLong.permission": "許可を求めています",
+    "ag.whyLong.asked": "質問しています",
+    "ag.whyLong.approval": "承認を待っています",
+    "ag.whyLong.trust": "フォルダの信頼を求めています",
+    "ag.tag.server": "サーバー", // words-ok: the approved mock's "Server" tag
+    "ag.sub.needs": "対応が必要 {n}",
+    "ag.sub.needsOne": "対応が必要 {n}",
+    "ag.sub.done": "完了・未確認 {n}",
+    "ag.sub.doneOne": "完了・未確認 {n}",
+    "ag.sub.working": "作業中 {n}",
+    "ag.sub.idle": "待機中 {n}",
+    "ag.sub.idleOne": "待機中 {n}",
+    "ag.meta.finished": "{ago}に完了",
+    "ag.whyLong.command": "コマンドの実行を求めています",
+    "ag.whyLong.tool": "{tool} の使用を求めています",
+    "ag.meta.seen": "たった今確認",
+    "ag.list.failed": "一覧を読み込めませんでした。",
+    "ag.list.retry": "再試行",
+    "ag.list.keepRunning": "エージェントは動き続けています。",
+    "ag.list.loading": "エージェントを読み込み中",
+    "bell.doneRow": "{name} が完了",
+    "bell.seenSub": "{where} · 確認済み",
     "bell.title": "通知",
     "bell.n": "通知: 未読 {n} 件",
     "bell.markAll": "すべて既読にする",
@@ -3012,6 +3072,8 @@
       "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} が依頼を取り下げました: {what}。理由: {reason}",
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
     "bell.m.vschedPass": "{env} の予定実行: {n} 件のチェックが通りました。",
@@ -3035,6 +3097,8 @@
       "{name} の依頼は再起動で失われました: {what}。この依頼からは何も実行していません。エージェントにもう一度依頼するよう伝えました。",
     "bell.m.heldLostAsk":
       "依頼が再起動で失われました: {what}。この依頼からは何も実行していません。",
+    "bell.m.capHeld":
+      "{name} は起動しませんでした: {limit} のうち {n} のエージェントが動いています（{key}）。1 つ止めるか、{key} を上げてください。",
     "bell.m.restartsWaiting":
       "{n} 件のエージェントが再起動を待っています（数件ずつ再起動します）",
     "bell.m.heldLostAll":
@@ -3611,7 +3675,7 @@
     "ag.ord.upOne": "{id} を上へ移動",
     "ag.ord.downOne": "{id} を下へ移動",
     "ag.ord.reorder": "並べ替え",
-    "ag.ord.reorderOne": "{ws} のエージェントを並べ替え",
+    "ag.ord.reorderBand": "{band} のエージェントを並べ替え",
     "ag.ord.reorderStopped": "停止中のエージェントを並べ替え",
     "ag.ord.done": "完了",
     "ag.ord.grip": "ドラッグしてプロジェクト内の順番を変更",

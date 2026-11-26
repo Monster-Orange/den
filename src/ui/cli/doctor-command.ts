@@ -70,6 +70,10 @@ import {
 import { approvalsState } from "../mcp/tools.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
 import {
+  ownStateDirProblem,
+  stateDirShared,
+} from "../../shared/state-folder.js";
+import {
   bothSpellings,
   readRulesCover,
   repoSecretDenyRules,
@@ -1790,9 +1794,28 @@ export function sharedUserLines(
     unsandboxed?: () => { id: string; projects: string[] }[];
     /** A project's repo folders. */
     reposOf?: (project: string) => string[];
+    distRoot?: string;
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
+  let folderShared = false;
+  try {
+    folderShared = stateDirShared(stateDir, o.distRoot ?? getDistRoot());
+  } catch {
+    folderShared = false;
+  }
+  let folderIgnored: string | null = null;
+  try {
+    folderIgnored = ownStateDirProblem(o.distRoot ?? getDistRoot());
+  } catch {
+    folderIgnored = null;
+  }
+  if (folderIgnored) folderShared = true;
+  const folderDetail =
+    folderIgnored ??
+    (folderShared
+      ? `another copy of ${title} on this computer uses this state folder too; Settings › Hub's Connect offers to give this one its own`
+      : "this install's state folder is its own");
   const reg = o.registry ?? registryDir();
   const home = o.home ?? process.env.HOME;
   const others = listOtherInstalls(reg, {
@@ -1893,6 +1916,7 @@ export function sharedUserLines(
       `  same login  ${mark(!others)}  ${shared}`,
       `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
+      `  state folder  ${mark(!folderShared)}  ${folderDetail}`,
       ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
     checks: [
@@ -1906,6 +1930,11 @@ export function sharedUserLines(
         id: "uncovered_files",
         status: looseWarn ? "warn" : "ok",
         detail: looseDetail,
+      },
+      {
+        id: "state_folder",
+        status: folderShared ? "warn" : "ok",
+        detail: folderDetail,
       },
       ...agentRows.map((r) => ({
         id: r.id,
@@ -1929,6 +1958,16 @@ function unsandboxedAgents(
   }
 }
 
+function hubTokenFiles(stateDir: string): boolean {
+  try {
+    return fs
+      .readdirSync(path.join(stateDir, "hub"))
+      .some((n) => n === "token" || /^token-[0-9a-f]{10}$/.test(n));
+  } catch {
+    return false;
+  }
+}
+
 /** The state folder's credentials that exist, by what they are. */
 function stateCredentialsPresent(stateDir: string): string[] {
   const has = (rel: string) => fs.existsSync(path.join(stateDir, rel));
@@ -1936,7 +1975,7 @@ function stateCredentialsPresent(stateDir: string): string[] {
     ...(has("web.secret") ? ["web.secret"] : []),
     ...(has("web-sessions.json") ? ["the browser sign-ins"] : []),
     ...(has("actor-token") ? ["the agents' tokens"] : []),
-    ...(has(path.join("hub", "token")) ? ["the Hub token"] : []),
+    ...(hubTokenFiles(stateDir) ? ["the Hub token"] : []),
     ...(has("push-vapid.json") ? ["the push key"] : []),
     ...(has("fixture-person.key") ? ["the test person's key"] : []),
     ...(has(SESSION_SIGNING_DIR) ? ["the agents' signing key"] : []),

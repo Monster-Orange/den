@@ -60,6 +60,11 @@ import {
   SERVER_SCOPE,
   isServerScope,
 } from "../../shared/agents/server-agent.js";
+import {
+  personKey,
+  withAgentStates,
+  type AgentStateDeps,
+} from "./agent-state.js";
 import type { Duplex } from "stream";
 import {
   getActiveWorkspaces,
@@ -126,7 +131,11 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
-import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
+import {
+  agentOrderOf,
+  inAgentOrder,
+  placeInOrder,
+} from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
 import {
   agentHubBound,
@@ -223,6 +232,7 @@ export interface SessionRouteDeps {
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
+  agentStates?: () => AgentStateDeps;
 }
 
 /** den#156: how long a list waits for the host, and the page for a list. */
@@ -408,6 +418,7 @@ function tellViewers(id: string): void {
 export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
+  place?: number;
   /** `<dist>-<ws>:<name>`. */
   name: string;
   workspace: string;
@@ -442,6 +453,7 @@ export interface ListedSession {
   orphan?: boolean;
   persona?: string;
   runtime?: string;
+  runtimeLabel?: string;
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
@@ -535,6 +547,9 @@ export interface ListedSession {
     rangAt?: string;
     paused?: true;
   };
+  attn?: "needs" | "done" | "working" | "idle";
+  attnSince?: string;
+  attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
     totalBytes: number;
@@ -736,6 +751,9 @@ export function listedSessions(
       ...(rec.outside ? { outside: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
+      ...(getRuntime(rec.runtime)?.label
+        ? { runtimeLabel: getRuntime(rec.runtime)?.label }
+        : {}),
       ...(rec.model ? { model: rec.model } : {}),
       // den#3: its subagents' model and where it came from.
       ...(r.subagentModel
@@ -886,6 +904,16 @@ export function listedSessions(
     });
   }
   const order = [...active];
+  const saved = new Map<string, readonly string[]>();
+  const orderOf = (ws: string) => {
+    if (!saved.has(ws)) saved.set(ws, agentOrderOf(ws));
+    return saved.get(ws)!;
+  };
+  for (const r of out)
+    if (r.kind === "agent" && r.agent) {
+      const place = placeInOrder(orderOf, r.workspace, r.agent);
+      if (place !== undefined) r.place = place;
+    }
   // Issue 96: within a project, the person's order for its agents (one helper
   // for every list: the page, the rail, the flyout read this one).
   return inAgentOrder(
@@ -899,7 +927,7 @@ export function listedSessions(
       r.kind === "agent" && r.agent
         ? { ws: r.workspace, id: r.agent, startedAt: r.startedAt }
         : null,
-    (ws) => agentOrderOf(ws),
+    orderOf,
   );
 }
 
@@ -1034,8 +1062,17 @@ export async function handleSessionList(
     wanted?.known ? wanted.workspace : undefined,
     sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
   );
+  let states: AgentStateDeps | undefined;
+  try {
+    states = deps.agentStates?.();
+  } catch {
+    states = undefined;
+  }
+  const rows = states
+    ? withAgentStates(listed, personKey(req), states)
+    : listed;
   sendJson(res, {
-    sessions: keep ? listed.filter((r) => keep(r.workspace)) : listed,
+    sessions: keep ? rows.filter((r) => keep(r.workspace)) : rows,
     workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
@@ -1773,12 +1810,19 @@ async function helpersRunning(
   } catch {
     /* no host: nothing runs, so no helper runs */
   }
-  sendJson(res, {
-    running: helpersRunningIn(
-      await listWithHelpers(sessions, d),
-      agentRowFilter(req),
-    ),
-  });
+  const keep = agentRowFilter(req);
+  const rows = await listWithHelpers(sessions, d);
+  let needs = 0;
+  for (const r of rows)
+    if (
+      (!keep || keep(r.workspace)) &&
+      r.kind === "agent" &&
+      r.state === "running" &&
+      r.waiting &&
+      r.waitingWhy !== "input"
+    )
+      needs += 1;
+  sendJson(res, { running: helpersRunningIn(rows, keep), needs });
   return true;
 }
 

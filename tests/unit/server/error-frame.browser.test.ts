@@ -182,4 +182,48 @@ describe("the stale engine and the unreachable server", () => {
     );
     await page.context().close();
   }, 60_000);
+
+  it("a reply to a call sent before the server stopped leaves the banner up", async () => {
+    if (skip()) return;
+    const page = await open("/settings");
+    let release!: () => void;
+    const released = new Promise<void>((r) => (release = r));
+    let entered!: () => void;
+    const held = new Promise<void>((r) => (entered = r));
+    await page.route("**/api/server-info?held=1", async (r) => {
+      entered();
+      await released;
+      await r.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      });
+    });
+    await page.evaluate(() => {
+      (window as unknown as { held: Promise<number> }).held = fetch(
+        "/api/server-info?held=1",
+      ).then((r) => r.status);
+    });
+    await held;
+    await page.route(/\/api\/(?!server-info\?held=1)/, (r) =>
+      r.abort("connectionrefused"),
+    );
+    await page.evaluate(() => fetch("/api/settings").catch(() => null));
+    const up = page.locator('#den-banners:not([hidden]) [data-banner="net"]');
+    await up.waitFor();
+    release();
+    expect(
+      await page.evaluate(
+        () => (window as unknown as { held: Promise<number> }).held,
+      ),
+    ).toBe(200);
+    expect(await up.count()).toBe(1);
+    expect(
+      await page.evaluate(() =>
+        document.body.classList.contains("den-server-down"),
+      ),
+    ).toBe(true);
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await page.context().close();
+  }, 30_000);
 });

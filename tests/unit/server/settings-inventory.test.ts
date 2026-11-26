@@ -136,7 +136,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     hub_timeout_seconds: true,
   },
   // Issue 707: the server's warning lines on disk, capped.
-  server_log: { max_mb: true },
+  server_log: { max_mb: true, slow_request_ms: true, event_loop_lag_ms: true },
   // Issue 456: how long Den waits for the shell's PATH.
   agents_shell: { path_timeout_seconds: true },
   // Issue 1311: how long messages wait on a draft before the bell says so.
@@ -400,6 +400,8 @@ describe("the settings inventory (R21)", () => {
         "reports.hub_timeout_seconds",
         // Issue 707: the server's warning lines on disk, capped.
         "server_log.max_mb",
+        "server_log.slow_request_ms",
+        "server_log.event_loop_lag_ms",
         // Issue 456: how long Den waits for the shell's PATH.
         "agents_shell.path_timeout_seconds",
         // Issue 1311: how long messages wait on a draft before the bell says so.
