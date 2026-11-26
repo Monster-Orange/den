@@ -56,7 +56,26 @@ each file the change touched at its merge base and at HEAD, and fails only
 when a count goes up; files the change didn't touch are never judged, and
 there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
-totals per kind and never fails.
+totals per kind and never fails. `--report --since <ref>` prints each kind
+then and now, and the files that went down or up; the `brittle-weekly`
+workflow posts it each Monday against the week before, in its run summary
+(issue 841).
+
+### Adding a Settings row
+
+A new key on the Settings page has three touch points beyond the page:
+
+1. The server must accept it: `tests/unit/server/settings-inventory.test.ts`
+   keeps its own list of the keys `POST /api/settings` accepts. Add the key.
+   A key inside a block (such as `agents_limits.max_per_project`) goes under
+   that block in its `BLOCKS` map, not in the top list.
+2. The rows, their categories, the category order and the module's exports
+   are pinned in `tests/fixtures/settings-registry-order.json`. Write it with
+   `node scripts/settings-pin.mjs --write` in the same PR, never by hand.
+3. Run `node scripts/fast-checks.mjs` before the push.
+
+Two PRs that each pass alone can still fail together, when one adds a row
+and the other changes the pin, so the PR that adds the row writes the pin.
 
 ### What runs first
 
