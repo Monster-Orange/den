@@ -1229,6 +1229,7 @@ export const STRICT_PERSON_READS: readonly string[] = [
   "/api/approvals",
   "/api/alerts",
   "/api/alerts/devices",
+  "/api/alerts/stream",
   "/api/report/diagnostics",
   "/api/report/drafts",
   "/api/report/drafts/:id",
