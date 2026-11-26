@@ -213,12 +213,7 @@ export interface SearchOptions {
   /** false: no ⌘K inside, and no aria-keyshortcuts. */
   shortcut?: boolean;
   lang?: string;
-  /**
-   * The host's placeholder (default the kit's "Search…"): one word in the
-   * page's language, or words per locale ({ en, es, ja }); the page's,
-   * then its base language's. The search's name follows it, without a
-   * trailing "…".
-   */
+  /** The host's placeholder: one word, or words per locale ({ en, es, ja }). */
   placeholder?: string | Readonly<Record<string, string>>;
 }
 export interface BellButtonOptions {

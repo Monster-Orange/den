@@ -145,16 +145,10 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(searchHtml({})).not.toContain("data-nav-role");
   });
 
-  // Issue 560: the host may set the placeholder (per locale). The name
-  // follows it (WCAG 2.5.3, label in name): "Find work…" is named "Find
-  // work", so a voice user's "click Find work" works. No host placeholder:
-  // the kit's "Search", as before.
   it("issue 560: a host's placeholder shows, per locale, and names the search", () => {
-    // One word, already in the page's language.
     const one = searchHtml({ lang: "es", placeholder: "Buscar agentes…" });
     expect(ph(one)).toBe("Buscar agentes…");
     expect(label(one)).toBe("Buscar agentes");
-    // Words per locale: the page's, then its base language's.
     const per = { en: "Find work…", es: "Buscar trabajo…", ja: "仕事を探す…" };
     const ja = searchHtml({ lang: "ja", placeholder: per });
     expect(ph(ja)).toBe("仕事を探す…");
@@ -162,21 +156,17 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(ph(searchHtml({ lang: "es-MX", placeholder: per }))).toBe(
       "Buscar trabajo…",
     );
-    // Three dots trim too; text without them is the name as it is.
     expect(label(searchHtml({ placeholder: "Find work..." }))).toBe(
       "Find work",
     );
     expect(label(searchHtml({ placeholder: "Jump to" }))).toBe("Jump to");
-    // A locale it doesn't name, or a blank word: the kit's words.
     const none = searchHtml({ lang: "ja", placeholder: { en: "Find…" } });
     expect(ph(none)).toBe("検索…");
     expect(label(none)).toBe("検索");
     expect(ph(searchHtml({ lang: "en", placeholder: "  " }))).toBe("Search…");
-    // Host text is escaped.
     expect(searchHtml({ placeholder: '<b>"x"</b>' })).toContain(
       "&lt;b&gt;&quot;x&quot;&lt;/b&gt;",
     );
-    // A host's own label is ignored: the name comes from what shows.
     expect(
       label(
         searchHtml({ lang: "en", label: "Mine" } as Parameters<

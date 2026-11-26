@@ -730,11 +730,6 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
   return html + (after || "") + "</div>";
 }
 
-/**
- * Issue 560: the host's placeholder for the page's language: one word
- * (already in that language), or words per locale (the page's, then its
- * base language's). Blank or missing: null, so the kit's word shows.
- */
 function hostPlaceholder(placeholder, lang) {
   let w = placeholder;
   if (w && typeof w === "object") {
@@ -745,14 +740,10 @@ function hostPlaceholder(placeholder, lang) {
 }
 
 /**
- * The search field: a placeholder, then ⌘K inside it, as a button (the
- * host's palette or page opens on it: hydrateSearch).
+ * The search field: a placeholder (the kit's "Search…", or the host's, one
+ * word or words per locale), then ⌘K inside it, as a button (hydrateSearch).
  *   searchHtml({ id?, shortcut?, lang, placeholder? })
- * The placeholder is the kit's ("Search…") in the page's language, or
- * (issue 560) the host's: one word, or words per locale. The button's name
- * follows what it shows (WCAG 2.5.3, label in name): the kit's "Search", or
- * the host's placeholder with a trailing "…" or "..." trimmed ("Find
- * work…" is named "Find work"). A host can't set the name otherwise.
+ * Its name is what it shows, less a trailing "…" (WCAG 2.5.3).
  * `shortcut: false`: no ⌘K.
  */
 export function searchHtml({ id, shortcut, lang, placeholder } = {}) {
