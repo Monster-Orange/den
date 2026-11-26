@@ -981,8 +981,6 @@ async function hubDeliveryDoctor(): Promise<
   );
 }
 
-/**
- */
 export function hubAgentTokenLines(
   problems: readonly import("../../shared/hub-agent-tokens.js").AgentTokenProblem[],
 ): { lines: string[]; checks: OnboardCheck[] } {
