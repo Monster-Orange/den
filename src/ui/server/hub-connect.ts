@@ -146,14 +146,10 @@ export interface HubConnectDeps {
    * (doctor lists it; each start tries the revoke again).
    */
   unrevoked?: (u: { url: string; why: string; token: string }) => void;
-  /**
-   */
   unbindAgents?: (
     hub: { url: string; token: string },
     force: boolean,
   ) => Promise<{ revoked: number; failed: number }>;
-  /**
-   */
   agentGrantSettled?: () => void;
   /**
    * Issue 646: this Den's projects' repos (owner/repo), sent to Hub's

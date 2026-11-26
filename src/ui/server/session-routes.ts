@@ -419,8 +419,6 @@ export interface ListedSession {
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
-  /**
-   */
   hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
