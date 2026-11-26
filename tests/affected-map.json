@@ -2362,7 +2362,10 @@
     },
     {
       "when": ["scripts/dist-smoke.sh"],
-      "run": ["tests/unit/test-infra/shard-plan.test.ts"],
+      "run": [
+        "tests/unit/test-infra/dist-smoke-env-1689.test.ts",
+        "tests/unit/test-infra/shard-plan.test.ts"
+      ],
       "why": "tests that run scripts/dist-smoke.sh"
     },
     {
