@@ -13,7 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import type { Browser, Page, Route } from "playwright";
+import type { Browser, Page, Request, Route } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
@@ -113,6 +113,29 @@ const AGAIN = /"co\.ap\.again":\s*"([^"]+)"/.exec(
   ),
 )![1];
 
+const SLOW_RUNNER_MS = 12_000;
+
+function coachChecks(p: Page) {
+  const c = { inFlight: 0, ended: 0, slowRunner: false };
+  const isCheck = (r: Request) =>
+    r.method() === "GET" && new URL(r.url()).pathname === "/api/coach";
+  const end = (r: Request) => {
+    if (isCheck(r)) (c.inFlight--, c.ended++);
+  };
+  p.on("request", (r) => void (isCheck(r) && c.inFlight++));
+  p.on("requestfinished", end);
+  p.on("requestfailed", end);
+  return c;
+}
+
+async function until(ok: () => boolean, ms: number): Promise<void> {
+  const end = Date.now() + ms;
+  while (!ok()) {
+    if (Date.now() > end) throw new Error(`not settled in ${ms} ms`);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 /** The Coach tab at `width`; Apply's request waits for `release`. */
 async function open(width: number, persona: string) {
   seed(s!.stateDir, persona);
@@ -129,11 +152,17 @@ async function open(width: number, persona: string) {
     await gate;
     await r.continue();
   });
+  const checks = coachChecks(p);
+  await p.route("**/api/coach", async (r: Route) => {
+    if (checks.slowRunner)
+      await new Promise((ok) => setTimeout(ok, SLOW_RUNNER_MS));
+    await r.continue();
+  });
   await signInPage(p, s!.stateDir, s!.base, "/server-agent?tab=coach");
   await p
     .locator('[data-note="coach-findings-table"]')
     .waitFor({ state: "attached", timeout: 20_000 });
-  return { p, release };
+  return { p, release, checks };
 }
 
 /** The shell's Allow dialog opens for a new held write: put it off. */
@@ -271,7 +300,7 @@ describe("Coach Apply", () => {
   it("Deny in another tab while this one is hidden: shown again, the row says Denied", async () => {
     if (!browser) return;
     const persona = "opus-user-other-tab";
-    const { p, release } = await open(1440, persona);
+    const { p, release, checks } = await open(1440, persona);
     const scope = '[data-note="coach-findings-table"]';
     await p.locator(`${scope} [data-act="coach-apply"]`).click();
     release();
@@ -279,6 +308,7 @@ describe("Coach Apply", () => {
       .locator(`${scope} [data-apply-state="waiting"]`)
       .waitFor({ timeout: 15_000 });
     await later(p);
+    checks.slowRunner = true;
     const shown = (hidden: boolean) =>
       p.evaluate((h) => {
         Object.defineProperty(document, "hidden", {
@@ -287,11 +317,11 @@ describe("Coach Apply", () => {
         });
         document.dispatchEvent(new Event("visibilitychange"));
       }, hidden);
+    const ended = checks.ended;
     await shown(true);
     // A check that ends while the tab is hidden schedules no next one.
-    await p.waitForResponse((r) => r.url().includes("/api/coach"), {
-      timeout: 10_000,
-    });
+    await until(() => checks.ended > ended && checks.inFlight === 0, 45_000);
+    checks.slowRunner = false;
     const other = await p.context().newPage();
     await other.goto(`${s!.base}/server-agent?tab=coach`);
     await later(other);
