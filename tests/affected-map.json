@@ -2463,6 +2463,7 @@
         "tests/unit/test-infra/gate-746-teardown-1293.test.ts",
         "tests/unit/test-infra/gate-828.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
+        "tests/unit/test-infra/gate-981-898-406-expect.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
         "tests/unit/test-infra/gate-cli-json-840.test.ts",
         "tests/unit/test-infra/gate-evidence.test.ts",
