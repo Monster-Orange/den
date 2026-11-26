@@ -6,6 +6,7 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.91] - unreleased
 
+- An agent removed while Den is making its Hub token now gets 403 `agent_removed`, and nothing reaches Hub for it. Den checks the agent's record at the start of the call and again after the token, and refuses if it can't read it. (issue 1222)
 - When an update fails and putting the old version back fails too, the bell now says so on its own. It leads with what to do by hand: put the pin back on the old version in the distribution's folder and run npm install there. npm's reasons come last.
 - `den agents os-login setup` makes a login of its own for your agents on macOS and Linux, so they can't read your home or Den's state. It shows each step and asks you at a terminal before anything runs with sudo; `remove` undoes it and `check` (also a doctor row) says how it stands. It's off by default, and not in use yet: agents still run as you until a later release starts them through it.
 - You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
