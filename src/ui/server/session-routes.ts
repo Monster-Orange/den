@@ -60,6 +60,11 @@ import {
   SERVER_SCOPE,
   isServerScope,
 } from "../../shared/agents/server-agent.js";
+import {
+  personKey,
+  withAgentStates,
+  type AgentStateDeps,
+} from "./agent-state.js";
 import type { Duplex } from "stream";
 import {
   getActiveWorkspaces,
@@ -93,7 +98,15 @@ import { parseSessionName } from "../../shared/sessions/names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
-import type { HelperSettings } from "../../shared/agents/helpers.js";
+import {
+  HELPER_DEFAULTS,
+  type HelperSettings,
+} from "../../shared/agents/helpers.js";
+import {
+  HelperRows,
+  SERVER_HELPER_ROWS,
+  type HelperAsk,
+} from "./helper-rows.js";
 import {
   agentsListWaits,
   readAgentsConfig,
@@ -118,8 +131,16 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
-import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
+import {
+  agentOrderOf,
+  inAgentOrder,
+  placeInOrder,
+} from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import {
+  agentHubBound,
+  usesInstallToken,
+} from "../../shared/hub-agent-tokens.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
@@ -129,6 +150,7 @@ import {
 } from "../../shared/agents/draft-input.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   operatorActOf,
   principalOf,
@@ -157,6 +179,7 @@ export interface SessionRouteDeps {
    * "permission", "input" or "asked" (its hooks, ask_human).
    */
   waitingWhy?: () => ReadonlyMap<string, string>;
+  activity?: () => ReadonlyMap<string, "working" | "idle">;
   /** The person typed into session `id` (its pane): its agent's wait ends. */
   typed?: (id: string) => void;
   /**
@@ -186,6 +209,8 @@ export interface SessionRouteDeps {
     | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
+  helperRows?: HelperRows | null;
+  rowHelpers?: typeof rowHelpers;
   /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
   exitedShellMinutes?: () => number;
   /** D44: the Hub server URL an agent would get now (null: none). */
@@ -199,6 +224,7 @@ export interface SessionRouteDeps {
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
+  agentStates?: () => AgentStateDeps;
 }
 
 /** den#156: how long a list waits for the host, and the page for a list. */
@@ -216,12 +242,15 @@ interface Resolved {
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
   waitingWhy: () => ReadonlyMap<string, string>;
+  activity: () => ReadonlyMap<string, "working" | "idle">;
   typed: (id: string) => void;
   draftWaiting: (agent: string) => number;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
   modeOf?: SessionRouteDeps["modeOf"];
   helperSettings: () => HelperSettings | undefined;
+  helperRows: HelperRows | null;
+  rowHelpers: typeof rowHelpers;
   exitedShellMinutes: () => number;
   hubNow: () => Promise<string | null>;
   uploadSettings: () => UploadSettings;
@@ -268,6 +297,8 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
           return undefined;
         }
       }),
+    helperRows: d.helperRows === undefined ? SERVER_HELPER_ROWS : d.helperRows,
+    rowHelpers: d.rowHelpers ?? rowHelpers,
     activeWorkspaces: d.activeWorkspaces ?? (() => getActiveWorkspaces()),
     workspaceExists:
       d.workspaceExists ??
@@ -279,6 +310,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
     waitingWhy: d.waitingWhy ?? (() => new Map<string, string>()),
+    activity: d.activity ?? (() => new Map<string, "working" | "idle">()),
     typed:
       d.typed ??
       ((id) =>
@@ -378,6 +410,7 @@ function tellViewers(id: string): void {
 export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
+  place?: number;
   /** `<dist>-<ws>:<name>`. */
   name: string;
   workspace: string;
@@ -412,9 +445,11 @@ export interface ListedSession {
   orphan?: boolean;
   persona?: string;
   runtime?: string;
+  runtimeLabel?: string;
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
+  hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -469,6 +504,7 @@ export interface ListedSession {
    * 659's "trust": its folder-trust question), when known.
    */
   waitingWhy?: string;
+  activity?: "working" | "idle";
   /** Issue 659: it ended because its folder-trust question was declined. */
   trustDeclined?: true;
   /** Issue 658: Relaunch from its last handoff is offered (none ready). */
@@ -476,7 +512,7 @@ export interface ListedSession {
   /** Issue 631: it didn't come back after a restart, and why. */
   restartFailed?: { at: string; why: string };
   /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
-  hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
+  hubWork?: import("../../shared/hub/hub-delivery-loop.js").AgentHubWork;
   /**
    * Session rotation (den#4): why it rotates and its handoff.md. `ready`:
    * Relaunch from handoff is its action, not Resume.
@@ -502,6 +538,9 @@ export interface ListedSession {
     rangAt?: string;
     paused?: true;
   };
+  attn?: "needs" | "done" | "working" | "idle";
+  attnSince?: string;
+  attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
     totalBytes: number;
@@ -585,7 +624,10 @@ export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<
-      Pick<Resolved, "waitingAgents" | "waitingWhy" | "workspaceExists">
+      Pick<
+        Resolved,
+        "waitingAgents" | "waitingWhy" | "activity" | "workspaceExists"
+      >
     > &
     Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume" | "modeOf"> & {
@@ -594,7 +636,8 @@ export function listedSessions(
       /** 0.4.40: an agent's Hub comments (hub-delivery-service.ts). */
       hubWork?: (
         id: string,
-      ) => import("../../shared/hub-delivery-loop.js").AgentHubWork | null;
+      ) => import("../../shared/hub/hub-delivery-loop.js").AgentHubWork | null;
+      helpersOf?: HelpersOf;
     },
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
@@ -647,6 +690,7 @@ export function listedSessions(
   const toolsRestarting = hubToolsRestarting();
   const waiting = d.waitingAgents?.() ?? new Set<string>();
   const why = d.waitingWhy?.() ?? new Map<string, string>();
+  const doing = d.activity?.() ?? new Map<string, "working" | "idle">();
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
@@ -691,6 +735,9 @@ export function listedSessions(
       ...(rec.outside ? { outside: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
+      ...(getRuntime(rec.runtime)?.label
+        ? { runtimeLabel: getRuntime(rec.runtime)?.label }
+        : {}),
       ...(rec.model ? { model: rec.model } : {}),
       // den#3: its subagents' model and where it came from.
       ...(r.subagentModel
@@ -753,6 +800,13 @@ export function listedSessions(
       ...(r.trustWait && s && !s.exited
         ? { waiting: true, waitingWhy: "trust" }
         : {}),
+      ...(doing.has(rec.id) &&
+      s &&
+      !s.exited &&
+      !waiting.has(rec.id) &&
+      !r.trustWait
+        ? { activity: doing.get(rec.id) }
+        : {}),
       ...(r.trustDeclined ? { trustDeclined: true as const } : {}),
       ...(r.handoffOnFile ? { handoffOnFile: true as const } : {}),
       ...(r.restartFailed ? { restartFailed: { ...r.restartFailed } } : {}),
@@ -780,6 +834,9 @@ export function listedSessions(
         const failed = mcpLoadFailures(d.stateDir(), rec);
         return failed.length ? { mcpFailed: failed } : {};
       })(),
+      ...(typeof hubUrl === "string" && !usesInstallToken(rec)
+        ? { hubBound: agentHubBound(d.stateDir(), rec.id) }
+        : {}),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
         : {}),
@@ -787,15 +844,19 @@ export function listedSessions(
       ...contextFields(d.stateDir(), rec.id, isStoppedState(r.state)),
       // D32: the helpers it started in its own session.
       ...(() => {
-        const h = rowHelpers(
-          rec,
-          !isStoppedState(r.state),
-          helperSettings,
-          process.env,
-          Date.now(),
-          readClearedAt(agentFilesDir(d.stateDir(), rec.id)),
-          r.startedAt,
-        );
+        const live = !isStoppedState(r.state);
+        const clearedAt = readClearedAt(agentFilesDir(d.stateDir(), rec.id));
+        const h = d.helpersOf
+          ? d.helpersOf(rec, live, clearedAt, r.startedAt)
+          : rowHelpers(
+              rec,
+              live,
+              helperSettings,
+              process.env,
+              Date.now(),
+              clearedAt,
+              r.startedAt,
+            );
         return h ? { helpers: h } : {};
       })(),
     });
@@ -826,6 +887,16 @@ export function listedSessions(
     });
   }
   const order = [...active];
+  const saved = new Map<string, readonly string[]>();
+  const orderOf = (ws: string) => {
+    if (!saved.has(ws)) saved.set(ws, agentOrderOf(ws));
+    return saved.get(ws)!;
+  };
+  for (const r of out)
+    if (r.kind === "agent" && r.agent) {
+      const place = placeInOrder(orderOf, r.workspace, r.agent);
+      if (place !== undefined) r.place = place;
+    }
   // Issue 96: within a project, the person's order for its agents (one helper
   // for every list: the page, the rail, the flyout read this one).
   return inAgentOrder(
@@ -839,8 +910,72 @@ export function listedSessions(
       r.kind === "agent" && r.agent
         ? { ws: r.workspace, id: r.agent, startedAt: r.startedAt }
         : null,
-    (ws) => agentOrderOf(ws),
+    orderOf,
   );
+}
+
+type HelpersOf = (
+  rec: AgentRecord,
+  live: boolean,
+  clearedAt: number | undefined,
+  liveSince: string | undefined,
+) => AgentRow["helpers"];
+
+async function listWithHelpers(
+  sessions: SessionInfo[],
+  d: Resolved,
+  also?: string,
+  hubUrl?: string | null,
+): Promise<ListedSession[]> {
+  const rows = d.helperRows;
+  if (!rows) return listedSessions(sessions, d, also, hubUrl);
+  const settings = d.helperSettings();
+  const all = { ...HELPER_DEFAULTS, ...settings };
+  const asks: HelperAsk[] = [];
+  const where = [d.stateDir(), process.env.HOME, process.env.CLAUDE_CONFIG_DIR];
+  const stampOf = (rec: AgentRecord): string | null => {
+    try {
+      return getRuntime(rec.runtime)?.helpersStamp?.(rec) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const helpersOf: HelpersOf = (rec, live, clearedAt, liveSince) => {
+    const ask: HelperAsk = {
+      id: rec.id,
+      key: JSON.stringify([
+        where,
+        stampOf(rec),
+        rec.runtime,
+        rec.resumeToken,
+        live,
+        clearedAt ?? null,
+        liveSince ?? null,
+        all,
+      ]),
+      compute: () =>
+        d.rowHelpers(
+          rec,
+          live,
+          settings,
+          process.env,
+          Date.now(),
+          clearedAt,
+          liveSince,
+        ),
+    };
+    asks.push(ask);
+    return rows.peek(ask);
+  };
+  const first = listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
+  const fresh = await rows.ensure(
+    asks,
+    all.refreshSeconds * 1000,
+    all.factsCacheMb * 1024 * 1024,
+  );
+  if (!fresh) return first;
+  asks.length = 0;
+  return listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
 }
 
 /** D32: the helpers count, under /api/sessions/ but no session's route. */
@@ -903,14 +1038,25 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  const keep = agentRowFilter(req);
+  const listed = await listWithHelpers(
+    sessions,
+    d,
+    wanted?.known ? wanted.workspace : undefined,
+    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
+  );
+  let states: AgentStateDeps | undefined;
+  try {
+    states = deps.agentStates?.();
+  } catch {
+    states = undefined;
+  }
+  const rows = states
+    ? withAgentStates(listed, personKey(req), states)
+    : listed;
   sendJson(res, {
-    sessions: listedSessions(
-      sessions,
-      d,
-      wanted?.known ? wanted.workspace : undefined,
-      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-    ),
-    workspaces: d.activeWorkspaces(),
+    sessions: keep ? rows.filter((r) => keep(r.workspace)) : rows,
+    workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
@@ -1647,9 +1793,28 @@ async function helpersRunning(
   } catch {
     /* no host: nothing runs, so no helper runs */
   }
-  let running = 0;
-  for (const r of listedSessions(sessions, d))
-    running += r.helpers?.running ?? 0;
-  sendJson(res, { running });
+  const keep = agentRowFilter(req);
+  const rows = await listWithHelpers(sessions, d);
+  let needs = 0;
+  for (const r of rows)
+    if (
+      (!keep || keep(r.workspace)) &&
+      r.kind === "agent" &&
+      r.state === "running" &&
+      r.waiting &&
+      r.waitingWhy !== "input"
+    )
+      needs += 1;
+  sendJson(res, { running: helpersRunningIn(rows, keep), needs });
   return true;
+}
+
+export function helpersRunningIn(
+  rows: readonly { workspace: string; helpers?: { running?: number } }[],
+  keep: ((ws: string) => boolean) | null,
+): number {
+  let running = 0;
+  for (const r of rows)
+    if (!keep || keep(r.workspace)) running += r.helpers?.running ?? 0;
+  return running;
 }

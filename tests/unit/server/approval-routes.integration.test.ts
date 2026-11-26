@@ -16,7 +16,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
 import { signedIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { denAuth } from "./helpers/den-auth.js";

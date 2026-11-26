@@ -15,6 +15,7 @@ import { randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { statSettled } from "../stat-settled.js";
 
 /** The request header the edge adds (Den deletes it once read). */
 export const EDGE_PROOF_HEADER = "x-den-edge-proof";
@@ -80,18 +81,31 @@ export function edgeProofChecker(
   dir: () => string | null,
 ): (req: ProofRequest) => boolean {
   const seen = new WeakMap<ProofRequest, boolean>();
-  let cache: { key: string; proof: string | null } = { key: "", proof: null };
+  let cache: { key: string; proof: string | null; readAt: number } = {
+    key: "",
+    proof: null,
+    readAt: 0,
+  };
   const current = (): string | null => {
     const d = dir();
     if (!d) return null;
     let key: string;
+    // When it last changed, to judge whether its stat has settled.
+    let changed: { mtimeMs: number; ctimeMs: number };
     try {
       const st = fs.statSync(edgeProofFile(d));
-      key = `${d}:${st.ino}:${st.mtimeMs}:${st.size}`;
+      key = `${d}:${st.ino}:${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
+      changed = { mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs };
     } catch {
       return null;
     }
-    if (key !== cache.key) cache = { key, proof: readEdgeProof(d) };
+    // Kept only while its stat stays the same, and only once it was
+    // written more than a clock tick before the read: a proof
+    // rewritten in one tick (a rename onto a reused inode) is read again.
+    if (key !== cache.key || !statSettled(changed, cache.readAt)) {
+      const readAt = Date.now();
+      cache = { key, proof: readEdgeProof(d), readAt };
+    }
     return cache.proof;
   };
   return (req) => {

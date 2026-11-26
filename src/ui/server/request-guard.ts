@@ -62,7 +62,10 @@
  */
 import { timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
-import { readMcpConfig } from "../../shared/den-config.js";
+import { readMcpConfig, type InstallMode } from "../../shared/den-config.js";
+import { installModeNow } from "../../shared/gates/browser-container.js";
+import { scopeReaches, scopeWords } from "../../shared/agents/scope-rule.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
 import { LIFECYCLE_CMDS } from "../mcp/guards.js";
 import {
   AGENT_IMPORT_HELD,
@@ -78,7 +81,7 @@ import {
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
-import { osUser } from "../../shared/web-secret.js";
+import { osUser } from "../../shared/web/web-secret.js";
 import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import {
   OPERATOR_PRINCIPAL,
@@ -93,11 +96,14 @@ import {
 /** Issue 796: the audit client of an agent's read-only view. */
 export const AGENT_VIEW_CLIENT = "page view (read-only)";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
+import { isDockerBridgeAddress } from "../../shared/edge/docker-bridge.js";
+export { isDockerBridgeAddress };
 import {
   EMBED_KEY_ROUTES,
   RUNNER_ROUTES,
   isMutatingGet,
   pathMatches,
+  ROUTES,
   routeClass,
   SIGNIN_CSRF_FREE,
   SIGNIN_ID_BEACONS,
@@ -553,18 +559,6 @@ export function isLoopbackBind(host: string): boolean {
 }
 
 /**
- * A Docker bridge address (172.16.0.0/12): where a Linux host's containers
- * reach it as host.docker.internal (`host-gateway`, the edge's
- * extra_hosts). One address, never 0.0.0.0 or ::.
- */
-export function isDockerBridgeAddress(addr: string): boolean {
-  const a = addr.trim();
-  if (!net.isIPv4(a)) return false;
-  const [x, y] = a.split(".").map(Number);
-  return x === 172 && y >= 16 && y <= 31;
-}
-
-/**
  * §4: why a bind may not start, or null. A non-loopback bind needs
  * `web.allow_plain_http_remote: true`, edge or no edge: whatever is in
  * front, this server's own port still answers plain HTTP on that address,
@@ -983,8 +977,11 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/verify/remove",
   // Issue 52: the Coach's Run now is a person's (the handler checks too).
   "/api/coach/run",
-  // Issue 52: Dismiss a Coach finding, with the reason: a person's.
+  // Issue 52: Dismiss a Coach finding, and Undo it: a person's.
   "/api/coach/dismiss",
+  "/api/coach/undismiss",
+  // Issue 110: Apply a Coach finding's change (a held write): a person's.
+  "/api/coach/apply",
   "/api/settings",
   // Issue 1371 Part 2: Undo of a setting an agent changed: the person's.
   "/api/settings/undo",
@@ -1038,6 +1035,10 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agent-modes",
   // Issue 352: change or remove a project's MCP server (project_mcp_* asks).
   "/api/workspaces/:ws/mcp-servers/:name",
+  // Issue 1480: add or remove a project's app event feed (writes only: an
+  // agent still reads the list; project_event_feed_* asks).
+  "/api/workspaces/:ws/event-feeds",
+  "/api/workspaces/:ws/event-feeds/:name",
   // Issue 103: a composer's Send types into an agent's session.
   "/api/workspaces/:ws/agents/:id/say",
   // Issue 96: the order a person sees their agents in is the person's.
@@ -1080,6 +1081,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/gate-slots/boxes",
   "/api/gate-slots/boxes/remove",
   "/api/gate-slots/boxes/enable",
+  // Issue 642: CI runner entries; an agent asks with gate_runner_entry_set.
+  "/api/gate-slots/runner-entries",
+  "/api/gate-slots/runner-entries/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
@@ -1099,8 +1103,6 @@ const SESSION_ROUTE = /^\/api\/sessions\/([^/]+)(?:\/|$)/;
  *  - a shell-grade route, unless it is its own session's
  *    (`/api/sessions/<its session id or name>/…`): agent start and resume
  *    mint tokens, the browser sessions are a person's.
- * Seam (WS-3a, 0.4.2): the route's workspace against `p.workspace` and
- * `p.grants` is checked here; nothing is yet.
  */
 export function agentRefusal(
   p: AgentPrincipal,
@@ -1109,6 +1111,7 @@ export function agentRefusal(
   cls: RouteClass,
   /** The query: service exec's command and environment are checked. */
   search?: URLSearchParams,
+  mode: () => InstallMode = installModeNow,
 ): string | null {
   // An agent runs a service's up, down or restart, and only on local
   // (the MCP tool's rule, held here too: a token can skip the tool).
@@ -1154,7 +1157,7 @@ export function agentRefusal(
   if (target)
     return (
       agentResumeRefusal(p, target.ws, target.id, mcpActions()) ??
-      workspaceRefusal(p, pathname)
+      workspaceRefusal(p, method, pathname, cls, search, mode)
     );
   // AG-17.1: MCP agent_import, opted in, inside the agent's scope (its
   // list as well as its import: conversation titles are a person's).
@@ -1164,11 +1167,11 @@ export function agentRefusal(
       // Issue 160: the bring-in itself is a held write, never the route.
       (imp.imports ? `${p.actor}: ${AGENT_IMPORT_HELD}.` : null) ??
       agentImportRefusal(p, imp.ws, mcpActions()) ??
-      workspaceRefusal(p, pathname)
+      workspaceRefusal(p, method, pathname, cls, search, mode)
     );
   if (cls === "shell-grade")
     return `${p.actor} can't ${method === "GET" ? "open" : "use"} ${pathname}: starting or resuming an agent, and the browser sessions, are a person's.`;
-  return workspaceRefusal(p, pathname);
+  return workspaceRefusal(p, method, pathname, cls, search, mode);
 }
 
 /** The org config's mcp.actions; none when it can't be read. */
@@ -1180,9 +1183,160 @@ function mcpActions(): readonly string[] {
   }
 }
 
-/** WS-3a's seam (0.4.2): an agent's route outside its workspace. Not yet. */
-function workspaceRefusal(_p: AgentPrincipal, _pathname: string): null {
-  return null;
+const LITERAL_PATHS = new Set(
+  ROUTES.filter((r) => !/[:*]/.test(r.path)).map((r) => r.path),
+);
+const PROJECT_SEGMENTS = [":ws", ":project"];
+const WS_ROUTES = ROUTES.flatMap((r) => {
+  const at = r.path
+    .split("/")
+    .findIndex((seg) => PROJECT_SEGMENTS.includes(seg));
+  return at < 0 ? [] : [{ path: r.path, at }];
+});
+
+export function routeWorkspace(pathname: string): string | null {
+  if (LITERAL_PATHS.has(pathname)) return null;
+  const hit = WS_ROUTES.find((r) => pathMatches(r.path, pathname));
+  if (!hit) return null;
+  const seg = pathname.split("/")[hit.at] ?? "";
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+export function requestWorkspaces(
+  pathname: string,
+  search?: URLSearchParams,
+): string[] {
+  const out: string[] = [];
+  const inPath = routeWorkspace(pathname);
+  if (inPath !== null) out.push(inPath);
+  for (const k of ["ws", "workspace"])
+    for (const v of search?.getAll(k) ?? []) if (v) out.push(v);
+  return out;
+}
+
+function readsOnly(method: string, cls: RouteClass): boolean {
+  return (method === "GET" || method === "HEAD") && cls === "readonly";
+}
+
+export const STRICT_PERSON_READS: readonly string[] = [
+  "/api/server-log",
+  "/api/approvals",
+  "/api/alerts",
+  "/api/alerts/devices",
+  "/api/report/diagnostics",
+  "/api/report/drafts",
+  "/api/report/drafts/:id",
+  "/api/report/shots/:id",
+  "/api/report/shot-share",
+  "/api/report/github-send/:id",
+  "/api/perf-report/current",
+  "/api/health/stream",
+  "/api/service/daemons",
+  "/api/catalog",
+  "/api/release/config",
+  "/api/release/branches",
+  "/api/release/deploy/active",
+  "/api/release/deploy",
+  "/api/runs/last",
+  "/api/workspaces/cleanup-preview",
+  "/api/personas",
+  "/api/personas/:id",
+  "/api/verify/overview",
+  "/api/verify/runs/:id",
+  "/api/verify/runs/:id/report",
+  "/api/verify/schedules",
+  "/api/embed/app-keys",
+  "/api/hub/github",
+  "/api/hub/link-suggestions",
+  "/api/hub/groups",
+  "/api/hub/connect-review",
+  "/api/hub/names-check",
+  "/api/gate-slots/runners",
+  "/api/gate-slots/runner-entries",
+];
+
+function workspaceRefusal(
+  p: AgentPrincipal,
+  method: string,
+  pathname: string,
+  cls: RouteClass,
+  search: URLSearchParams | undefined,
+  mode: () => InstallMode,
+): string | null {
+  if (
+    (method === "GET" || method === "HEAD") &&
+    STRICT_PERSON_READS.some((r) => pathMatches(r, pathname)) &&
+    !isServerScope(p.workspace) &&
+    mode() === "strict"
+  )
+    return `${p.actor} can't read this on a strict install: it is the person's own, across every project.`;
+  const outside = requestWorkspaces(pathname, search).find(
+    (ws) => !scopeReaches(p, ws),
+  );
+  if (outside === undefined) return null;
+  if (readsOnly(method, cls) && mode() !== "strict") return null;
+  return `${p.actor} can reach ${scopeWords(p)} only, not "${printableName(outside)}". A person adds the project to agents.<id>.grants in user.yml to widen it.`;
+}
+
+function printableName(v: string): string {
+  return v.replace(/[^\x20-\x7e]/g, "?").slice(0, 80);
+}
+
+export function agentFocusRefusal(
+  req: http.IncomingMessage,
+  focused: string | null | undefined,
+  what: string,
+): string | null {
+  const p = agentPrincipalOf(req);
+  if (!p || !focused || scopeReaches(p, focused)) return null;
+  return `${p.actor} can reach ${scopeWords(p)} only, not "${printableName(focused)}" (the focused project ${what}).`;
+}
+
+export const FOCUSED_READS: Readonly<Record<string, "named" | "focused">> = {
+  "/api/workspaces/available-repos": "named",
+  "/api/workspaces/settings": "named",
+  "/api/workspaces/deps-check": "named",
+  "/api/test-sources": "focused",
+};
+
+export function agentFocusedReadRefusal(
+  req: http.IncomingMessage,
+  pathname: string,
+  search: URLSearchParams,
+  focused: string | null | undefined,
+  mode: () => InstallMode = installModeNow,
+): string | null {
+  const method = (req.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return null;
+  const reads = Object.hasOwn(FOCUSED_READS, pathname)
+    ? FOCUSED_READS[pathname]
+    : undefined;
+  if (!reads || (reads === "named" && search.get("workspace"))) return null;
+  if (mode() !== "strict") return null;
+  return agentFocusRefusal(req, focused, "this reads");
+}
+
+export function agentFocusMoved(
+  req: http.IncomingMessage,
+  checked: string | null | undefined,
+  now: string | null | undefined,
+): string | null {
+  if (!agentPrincipalOf(req) || (checked ?? null) === (now ?? null))
+    return null;
+  return "the focused project changed after the check: start it again";
+}
+
+export function agentRowFilter(
+  req: http.IncomingMessage,
+  mode: () => InstallMode = installModeNow,
+): ((ws: string) => boolean) | null {
+  const p = agentPrincipalOf(req);
+  if (!p || mode() !== "strict") return null;
+  return (ws) => scopeReaches(p, ws);
 }
 
 /**
@@ -1278,6 +1432,10 @@ export function setPrincipal(
 }
 
 /** Issue 621: the gate-only runner a request's token proves, if any. */
+export function storedPrincipal(req: http.IncomingMessage): Principal | null {
+  return PRINCIPALS.get(req) ?? null;
+}
+
 export function runnerPrincipalOf(
   req: http.IncomingMessage,
 ): RunnerPrincipal | null {
@@ -1391,6 +1549,29 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
  */
 export function notAPersonOf(req: http.IncomingMessage): boolean {
   return !!agentPrincipalOf(req) || !!auditActorOf(req);
+}
+
+/**
+ * Whether this request proved a person: the CLI's
+ * bearer, or a signed-in browser that is neither an agent's view nor the
+ * fixture person, with no agent's token or claim on it. A loopback caller
+ * that proved nothing is not one.
+ */
+export function provenPersonOf(req: http.IncomingMessage): boolean {
+  if (notAPersonOf(req)) return false;
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person") return true;
+  return p?.kind === "person-browser" && !p.view && !p.fixture;
+}
+
+/**
+ * Whether this request is a test bed's CLI on the test-person path (issue
+ * 636): a person token marked testPerson. A person-only write that widens
+ * what runs refuses it (issue 642 review).
+ */
+export function testPersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "person" && p.testPerson === true;
 }
 
 /**

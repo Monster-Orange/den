@@ -16,7 +16,7 @@
  */
 import type { NotificationStore } from "../../shared/notifications.js";
 import { ThrowawaySweeper, type Docker } from "../../shared/gates/ephemeral.js";
-import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
+import { embedDelivery, type Delivery } from "../../shared/hub/hub-delivery.js";
 import {
   gateLocked,
   type GateStore,
@@ -93,7 +93,7 @@ export class GateNotices {
     this.from = next;
     // Issue 1263: a slot ended: its run's throwaway containers may be left.
     // Never awaited here, so a slow docker never holds up the notices.
-    if (this.sweeper) {
+    if (this.sweeper && store.settings().throwawaySweep) {
       const ended = rows.some((r) => ENDS.has(r.event));
       if (this.sweeper.due(ended))
         this.sweeping = this.sweeper.tick(ended).catch(() => []);

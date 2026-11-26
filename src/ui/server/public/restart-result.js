@@ -10,6 +10,10 @@
  *   unknown  Den can't tell when its turn ends, with Restart now
  *   done, failed: after Restart now
  *
+ * Part 2: the status is live. followRestarts reads the server's
+ * (GET /api/agents/restart-status) while rows remain: restarted (then
+ * gone), a wait that ran out (timedOut, with Restart now), failed.
+ *
  * Restart now is the agent route's when: now (a person's only), busy in
  * its own button. Two or more waiting on the person get Restart all now.
  */
@@ -22,9 +26,15 @@ const esc = (s) =>
       ],
   );
 
-/** Whether entry `a` waits on the person (job, unknown). */
+/**
+ * Whether entry `a` waits on the person: a job, a turn Den can't read, a
+ * wait that ran out, or a restart that failed.
+ */
 export const waitsOnPerson = (a) =>
-  a?.state === "job" || a?.state === "unknown";
+  a?.state === "job" ||
+  a?.state === "unknown" ||
+  a?.state === "timedOut" ||
+  a?.state === "failed";
 
 /** Entry `a`'s line, in the page's language. */
 export function restartLine(a, t) {
@@ -41,7 +51,10 @@ export function restartLine(a, t) {
     case "turn":
       return t("rs.turn", { id });
     case "done":
+    case "restarted":
       return t("rs.done", { id });
+    case "timedOut":
+      return t("rs.timedOut", { id, min: Number(a.minutes) || 0 });
     case "failed":
       return t("rs.failed", { id });
     default:
@@ -113,6 +126,20 @@ export async function restartNow(btn, o) {
  * says restarted, or not; `onDone(id, ws, ok)` hears each.
  */
 export function wireRestartNow(root, o) {
+  // Issue 1434: a button that goes once it's done hands the keyboard's
+  // focus to the status line it leaves behind.
+  const removeTo = (b, line) => {
+    // No document (a unit test's fake page): no focus to move.
+    const active = globalThis.document?.activeElement;
+    const had = !!active && !!b.contains?.(active);
+    b.remove();
+    if (!had || !line) return;
+    if (!line.hasAttribute("tabindex")) line.setAttribute("tabindex", "-1");
+    line.focus();
+  };
+  const status = () =>
+    root.closest?.("[data-rs-result]") ??
+    root.querySelector("[data-rs-result]");
   const one = async (b) => {
     const row = b.closest("[data-rs-agent]");
     const ok = await restartNow(b, o);
@@ -120,25 +147,82 @@ export function wireRestartNow(root, o) {
     const line = row?.querySelector("[data-rs-line]");
     if (line) line.textContent = restartLine(a, o.t);
     if (row) row.dataset.rsState = a.state;
-    if (ok) b.remove();
+    if (ok) removeTo(b, line);
     o.onDone?.(b.dataset.rsNow, b.dataset.rsWs, ok);
     return ok;
   };
   root.querySelectorAll("[data-rs-now]").forEach((b) =>
     b.addEventListener("click", async () => {
       await one(b);
-      if (root.querySelectorAll("[data-rs-now]").length < 2)
-        root.querySelector("[data-rs-all]")?.remove();
+      const all = root.querySelector("[data-rs-all]");
+      if (all && root.querySelectorAll("[data-rs-now]").length < 2)
+        removeTo(all, status());
     }),
   );
   const all = root.querySelector("[data-rs-all]");
   all?.addEventListener("click", async () => {
+    if (all.getAttribute("aria-busy") === "true") return;
+    // The kit's hold keeps focus on it (issue 1434).
     const release = o.holdDots?.(all) ?? (() => {});
     try {
       for (const b of [...root.querySelectorAll("[data-rs-now]")]) await one(b);
     } finally {
       release();
     }
-    all.remove();
+    removeTo(all, status());
   });
+}
+
+const same = (a, b) =>
+  String(a?.id) === String(b?.id) &&
+  String(a?.workspace) === String(b?.workspace);
+
+/**
+ * The rows a page shows (`shown`, this page's run) as
+ * the server has them now (`live`). An agent the server doesn't list has
+ * cleared; the server's other agents are another run's.
+ */
+export function mergeLive(shown, live) {
+  const now = Array.isArray(live) ? live : [];
+  return (Array.isArray(shown) ? shown : [])
+    .map((a) => now.find((b) => same(a, b)))
+    .filter(Boolean);
+}
+
+/**
+ * Read the live status every `everyMs` (2 s) and hand
+ * each list to `onRows`, until it is empty (then `onEnd`) or `stop()`. A
+ * read that fails is tried again next time.
+ */
+export function followRestarts(o) {
+  let stopped = false;
+  let timer = null;
+  const every = o.everyMs ?? 2000;
+  const tick = async () => {
+    if (stopped) return;
+    let rows = null;
+    try {
+      const r = await o.api("GET", "/api/agents/restart-status");
+      rows = Array.isArray(r?.agents) ? r.agents : [];
+    } catch {
+      rows = null;
+    }
+    if (stopped) return;
+    if (rows) {
+      o.onRows(rows);
+      if (!rows.length) {
+        stopped = true;
+        o.onEnd?.();
+        return;
+      }
+    }
+    timer = setTimeout(tick, every);
+  };
+  timer = setTimeout(tick, every);
+  return {
+    stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    },
+  };
 }

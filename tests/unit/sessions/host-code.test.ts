@@ -109,6 +109,28 @@ describe("hostCheck: restart only on a code or module difference (issue 597)", (
     expect(hostCheck({ den: undefined, code: undefined, pty: null }, { den: "2", code: "x", pty: null })?.restart).toBe("code");
   });
 
+  it("the same pty.node reached through a symlinked folder is the same module, not a restart", () => {
+    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-hc-")));
+    fs.mkdirSync(path.join(tmp, "real"));
+    const file = path.join(tmp, "real", "pty.node");
+    fs.writeFileSync(file, "x");
+    fs.symlinkSync(path.join(tmp, "real"), path.join(tmp, "linked"));
+    const viaLink = path.join(tmp, "linked", "pty.node");
+    expect(hostCheck({ den: "1", code: "c", pty: mod(file) }, { den: "2", code: "c", pty: mod(viaLink) })).toBeNull();
+    const other = path.join(tmp, "other.node");
+    fs.writeFileSync(other, "x");
+    expect(
+      hostCheck({ den: "1", code: "c", pty: mod(file) }, { den: "2", code: "c", pty: mod(other) }),
+    ).toMatchObject({ restart: "module" });
+    fs.symlinkSync(path.join(tmp, "gone"), path.join(tmp, "broken"));
+    expect(
+      hostCheck(
+        { den: "1", code: "c", pty: mod(file) },
+        { den: "2", code: "c", pty: { path: path.join(tmp, "broken", "pty.node"), version: "1", id: null } },
+      ),
+    ).toMatchObject({ restart: "module" });
+  });
+
   it("a replaced pty.node, or one gone: terminal module changed", () => {
     tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-hc-")));
     const file = path.join(tmp, "pty.node");

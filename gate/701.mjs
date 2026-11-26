@@ -32,6 +32,7 @@
 // When Hub shows the answer, the answer itself is checked.
 const answered = (d) => d != null && d.ack == null && d.acked === true;
 
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 701;
 export const clauses = [
   "a Hub comment for an agent that asked its person a question (ask_human) is typed into the agent, once",
@@ -121,8 +122,7 @@ function heldReason(ctx, id) {
 /** doctor --json's "Hub comments held" row. */
 function doctorHeld(ctx) {
   const r = ctx.cli(["doctor", "--json"], { timeout: 90000 });
-  const j = parse(r?.out);
-  const c = (j?.checks ?? []).find((x) => x?.id === "hub_held_comments");
+  const c = doctorChecks(r).find((x) => x?.id === "hub_held_comments");
   return c ? String(c.detail ?? "") : null;
 }
 

@@ -40,7 +40,17 @@
  * DEN_UI_CAPTURE=1 writes the fixture and the PNGs instead of comparing
  * (run once, before the move). DEN_PW_WS: Den's own Playwright server.
  * DEN_SKIP_BROWSER_TESTS=1 skips.
+ *
+ * @visual-reference tests/unit/den-ui/fixtures/visual-env.json
+ * (issue 1527): it compares against stored references, so the gate runs it
+ * only on a box whose browser matches that record of where they were taken.
+ * Its capture writes the record.
  */
+import { visualOff } from "../helpers/visual-guard.js";
+import {
+  visualEnvOf,
+  writeVisualEnv,
+} from "../../../src/shared/gates/visual.js";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -208,10 +218,8 @@ const ALLOWED_STYLES: Record<string, Array<[string, string]>> = {
  * [dx, dy, dw, dh] added to the baseline's rect.
  */
 const ALLOWED_MOVES: Record<string, [number, number, number, number]> = {
-  // Issue 1444, Hub Design's spec for the fold toggle: on a phone a
-  // section's heading is a tap high (min-height var(--tap), 44px; it was
-  // 22px), so the entries below it sit 22px lower.
-  "shell-390 .den-rail .den-ni": [0, 22, 0, 0],
+  // (Issue 1444's 22px lower rail entries on a phone are in the baseline
+  // itself since its capture on CI's browser, issue 1527.)
 };
 
 /** `want` with the allowed moves applied. */
@@ -259,6 +267,9 @@ const ALLOWED_ATTRS = new Set([
   "data-nav-shape",
   "data-nav-legacy",
   "data-nav-kit",
+  // Issue 1499: Report's mark for the shot's box, where the shot swaps in
+  // for "Taking the screenshot…". It changes no look.
+  "data-shot-box",
 ]);
 
 interface Node {
@@ -280,6 +291,9 @@ interface Shot {
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
+/** Why this browser cannot compare the references, or "". */
+let envOff = "";
+const VISUAL_RECORD = "tests/unit/den-ui/fixtures/visual-env.json";
 
 beforeAll(async () => {
   try {
@@ -289,6 +303,8 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
+  // Issue 1527: compared only in the browser the references were taken on.
+  if (!CAPTURE && browser) envOff = await visualOff(browser, VISUAL_RECORD);
   s = await startAgentsPageServer();
 }, 90_000);
 
@@ -296,7 +312,7 @@ afterAll(async () => {
   await closeBrowserSuite({ browsers: [browser], servers: [s] });
 }, 90_000);
 
-const skip = () => !browser || !s;
+const skip = () => !browser || !s || !!envOff;
 
 /** The fixed release notes What's new shows (the CHANGELOG changes). */
 const NOTES = [
@@ -490,6 +506,12 @@ async function show(p: Page, area: Area): Promise<void> {
       state: "visible",
       timeout: 20_000,
     });
+    // Issue 1499: the form opens before the screenshot is taken; it is
+    // measured as it was, with the shot in.
+    await p.waitForSelector("[data-shot-wait]", {
+      state: "detached",
+      timeout: 30_000,
+    });
   } else if (area === "working") {
     await p.evaluate(`${pageImport("/busy-den.js")}.then(() => true)`);
     await p.evaluate(() => {
@@ -530,7 +552,16 @@ async function measure(p: Page, area: Area): Promise<Shot> {
             attrs[a.name] = a.value;
         const kids: Node[] = [];
         let text = "";
-        for (const c of Array.from(el.childNodes)) {
+        // Issue 1499: Report's screenshot part is a wrapper with no box
+        // (display: contents), swapped in when the capture ends; its
+        // children count as its parent's, as before it was there.
+        const nodes = (e: Element): ChildNode[] =>
+          Array.from(e.childNodes).flatMap((c) =>
+            c.nodeType === 1 && (c as Element).hasAttribute("data-shot-area")
+              ? nodes(c as Element)
+              : [c],
+          );
+        for (const c of nodes(el)) {
           if (c.nodeType === 3) text += c.textContent ?? "";
           else if (c.nodeType === 1 && depth < 40)
             kids.push(tree(c as Element, depth + 1));
@@ -673,6 +704,9 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
             fixture[key] = shot;
             fs.mkdirSync(path.dirname(FIXTURE), { recursive: true });
             fs.writeFileSync(FIXTURE, JSON.stringify(fixture, null, 1) + "\n");
+            // Issue 1527: the record of the browser they were taken on.
+            if (browser)
+              writeVisualEnv(path.dirname(FIXTURE), await visualEnvOf(browser));
             return;
           }
           const want = fixture[key];

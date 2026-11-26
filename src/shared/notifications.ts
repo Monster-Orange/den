@@ -412,9 +412,10 @@ function aliveProcess(pid: number): boolean {
  * Issue 1348: the store's cross-process lock, `<file>.lock`, tried once,
  * never waited for. A leftover lock (see lock_live_seconds) is taken back:
  * renamed aside first, and only if it is still the lock looked at (same
- * inode and time), so two takers that both found it stale never both win.
+ * inode, time and nonce), so two takers that both found it stale never both
+ * win. Exported for its tests.
  */
-function tryStoreLock(file: string): boolean {
+export function tryStoreLock(file: string): boolean {
   const lock = `${file}.lock`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   try {
@@ -429,32 +430,59 @@ function tryStoreLock(file: string): boolean {
     }
   }
   try {
+    // The plain pid: an older Den reads this file as Number(text.trim()).
     writeFileAtomic(path.join(lock, "pid"), String(process.pid));
   } catch {
     /* the lock holds without it; only its takeback needs it */
   }
+  try {
+    // A nonce for this take, in its own file, so a lock taken
+    // over and made again in one clock tick (the same inode and time) is
+    // told apart.
+    writeFileAtomic(path.join(lock, "nonce"), crypto.randomUUID());
+  } catch {
+    /* as above */
+  }
   return true;
 }
 
-/** Issue 1348: moves a leftover lock out of the way; false: it isn't one. */
-function takeBackStoreLock(lock: string): boolean {
+/** A file in a lock folder, or null when it has none (yet). */
+function lockFile(lock: string, name: "pid" | "nonce"): string | null {
+  try {
+    return fs.readFileSync(path.join(lock, name), "utf-8");
+  } catch {
+    return null; // taken just now, or its holder died before saying who
+  }
+}
+
+/** What tells one take of a lock from another: pid and nonce. */
+function lockText(lock: string): string {
+  return JSON.stringify([lockFile(lock, "pid"), lockFile(lock, "nonce")]);
+}
+
+/**
+ * Moves a leftover lock out of the way; false: it isn't one.
+ * Exported for its tests, whose `afterSeen` runs between the look and the
+ * move (another taker's turn).
+ */
+export function takeBackStoreLock(
+  lock: string,
+  test?: { afterSeen?: () => void },
+): boolean {
   let seen: fs.Stats;
   try {
     seen = fs.statSync(lock);
   } catch {
     return true; // gone meanwhile: free
   }
-  let pid = NaN;
-  try {
-    pid = Number(fs.readFileSync(path.join(lock, "pid"), "utf-8").trim());
-  } catch {
-    /* taken just now, or its holder died before saying who it is */
-  }
+  const seenText = lockText(lock);
+  const pid = Number((JSON.parse(seenText)[0] ?? "").trim() || NaN);
   const age = Date.now() - seen.mtimeMs;
   const known = Number.isInteger(pid) && pid > 0;
   const t = lockSettings();
   const left = known ? !aliveProcess(pid) || age >= t.liveMs : age >= t.noPidMs;
   if (!left) return false;
+  test?.afterSeen?.();
   const aside = `${lock}.old-${process.pid}-${crypto.randomUUID()}`;
   try {
     fs.renameSync(lock, aside);
@@ -463,7 +491,13 @@ function takeBackStoreLock(lock: string): boolean {
   }
   try {
     const moved = fs.statSync(aside);
-    if (moved.ino !== seen.ino || moved.mtimeMs !== seen.mtimeMs) {
+    // Its text too: one taken over and made again in one tick
+    // can keep the inode and time, never the nonce.
+    if (
+      moved.ino !== seen.ino ||
+      moved.mtimeMs !== seen.mtimeMs ||
+      lockText(aside) !== seenText
+    ) {
       // Not the one looked at: a lock taken since. Put it back.
       try {
         fs.renameSync(aside, lock);
@@ -1093,6 +1127,7 @@ export const BELL_FOLD_DAYS_DEFAULT = 7;
 export interface BellPrefs {
   off: BellSwitch[];
   foldDays: number;
+  finishedChosenOff?: true;
 }
 
 /**
@@ -1112,7 +1147,9 @@ export function bellPrefs(user: unknown): BellPrefs {
   const foldDays = (BELL_FOLD_DAYS as readonly unknown[]).includes(d)
     ? (d as number)
     : BELL_FOLD_DAYS_DEFAULT;
-  return { off, foldDays };
+  return kinds.finished === false
+    ? { off, foldDays, finishedChosenOff: true }
+    : { off, foldDays };
 }
 
 /**

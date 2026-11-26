@@ -24,7 +24,7 @@ import * as path from "path";
 import type { AddressInfo } from "net";
 import { cmdWebLogin } from "../../../src/ui/cli/web-command.js";
 import { edgeUp, portInUse } from "../../../src/shared/edge/runtime.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 import {
   DEN_IDENTITY_PATH,
   identityBody,

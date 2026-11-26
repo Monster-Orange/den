@@ -31,7 +31,7 @@ import {
   type DenConfig,
   type UserConfig,
 } from "../../../src/shared/den-config.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
 import { policyFor } from "../../../src/shared/approval-policy.js";
 
 let dir = "";
@@ -432,6 +432,13 @@ describe("USER_ONLY_WIDENING matches what den-config reads (issue 1371)", () => 
           {},
         ),
       ).toThrow(/user\.yml/),
+    "agents.os_login": () =>
+      expect(() =>
+        readAgentsConfig(
+          { agents: { os_login: "off" } } as unknown as DenConfig,
+          {},
+        ),
+      ).toThrow(/user\.yml/),
     "agents.sandbox_sockets": () => {
       const r = readAgentsConfig(
         { agents: { sandbox_sockets: ["/tmp/x"] } } as unknown as DenConfig,
@@ -498,5 +505,31 @@ describe("setting_change: a key Den reads when it starts (issue 1371)", () => {
       reason: "r",
     });
     expect(other).toMatchObject({ ok: true, restart: false });
+  });
+});
+
+describe("issue 974: which variables agents get is the person's alone", () => {
+  it.each([
+    ["agents.env_allow_agents.grants", ["north"]],
+    ["agents.env_hold.grants", ["north"]],
+    ["agents.env_guard.grants", ["north"]],
+  ])("refuses %s with a reason too: no env_* key is an agent", (key, value) => {
+    const before = readUser();
+    const r = runSettingChange(deps(), { key, value, reason: "r" });
+    expect(r.ok).toBe(false);
+    expect(readUser()).toBe(before);
+  });
+
+  it.each([
+    ["agents.env_allow", ["OP_SERVICE_ACCOUNT_TOKEN"]],
+    ["agents.env_allow_agents", { planner: ["GH_TOKEN"] }],
+    ["agents.env_hold", []],
+    ["agents.env_guard", false],
+    ["agents.env_hold_existing", false],
+  ])("setting_change refuses %s, and writes nothing", (key, value) => {
+    const before = readUser();
+    const c = checkSettingChange(deps(), { key, value }, { agent: "planner" });
+    expect(c.ok).toBe(false);
+    expect(readUser()).toBe(before);
   });
 });

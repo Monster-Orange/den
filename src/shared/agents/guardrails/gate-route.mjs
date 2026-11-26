@@ -162,3 +162,44 @@ export function routeCommand(command, { gate, programs, parse }) {
     program: h.entry,
   };
 }
+
+/**
+ * Issue 1264: the listed program a command runs anywhere in it (any
+ * stage), as { program, kind }, or null: none, one already under
+ * `gate run`, or one the parser can't read. The hook records a heavy run
+ * it leaves alone by this: the list entry, never the arguments.
+ */
+export function heavyProgram(command, { programs, parse }) {
+  const src = String(command ?? "");
+  if (!programs || !programs.length || !src.trim()) return null;
+  let pipelines;
+  try {
+    pipelines = parse(src);
+  } catch {
+    return null;
+  }
+  let hit = null;
+  for (const stages of pipelines)
+    for (const st of stages) {
+      if (gated(st.words)) return null;
+      const m = matchEntry(st.words, programs);
+      if (m && (!hit || m.name === "playwright")) hit = m;
+    }
+  return hit
+    ? {
+        program: hit.entry,
+        kind: hit.name === "playwright" ? "browser" : "cpu",
+      }
+    : null;
+}
+
+const ON_WORDS = new Set(["1", "yes", "on", "true"]);
+const OFF_WORDS = new Set(["0", "no", "off", "false"]);
+
+export function onOff(x) {
+  if (typeof x === "boolean") return x;
+  if (typeof x === "number") return x === 1 ? true : x === 0 ? false : null;
+  if (typeof x !== "string") return null;
+  const t = x.trim().toLowerCase();
+  return ON_WORDS.has(t) ? true : OFF_WORDS.has(t) ? false : null;
+}
