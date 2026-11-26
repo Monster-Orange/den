@@ -424,7 +424,7 @@ const WIDENS_AT: readonly [
     },
     ["personal", "strict"],
   ],
-  // Issue 1264 (Reviewer A): a program in effect now and missing after
+  // A program in effect now and missing after
   // runs outside the gate: widens. Adding one, or reordering, doesn't.
   // With no old value known, judged against the default list.
   [
