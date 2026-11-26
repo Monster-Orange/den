@@ -293,6 +293,9 @@ describe("the final message", () => {
     t = w.nextAt;
     await w.tick();
     await w.deliver();
+    t = w.nextAt;
+    await w.tick();
+    await w.deliver();
     expect(sent).toHaveLength(1);
     const dv = sent[0];
     expect(dv.agent).toBe("planner");
@@ -320,6 +323,10 @@ describe("the final message", () => {
     await w.create(ask({ pr: 1 }));
     finishedChecks();
     relayOk = false;
+    await w.tick();
+    t = w.nextAt;
+    await w.tick();
+    t = w.nextAt;
     await w.tick();
     await w.deliver();
     expect(sent).toHaveLength(0);

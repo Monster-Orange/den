@@ -992,9 +992,8 @@ export class GithubWatcher {
       if (w.kind === "pr") {
         for (const r of mine) {
           const sid = asNum(r.check_suite_id);
-          const wf = asNum(r.workflow_id);
-          if (sid !== undefined && wf !== undefined)
-            (w.suites ??= {})[String(sid)] = wf;
+          const wf = asNum(r.workflow_id) ?? -(asNum(r.id) ?? sid ?? 0);
+          if (sid !== undefined) (w.suites ??= {})[String(sid)] = wf;
         }
         if (byHead && w.suitesDue?.length) {
           w.suitesAsked = [...(w.suitesAsked ?? []), ...w.suitesDue];
@@ -1064,7 +1063,7 @@ export class GithubWatcher {
             )
           : latest(all, w.suites ?? {});
       if (w.kind === "pr") {
-        const due = unmapped(all, w.suites ?? {}).filter(
+        const due = unplaced(all, w.suites ?? {}).filter(
           (id) => !(w.suitesAsked ?? []).includes(id),
         );
         if (due.length) {
@@ -1073,8 +1072,7 @@ export class GithubWatcher {
           if (!w.suitesDue?.length) changed = true;
           w.suitesDue = due;
           w.phase = "running";
-          w.note =
-            "Some checks share a name across runs; Den reads which workflow each belongs to next.";
+          w.note = "Den reads which workflow run each check belongs to next.";
           continue;
         }
       }
@@ -1460,19 +1458,22 @@ function checkKey(
   return `app:${app}|${sid ?? `id:${asNum(c.id)}`}|${asStr(c.name)}`;
 }
 
-/** Suites (unplaced) holding a check whose name another suite has too. */
-function unmapped(
+function unplaced(
   cs: Record<string, unknown>[],
   suites: Record<string, number>,
 ): number[] {
   const by = new Map<string, Set<number>>();
+  const out = new Set<number>();
   for (const c of cs) {
     const sid = suiteOf(c);
     if (sid === undefined) continue;
     const n = asStr(c.name);
     by.set(n, (by.get(n) ?? new Set()).add(sid));
+    const done = asStr(c.status) === "completed";
+    const bad =
+      done && !PASS.has(asStr(c.conclusion)) && !SKIP.has(asStr(c.conclusion));
+    if (bad && suites[String(sid)] === undefined) out.add(sid);
   }
-  const out = new Set<number>();
   for (const ids of by.values())
     if (ids.size > 1)
       for (const id of ids) if (suites[String(id)] === undefined) out.add(id);
