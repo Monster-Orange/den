@@ -11,7 +11,7 @@ import * as os from "os";
 import * as path from "path";
 import { GithubWatcher } from "../../../../src/shared/github-watch/watcher.js";
 import type { GithubWatchSettings } from "../../../../src/shared/github-watch/settings.js";
-import type { Delivery } from "../../../../src/shared/hub-delivery.js";
+import type { Delivery } from "../../../../src/shared/hub/hub-delivery.js";
 import { FakeGithub } from "./fake-github.js";
 
 const A = "acme/north";

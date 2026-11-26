@@ -118,7 +118,7 @@ import {
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { userConfigPath } from "../../shared/den-config.js";
-import { readWebSecret } from "../../shared/web-secret.js";
+import { readWebSecret } from "../../shared/web/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
   installIdOf,
@@ -464,7 +464,7 @@ import {
   rotateWebSecret,
   verifyPersonToken,
   WebSecretStore,
-} from "../../shared/web-secret.js";
+} from "../../shared/web/web-secret.js";
 import {
   ACTOR_TOKEN_PREFIX,
   agentTokenLive,
@@ -490,7 +490,7 @@ import {
   type WebAuthConfig,
   SessionStoreUnreadable,
   SESSIONS_LOCK_WAIT_MS,
-} from "../../shared/web-session.js";
+} from "../../shared/web/web-session.js";
 import {
   checkFixtureCode,
   FIXTURE_LABEL,
@@ -571,16 +571,19 @@ import {
   readWebUrl,
   setWebUrl,
   type WebUrlChange,
-} from "../../shared/web-url.js";
+} from "../../shared/web/web-url.js";
 import { peopleWebUrl } from "../../shared/agent-links.js";
-import { tellHubDenUrl } from "../../shared/hub-den-url.js";
+import { tellHubDenUrl } from "../../shared/hub/hub-den-url.js";
 import { webUrlSetAction } from "./web-url-held.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
   offeredAlias,
 } from "./web-url-routes.js";
-import { aliasCandidates, isLoopbackUrl } from "../../shared/web-url-check.js";
+import {
+  aliasCandidates,
+  isLoopbackUrl,
+} from "../../shared/web/web-url-check.js";
 import {
   handleAccountsRoute,
   handleKeepRunningRoutes,
@@ -674,7 +677,7 @@ import {
   GITHUB_SIGNIN_DOCS,
 } from "../../shared/github-app.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
-import { readWebOwner } from "../../shared/web-owner.js";
+import { readWebOwner } from "../../shared/web/web-owner.js";
 import { FirstRun } from "./first-run.js";
 import { signinMethods } from "./signin-methods.js";
 import { ownerNameFromGithub } from "../../shared/owner-github.js";
@@ -735,7 +738,7 @@ import {
   readHubConfig,
   type HubConfig,
 } from "../../shared/hub.js";
-import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
+import { patchHubDeliveryLoop } from "../../shared/hub/hub-loop.js";
 import { serverHubAgentTokens } from "../../shared/hub-agent-tokens.js";
 import { syncAgentGrantNote } from "../../shared/hub-agent-grant.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
@@ -1694,7 +1697,7 @@ import {
   stdoutLine,
   webLogPath,
   webLogWriter,
-} from "../../shared/web-log-file.js";
+} from "../../shared/web/web-log-file.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";

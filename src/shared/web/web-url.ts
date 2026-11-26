@@ -16,14 +16,14 @@ import {
   mergeUserConfig,
   readUserConfig,
   type UserConfig,
-} from "./den-config.js";
+} from "../den-config.js";
 import {
   aliasCandidates,
   checkWebUrl,
   isLoopbackUrl,
   loopbackRefusal,
 } from "./web-url-check.js";
-import { auditConfig } from "./config-audit.js";
+import { auditConfig } from "../config-audit.js";
 
 export { checkWebUrl, isLoopbackUrl };
 

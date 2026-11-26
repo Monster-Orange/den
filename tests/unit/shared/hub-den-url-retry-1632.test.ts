@@ -9,7 +9,7 @@ import {
   retryDenUrlTell,
   tellHubDenUrl,
   type DenUrlTell,
-} from "../../../src/shared/hub-den-url.js";
+} from "../../../src/shared/hub/hub-den-url.js";
 import { HubCallError } from "../../../src/shared/hub.js";
 import { setConfigAuditSink } from "../../../src/shared/config-audit.js";
 import {
