@@ -151,8 +151,55 @@ describe("gate/732.mjs (issue 829)", () => {
     );
   });
 
-  it("an empty STUB_HOME answers unknown: null, and every clause skips as needs-background-job", () => {
-    expect(looked("unknown").got).toBeNull();
+  it("when the stub's shell can't say, the check looks from its own process", () => {
+    const got = call(`await (async () => {
+      const { spawn } = await import("node:child_process");
+      const name = "g732own" + process.pid;
+      const job = spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)", "snapshot-zsh-" + "1-" + name + ".sh"], { stdio: "ignore" });
+      await new Promise((r) => setTimeout(r, 300));
+      const a = { sh: async () => { throw new Error("stalled"); } };
+      const unknown = { sh: async () => ({ out: "unknown" }) };
+      const r = [await g.jobPresent(a, name), await g.jobPresent(unknown, name), await g.jobPresent(a, name + "x")];
+      job.kill();
+      return r;
+    })()`) as (boolean | null)[];
+    expect(got).toEqual([true, true, false]);
+  });
+
+  it("the job's /bg is typed straight into the stub, never sent through Den's /say", () => {
+    const got = call(`await (async () => {
+      const lines = [];
+      const paths = [];
+      const a = { start: () => ({ code: null }), running: async () => 1, print() {}, hook: async () => {},
+        line: (t) => lines.push(t), sh: async () => ({ out: "no", status: 0 }) };
+      const ctx = { agent: () => a, sleep: async () => {}, transcriptPath: () => null, readBed: () => null,
+        fetch: async (p) => { paths.push(p); return { status: 202, body: "{}" }; } };
+      const r = await g.run(ctx, { id: "s1", hub: true });
+      return { lines, say: paths.filter((p) => p.endsWith("/say")).length, bg: r.bg };
+    })()`) as { lines: string[]; say: number; bg: unknown };
+    expect(got.lines.some((l) => /^\/bg 270 g732[a-z0-9]+$/.test(l))).toBe(
+      true,
+    );
+    expect(got.say).toBe(0);
+    expect(got.bg).toBe("line");
+  });
+
+  it("a stub with no line to type into skips every clause as needs-stub-line", () => {
+    const got = call(`await (async () => {
+      const a = { start: () => ({ code: null }), running: async () => 1, print() {}, hook: async () => {} };
+      const ctx = { agent: () => a, sleep: async () => {}, transcriptPath: () => null, readBed: () => null,
+        fetch: async () => ({ status: 202, body: "{}" }) };
+      const r = await g.run(ctx, { id: "s1", hub: true });
+      return g.expect(r).map((x) => x.skip);
+    })()`) as string[];
+    expect(got).toEqual([
+      "needs-stub-line",
+      "needs-stub-line",
+      "needs-stub-line",
+    ]);
+  });
+
+  it("nobody could look: every clause skips as needs-background-job", () => {
     const rows = judge({
       ...good,
       seen: false,
