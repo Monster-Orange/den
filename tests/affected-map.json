@@ -2252,9 +2252,11 @@
         "tests/unit/mcp/approval-tools.test.ts",
         "tests/unit/plugins/plugin-command.test.ts",
         "tests/unit/review/review-rules-798.test.ts",
+        "tests/unit/scripts/changelog-fragments-1703.test.ts",
         "tests/unit/scripts/changelog-line-1611.test.ts",
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/scripts/pw-server-635.test.ts",
+        "tests/unit/scripts/release-dry-run.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
         "tests/unit/server/agent-groups-view.test.ts",
@@ -2281,6 +2283,7 @@
       "run": [
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/gates/pw-guard-export-1010.test.ts",
+        "tests/unit/scripts/changelog-fragments-1703.test.ts",
         "tests/unit/scripts/changelog-line-1611.test.ts",
         "tests/unit/scripts/release-dry-run.test.ts",
         "tests/unit/scripts/release-tree.test.ts",
@@ -2372,8 +2375,16 @@
       "why": "tests that run scripts/build-sketch-theme.ts"
     },
     {
+      "when": ["scripts/changelog-fragments.mjs"],
+      "run": ["tests/unit/scripts/changelog-fragments-1703.test.ts"],
+      "why": "tests that run scripts/changelog-fragments.mjs"
+    },
+    {
       "when": ["scripts/changelog-line.mjs"],
-      "run": ["tests/unit/scripts/changelog-line-1611.test.ts"],
+      "run": [
+        "tests/unit/scripts/changelog-fragments-1703.test.ts",
+        "tests/unit/scripts/changelog-line-1611.test.ts"
+      ],
       "why": "tests that run scripts/changelog-line.mjs"
     },
     {
@@ -2551,6 +2562,11 @@
         "tests/unit/test-infra/release-promote-workflow.test.ts"
       ],
       "why": "tests that run scripts/release-tree.sh"
+    },
+    {
+      "when": ["scripts/release-version-diff.mjs"],
+      "run": ["tests/unit/scripts/changelog-fragments-1703.test.ts"],
+      "why": "tests that run scripts/release-version-diff.mjs"
     },
     {
       "when": ["scripts/settings-pin.mjs"],
