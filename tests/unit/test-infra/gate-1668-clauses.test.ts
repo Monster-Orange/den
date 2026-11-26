@@ -38,8 +38,7 @@ const times = (ms: number) =>
   Array.from({ length: limits.tries }, () => ({ ms, status: 200 }));
 
 const fast = {
-  started: limits.n,
-  missing: [],
+  seedMs: 900,
   seed: { status: 0, said: `seeded ${limits.n}` },
   warmMs: 4000,
   helperRows: limits.n,
@@ -70,8 +69,9 @@ describe("gate/1668 rows", () => {
       false,
       false,
     ]);
+    expect(rows({ ...fast, helperRows: limits.n - 3 })[0].ok).toBe(false);
     expect(
-      rows({ ...fast, started: limits.n - 3, missing: ["g1668-a001"] })[0].ok,
+      rows({ ...fast, seed: { status: 2, said: "found 0 Den homes" } })[0].ok,
     ).toBe(false);
   });
 
@@ -85,6 +85,10 @@ describe("gate/1668 rows", () => {
     const r = rows({ error: "the bed gives no ctx.den2" });
     expect(r.map((x) => x.ok)).toEqual([false, false]);
     expect(r[0].detail).toContain("no ctx.den2");
+  });
+
+  it("each row says how the agents were seeded", () => {
+    expect(rows(fast)[0].detail).toContain("by writing their records");
   });
 
   it("the limits are named constants, the seed is above the old 64-transcript cache", () => {
