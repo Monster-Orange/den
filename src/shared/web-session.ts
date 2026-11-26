@@ -227,6 +227,7 @@ export interface WebAuthConfig {
    * the wait at once.
    */
   startWaitSeconds: number;
+  toolsProbeSeconds: number;
   /**
    * Issue 819: `web.pair_requests_per_minute` (user.yml over the
    * distribution's): how many new-device requests one client address may
@@ -557,6 +558,7 @@ export function readWebAuthConfig(
     );
   const readyProbe = waitSeconds(user, team, "ready_probe_seconds");
   const startWait = waitSeconds(user, team, "start_wait_seconds");
+  const toolsProbe = waitSeconds(user, team, "tools_probe_seconds");
   const pairLimits = Object.fromEntries(
     Object.entries(PAIR_LIMITS).map(([k, l]) => {
       const v = user[k] ?? team[k];
@@ -693,6 +695,7 @@ export function readWebAuthConfig(
     ownerNameTimeoutSeconds: nameWait ?? 10,
     readyProbeSeconds: readyProbe ?? WEB_READY_PROBE_SECONDS,
     startWaitSeconds: startWait ?? WEB_START_WAIT_SECONDS,
+    toolsProbeSeconds: toolsProbe ?? WEB_TOOLS_PROBE_SECONDS,
     pairRequestsPerMinute: pairLimits.pair_requests_per_minute,
     approveAttempts: pairLimits.approve_attempts,
     approveWindowSeconds: pairLimits.approve_window_seconds,
@@ -720,6 +723,7 @@ export const PAIR_LIMITS = {
 export const WEB_READY_PROBE_SECONDS = 10;
 /** den#143: `web.start_wait_seconds`'s default. */
 export const WEB_START_WAIT_SECONDS = 120;
+export const WEB_TOOLS_PROBE_SECONDS = 30;
 /** den#143: the readiness waits' range, in seconds. */
 export const WEB_WAIT_RANGE = { min: 1, max: 3600 } as const;
 
@@ -730,7 +734,7 @@ export const WEB_WAIT_RANGE = { min: 1, max: 3600 } as const;
 function waitSeconds(
   user: Record<string, unknown>,
   team: Record<string, unknown>,
-  key: "ready_probe_seconds" | "start_wait_seconds",
+  key: "ready_probe_seconds" | "start_wait_seconds" | "tools_probe_seconds",
 ): number | undefined {
   const v = user[key] ?? team[key];
   if (v === undefined || v === null) return undefined;
