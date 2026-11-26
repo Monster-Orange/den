@@ -87,6 +87,7 @@ describe("issue 680: Den draws its on/off settings with the kit's switch", () =>
     "a project MCP's no token (an option in a form)": /data-pmcp-nobearer/,
     "Testing: the module checklist's all": /id="module-check-all"/,
     "Testing: a module in the checklist": /value="\$\{m\.name\}"/,
+    "a runner entry's heavy slot (an option in a form)": /id="set-re-heavy"/,
   };
   it("the named on/off settings are switches", () => {
     for (const [f, re] of MUST_BE_SWITCHES)
