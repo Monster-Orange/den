@@ -2535,7 +2535,6 @@ export function signingLines(
         ...(fix ? [`           fix: ${fix}`] : []),
       ],
       problem: false,
-      // Information, as the text says it: not a warning.
       checks: [
         { id: "agents:signing", status: "ok", detail, ...(fix ? { fix } : {}) },
       ],
