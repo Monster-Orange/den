@@ -6,7 +6,12 @@
 import { readManifest } from "../manifest/read-manifest.js";
 import { composeServiceContainers } from "../stacks/manifest-commands.js";
 import { resolveStackWorkspaces } from "../stacks/status.js";
-import { findConventionalContainer, runningDockerNames } from "./opctl.js";
+import {
+  findConventionalContainer,
+  pickConventionalContainer,
+  runningDockerNames,
+  runningDockerNamesAsync,
+} from "./opctl.js";
 
 /** The stack's container for `subsystem` when one is running, else null. */
 export function findStackServiceContainer(
@@ -14,24 +19,36 @@ export function findStackServiceContainer(
   repoPath: string | undefined,
   subsystem: string | undefined,
 ): string | null {
+  const candidates = stackCandidates(repoName, repoPath, subsystem);
+  if (!candidates?.length) return null;
+  let running: string[];
+  try {
+    running = runningDockerNames();
+  } catch {
+    return null;
+  }
+  return candidates.find((c) => running.includes(c)) ?? null;
+}
+
+function stackCandidates(
+  repoName: string,
+  repoPath: string | undefined,
+  subsystem: string | undefined,
+): string[] | null {
   if (!repoPath || !subsystem) return null;
   const manifest = readManifest(repoPath);
   if (!manifest?.compose) return null;
-  let candidates: string[];
-  let running: string[];
   try {
     const { stackWorkspace } = resolveStackWorkspaces();
-    candidates = composeServiceContainers(
+    return composeServiceContainers(
       manifest,
       subsystem,
       repoName,
       stackWorkspace,
     );
-    running = runningDockerNames();
   } catch {
-    return null; // bad workspace name, or docker unavailable
+    return null; // bad workspace name
   }
-  return candidates.find((c) => running.includes(c)) ?? null;
 }
 
 /** A service's running container: its compose stack's, else opctl's. */
@@ -43,5 +60,19 @@ export function findServiceContainer(
   return (
     findStackServiceContainer(repoName, repoPath, subsystem) ??
     findConventionalContainer(repoName, repoPath, subsystem)
+  );
+}
+
+export async function findServiceContainerAsync(
+  repoName: string,
+  repoPath?: string,
+  subsystem?: string,
+): Promise<string | null> {
+  const running = await runningDockerNamesAsync();
+  if (!running) return null;
+  const stack = stackCandidates(repoName, repoPath, subsystem);
+  return (
+    stack?.find((c) => running.includes(c)) ??
+    pickConventionalContainer(running, repoName, repoPath, subsystem)
   );
 }
