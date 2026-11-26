@@ -112,6 +112,8 @@ export interface FeedRead {
   unread: number;
 }
 
+const LEGACY = "legacy";
+const EPOCH = /^(legacy|[0-9a-f]{8,32})$/;
 const FILE = /^(\d{1,15})-([0-9a-f]{16})-(\d{1,12}|x)\.json$/;
 const kh = (key: string) =>
   createHash("sha256").update(key).digest("hex").slice(0, 16);
@@ -149,19 +151,20 @@ export class FileFeedStore implements FeedStore {
       ) as { read?: unknown; pointed?: unknown; epoch?: unknown };
       if (typeof v.read === "number") this.meta.read = v.read;
       if (typeof v.pointed === "number") this.meta.pointed = v.pointed;
-      if (typeof v.epoch === "string" && /^[0-9a-f]{8,32}$/.test(v.epoch))
+      if (typeof v.epoch === "string" && EPOCH.test(v.epoch))
         this.meta.epoch = v.epoch;
     } catch {
-      /* a new store */
+      this.meta.epoch = "";
     }
-    if (!this.meta.epoch) {
-      this.meta.epoch = randomBytes(8).toString("hex");
-      this.saveMeta();
-    }
+    if (this.meta.epoch) return;
+    const old =
+      this.seqs.length > 0 || fs.existsSync(path.join(dir, "meta.json"));
+    this.meta.epoch = old ? LEGACY : randomBytes(8).toString("hex");
+    this.saveMeta();
   }
 
   epoch(): string {
-    return this.meta.epoch;
+    return this.meta.epoch === LEGACY ? "" : this.meta.epoch;
   }
 
   private saveMeta(): void {
