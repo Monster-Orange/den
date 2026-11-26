@@ -138,6 +138,10 @@ syncPinToggles, folds }`.
   the default, `railFoldStore()`, keeps the ids in localStorage
   (`den.rail.folded`) and reads any failure as all open. Clicks are taken
   on the rail, so a repaint keeps them; call `apply()` after one.
+  Since 0.18.0, a folded section hides only once `hydrateRailFolds` has
+  marked its root `data-folds`: a script that failed to load or threw
+  leaves every entry showing. Past 99 the name is "Show {section}, 99+
+  inside" (`kit.rail.unfoldMany`).
 - `src/shell.css`, `src/whatsnew.css`, `src/report.css`: the look. Link
   them after `tokens.css`.
 - `src/version.js` (the chip's label and its unread dot), `src/whatsnew.js`
@@ -422,7 +426,13 @@ Every button the kit holds shows three pulsing dots in place of its
 label at once, until the server answers: busyAction's `opts.button`,
 `pending()`'s button, and a plain POST form's submitter. The button keeps
 its size (the label stays, hidden, and stays its accessible name), is
-disabled with `aria-busy="true"`, and keeps its own colours.
+`aria-disabled="true"` with `aria-busy="true"`, and keeps its own colours.
+It is never `disabled` (issue 1434): it keeps the keyboard's focus, and a
+click, Enter or Space on it while held does nothing. The kit stops the
+`click` at the window, in the capture phase, when busy.js loads: a capture
+listener on window added before that still runs first, and `pointerdown`,
+`mousedown` and `keydown` still reach the page. Act on `click`, not on
+those, or check `aria-busy` yourself.
 
 Issue 1054: for one request, that is all. No Working pop-up opens, and
 the dots stay until the answer. The Working pop-up is only for an
@@ -1173,6 +1183,19 @@ spacing, motion or layers, so layouts stay the same.
   text, 3:1 for marks); status pills are checked on their own tint, and
   the remote colour on its 16% disc.
 - The fonts stay within 120 KB.
+
+## Report opens at once (0.17.0, issue 1499)
+
+`openReport()` shows the form as soon as it's picked, and no longer waits
+for the screenshot. The capture starts before the form is on the page, and
+leaves the form and everything inside it out. The first step says "Taking
+the screenshot…" (`kit.report.shotWait`), and the shot fills in when it's
+ready, without taking the focus or the words being typed. A shot that fails
+shows the no-screenshot words, as before.
+
+A report can go before the shot is there. It then goes without one, and
+Review says so (`kit.report.shotLate`). A shot only goes once the person has
+seen it on the first step, where they black out anything private.
 
 ## Licence
 

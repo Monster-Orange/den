@@ -24,6 +24,7 @@ import {
   readWebAuthConfig,
   WEB_READY_PROBE_SECONDS,
   WEB_START_WAIT_SECONDS,
+  WEB_TOOLS_PROBE_SECONDS,
 } from "../../shared/web-session.js";
 
 /** The distribution a command acts for. */
@@ -36,8 +37,13 @@ export interface OwnServer {
 export type ServerIdentity =
   /** Nothing listens there. */
   | { kind: "none" }
-  /** Something accepted the connection but sent no answer in time. */
-  | { kind: "unresponsive" }
+  /** Something accepted the connection but sent no answer: `why`, after `waitedMs`. */
+  | {
+      kind: "unresponsive";
+      why?: "timeout" | "error" | "empty";
+      code?: string;
+      waitedMs?: number;
+    }
   /**
    * `pid`: the server's own pid (server-info reports it). Identity is what
    * makes it ours, so a stop signals this pid even when its command line
@@ -55,17 +61,23 @@ export type ServerIdentity =
  * machine answers late, and a cold tsx start is slow. The defaults when
  * the config can't be read.
  */
-export function webReadyWaits(): { probeMs: number; startMs: number } {
+export function webReadyWaits(): {
+  probeMs: number;
+  startMs: number;
+  toolsProbeMs: number;
+} {
   try {
     const c = readWebAuthConfig(getDistRoot(), product().configFile);
     return {
       probeMs: c.readyProbeSeconds * 1000,
       startMs: c.startWaitSeconds * 1000,
+      toolsProbeMs: c.toolsProbeSeconds * 1000,
     };
   } catch {
     return {
       probeMs: WEB_READY_PROBE_SECONDS * 1000,
       startMs: WEB_START_WAIT_SECONDS * 1000,
+      toolsProbeMs: WEB_TOOLS_PROBE_SECONDS * 1000,
     };
   }
 }
@@ -155,7 +167,7 @@ export function classifyServerInfoResponse(
 ): ServerIdentity {
   // A server still starting answers 200 with an empty body: not up yet.
   if (statusCode >= 200 && statusCode < 300 && text.trim() === "")
-    return { kind: "unresponsive" };
+    return { kind: "unresponsive", why: "empty" };
   if (statusCode < 200 || statusCode >= 300)
     return { kind: "foreign", who: "a non-Den server" };
   let body: unknown;
@@ -167,23 +179,28 @@ export function classifyServerInfoResponse(
   return classifyServerInfo(body, own, cwdOf);
 }
 
-/**
- * GET /api/server-info on `port` and say whose server answered. `host`: the
- * name the caller itself connects to (the MCP server's `localhost`).
- */
+/** GET /api/server-info on `port` (at `host`) and say whose server answered. */
 export function identifyServer(
   port: number,
   own: OwnServer = ownServer(),
   timeoutMs: number = webReadyWaits().probeMs,
   host: string = "127.0.0.1",
 ): Promise<ServerIdentity> {
+  const t0 = Date.now();
   return new Promise((resolve) => {
     let settled = false;
     const finish = (v: ServerIdentity): void => {
       if (settled) return;
       settled = true;
-      resolve(v);
+      resolve(
+        v.kind === "unresponsive" ? { ...v, waitedMs: Date.now() - t0 } : v,
+      );
     };
+    const failed = (e: NodeJS.ErrnoException): ServerIdentity => ({
+      kind: "unresponsive",
+      why: "error",
+      ...(e.code ? { code: e.code } : {}),
+    });
     const req = http.get(
       {
         host,
@@ -205,17 +222,15 @@ export function identifyServer(
         res.on("end", () =>
           finish(classifyServerInfoResponse(res.statusCode ?? 0, text, own)),
         );
-        res.on("error", () => finish({ kind: "unresponsive" }));
+        res.on("error", (e) => finish(failed(e)));
       },
     );
     req.on("timeout", () => {
+      finish({ kind: "unresponsive", why: "timeout" });
       req.destroy();
-      finish({ kind: "unresponsive" });
     });
     req.on("error", (e: NodeJS.ErrnoException) =>
-      finish(
-        e.code === "ECONNREFUSED" ? { kind: "none" } : { kind: "unresponsive" },
-      ),
+      finish(e.code === "ECONNREFUSED" ? { kind: "none" } : failed(e)),
     );
   });
 }
