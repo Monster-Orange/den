@@ -12,6 +12,7 @@ import * as path from "path";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import type { Approval } from "../../../src/ui/server/approvals.js";
 import {
+  heldWaiting,
   RESTART_GROUP_SUBJECT,
   syncHeldBell,
 } from "../../../src/ui/server/held-bell.js";
@@ -135,6 +136,18 @@ describe("issue 1406: the bell groups restart asks", () => {
     expect(needs).toContain(`data-ids="${A},${C}"`);
     expect(needs).toContain("[bell.rg.allow:2]");
     expect(needs).toContain(`data-bell="restart-in" data-ap="${B}"`);
+  });
+
+  it("an ask Den made after an update names the agent it restarts", () => {
+    const den: Approval = {
+      ...ask("dddddddddddddddd", "ana"),
+      actor: "den:tools-update:north/ana",
+      agent: undefined,
+    };
+    const [w] = heldWaiting([den]);
+    expect(w).toMatchObject({ agent: "ana" });
+    const [x] = heldWaiting([{ ...other, agent: undefined }]);
+    expect(x).not.toHaveProperty("agent");
   });
 
   it("one ask alone stays its own Allow row", async () => {

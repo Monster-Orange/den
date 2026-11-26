@@ -182,7 +182,11 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       id: a.id,
       action: a.action,
       what: a.summary,
-      ...(a.agent ? { agent: a.agent } : {}),
+      ...(a.agent
+        ? { agent: a.agent }
+        : a.action === RESTART_SELF && typeof a.args?.agent === "string"
+          ? { agent: a.args.agent }
+          : {}),
       ...(a.claimedAs && !a.agent && claimantIsPerson(a.actor)
         ? { claimedAs: a.claimedAs }
         : {}),

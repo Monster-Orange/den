@@ -1485,8 +1485,10 @@ import {
 import {
   checkAgentRestartSelf,
   runAgentRestartSelf,
+  type RestartSelfCheck,
   type RestartSelfDeps,
 } from "../../shared/agents/restart-self.js";
+import { offerToolsRestarts } from "./tools-restart-offer.js";
 import {
   checkSettingChange,
   runSettingChange,
@@ -1627,6 +1629,7 @@ import {
   modeResolver,
   busyAgentHolds,
   runningAgentIds,
+  staleAgents,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
@@ -5779,6 +5782,28 @@ function agentSandboxHeldOp() {
     run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
       runAgentSandboxSet(deps(), a, asked),
   };
+}
+
+async function offerToolsRestartsNow(): Promise<void> {
+  const ap = approvalDeps();
+  try {
+    if (!ap.enabled()) return;
+  } catch {
+    return;
+  }
+  const op = ap.actions.agent_restart_self;
+  if (!op) return;
+  const offered = await offerToolsRestarts({
+    stale: () => staleAgents(agentWebDeps(), { fresh: true }),
+    pending: () => ap.queue.pending(),
+    check: (a) => op.check(a) as RestartSelfCheck | Promise<RestartSelfCheck>,
+    request: (r) => ap.queue.request(r),
+  });
+  if (offered.length)
+    recordAction(null, {
+      verb: "approval-ask",
+      detail: `agent_restart_self after the update: ${offered.join(", ")}`,
+    });
 }
 
 function agentRestartSelfHeldOp() {
@@ -12933,7 +12958,10 @@ function startUpdateCheck(): void {
     const until = Date.now() + waitMs + 60_000;
     const poll = () => {
       const s = u.readUpdateState(getStateDir());
-      if (s?.to === have && s.state === "good") return void tick();
+      if (s?.to === have && s.state === "good") {
+        void offerToolsRestartsNow().catch(() => undefined);
+        return void tick();
+      }
       if (s?.to === have && s.state === "watching" && Date.now() < until)
         setTimeout(poll, 5_000).unref();
     };
