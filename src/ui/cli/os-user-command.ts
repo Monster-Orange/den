@@ -114,6 +114,13 @@ export async function cmdOsUser(
       sudoers: `${rule}\n`,
     };
     const f = d.facts();
+    if (f.runtime?.length) {
+      for (const r of f.runtime) d.err(`✗ Den's runtime: ${r}`);
+      d.err(
+        "The agents' login would run Den's runtime, so nothing it can change may be in it. Fix the places above, then run setup again. Nothing was changed.",
+      );
+      return 1;
+    }
     const steps = setupPlan(l, text, {
       user: f.user.exists,
       group: f.group.exists,
@@ -252,6 +259,7 @@ export function machineLayout(platform: NodeJS.Platform): OsUserLayout {
     runtime: {
       bin: realOr(process.execPath),
       script: realOr(path.join(getEngineRoot(), "dist/src/ui/cli/index.js")),
+      engineRoot: realOr(getEngineRoot()),
     },
     noLogin,
   };

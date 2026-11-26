@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
+import { getEngineRoot } from "../paths.js";
 import { OWN_FOLDER, readAgentLaunch } from "./os-user-launch-files.js";
+import { runtimeProblemsOrUnread } from "./os-user.js";
 import type { SandboxWrap } from "./sandbox.js";
 import { readTokenLine } from "./session-token.js";
 import { TOKEN_FD, spawnWithTokenFd } from "./token-fd.js";
@@ -28,6 +30,7 @@ export interface AgentSessionDeps {
     o: { cwd: string; env: Record<string, string>; secret?: string },
   ) => Promise<number>;
   err: (m: string) => void;
+  runtimeProblems: () => string[];
 }
 
 export async function runAgentSession(
@@ -48,6 +51,13 @@ export async function runAgentSession(
   if (d.personUid === 0 || d.personUid === d.ownUid) {
     d.err(
       `${CMD}: the launch files' owner (uid ${d.personUid}) is this login or root: they must be the person's`,
+    );
+    return EXIT_REFUSED;
+  }
+  const runtime = d.runtimeProblems();
+  if (runtime.length) {
+    d.err(
+      `${CMD}: this login could change Den's runtime (${runtime.join("; ")}), so no agent starts`,
     );
     return EXIT_REFUSED;
   }
@@ -153,5 +163,18 @@ export function defaultAgentSessionDeps(
     }),
     run: (argv, o) => spawnWithTokenFd(argv, o),
     err: (m) => process.stderr.write(`✗ ${m}\n`),
+    runtimeProblems: () =>
+      runtimeProblemsOrUnread(
+        {
+          bin: process.execPath,
+          script: process.argv[1] ?? "",
+          engineRoot: getEngineRoot(),
+        },
+        {
+          uid: typeof process.getuid === "function" ? process.getuid() : -2,
+          gids:
+            typeof process.getgroups === "function" ? process.getgroups() : [],
+        },
+      ),
   };
 }

@@ -6,6 +6,7 @@ import {
   launcherScript,
   osUserCheck,
   readOsUserFacts,
+  runtimeProblemsOrUnread,
   setupPlan,
   type OsUserFacts,
   type OsUserLayout,
@@ -235,6 +236,7 @@ describe("issue 988 review, should 5: whose launch files", () => {
         wrap: () => ({ applied: false, argv: [], env: {}, reason: "x" }),
         run: async () => 0,
         err: (m) => errs.push(m),
+        runtimeProblems: () => [],
       };
       await expect(
         runAgentSession(["scout", "0123456789abcdef0123456789abcdef"], d),
@@ -329,3 +331,73 @@ function rig(
   };
   return { d, ran, out, err, asked, set };
 }
+
+describe("issue 988 slice 3b review: the login's groups", () => {
+  const facts = (idG: { status: number; stdout: string }) => {
+    const seen: number[][] = [];
+    const f = readOsUserFacts(
+      {
+        ...LAYOUT,
+        runtime: { ...LAYOUT.runtime, engineRoot: "/srv/den" },
+      },
+      path.join(tmp, "state"),
+      {
+        exec: (cmd, args) =>
+          cmd === "getent" && args[0] === "passwd"
+            ? {
+                status: 0,
+                stdout:
+                  "den-agents-robin:x:455:455::/opt/den/robin/home:/usr/sbin/nologin\n",
+              }
+            : cmd === "id" && args[0] === "-G"
+              ? idG
+              : { status: 1, stdout: "" },
+        personUid: 1000,
+        stat: () => null,
+        read: () => null,
+        chain: () => [],
+        runtime: (_r, a) => {
+          seen.push(a.gids);
+          return [];
+        },
+      },
+    );
+    return { f, seen };
+  };
+
+  it("they're read and checked", () => {
+    const { f, seen } = facts({ status: 0, stdout: "455 20\n" });
+    expect(seen).toEqual([[455, 20]]);
+    expect(f.runtime).toEqual([]);
+  });
+
+  it("they can't be read: that's a problem, never an empty list checked quietly", () => {
+    for (const idG of [
+      { status: 1, stdout: "" },
+      { status: 0, stdout: "\n" },
+    ]) {
+      const { f } = facts(idG);
+      expect((f.runtime ?? []).join("\n")).toContain(
+        "can't read the agents' login's groups",
+      );
+    }
+  });
+
+  it("before the login exists, setup checks without groups and isn't refused for it", () => {
+    expect(
+      runtimeProblemsOrUnread(
+        { bin: process.execPath, script: process.execPath, engineRoot: tmp },
+        { uid: -1, gids: [] },
+      ).join("\n"),
+    ).not.toContain("can't read the agents' login's groups");
+  });
+
+  it("at launch, no groups is refused the same way", () => {
+    expect(
+      runtimeProblemsOrUnread(
+        { bin: process.execPath, script: process.execPath, engineRoot: tmp },
+        { uid: 455, gids: [] },
+      ).join("\n"),
+    ).toContain("can't read the agents' login's groups");
+  });
+});
