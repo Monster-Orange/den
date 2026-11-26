@@ -7,7 +7,11 @@ import {
   actorTokenOf,
   verifyActorToken,
 } from "../../../src/shared/actor-token.js";
-import { readRecord } from "../../../src/shared/agents/records.js";
+import {
+  agentsDir,
+  readRecord,
+  removeRecord,
+} from "../../../src/shared/agents/records.js";
 import {
   SERVER_AGENT_ID,
   SERVER_SCOPE,
@@ -128,12 +132,24 @@ async function fakeHub() {
   };
 }
 
-async function den(hubUrl: string, opts: { agentTokens?: boolean } = {}) {
+async function den(
+  hubUrl: string,
+  opts: {
+    agentTokens?: boolean;
+    duringToken?: (r: Rig, agentId: string) => void;
+  } = {},
+) {
   let tokens: HubAgentTokens | null = null;
+  let rr: Rig | null = null;
   const r: Rig = await rig({
     hub: async () => ({ url: hubUrl, token: INSTALL }),
-    hubAgentToken: (h, a) => tokens!.tokenFor(h, a),
+    hubAgentToken: async (h, a) => {
+      const t = await tokens!.tokenFor(h, a);
+      opts.duringToken?.(rr!, a.id);
+      return t;
+    },
   });
+  rr = r;
   tokens = new HubAgentTokens({
     stateDir: () => r.stateDir,
     settings: () => ({
@@ -199,6 +215,75 @@ async function den(hubUrl: string, opts: { agentTokens?: boolean } = {}) {
   return { r, d, agentId, agentToken, call };
 }
 
+describe("issue 1222: an agent removed while its Hub token is asked for", () => {
+  it("its call in flight gets 403 agent_removed, and nothing goes to Hub (not on the install's token either)", async () => {
+    const hub = await fakeHub();
+    let removed = false;
+    const { call } = await den(hub.url, {
+      duringToken: (r, id) => {
+        if (removed) return;
+        removed = true;
+        expect(removeRecord(r.stateDir, id)).toBe(true);
+      },
+    });
+    const res = await call("hub_artifact_create");
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code?: string }).code).toBe(
+      "agent_removed",
+    );
+    expect(hub.seen.filter((x) => x.url === "/mcp")).toHaveLength(0);
+  });
+
+  it("removed before its call (its Den token not yet revoked): 403 agent_removed, no token asked for, nothing to Hub", async () => {
+    const hub = await fakeHub();
+    const { r, agentId, call } = await den(hub.url);
+    const mints = hub.seen.filter((x) => x.url === "/connect/agent").length;
+    expect(removeRecord(r.stateDir, agentId)).toBe(true);
+    const res = await call("hub_artifact_create");
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code?: string }).code).toBe(
+      "agent_removed",
+    );
+    expect(hub.seen.filter((x) => x.url === "/mcp")).toHaveLength(0);
+    expect(hub.seen.filter((x) => x.url === "/connect/agent")).toHaveLength(
+      mints,
+    );
+  });
+
+  const spoil = (r: Rig, id: string) =>
+    fs.writeFileSync(path.join(agentsDir(r.stateDir), `${id}.json`), "{not");
+
+  it("a record unreadable at the start: 503 agent_unreadable (try again), nothing to Hub", async () => {
+    const hub = await fakeHub();
+    const { r, agentId, call } = await den(hub.url);
+    spoil(r, agentId);
+    const res = await call("hub_artifact_create");
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { code?: string }).code).toBe(
+      "agent_unreadable",
+    );
+    expect(hub.seen.filter((x) => x.url === "/mcp")).toHaveLength(0);
+  });
+
+  it("a record unreadable after the token wait: 503 agent_unreadable, nothing to Hub", async () => {
+    const hub = await fakeHub();
+    let done = false;
+    const { call } = await den(hub.url, {
+      duringToken: (r, id) => {
+        if (done) return;
+        done = true;
+        spoil(r, id);
+      },
+    });
+    const res = await call("hub_artifact_create");
+    expect(res.status).toBe(503);
+    expect(((await res.json()) as { code?: string }).code).toBe(
+      "agent_unreadable",
+    );
+    expect(hub.seen.filter((x) => x.url === "/mcp")).toHaveLength(0);
+  });
+});
+
 describe("issue 249: agents call Hub with their own bound token", () => {
   it("an agent's hub_artifact_create goes out with its bound token; the server agent's with the install token", async () => {
     const hub = await fakeHub();
@@ -225,7 +310,9 @@ describe("issue 249: agents call Hub with their own bound token", () => {
       workspace: SERVER_SCOPE,
       session: "server-session",
     });
-    expect(up!.headers.Authorization).toBe(`Bearer ${INSTALL}`);
+    expect(up && "headers" in up && up.headers.Authorization).toBe(
+      `Bearer ${INSTALL}`,
+    );
     expect(hub.seen.filter((x) => x.url === "/connect/agent")).toHaveLength(1);
     expect(JSON.stringify(r.made[0].opts.env)).not.toContain(boundToken);
     expect(
