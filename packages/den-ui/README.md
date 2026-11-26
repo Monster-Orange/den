@@ -552,8 +552,15 @@ never converted to HTML and back).
 
 - It is `role="dialog"` and never `aria-modal`, so there is no focus trap
   (only the kit's modal dialogs trap focus). Focus moves to its first
-  control. Esc, a press outside it, or Tab out of it closes it; Esc puts
-  focus back on the anchor. A button anchor says `aria-expanded` and
+  control. Esc, a press outside it, or Tab out of it closes it. Esc and a
+  press on nothing put focus back on the anchor; a press on a control
+  leaves focus there. Tab past its last control goes on to what follows
+  the anchor, and Shift+Tab before its first goes back to the anchor.
+- A press on the open anchor closes it, and that press's click never
+  reaches the anchor, so a host that opens it on click doesn't open it
+  again, and a link anchor doesn't follow its `href`.
+- A button anchor (an HTML button, or anything with `role="button"`, an
+  SVG node too) says `aria-haspopup="dialog"`, and `aria-expanded` and
   `aria-controls` while it is open. One is open at a time.
 - It sits below the anchor, or above it when there is no room, always 8px
   inside the viewport, and moves with scroll and resize. Its look is the
