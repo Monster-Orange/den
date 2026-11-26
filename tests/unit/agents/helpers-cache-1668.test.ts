@@ -76,8 +76,7 @@ const realFs = createRequire(__filename)("fs") as {
   readSync: (...a: unknown[]) => number;
 };
 
-/** Bytes read from each agent's own transcript while `fn` runs. */
-function readsDuring(fn: () => void): Map<string, number> {
+function transcriptBytesReadDuring(fn: () => void): Map<string, number> {
   const fdPath = new Map<number, string>();
   const got = new Map<string, number>();
   const { openSync, readSync } = realFs;
@@ -120,9 +119,9 @@ beforeEach(() => resetHelperCache());
 
 describe("a session list over more agents than the old cache held (64)", () => {
   it("lists 90 agents twice: the second list reads no transcript bytes", () => {
-    const first = readsDuring(() => list());
+    const first = transcriptBytesReadDuring(() => list());
     expect(first.size).toBe(AGENTS);
-    const second = readsDuring(() => list());
+    const second = transcriptBytesReadDuring(() => list());
     expect(total(second)).toBe(0);
   });
 
@@ -137,7 +136,7 @@ describe("a session list over more agents than the old cache held (64)", () => {
       },
     });
     fs.appendFileSync(transcripts[5], extra);
-    const again = readsDuring(() => list());
+    const again = transcriptBytesReadDuring(() => list());
     expect([...again]).toEqual([[transcripts[5], Buffer.byteLength(extra)]]);
   });
 
@@ -167,9 +166,9 @@ describe("agents.helpers.facts_cache_mb: the cache is bounded by bytes, least re
     one(b);
     one(a);
     one(c);
-    const r = readsDuring(() => one(a));
+    const r = transcriptBytesReadDuring(() => one(a));
     expect(total(r)).toBe(0);
-    const s = readsDuring(() => one(b));
+    const s = transcriptBytesReadDuring(() => one(b));
     expect(total(s)).toBeGreaterThan(0);
   });
 });

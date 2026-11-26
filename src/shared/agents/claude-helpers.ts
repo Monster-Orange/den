@@ -332,7 +332,6 @@ function parentFacts(
       bytes: 0,
     };
   }
-  // Least recently used out first: a hit moves to the newest end.
   parentCache.delete(file);
   parentCache.set(file, c);
   if (st.size === c.offset) return c.facts;
