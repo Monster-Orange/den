@@ -5,6 +5,7 @@
 // the row says "from its own setting". Follow project (the same menu) returns it, restarted again.
 // Every control is found by its role and its words from the page's own catalog (denShell.t), never by
 // English text, a styling class or its place; modes are read from data attributes.
+import * as fs from "fs";
 export const issue = 252;
 export const clauses = [
   "a Mode item in the agent's ⋯ menu, with the choices and Follow project; the button shows busy while it applies and the result is said",
@@ -60,7 +61,7 @@ async function modeOf(ctx, ws) {
 }
 
 const auditDetails = (ctx) =>
-  String(ctx.readBed("audit.jsonl") ?? "")
+  String(ctx.readBed("state:audit.jsonl") ?? "")
     .split("\n")
     .filter(Boolean)
     .map((l) => {
@@ -75,6 +76,54 @@ const auditDetails = (ctx) =>
 const words = (p, key, vars) =>
   p.evaluate(([k, v]) => window.denShell.t(k, v), [key, vars ?? {}]);
 
+async function agentRow(p) {
+  const open = await words(p, "ag.openName", { id: "\u0000" });
+  const [pre, post, extra] = open.split("\u0000");
+  if (post === undefined || extra !== undefined)
+    throw new Error(`the page's "ag.openName" has no one {id}: "${open}"`);
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return p
+    .getByRole("button", {
+      name: new RegExp(`^${esc(pre)}.+ / .+${esc(post)}`),
+    })
+    .filter({ hasText: ID });
+}
+
+async function dump(ctx, what) {
+  try {
+    const seen = await ctx.page.evaluate(
+      (id) => ({
+        url: location.href,
+        block:
+          document.querySelector(`[data-agent="${id}"]`)?.outerHTML ?? null,
+        buttons: [...document.querySelectorAll("button")]
+          .map((b) => [
+            b.getAttribute("aria-label"),
+            b.textContent.replace(/\s+/g, " ").trim().slice(0, 160),
+          ])
+          .filter(([n, t]) => n || t),
+      }),
+      ID,
+    );
+    fs.writeFileSync(
+      ctx.evidence(`dom-${what}.json`),
+      JSON.stringify(seen, null, 2),
+    );
+    await ctx.shot(`timeout-${what}`);
+  } catch {
+    return;
+  }
+}
+
+async function waitOr(ctx, loc, ms, what) {
+  try {
+    await loc.waitFor({ timeout: ms });
+  } catch (e) {
+    await dump(ctx, what);
+    throw e;
+  }
+}
+
 /** Opens the agent's ⋯ › Mode (`mode`: the one it shows); the radios' [mode or "follow", checked]. */
 async function openMode(ctx, ws, mode) {
   const p = ctx.page;
@@ -82,30 +131,31 @@ async function openMode(ctx, ws, mode) {
     p,
     `/agents?project=${encodeURIComponent(ws)}&agent=${encodeURIComponent(ID)}`,
   );
-  const open = await words(p, "ag.openName", { id: "\u0000" });
-  const [pre, post, extra] = open.split("\u0000");
-  if (post === undefined || extra !== undefined)
-    throw new Error(`the page's "ag.openName" has no one {id}: "${open}"`);
-  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const row = p.locator(`[data-agent="${ID}"]`).getByRole("button", {
-    name: new RegExp(`^${esc(pre)}${esc(ws)} / .+${esc(post)}`),
-  });
-  await row.waitFor({ timeout: 20000 });
+  const row = await agentRow(p);
+  await waitOr(ctx, row, 20000, "row");
   const more = p.getByRole("button", {
     name: await words(p, "ag.more", { id: ID }),
     exact: true,
   });
   if (!(await more.count())) await row.click();
-  await more.waitFor({ timeout: 15000 });
+  await waitOr(ctx, more, 15000, "more");
   await more.click();
-  const item = await words(p, "ag.mode.item", {
-    m: await words(p, `pm.name.${mode}`),
-  });
-  await p.getByRole("menuitem", { name: item, exact: true }).click();
-  const radios = p.getByRole("menuitemradio");
+  const [ipre, ipost] = (await words(p, "ag.mode.item", { m: "\u0000" })).split(
+    "\u0000",
+  );
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   await p
-    .getByRole("menuitemradio", { name: await words(p, "ag.mode.follow") })
-    .waitFor({ timeout: 10000 });
+    .getByRole("menuitem", {
+      name: new RegExp(`^${esc(ipre)}.+${esc(ipost ?? "")}$`),
+    })
+    .click();
+  const radios = p.getByRole("menuitemradio");
+  await waitOr(
+    ctx,
+    p.getByRole("menuitemradio", { name: await words(p, "ag.mode.follow") }),
+    10000,
+    "radios",
+  );
   const out = [];
   for (const m of ORDER) {
     const r = p.getByRole("menuitemradio", {
@@ -158,9 +208,24 @@ async function choose(ctx, pick, then) {
     pick === "follow"
       ? await words(p, "ag.mode.follow")
       : await words(p, `pm.${pick}`);
+  const posted = p
+    .waitForResponse(
+      (res) =>
+        res.request().method() === "POST" &&
+        /\/agents\/[^/]+\/mode$/.test(new URL(res.url()).pathname),
+      { timeout: 15000 },
+    )
+    .catch(() => null);
   await p
     .getByRole("menuitemradio", { name, exact: pick !== "follow" })
     .click();
+  const res = await posted;
+  const answer = res
+    ? {
+        status: res.status(),
+        code: (await res.json().catch(() => null))?.code ?? null,
+      }
+    : null;
   const want = await words(
     p,
     pick === "follow" ? "ag.mode.followS" : "ag.mode.setS",
@@ -175,15 +240,15 @@ async function choose(ctx, pick, then) {
     window.__busy252o?.disconnect();
     return window.__busy252 === true;
   });
-  return { busy, said, want };
+  return { busy, said, want, answer };
 }
 
 /** Waits until it runs in `mode` from `source` in a new session; how long, or null. */
 async function restartedIn(ctx, ws, before, mode, source) {
   const a = ctx.agent(ID);
   let last = null;
+  a.idlePrompt();
   const ms = await ctx.until(async () => {
-    a.idlePrompt();
     const w = await whereIs(ctx);
     last = { ...(await modeOf(ctx, ws)), session: w?.session ?? null };
     return (
@@ -204,22 +269,19 @@ async function rowTag(ctx, ws) {
     ctx.page,
     `/agents?project=${encodeURIComponent(ws)}&agent=${encodeURIComponent(ID)}`,
   );
-  const sel = `[data-agent="${ID}"] [data-mode]`;
   const ownWords = await words(ctx.page, "ag.mode.src.own");
-  await ctx.page.waitForSelector(sel, { timeout: 20000 }).catch(() => {});
-  return ctx.page
-    .evaluate((s) => {
-      const e = document.querySelector(s);
-      return e
-        ? {
-            mode: e.getAttribute("data-mode"),
-            source: e.getAttribute("data-mode-source"),
-            text: e.textContent.trim(),
-          }
-        : null;
-    }, sel)
-    .then((t) => (t ? { ...t, ownWords } : t))
-    .catch(() => null);
+  const tag = (await agentRow(ctx.page)).locator("[data-mode]");
+  try {
+    await waitOr(ctx, tag, 20000, "tag");
+    return {
+      mode: await tag.getAttribute("data-mode"),
+      source: await tag.getAttribute("data-mode-source"),
+      text: ((await tag.textContent()) ?? "").trim(),
+      ownWords,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function run(ctx, s) {
@@ -260,18 +322,28 @@ export async function run(ctx, s) {
   return r;
 }
 
+function permissionHelp(help) {
+  const ls = String(help || "").split("\n");
+  const at = ls.findIndex((l) => /agents permission <id>/.test(l));
+  if (at < 0) return "";
+  const lead = (l) => l.match(/^\s*/)[0].length;
+  let end = at + 1;
+  while (end < ls.length && lead(ls[end]) > lead(ls[at])) end++;
+  return ls.slice(at, end).join("\n");
+}
+
 export function expect(cells) {
   // One cell (chromium at 1280): the one with a result.
   const r = cells.find((c) => c?.result)?.result ?? {};
+  const said = permissionHelp(r.help);
   const help =
-    /restarts at its next idle/.test(r.help || "") &&
-    !/from its next start/.test(r.help || "");
+    /restarts at its next idle/.test(said) && !/from its next start/.test(said);
   const cli = {
     clause: clauses[2],
     ok: help,
     detail: help
       ? 'agents --help: "restarts at its next idle"'
-      : `agents --help: ${String(r.help || "").slice(0, 200)}`,
+      : `agents --help, its permission <id> part: ${JSON.stringify(said.slice(0, 300))}`,
   };
   // Setup started the agent, so no session now is a failure. Only a
   // runtime without modes (its project lists no mode for it) is skipped.
@@ -311,6 +383,12 @@ export function expect(cells) {
     "mode-own-row",
     "mode-followed-row",
   ].map((n) => `${n}.png`);
+  const no = [r.set, r.follow].find((x) => x?.answer?.status === 403)?.answer;
+  const refused = no
+    ? `the bed refused the mode write (403 ${no.code ?? "no code"}); `
+    : "";
+  const told = (row) =>
+    row === cli ? row : { ...row, detail: refused + row.detail };
   return [
     {
       clause: clauses[0],
@@ -349,7 +427,7 @@ export function expect(cells) {
         `Follow project: back to ${r.start?.mode} after ${r.back?.ms} ms (${JSON.stringify(r.back?.last)}), row "${r.tagBack?.text}" (${r.tagBack?.source})`,
       evidence: shots.slice(2),
     },
-  ];
+  ].map(told);
 }
 
 export async function teardown(ctx) {
