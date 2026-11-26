@@ -176,3 +176,60 @@ describe("agents accounts", () => {
     expect(r.err.join("\n")).toMatch(/no sign-in data/);
   });
 });
+
+describe("agents accounts list --json (issue 840)", () => {
+  const EMAILISH = /[^\s@"]+@[^\s@"]+\.[^\s@"]+/;
+
+  it("prints the runtime and each account's view, with no token and no email in any field", async () => {
+    const store = new MemStore();
+    const { r, run } = await acctRig(store);
+    expect(await run("add", "--name", "Work")).toBe(0);
+    expect(await run("set-token", "2")).toBe(0);
+    r.out.length = 0;
+    expect(await run("list", "--json")).toBe(0);
+    const v = JSON.parse(r.out.join("\n")) as {
+      runtime: { id: string; name: string };
+      accounts: Array<Record<string, unknown>>;
+    };
+    expect(v.runtime.id).toBe("den-claude");
+    expect(v.accounts.map((a) => a.id)).toEqual(["1", "2"]);
+    expect(Object.keys(v.accounts[1]!).sort()).toEqual(
+      ["first", "id", "label", "setAt", "store", "tokenSet"].sort(),
+    );
+    expect(v.accounts[0]).toMatchObject({
+      label: "Claude account A",
+      first: true,
+      tokenSet: false,
+    });
+    expect(v.accounts[1]).toMatchObject({
+      label: "Work",
+      first: false,
+      tokenSet: true,
+    });
+    const text = r.out.join("\n");
+    expect(text).not.toContain(TOKEN);
+    expect(text).not.toMatch(EMAILISH);
+  });
+
+  it("a hand-edited name that is an email is never printed: the default label stands in", async () => {
+    const { r, run } = await acctRig(new MemStore());
+    expect(await run("add", "--name", "Work")).toBe(0);
+    const file = path.join(r.stateDir, ACCOUNTS_FILE);
+    fs.writeFileSync(
+      file,
+      fs
+        .readFileSync(file, "utf-8")
+        .replace('"Work"', '"someone@corp.example"'),
+    );
+    r.out.length = 0;
+    expect(await run("list", "--json")).toBe(0);
+    expect(r.out.join("\n")).not.toMatch(EMAILISH);
+    const v = JSON.parse(r.out.join("\n")) as {
+      accounts: Array<{ label: string }>;
+    };
+    expect(v.accounts[1]!.label).toBe("Claude account B");
+    r.out.length = 0;
+    expect(await run("list")).toBe(0);
+    expect(r.out.join("\n")).not.toMatch(EMAILISH);
+  });
+});
