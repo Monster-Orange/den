@@ -558,10 +558,15 @@ never converted to HTML and back).
   the anchor, and Shift+Tab before its first goes back to the anchor.
 - A press on the open anchor closes it, and that press's click never
   reaches the anchor, so a host that opens it on click doesn't open it
-  again, and a link anchor doesn't follow its `href`.
+  again, and a link anchor doesn't follow its `href`. A press that never
+  becomes a click (a touch that turns into a scroll) holds nothing back.
 - A button anchor (an HTML button, or anything with `role="button"`, an
   SVG node too) says `aria-haspopup="dialog"`, and `aria-expanded` and
-  `aria-controls` while it is open. One is open at a time.
+  `aria-controls` while it is open. The kit sets `aria-haspopup` only
+  when it opens, so a host puts `aria-haspopup="dialog"` in the anchor's
+  own markup for it to be read before the first open. One is open at a
+  time.
+- Tab out of it skips controls that are inert or not visible.
 - It sits below the anchor, or above it when there is no room, always 8px
   inside the viewport, and moves with scroll and resize. Its look is the
   menus' (`.den-pop`): `--raised`, `--border-strong`, `--shadow`, 10px

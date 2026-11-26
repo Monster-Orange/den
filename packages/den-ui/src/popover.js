@@ -52,11 +52,18 @@ function isButton(el) {
   );
 }
 
-/** Once per page: a new press forgets the held anchor, and the held anchor's click is stopped. */
+/**
+ * Once per page: the held anchor's click is stopped. A new press, a press
+ * that is cancelled (a touch that becomes a scroll, so no click follows),
+ * or a key forgets it, so the next click or Enter on the anchor goes through.
+ */
 function listen() {
   if (listening) return;
   listening = true;
-  document.addEventListener("pointerdown", () => (held = null), true);
+  const forget = () => (held = null);
+  document.addEventListener("pointerdown", forget, true);
+  document.addEventListener("pointercancel", forget, true);
+  document.addEventListener("keydown", forget, true);
   document.addEventListener(
     "click",
     (e) => {
@@ -70,14 +77,16 @@ function listen() {
   );
 }
 
-/** What can take focus, in document order, outside `box`. */
+/** What Tab can reach, in document order, outside `box`: shown, not inert. */
 function tabbables(box) {
   return [...document.querySelectorAll(FOCUSABLE)].filter(
     (n) =>
       !box.contains(n) &&
       n.getAttribute("tabindex") !== "-1" &&
       typeof n.focus === "function" &&
-      n.getClientRects().length > 0,
+      !n.closest("[inert]") &&
+      n.getClientRects().length > 0 &&
+      getComputedStyle(n).visibility === "visible",
   );
 }
 
