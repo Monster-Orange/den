@@ -61,6 +61,17 @@ then and now, and the files that went down or up; the `brittle-weekly`
 workflow posts it each Monday against the week before, in its run summary
 (issue 841).
 
+Test health, each week: `scripts/test-health.mjs` reports PR CI time (p50
+and p90), time to first red, the flake rate (a job that failed, then passed
+on a re-run), the live-check bed's wall time and the brittle totals, over
+the last 7 days. The `test-health` workflow posts it each Monday in its run
+summary. The bed's runs are only on the bed machine, so there it runs with
+`--bed`:
+
+```bash
+GITHUB_TOKEN=… node scripts/test-health.mjs --repo <owner/name> [--days 7] [--bed <runs folder>] [--json]
+```
+
 ### Adding a Settings row
 
 A new key on the Settings page has three touch points beyond the page:
