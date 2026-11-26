@@ -10,6 +10,7 @@ config and manifest changes a distribution must make to move to it under
 
 - Restart many agents with one Allow. When two or more agents ask to be restarted (with the new `agent_restart_self` ask), the bell shows one card, "Restart N agents when idle": each restarts at its next idle moment on the same conversation, and any row can be taken out before Allow. After an update changes Den's own tools, Den offers that card itself, and questions agents already asked about restarting for new tools join it. The Agents page has "Restart idle (N)" on each project and, on a wider screen, "Restart all idle agents (N)", and says which agents restart now and which wait. (issue 1406)
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
+- An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
 
 ### Fixed
 
@@ -17,6 +18,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- When an agent's Den tools can't confirm this install's server, the refusal now says why (no answer within the wait, the connection's error, or an empty answer) and how long it waited, and that the next call checks again. The wait is a new setting, Settings › Server › Den tools' check of this install (`web.tools_probe_seconds`, default 30 s, was a fixed 5 s) (issue 1664).
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
 - No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).

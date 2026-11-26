@@ -1204,6 +1204,10 @@
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.tools_probe":
+      "Comprobación de esta instalación por las herramientas de Den, en segundos",
+    "set.server.tools_probe.d":
+      "Cuánto esperan las herramientas de Den de un agente a que __DEN_TITLE__ diga que es esta instalación antes de rechazar una llamada. Un __DEN_TITLE__ ocupado responde tarde; una respuesta tardía también vale. La siguiente llamada vuelve a comprobarlo. __DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.start_wait": "Espera al arrancar, en segundos",
     "set.server.start_wait.d":
       "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
@@ -1936,6 +1940,8 @@
     "ag.none": "Aún no hay agentes en este proyecto",
     "ag.personaOf": "persona {persona}",
     "ag.state.running": "en marcha",
+    "ag.activity.working": "trabajando",
+    "ag.activity.idle": "inactivo",
     "ag.state.stopping": "deteniéndose…",
     "ag.state.stopped": "detenido",
     "ag.state.ended": "terminado",
@@ -2733,24 +2739,32 @@
     "feed.url": "Dirección del flujo",
     "feed.bearer": "Bearer (un nombre de secrets.refs)",
     "feed.bearerNone": "ninguno",
-    "feed.noAgents": "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
+    "feed.noAgents":
+      "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
     "feed.addW": "Añadiendo el flujo…",
     "feed.addS": "Añadido.",
     "feed.addF": "No se pudo añadir el flujo.",
     "feed.remove": "Quitar",
     "feed.removeL": "Quitar el flujo {name}",
     "feed.rmT": "¿Quitar el flujo?",
-    "feed.rmAsk": "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
+    "feed.rmAsk":
+      "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
     "feed.rmW": "Quitando el flujo…",
     "feed.rmS": "Quitado.",
     "feed.rmF": "No se pudo quitar el flujo.",
-    "ap.do.project_event_feed_add": "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
-    "ap.do.project_event_feed_remove": "Quitar el flujo de eventos {name} del proyecto {project}",
-    "ap.feed.warn": "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
+    "ap.do.project_event_feed_add":
+      "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
+    "ap.do.project_event_feed_remove":
+      "Quitar el flujo de eventos {name} del proyecto {project}",
+    "ap.feed.warn":
+      "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
     "ap.feed.feed": "Flujo: {name}, para {agent}",
-    "ap.feed.bearer": "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
-    "ap.feed.noBearer": "Sin bearer: el flujo se abre sin cabecera Authorization.",
-    "ap.feed.removeWarn": "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
+    "ap.feed.bearer":
+      "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
+    "ap.feed.noBearer":
+      "Sin bearer: el flujo se abre sin cabecera Authorization.",
+    "ap.feed.removeWarn":
+      "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
     "feed.problems":
       "Entradas de agents.event_feeds que no se pueden leer: {n}.",
     "feed.failed":

@@ -63,6 +63,7 @@ import {
 import {
   alertFeed,
   attentionDetail,
+  attentionActivity,
   attentionWaiting,
   notificationDeps,
 } from "./notification-service.js";
@@ -6523,6 +6524,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return {
           probeSeconds: c.readyProbeSeconds,
           startSeconds: c.startWaitSeconds,
+          toolsProbeSeconds: c.toolsProbeSeconds,
         };
       } catch {
         return null;
@@ -10232,6 +10234,7 @@ async function handleRequest(
       {
         waitingAgents: waitingAgentIds,
         waitingWhy: waitingReasons,
+        activity: attentionActivity,
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),

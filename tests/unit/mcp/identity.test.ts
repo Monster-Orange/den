@@ -203,7 +203,7 @@ describe("the identity check's cache", () => {
   it("nothing listening is 'not running'; no answer in time is not served", async () => {
     for (const [id, msg] of [
       [{ kind: "none" }, /web server is not running/],
-      [{ kind: "unresponsive" }, /did not answer \/api\/server-info in time/],
+      [{ kind: "unresponsive" }, /no answer to \/api\/server-info\. /],
     ] as [ServerIdentity, RegExp][]) {
       const c = counted([id]);
       const api = createDenApi({
