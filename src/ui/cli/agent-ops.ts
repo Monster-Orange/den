@@ -121,6 +121,11 @@ import {
 } from "../../shared/agents/feed-address.js";
 import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
 import {
+  PLAYWRIGHT_AUTH_DIR,
+  REPO_SECRETS_FILE,
+} from "../../shared/credential-paths.js";
+import { projectRepoDirs } from "../../shared/project-repo-dirs.js";
+import {
   listOtherInstalls,
   registerInstall,
   registryDir,
@@ -399,6 +404,10 @@ import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
 import { HUB_SERVER, hubTokenProblem } from "../../shared/hub.js";
 import {
+  noteHubUnbindFailed,
+  unbindAgentHubToken,
+} from "../../shared/hub-agent-tokens.js";
+import {
   jobCommandOf,
   jobsUnder,
   readProcesses,
@@ -428,6 +437,7 @@ import {
   type SandboxWrap,
 } from "../../shared/agents/sandbox.js";
 import { gateDir } from "../../shared/gates/store.js";
+import { projectAgentCap } from "../../shared/agents/project-cap.js";
 import {
   AGENT_TOKEN_REF_NAME,
   agentSignInMode,
@@ -564,6 +574,11 @@ export interface AgentsDeps extends SessionsDeps {
   } | null>;
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
+  hubAgentToken?: (
+    hub: { url: string; token: string },
+    a: { id: string; name: string; workspace: string },
+  ) => Promise<string | null>;
+  hubAgentUnbind?: (id: string) => Promise<void>;
   /**
    * Issue 163 (b): the secrets store and ref the agents' sign-in token is
    * read from under the always-on service (default: the install's
@@ -689,6 +704,8 @@ export interface AgentsResolved extends Resolved {
    * store refused it), in plain words; null otherwise.
    */
   hubProblem: () => string | null;
+  hubAgentToken: NonNullable<AgentsDeps["hubAgentToken"]>;
+  hubAgentUnbind: NonNullable<AgentsDeps["hubAgentUnbind"]>;
   processes: () => ProcessRow[];
   /** Issue 163 (b): the env a start signs in with, and what to say. */
   agentSignIn: (
@@ -892,8 +909,6 @@ function defaultDenBase(): string {
 /**
  * D52: Hub as Den's proxy calls it for agent `agentId` (its actor token
  * proved it): Hub's base URL, its MCP endpoint, and the headers Den sets
- * from its own records. The install token is among them; it never leaves
- * Den's server. Null when Hub isn't set up or its token can't be read.
  */
 export async function hubUpstream(
   d: AgentsResolved,
@@ -927,10 +942,16 @@ export async function hubUpstream(
   const projectWs = [linked, who.workspace].find(
     (w): w is string => !!w && !isServerScope(w),
   );
+  const own = await d
+    .hubAgentToken(
+      { url: h.url, token: h.token },
+      { id: who.agentId, name, workspace: who.workspace },
+    )
+    .catch(() => null);
   return {
     base: h.url,
     mcpUrl: h.mcpUrl || `${h.url}/mcp`,
-    headers: hubHeaders(h.token, {
+    headers: hubHeaders(own ?? h.token, {
       agent: name,
       agentId: who.agentId,
       session: who.session,
@@ -1025,6 +1046,8 @@ export function agentSandboxInput(o: {
   sessionTmp?: string;
   /** Issue 1391: a personal install's trail is read back. */
   trailReadable?: boolean;
+  /** Repos' stack secrets files (hidden by path where no name rule exists). */
+  repoSecretFiles?: string[];
 }): AgentSandboxInput {
   return {
     ...(o.sessionTmp ? { sessionTmp: o.sessionTmp } : {}),
@@ -1041,12 +1064,18 @@ export function agentSandboxInput(o: {
           keyRefusedDirs: signingKeyRefusedDirs(o.stateDir, o.distRoot, o.env),
         }
       : {}),
-    deniedDirs: localProofDirs(
-      o.env,
-      o.platform ?? process.platform,
-      o.home ?? os.homedir(),
-      envKey("LOCAL_PROOF_DIR"),
-    ),
+    ...(o.repoSecretFiles?.length
+      ? { repoSecretFiles: o.repoSecretFiles }
+      : {}),
+    deniedDirs: [
+      ...localProofDirs(
+        o.env,
+        o.platform ?? process.platform,
+        o.home ?? os.homedir(),
+        envKey("LOCAL_PROOF_DIR"),
+      ),
+      path.join(o.distRoot, PLAYWRIGHT_AUTH_DIR),
+    ],
   };
 }
 
@@ -1094,6 +1123,9 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
               (d.agentsConfig ?? (() => readAgentsConfig()))(),
               base.stateDir(),
             ),
+            repoSecretFiles: projectRepoDirs()
+              .map((r) => path.join(r, REPO_SECRETS_FILE))
+              .filter((f) => fs.existsSync(f)),
           }),
           {
             on: sandboxSetting(
@@ -1179,6 +1211,10 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
+    hubAgentToken: d.hubAgentToken ?? (async () => null),
+    hubAgentUnbind:
+      d.hubAgentUnbind ??
+      ((id) => unbindAgentHubToken(base.stateDir, d.hub ?? defaultHub, id)),
     processes: d.processes ?? readProcesses,
     agentSignIn: (tokenEnv, runtimeId, folder) =>
       agentSignInEnv(
@@ -2989,6 +3025,7 @@ function personaInputOf(p: Persona): Record<string, unknown> {
     version: p.version ?? "latest",
     permission: intentOf(p.permissionMode) ?? "ask",
     allowedCommands: [...p.allowedCommands],
+    ...(p.subagentModel ? { subagentModel: p.subagentModel } : {}),
   };
 }
 
@@ -3601,15 +3638,28 @@ function binDirOf(det: RuntimeDetect): { binDir?: string } {
 }
 
 /** The host's cap refusal as an AgentError (its hint says what to do). */
-function capOrThrow(d: AgentsResolved, e: unknown): never {
+function capOrThrow(
+  d: AgentsResolved,
+  e: unknown,
+  project?: { key: string },
+): never {
+  const mine =
+    e instanceof HostError && /\(agents\.max_per_project\)$/.test(e.message);
   if (e instanceof HostError && e.code === "cap")
-    throw new AgentError(e.message, {
-      status: 429,
-      code: "cap",
-      hints: [
-        `Stop one first (\`${d.cli} agents stop <id>\`), or raise agents.max_concurrent.`,
-      ],
-    });
+    throw new AgentError(
+      mine && project
+        ? e.message.replace(/\(agents\.max_per_project\)$/, `(${project.key})`)
+        : e.message,
+      {
+        status: 429,
+        code: "cap",
+        hints: [
+          mine && project
+            ? `Stop one of its agents first (\`${d.cli} agents stop <id>\`), or raise ${project.key}.`
+            : `Stop one first (\`${d.cli} agents stop <id>\`), or raise agents.max_concurrent.`,
+        ],
+      },
+    );
   throw e;
 }
 
@@ -3707,6 +3757,15 @@ async function startSession(
         [`\`${d.cli} agents doctor\` shows why.`],
         409,
       );
+    let projectCap: { limit: number; key: string };
+    try {
+      projectCap = projectAgentCap(
+        launch.rec.workspace,
+        d.agentsConfig().maxPerProject ?? 0,
+      );
+    } catch (e) {
+      throw usage(`agents start: ${(e as Error).message}`);
+    }
     info = await c
       .start(
         {
@@ -3728,9 +3787,14 @@ async function startSession(
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
         },
-        { limit: d.maxConcurrent(), pool: "agents" },
+        {
+          limit: d.maxConcurrent(),
+          pool: "agents",
+          project: launch.rec.workspace,
+          projectLimit: projectCap.limit,
+        },
       )
-      .catch((e: unknown) => capOrThrow(d, e));
+      .catch((e: unknown) => capOrThrow(d, e, projectCap));
   } catch (e) {
     revokeActorToken(d.stateDir(), minted.key);
     removeActorTokenFile(d.stateDir(), launch.rec.id);
@@ -3948,6 +4012,21 @@ function launchInput(
         ...others.map((o) => o.stateDir),
       ]),
     ],
+    repoDirs: [
+      ...new Set(
+        [ws, ...grants].flatMap((w) => {
+          try {
+            return d
+              .workspaceServices(w)
+              .map((s) => s.path)
+              .filter((p) => !!p && path.isAbsolute(p));
+          } catch {
+            return [];
+          }
+        }),
+      ),
+    ],
+    playwrightAuthDir: path.join(d.distRoot(), PLAYWRIGHT_AUTH_DIR),
     // ...and where they announce, for those announced after this launch.
     testAnnounceDir: announceDir(),
     installRegistryDir: reg,
@@ -7633,8 +7712,10 @@ export interface RestartPlan {
 export interface RestartOutcome {
   id: string;
   workspace: string;
-  outcome: "restarted" | "job" | "failed";
+  outcome: "restarted" | "job" | "timedOut" | "failed";
   job?: { command: string; minutes: number };
+  /** timedOut: the minutes it waited for the turn to end. */
+  minutes?: number;
   error?: string;
 }
 
@@ -7665,6 +7746,40 @@ export async function restartStateOf(
 }
 
 /**
+ * How a restart at the agent's next idle that did not happen
+ * ended: a job found when its turn ended (job), a wait of `waitedMs` that
+ * ran out (timedOut), or anything else (failed, with why).
+ */
+export function restartOutcomeOf(
+  id: string,
+  workspace: string,
+  e: unknown,
+  waitedMs: number,
+): RestartOutcome {
+  const err = e as AgentError;
+  if (err?.code === "job_running" && err.job)
+    return {
+      id,
+      workspace,
+      outcome: "job",
+      job: { command: err.job.command ?? "", minutes: err.job.minutes },
+    };
+  if (err?.code === "still_busy")
+    return {
+      id,
+      workspace,
+      outcome: "timedOut",
+      minutes: Math.round(waitedMs / 60_000),
+    };
+  return {
+    id,
+    workspace,
+    outcome: "failed",
+    error: e instanceof Error ? e.message : String(e),
+  };
+}
+
+/**
  * Issue 1407: a bulk restart (restart-stale). Each agent is checked first
  * and the answer is per agent (restartStateOf). Those idle or mid-turn
  * restart at their next idle, on the same conversation; a job found when
@@ -7683,6 +7798,7 @@ export async function restartMany(
   } = {},
 ): Promise<RestartPlan[]> {
   const plan: RestartPlan[] = [];
+  const waited = o.maxMs ?? restartWaitOf(d);
   for (const a of agents) {
     let p: RestartPlan;
     try {
@@ -7699,24 +7815,8 @@ export async function restartMany(
       jobStops: true,
     }).then(
       () => o.onDone?.({ ...base, outcome: "restarted" }),
-      (e: unknown) => {
-        const err = e as AgentError;
-        if (err?.code === "job_running" && err.job)
-          o.onDone?.({
-            ...base,
-            outcome: "job",
-            job: {
-              command: err.job.command ?? "",
-              minutes: err.job.minutes,
-            },
-          });
-        else
-          o.onDone?.({
-            ...base,
-            outcome: "failed",
-            error: e instanceof Error ? e.message : String(e),
-          });
-      },
+      (e: unknown) =>
+        o.onDone?.(restartOutcomeOf(p.id, p.workspace, e, waited)),
     );
   }
   return plan;
@@ -7759,7 +7859,7 @@ async function jobStopsWait(
 }
 
 /** 0.4.48: agents.restart_wait_minutes, in ms (its default if unreadable). */
-function restartWaitOf(d: AgentsResolved): number {
+export function restartWaitOf(d: AgentsResolved): number {
   try {
     return d.agentsConfig().restartWaitMs;
   } catch {
@@ -9079,8 +9179,11 @@ async function removeRecords(
       if (c && s?.exited) await c.forget(s.ref.id).catch(() => undefined);
       removeSessionTmp(rec.sessionTmp, d.sessionTmpBase); // issue 1325
       d.forgetSandbox(rec.id); // issue 1328: its sandbox setting goes too
-      if (removeRecord(d.stateDir(), rec.id))
-        out.push({ agent: rec.id, workspace: rec.workspace });
+      const moved = removeRecord(d.stateDir(), rec.id);
+      await d
+        .hubAgentUnbind(rec.id)
+        .catch((e) => noteHubUnbindFailed(d.stateDir(), rec.id, e));
+      if (moved) out.push({ agent: rec.id, workspace: rec.workspace });
     }
     purgeRemoved(d.stateDir());
     return out;
@@ -9146,6 +9249,9 @@ export async function pruneStopped(
     removeSessionTmp(r.sessionTmp, d.sessionTmpBase); // issue 1325
     d.forgetSandbox(r.id); // issue 1328
     removeRecord(d.stateDir(), r.id);
+    await d
+      .hubAgentUnbind(r.id)
+      .catch((e) => noteHubUnbindFailed(d.stateDir(), r.id, e));
   }
   purgeRemoved(d.stateDir(), 0, now);
   return old.map((r) => r.id);

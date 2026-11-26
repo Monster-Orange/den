@@ -106,6 +106,13 @@ describe("gate/252.mjs as the bed runs it", () => {
     expect(runGate("oldCli").rows?.[2].ok).toBe(false);
   });
 
+  it('no "ag.openName" in the page\'s words: an error naming the key, not a TypeError', () => {
+    const r = runGate("noOpenWords");
+    expect(r.error).toContain('the page\'s "ag.openName" has no one {id}');
+    expect(r.error).not.toContain("TypeError");
+    expect(r.removed).toBe(true);
+  });
+
   it("a stub runtime without modes: not run, saying why; the CLI clause still runs", () => {
     const r = runGate("noRuntime");
     expect(r.error).toBeUndefined();

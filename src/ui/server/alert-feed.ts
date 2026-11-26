@@ -21,7 +21,7 @@ import {
   type AlertWhy,
   inQuietHours,
 } from "./alerts.js";
-import type { UiLanguage } from "./ui-language.js";
+import type { UiLanguage } from "../../shared/ui-language.js";
 
 export interface Alert {
   seq: number;

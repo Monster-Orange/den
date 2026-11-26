@@ -56,7 +56,54 @@ each file the change touched at its merge base and at HEAD, and fails only
 when a count goes up; files the change didn't touch are never judged, and
 there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
-totals per kind and never fails.
+totals per kind and never fails. `--report --since <ref>` prints each kind
+then and now, and the files that went down or up; the `brittle-weekly`
+workflow posts it each Monday against the week before, in its run summary
+(issue 841).
+
+### Adding a Settings row
+
+A new key on the Settings page has three touch points beyond the page:
+
+1. The server must accept it: `tests/unit/server/settings-inventory.test.ts`
+   keeps its own list of the keys `POST /api/settings` accepts. Add the key.
+   A key inside a block (such as `agents_limits.max_per_project`) goes under
+   that block in its `BLOCKS` map, not in the top list.
+2. The rows, their categories, the category order and the module's exports
+   are pinned in `tests/fixtures/settings-registry-order.json`. Write it with
+   `node scripts/settings-pin.mjs --write` in the same PR, never by hand.
+3. Run `node scripts/fast-checks.mjs` before the push.
+
+Two PRs that each pass alone can still fail together, when one adds a row
+and the other changes the pin, so the PR that adds the row writes the pin.
+
+The shared helpers in `tests/unit/helpers/find.ts` (issue 841) make the
+right way the short way, in Chromium and WebKit alike:
+
+```ts
+import { byLabel, byRole, settled, waitFor } from "../helpers/find.js";
+
+await byLabel(page, "Project name").fill("billing");
+await settled(
+  page,
+  "/api/projects",
+  () => byRole(page, "button", "Add project").click(),
+  { method: "POST" },
+);
+await waitFor(page, { row: "billing" });
+await waitFor(page, { dialog: "Delete project" }); // or { dialogClosed }
+```
+
+`byRole` and `byLabel` match the name exactly. `waitFor` ends as soon as the
+state holds, and one that runs out says which state and how long it waited.
+`{ row }` is ARIA role=row (a table row, or an element with `role="row"`);
+many of Den's list rows are buttons, so `byRole(page, "button", name)` finds
+those. `settled` arms the wait before the action, so a fast response is
+never missed. A string is the exact path (`/api/agents` never matches
+`/api/agents/stale`; the query is ignored), and `method` keeps a background
+poll to the same path from settling it; a RegExp matches the whole URL, for
+anything looser. Timeouts default to the suite's wait
+(`DEN_BROWSER_WAIT_MS`).
 
 ### What runs first
 
@@ -482,6 +529,11 @@ trusted publishing (no token anywhere):
   already has its version, bump the kit's version (its `package.json` and
   its entry in `package-lock.json`) in the candidate before the dev tag.
   The dry run fails and says so otherwise.
+- A release that publishes the kit carries next/queue's kit files at that
+  version. When next/queue has the same kit version with other kit files
+  (a kit change merged after the candidate's branch was cut), the dry run
+  and the promote step fail: bump next/queue's den-ui first, then cut the
+  candidate again.
 - The release commit changes only Den's version and the changelog entry's
   date: everything else was in the candidate the dry run checked.
 - Bump the version in `package.json`, `package-lock.json` and

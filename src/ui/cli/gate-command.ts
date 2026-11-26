@@ -23,6 +23,9 @@
  *       (gates/browser-container.ts; a Setting)
  *   status [--json]          who holds, who waits, overruns, test boxes
  *   box <list|add|remove|enable|disable>  the test boxes (a person's)
+ *   runner <list|add|remove> issue 642: CI runner entries, one repo's jobs
+ *                            on one test box (a person changes them; an
+ *                            agent asks with gate_runner_entry_set)
  *   end <id>                 a person ends a slot early (refused for an
  *                            agent); recorded with who
  *   yield <my-id> --to <id>  issue 795: your waiting entry lets another
@@ -43,9 +46,11 @@
  *            [--class-order <l>] [--class-map <l>] [--class-windows <l>]
  *            [--browser-requires-container 0|1]
  *            [--browser-box-default any|local] [--browser-host-only <l>]
+ *            [--route-agents 0|1] [--route-commands <programs>]
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
+import type { Writable } from "stream";
 import { spawn } from "child_process";
 import * as os from "os";
 import * as path from "path";
@@ -133,13 +138,25 @@ import {
   type GateMachineView,
   removedView,
 } from "../../shared/gates/view.js";
+import {
+  checkRunnerEntry,
+  type RunnerEntry,
+} from "../../shared/gates/runner-entries.js";
 import { localDateTime } from "../../shared/local-time.js";
 import { product } from "../../shared/product.js";
 import { emptyTestList } from "./gate-test-list.js";
+import {
+  readBoxBrowsers,
+  realBrowserRead,
+  visualFit,
+  visualFilesInRun,
+  visualRecords,
+  type BrowserRead,
+} from "../../shared/gates/visual.js";
 import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 
 export const GATE_HELP = {
-  usage: "gate <run|status|end|yield|box|settings> ...",
+  usage: "gate <run|status|end|yield|box|runner|settings> ...",
   lines: [
     "Heavy test runs on this machine, taken in turn: one browser suite at a",
     "time; unit suites share (2 at a time by default, 2 of them beside a browser",
@@ -174,6 +191,9 @@ export const GATE_HELP = {
     "    checks of a box that says no. Off or outside its window: no slot, no contact",
     "    a box run: --base-url http://<name>.localhost:<port>, or http://127.0.0.1:* for the ports the run opens (never 80/443);",
     "    127.0.0.1, localhost and <name>.localhost are one host there",
+    "{cli} gate runner <list|add|remove> <owner/repo> --box <name>",
+    "    [--labels a,b] [--routing-variable NAME] [--slots N] [--light]",
+    "    [--owner <who>]   CI runner entries: a repo's jobs on a test box",
     "{cli} gate end <id>             end a slot early (a person's only)",
     "{cli} gate yield <my-id> --to <id>",
     "    your waiting run lets another waiting run go just ahead of it",
@@ -190,6 +210,8 @@ export const GATE_HELP = {
     "    [--browser-requires-container 0|1]   a browser run declares a container browser",
     "    [--browser-box-default any|local]   where a browser run with no --box goes",
     '    [--browser-host-only "<project>, label:<pattern>"]   browser runs kept here ("" clears)',
+    "    [--route-agents 0|1]   agents' heavy runs go through the gate (0: run as written, counted)",
+    '    [--route-commands "jest, vitest, tsc, playwright, npm test, npm run test*"]   the programs routed ("" clears)',
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
   ],
@@ -213,6 +235,12 @@ export interface GateRun {
    * its own), stopped when the slot ends. Absent: none was made.
    */
   group?: number;
+  /**
+   * Lets the command start. Until then it waits, held, so it
+   * can't exit (or leave workers) before its group is recorded. Absent:
+   * it started at once.
+   */
+  start?: () => void;
 }
 
 export interface GateDeps {
@@ -224,8 +252,13 @@ export interface GateDeps {
   err: (line: string) => void;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
-  /** Starts the command (issue 625: `env` adds to the environment). */
-  exec: (cmd: string, args: string[], env?: Record<string, string>) => GateRun;
+  /** Starts the command; `env` adds to its environment, `held` holds it until `start()`. */
+  exec: (
+    cmd: string,
+    args: string[],
+    env?: Record<string, string>,
+    opts?: { held?: boolean },
+  ) => GateRun;
   /** Runs `fn` every `ms` until the returned stop is called. */
   every: (ms: number, fn: () => void) => () => void;
   /** Calls `h` on each of GATE_RUN_SIGNALS; returns a stop. */
@@ -250,6 +283,11 @@ export interface GateDeps {
    * when its slot ends (absent: nothing is removed; tests pass a fake).
    */
   docker?: Docker;
+  /**
+   * Issue 1527: reads a box's Chromium build through its Playwright
+   * server (default: one connect; tests pass a stub).
+   */
+  browserRead?: BrowserRead;
 }
 
 /**
@@ -383,19 +421,44 @@ export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
   "SIGQUIT",
 ];
 
+/**
+ * The shim a command starts through. It waits for a line on fd
+ * 3, which gate run writes once the group is recorded, then becomes the
+ * command (exec keeps its pid, group and start time, which the record
+ * holds). If gate run is gone first, the pipe closes, and nothing runs.
+ * POSIX sh only: macOS, Linux boxes and WSL all have /bin/sh.
+ */
+export const GATE_HOLD_SHIM =
+  "IFS= read -r go <&3 || exit 125; exec 3<&-; " +
+  // a missing command is 127 on every shell, as spawn's error was
+  'command -v "$1" >/dev/null 2>&1 || { echo "gate run: $1: not found" >&2; exit 127; }; ' +
+  'exec "$@"';
+/** What the shim exits with when gate run never let it start. */
+export const GATE_HOLD_NEVER_STARTED = 125;
+
 const realExec = (
   cmd: string,
   args: string[],
   env?: Record<string, string>,
+  opts?: { held?: boolean },
 ): GateRun => {
   // Issue 1132: in its own process group (it leads it), so what it
   // starts can be stopped with it, and nothing else is. Signals reach it
   // through gate run, which passes them on to the whole group.
-  const k = spawn(cmd, args, {
-    stdio: "inherit",
+  const held = opts?.held === true && process.platform !== "win32";
+  const how = {
     detached: true,
     ...(env ? { env: { ...process.env, ...env } } : {}),
-  });
+  };
+  const k = held
+    ? spawn("/bin/sh", ["-c", GATE_HOLD_SHIM, "den-gate-hold", cmd, ...args], {
+        ...how,
+        stdio: ["inherit", "inherit", "inherit", "pipe"],
+      })
+    : spawn(cmd, args, { ...how, stdio: "inherit" });
+  const go = held ? (k.stdio[3] as Writable | null) : null;
+  // a write after the shim died is no error of gate run's
+  go?.on("error", () => {});
   const running = () => k.exitCode === null && k.signalCode === null;
   const group = process.platform === "win32" ? undefined : k.pid;
   return {
@@ -410,6 +473,14 @@ const realExec = (
         k.kill(s);
       }
     },
+    ...(go
+      ? {
+          start: () => {
+            if (go.writableEnded) return;
+            go.end("go\n");
+          },
+        }
+      : {}),
     ...(process.platform === "linux"
       ? {
           dumping: () => running() && k.pid !== undefined && coreDumping(k.pid),
@@ -529,33 +600,50 @@ function repoTop(dir: string): string {
 }
 
 /**
- * Clause 11, issue 1017: the run's exact Playwright client version, from
- * an installed package.json only. First installed for the run's folder:
- * its node_modules, or one above it up to the repo's top folder (a
- * workspace run with Playwright hoisted to the root). Else installed for
- * the nearest package.json below it that depends on Playwright (a repo
- * whose Playwright lives in web/). Nearest is fewest folders down;
- * node_modules and dot folders are never looked in. A range in a
- * package.json is never read as a version: with nothing installed, the
- * version is unknown (undefined).
+ * The run's exact Playwright version, from an installed package only
+ * (a range is never a version). First for the run's folder: node_modules
+ * there or above, up to the repo's top folder. Else for the nearest
+ * package.json below that depends on Playwright, fewest folders down,
+ * skipping node_modules and dot folders. The look below is bounded: none
+ * from the root folder, home or above home (a launchd job starts in /, and
+ * a mount there can block a listing for good), at most PW_DOWN_DEPTH
+ * levels and PW_DOWN_DIRS listings. Nothing found: unknown (undefined).
  */
-export function playwrightVersion(cwd: string): string | undefined {
+function mayLookBelow(cwd: string, home: string): boolean {
+  const here = path.resolve(cwd);
+  if (path.dirname(here) === here) return false;
+  const h = path.resolve(home);
+  return here !== h && !h.startsWith(here + path.sep);
+}
+
+export const PW_DOWN_DEPTH = 4;
+export const PW_DOWN_DIRS = 500;
+export function playwrightVersion(
+  cwd: string,
+  o: { home?: string; list?: (dir: string) => fs.Dirent[] } = {},
+): string | undefined {
+  const list =
+    o.list ?? ((dir: string) => fs.readdirSync(dir, { withFileTypes: true }));
   const top = repoTop(cwd);
   const here = installedPlaywright(cwd, top);
   if (here) return here;
+  if (!mayLookBelow(cwd, o.home ?? os.homedir())) return undefined;
   let level = [cwd];
-  while (level.length) {
+  let listed = 0;
+  for (let depth = 0; level.length && depth <= PW_DOWN_DEPTH; depth++) {
     for (const dir of level) {
       const range = declaredPlaywright(dir);
       if (typeof range !== "string") continue;
       const v = installedPlaywright(dir, cwd);
       if (v) return v;
     }
+    if (depth === PW_DOWN_DEPTH) break;
     const next: string[] = [];
     for (const dir of level) {
+      if (listed++ >= PW_DOWN_DIRS) return undefined;
       let names: fs.Dirent[] = [];
       try {
-        names = fs.readdirSync(dir, { withFileTypes: true });
+        names = list(dir);
       } catch {
         continue;
       }
@@ -752,15 +840,24 @@ export function slotLine(
 
 /** Issue 625: one line per test box: its slots, or why it is skipped. */
 export function boxStatusLines(store: GateStore, all: GateEntry[]): string[] {
+  // Issue 1527: each box's Chromium build, as last read.
+  const browsers = readBoxBrowsers(store.dir);
   return gateBoxesView(
     store,
     all.map((e) => ({ granted: !!e.grantedAt, box: e.box })),
   ).map((b) => {
     const base = `box ${b.name}: ${b.held} of ${b.slots} browser slots held`;
     // Issue 1017: the Playwright versions it serves.
-    const pw = b.playwrightVersions?.length
-      ? `, playwright ${b.playwrightVersions.join(", ")}`
-      : "";
+    const read = browsers[b.name];
+    const pw =
+      (b.playwrightVersions?.length
+        ? `, playwright ${b.playwrightVersions.join(", ")}`
+        : "") +
+      (read?.chromium
+        ? `, chromium ${read.chromium} ${read.platform ?? ""}`.trimEnd()
+        : read?.error
+          ? ", chromium unread"
+          : "");
     // A run already on it finishes; it shows beside why the box is skipped.
     const still = b.held ? `; ${b.held} of ${b.slots} browser slots held` : "";
     const off = boxOffWords(b);
@@ -1004,6 +1101,57 @@ async function run(args: string[], d: GateDeps): Promise<number> {
     if (hostWhy) d.err(`gate: stays on this machine: ${hostWhy}`);
     if (pick.skipped) d.err(`gate: skips ${pick.skipped}`);
   }
+  // Issue 1527: a run with a visual-reference test goes only to a box whose
+  // Chromium is the build its references were taken on (the one the
+  // run's pinned Playwright installs). Another build is skipped, saying
+  // why, or refused when named; never assumed to match.
+  if (kind === "browser" && where && where !== "local") {
+    const visual = visualFilesInRun(
+      d.cwd,
+      pos,
+      !!f["--all-tests"],
+      repoTop(d.cwd),
+    );
+    if (visual.length) {
+      const named = where !== "any";
+      const fit = await visualFit({
+        boxes: d.store
+          .boxes()
+          .filter((b) =>
+            named ? b.name === where : !onlyBoxes || onlyBoxes.includes(b.name),
+          ),
+        records: visualRecords(visual, d.cwd, repoTop(d.cwd)),
+        pwVersion: pwFlag ?? playwrightVersion(d.cwd),
+        read: d.browserRead ?? realBrowserRead,
+        timeoutMs: d.store.settings().boxCheckTimeoutSeconds * 1000,
+        dir: d.store.dir,
+        now: d.now,
+      });
+      const what =
+        visual.length === 1
+          ? visual[0]!
+          : `${visual.length} visual-reference tests (${visual[0]}, …)`;
+      if (named && !fit.fit.length)
+        throw new GateUsage(
+          `${fit.unfit[0]?.why ?? `box ${where} can't be read`}. ${what} runs only on a box with the browser its references were taken on: --box any, or CI`,
+        );
+      if (!named) {
+        for (const u of fit.unfit) d.err(`gate: skips ${u.why}`);
+        if (!fit.fit.length) {
+          const none =
+            "no test box serves the browser the visual references were taken on";
+          if (f["--box"] === "any")
+            throw new GateUsage(
+              `${none}. ${what} runs on such a box, or in CI`,
+            );
+          // The default pick: it stays here, saying why (never a failure).
+          d.err(`gate: stays on this machine: ${none}`);
+          where = undefined;
+          onlyBoxes = undefined;
+        } else onlyBoxes = fit.fit;
+      }
+    }
+  }
   const verdict = await browserSlotCheckOn(d.store, {
     kind: kind as GateKind,
     ...(endpoint !== undefined ? { endpoint } : {}),
@@ -1204,22 +1352,32 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       slotEnv[GATE_WORKERS_ENV] = String(
         gateWorkers(d.cores ?? realCores(), s.settings().cpuSlots),
       );
+    const hold = { held: true };
     child = box
-      ? d.exec(pos[0]!, pos.slice(1), {
-          // Issue 1017: the box's endpoint for this run's version.
-          ...boxEnv(box, e.pwVersion),
-          DEN_GATE_ALLOW: allow.join(","),
-          ...slotEnv,
-        })
+      ? d.exec(
+          pos[0]!,
+          pos.slice(1),
+          {
+            // The box's endpoint for this run's version.
+            ...boxEnv(box, e.pwVersion),
+            DEN_GATE_ALLOW: allow.join(","),
+            ...slotEnv,
+          },
+          hold,
+        )
       : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
         ? // The address given on the command line reaches the run.
-          d.exec(pos[0]!, pos.slice(1), {
-            DEN_PW_WS: flagEndpoint,
-            ...slotEnv,
-          })
-        : d.exec(pos[0]!, pos.slice(1), slotEnv);
+          d.exec(
+            pos[0]!,
+            pos.slice(1),
+            { DEN_PW_WS: flagEndpoint, ...slotEnv },
+            hold,
+          )
+        : d.exec(pos[0]!, pos.slice(1), slotEnv, hold);
     if (child.pid !== undefined)
       s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
+    // Only now, with its group recorded, may the command run.
+    child.start?.();
     // Issue 1132: the group as the store recorded it (with its leader's
     // record and the boot), for a reap after a dump gave the slot back.
     const recorded = s.get(id);
@@ -1587,6 +1745,77 @@ function yieldPlace(args: string[], d: GateDeps): number {
   return 0;
 }
 
+/** Issue 642: one runner entry, in words. */
+export function runnerEntryLine(e: RunnerEntry): string {
+  return (
+    `${e.repo} on ${e.box}  ${e.heavy ? "heavy" : "light"}, ${e.slots} at a time` +
+    `  labels ${e.labels.join(",")}  routing variable ${e.routing_variable}` +
+    `  owner ${e.owner}`
+  );
+}
+
+/**
+ * Issue 642: CI runner entries. `runner list`; `runner add <owner/repo>
+ * --box <name> --labels a,b --routing-variable NAME --owner <who>
+ * [--slots N] [--light]` (adds, or replaces that repo's entry on that
+ * box); `runner remove <owner/repo> --box <name>`. Settings only: no
+ * runner starts here. An entry widens what runs on a box: a person
+ * changes them; an agent asks with the held write gate_runner_entry_set.
+ */
+function runnerCmd(args: string[], d: GateDeps): number {
+  const [verb, ...rest] = args;
+  if (verb === "list" || verb === undefined) {
+    const list = d.store.runnerEntries();
+    if (!list.length) d.out("No runner entries set (gate runner add).");
+    for (const e of list) d.out(runnerEntryLine(e));
+    return 0;
+  }
+  if (verb !== "add" && verb !== "remove")
+    throw new GateUsage("gate runner <list|add|remove> ...");
+  if (isAgentEnv(d.env))
+    throw new GateUsage(
+      `gate runner ${verb}: only a person changes the runner entries (this is an agent; ask with the held write gate_runner_entry_set)`,
+    );
+  const { f, pos } = flags(rest, {
+    "--box": true,
+    "--labels": true,
+    "--routing-variable": true,
+    "--slots": true,
+    "--light": false,
+    "--owner": true,
+  });
+  const [repo, extra] = pos;
+  if (!repo || extra)
+    throw new GateUsage(`gate runner ${verb} needs one <owner/repo>`);
+  const box = typeof f["--box"] === "string" ? f["--box"] : "";
+  if (!box) throw new GateUsage(`gate runner ${verb} needs --box <name>`);
+  if (verb === "remove") {
+    if (!d.store.removeRunnerEntry(repo, box)) {
+      d.err(`gate runner remove: no entry for ${repo} on ${box}`);
+      return 1;
+    }
+    d.out(`Removed the runner entry for ${repo} on ${box}.`);
+    return 0;
+  }
+  const c = checkRunnerEntry({
+    repo,
+    box,
+    labels: f["--labels"],
+    routing_variable: f["--routing-variable"],
+    slots: typeof f["--slots"] === "string" ? Number(f["--slots"]) : undefined,
+    heavy: f["--light"] === true ? false : undefined,
+    owner: f["--owner"],
+  });
+  if (!c.ok) throw new GateUsage(c.error);
+  try {
+    d.store.setRunnerEntry(c.entry);
+  } catch (e) {
+    throw new GateUsage((e as Error).message);
+  }
+  d.out(`Runner entry set: ${runnerEntryLine(c.entry)}.`);
+  return 0;
+}
+
 async function settings(args: string[], d: GateDeps): Promise<number> {
   const { f } = flags(args, {
     "--cpu-slots": true,
@@ -1624,6 +1853,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--browser-requires-container": true,
     "--browser-box-default": true,
     "--browser-host-only": true,
+    "--route-agents": true,
+    "--route-commands": true,
     "--yes": false,
     // Issue 1395: an agent's ask says why.
     "--reason": true,
@@ -1652,6 +1883,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--priority-max", "priority_max"],
     ["--priority-pass-limit-minutes", "priority_pass_limit_minutes"],
     ["--priority-agents", "priority_agents"],
+    // Issue 1264: Den's agent hook routes heavy runs; 1 yes, 0 no.
+    ["--route-agents", "route_agents"],
     ["--priority-runners", "priority_runners"],
     ["--claim-minutes", "claim_minutes"],
     ["--mcp-renew-minutes", "mcp_renew_minutes"],
@@ -1673,6 +1906,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     // Issue 1033: where a browser run with no --box goes.
     ["--browser-box-default", "browser_box_default"],
     ["--browser-host-only", "browser_host_only"],
+    // Issue 1264: the programs Den's agent hook routes.
+    ["--route-commands", "route_commands"],
   ] as const) {
     const v = f[flag];
     if (typeof v === "string") raw[key] = v.trim() || null;
@@ -1807,6 +2042,8 @@ export async function cmdGate(
         return await boxCmd(args.slice(1), d);
       case "yield":
         return yieldPlace(args.slice(1), d);
+      case "runner":
+        return runnerCmd(args.slice(1), d);
       case "settings":
         return await settings(args.slice(1), d);
       default:

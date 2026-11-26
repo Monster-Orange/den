@@ -44,7 +44,11 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // Issue 406: how long the start waits for the owner's GitHub name.
   web_github: { owner_name_timeout_seconds: true },
   // den#143: how long `web up` waits for the server.
-  web_ready: { probe_seconds: true, start_seconds: true },
+  web_ready: {
+    probe_seconds: true,
+    start_seconds: true,
+    tools_probe_seconds: true,
+  },
   // Issue 819: the new-device limits.
   web_pairing: {
     requests_per_minute: true,
@@ -110,11 +114,14 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // projects and labels kept on this machine.
     browser_box_default: true,
     browser_host_only: true,
+    // Issue 1264: Den's agent hook routes agents' heavy runs.
+    route_agents: true,
+    route_commands: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
   // Issue 1373: the agents' limits (user.yml agents.*, over den.yml).
-  agents_limits: { max_concurrent: true },
+  agents_limits: { max_concurrent: true, max_per_project: true },
   // Issue 403: how long a filed report's screenshot is kept.
   reports: {
     screenshot_keep_days: true,
@@ -136,7 +143,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     max_wait_seconds: true,
   },
   // issue_write: which roles write GitHub issues, and how many an hour.
-  agent_issue_writes: { roles: true, per_hour: true },
+  // Issue 1127: and how old a repo's visibility may be for the words check.
+  agent_issue_writes: { roles: true, per_hour: true, visibility_minutes: true },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -194,11 +202,18 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     watch_max_interval_seconds: true,
     api_budget_floor: true,
     watches_max: true,
+    // Issue 1166: a watch with no progress this long ends.
+    watch_stale_minutes: true,
+    // Issue 1194: any watch open this long ends.
+    watch_max_open_hours: true,
+    // Issue 1214: how often a finished run is looked at for a re-run.
+    rerun_look_minutes: true,
   },
   // Issue 742: how long a held write waits for the person's Allow.
   held_writes: { wait_minutes: true },
   // Issue 1022: how often the page polls health, visible and hidden.
   health_poll: { visible_seconds: true, hidden_seconds: true },
+  git_reads: { at_once: true },
   // Issue 750: groups from Hub (user.yml hub.groups, groups_cache_seconds).
   hub_groups: { mode: true, cache_seconds: true },
 };
@@ -286,6 +301,7 @@ describe("the settings inventory (R21)", () => {
         "terminal",
         // MODE-5: what only `config` could change.
         "cli_tabs",
+        "coach_counts",
         "local_dev",
         "log_window_lines",
         "panes_reconnect.max_failures",
@@ -306,12 +322,16 @@ describe("the settings inventory (R21)", () => {
         "github.watch_max_interval_seconds",
         "github.api_budget_floor",
         "github.watches_max",
+        "github.watch_stale_minutes",
+        "github.watch_max_open_hours",
+        "github.rerun_look_minutes",
         "web_pairing.approve_attempts",
         "web_pairing.approve_window_seconds",
         "web_pairing.requests_per_minute",
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
+        "web_ready.tools_probe_seconds",
         // Issue 1299: how long a sessions write waits for another's lock.
         "web_sessions.lock_wait_ms",
         "gate_slots.box_check_timeout_seconds",
@@ -343,6 +363,8 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.priority_pass_limit_minutes",
         "gate_slots.priority_runners",
         "gate_slots.reap_grace_seconds",
+        "gate_slots.route_agents",
+        "gate_slots.route_commands",
         "gate_slots.remote_lapse_seconds",
         "gate_slots.remote_max_asks",
         "gate_slots.remote_max_slots",
@@ -355,6 +377,7 @@ describe("the settings inventory (R21)", () => {
         "agents_list.refresh_timeout_seconds",
         // Issue 1373: the agents' limits.
         "agents_limits.max_concurrent",
+        "agents_limits.max_per_project",
         // Issue 403: how long a filed report's screenshot is kept.
         "reports.screenshot_keep_days",
         "reports.screenshot_max_mb",
@@ -369,6 +392,7 @@ describe("the settings inventory (R21)", () => {
         // issue_write: which roles write GitHub issues, and how many an hour.
         "agent_issue_writes.roles",
         "agent_issue_writes.per_hour",
+        "agent_issue_writes.visibility_minutes",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",
@@ -434,6 +458,7 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        "git_reads.at_once",
         // Issue 750: groups from Hub.
         "hub_groups.mode",
         "hub_groups.cache_seconds",
