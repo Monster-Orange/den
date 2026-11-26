@@ -11,6 +11,10 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import {
+  takeTestInstallLaunchFlag,
+  testInstallRestartEnv,
+} from "../../shared/test-install-launch.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { maskSecretLine } from "../../shared/secret-values.js";
 import { createLogRing } from "./log-ring.js";
@@ -501,7 +505,6 @@ import {
   fixtureSessionExpired,
   notTestInstallRefusal,
   setupFixturePerson,
-  TEST_INSTALL_ENV_KEY,
   testInstallBinding,
   testInstallByHandRefusal,
   verifiedFixtureKey,
@@ -3793,11 +3796,7 @@ async function confirmFirstRunLink(
  * own start environment (never a file), then taken out of it so nothing
  * this server starts (agents, terminals) inherits it.
  */
-const TEST_INSTALL_LAUNCH_FLAG = (() => {
-  const on = readEnv(getProfile(), TEST_INSTALL_ENV_KEY) === "1";
-  delete process.env[envName(getProfile(), TEST_INSTALL_ENV_KEY)];
-  return on;
-})();
+const TEST_INSTALL_LAUNCH_FLAG = takeTestInstallLaunchFlag(getProfile());
 
 /**
  * Issue 1073: the launcher's name map for Den's own address checks, read
@@ -5297,6 +5296,7 @@ function approvalDeps(): ApprovalDeps {
         npmView: (spec) => u.npmViewVersion(npm, spec, root),
         npm,
         cli: [cli.cmd, ...cli.baseArgs],
+        restartEnv: testInstallRestartEnv(),
         run: (argv, cwd) => u.runCommand(argv, cwd, env),
         watch: (script, plan) =>
           u.spawnWatch(
