@@ -13,6 +13,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A test install stays a test install after Den restarts itself: from the agent tool, the page's Restart, a self-update, or a self-update's rollback. Before, the restarted server came back without its test-install mark. Agents, terminals and npm still never see the mark (issue 832).
 - After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.
 
 ### Fixed
