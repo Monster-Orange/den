@@ -3049,7 +3049,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Slow request, log after",
     description:
-      "When a request takes longer than this, the server's log gets one line with its route, who asked, and how long it took. Never its address, query, headers or body. __DEN_CLI__ config server_log.slow_request_ms=3000",
+      "When a request takes longer than this, __DEN_TITLE__'s log gets one line with its route, who asked, and how long it took. Never its address, query, headers or body. __DEN_CLI__ config server_log.slow_request_ms=3000",
     keywords: ["log", "slow", "request", "server", "time"],
     scope: "user",
     keys: ["server_log.slow_request_ms"],
@@ -3060,9 +3060,9 @@ export const DEN_SETTINGS = [
   {
     id: "server.event_loop_lag_ms",
     category: "server",
-    label: "Blocked server, log after",
+    label: "Stall, log after",
     description:
-      "When the server is busy and runs nothing else for longer than this, its log gets one line saying how long. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
+      "When __DEN_TITLE__ is busy and runs nothing else for longer than this, its log gets one line saying how long. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     keywords: ["log", "blocked", "lag", "server", "stall"],
     scope: "user",
     keys: ["server_log.event_loop_lag_ms"],

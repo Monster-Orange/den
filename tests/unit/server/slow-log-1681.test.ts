@@ -81,7 +81,7 @@ describe("issue 1681: a stalled server never floods its own log", () => {
   });
 
   it("keeps a bounded number of keys", () => {
-    let t = 0;
+    const t = 0;
     const lim = rateLimit({ windowMs: 10_000, now: () => t, maxKeys: 3 });
     for (const k of ["a", "b", "c", "d"]) expect(lim(k)).toBe(0);
     expect(lim("a")).toBe(0);
