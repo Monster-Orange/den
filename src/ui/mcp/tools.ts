@@ -42,7 +42,7 @@ import {
   hubPut,
   parseHubRef,
   type HubVia,
-} from "../../shared/hub-files.js";
+} from "../../shared/hub/hub-files.js";
 import {
   DenHttpError,
   DenWebDown,
@@ -490,39 +490,64 @@ const READ_TOOLS: DenTool[] = [
   ),
   read(
     "ask_withdraw",
-    "Withdraw your question",
-    'Issue 1008: withdraw a question you asked with ask_human, once it is settled another way (in chat, or by another agent). `id` is the id ask_human gave you (notifications_list shows it too); `reason` says in one line how it was settled. It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. Only your own question: another agent\'s is refused and recorded. An answer that comes after it is still passed to you, and Den tells you it came late. The same as `<cli> ask withdraw <id> --reason "…"`.',
+    "Withdraw your question or your held write",
+    'Withdraw something of yours that waits on your person, once it is settled another way or turns out wrong. Give exactly one of `id` or `request`, and a one-line `reason`. `id`: a question you asked with ask_human (the id it gave you; notifications_list shows it too). It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. An answer that comes after it is still passed to you, and Den tells you it came late. `request`: the id of one of your own pending write requests (the id a held tool such as gate_box_set gave you; approval_check reads it). It leaves the bell and Needs you, and an Allow pressed after it runs nothing. If your person already decided it, it is not withdrawn and you are told so. Only your own: another agent\'s is refused and recorded. The same as `<cli> ask withdraw <id> --reason "…"` for a question.',
     {
-      id: z.string().describe("The question's id, from ask_human"),
+      id: z.string().optional().describe("A question's id, from ask_human"),
+      request: z
+        .string()
+        .optional()
+        .describe("A pending write request's id, from the held tool"),
       reason: z
         .string()
         .describe("How it was settled, one line, at most 200 characters"),
     },
     async (a, { api }) => {
       const id = (str(a.id) ?? "").trim();
-      const reason = (str(a.reason) ?? "").replace(/\s+/g, " ").trim();
-      if (!id || !reason)
+      const request = (str(a.request) ?? "").trim();
+      const raw = str(a.reason) ?? "";
+      if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(raw.replace(/[\t\n\r]/g, " ")))
         throw new Refusal(
-          "ask_withdraw: give the question's id and a one-line reason.",
+          "ask_withdraw: a reason is plain text: no control or direction characters.",
+        );
+      const reason = raw.replace(/\s+/g, " ").trim();
+      if (id && request)
+        throw new Refusal(
+          "ask_withdraw: give `id` (a question) or `request` (a write request), not both.",
+        );
+      if ((!id && !request) || !reason)
+        throw new Refusal(
+          "ask_withdraw: give the question's id (or a write request's id as `request`) and a one-line reason.",
         );
       if (reason.length > 200)
         throw new Refusal(
           "ask_withdraw: a reason is one line, at most 200 characters.",
         );
+      if (request && !/^[A-Za-z0-9_-]{16}$/.test(request))
+        throw new Refusal(
+          "ask_withdraw: a write request's id is the 16 letters and digits its held tool gave you.",
+        );
       try {
-        await api.get("/api/notifications/withdraw", {}, "POST", {
-          id,
-          reason,
-        });
+        if (request)
+          await api.get(`/api/approvals/${request}/withdraw`, {}, "POST", {
+            reason,
+          });
+        else
+          await api.get("/api/notifications/withdraw", {}, "POST", {
+            id,
+            reason,
+          });
       } catch (e) {
         if (
           e instanceof DenHttpError &&
-          [400, 403, 404, 409].includes(e.status)
+          [400, 403, 404, 409, 410].includes(e.status)
         )
           throw new Refusal(`ask_withdraw: ${e.body}`);
         throw e;
       }
-      return `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
+      return request
+        ? `Withdrawn. Your request ${request} left your person's bell and Needs you; an Allow now runs nothing. The bell says: ${reason}.`
+        : `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
     },
   ),
   read(
@@ -721,7 +746,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "github_watch",
     "Watch a pull request's checks or a workflow run",
-    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: after a new push, watch again. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
+    "Use this instead of `gh pr checks --watch` or `gh run watch`: Den has one GitHub watcher for every agent on this machine, so the GitHub sign-in they share stays under its hourly API limit. Give `repo` (owner/name, one of your project's repos) and `pr` (a pull request's number) or `run` (a workflow run's id). Den answers at once with a watch `id` and where it stands, then tells you, once, when the checks or the run finish: how many passed, failed and skipped, and each failure's name and URL. End your turn or do other work meanwhile; don't poll. A pull request is watched at the head it has now: when it merges or closes, or a new push replaces its head, the watch ends and Den tells you (after a new push, watch again). A run is counted by its own jobs (its latest attempt); a re-run within the hour after Den told you reopens its watch, and Den tells you the new attempt's result. A watch with no progress for a while ends, saying why. When Den watches as many as it can at once, a new watch is queued (state queued, \"queued, N ahead\") and starts when a slot frees. When GitHub's API budget is low, Den refuses new watches and says until when. Changes only your own watches.",
     {
       repo: z.string().describe("The GitHub repo, owner/name"),
       pr: z
@@ -759,7 +784,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "github_watch_list",
     "Your GitHub watches",
-    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
+    "Your watches in Den's shared GitHub watcher (github_watch): each one's id, repo, pr or run, head, state (waiting, running, paused, done, queued), a plain note (when paused, why and until when), the check counts, the failures, and whether you were told. Also `status`: GitHub calls left this hour, the reset time and Den's current interval. Reads only.",
     {},
     async (_a, ctx) => {
       githubWatchAgent("github_watch_list", ctx);
@@ -836,7 +861,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_agent_cap, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set, gate_runner_entry_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -1120,7 +1145,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "release_status",
     "Release status",
-    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool. For the whole Den (not a project's agent), also `denUpdate`: Den's last update of itself, by den_update or by Den's own check: `from` and `to` (versions), `state` (good, rolled_back, …), `at`, `why` when it rolled back, and the doctor field: the new Den's doctor results from that update (`at`, and `lines`: each failing or warning check), when its doctor ran.",
+    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool. For the whole Den (not a project's agent), also `denUpdate`: Den's last update of itself, by den_update or by Den's own check: `from` and `to` (versions), `state` (good, rolled_back, …), `at`, `why` when it rolled back, the doctor field: the new Den's doctor results from that update (`at`, and `lines`: each failing or warning check), when its doctor ran; and the pin field: what Den's pin step last did (`version`, `state` such as pushed, pr_opened or push_failed, `branch`, `branchWhy` when it chose another branch name, `why`, `url`).",
     {
       env: z
         .string()
@@ -2589,6 +2614,43 @@ const APPROVAL_TOOLS: DenTool[] = [
     },
   },
   {
+    name: "project_agent_cap",
+    title: "Set a project's agent cap",
+    description:
+      "Set how many of a project's agents may run at once (`max`, a whole number), or 0 to clear it and use the install's agents.max_per_project. It can only be lower than the install's when that is set. The person's Allow shows the change; raising it is always the person's own Allow. A start past the cap is refused and says so. A project's agent sets its own project's; Den's own agent any project's." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      max: z
+        .number()
+        .int()
+        .min(0)
+        .describe("Agents at once, or 0 for the install's"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("project_agent_cap", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `project_agent_cap: you work in project "${ctx.scope.workspace}" and can set its cap only, not project "${project}"'s; nothing was asked.`,
+        );
+      return askPerson(
+        "project_agent_cap",
+        "project_agent_cap",
+        { project, max: a.max as number } as Args,
+        a,
+        ctx,
+      );
+    },
+  },
+  {
     // Issue 271: the same ask as Settings › Project › Hub project's Create.
     name: "hub_project_create",
     title: "Create a Hub project for a project",
@@ -3102,6 +3164,55 @@ const APPROVAL_TOOLS: DenTool[] = [
         "web_url_set",
         "web_url_set",
         { url: str(a.url) },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "gate_runner_entry_set",
+    title: "Let a repo's CI jobs run on a test box",
+    description:
+      "Issue 642: a CI runner entry, set or changed: `repo`'s jobs whose runs-on labels are all in `labels` may run on the test box `box` (one a person set), at most `slots` at a time; `heavy` (default true) means each job takes one of the box's gate slots, so it never runs beside another heavy job there; `routing_variable` is the repo variable that sends its jobs to the box or back to hosted runners; `owner` says who answers for it. Settings only: nothing starts a runner yet. It widens what runs on a box: always the person's own Allow. `gate runner list` shows the entries." +
+      HELD,
+    action: true,
+    shape: {
+      repo: z.string().describe("owner/name"),
+      box: z.string().describe("A test box's name (gate box list)"),
+      labels: z
+        .array(z.string())
+        .describe("The runner labels its jobs ask for (runs-on)"),
+      routing_variable: z
+        .string()
+        .describe("The repo variable that routes its jobs (CI_RUNNER)"),
+      slots: z
+        .number()
+        .int()
+        .optional()
+        .describe("Its jobs on the box at once (default 1)"),
+      heavy: z
+        .boolean()
+        .optional()
+        .describe("Each job takes a box gate slot (default true)"),
+      owner: z.string().describe("Who answers for it, in words"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const repo = needArg("gate_runner_entry_set", a, "repo", "owner/name");
+      const box = needArg("gate_runner_entry_set", a, "box", "a test box");
+      return askPerson(
+        "gate_runner_entry_set",
+        "gate_runner_entry_set",
+        {
+          repo,
+          box,
+          labels: a.labels,
+          routing_variable: a.routing_variable,
+          owner: a.owner,
+          ...(a.slots !== undefined ? { slots: a.slots } : {}),
+          ...(a.heavy !== undefined ? { heavy: a.heavy } : {}),
+        },
         a,
         ctx,
       );

@@ -19,7 +19,7 @@
 import {
   SESSION_COOKIE_MAX_AGE_S,
   sessionCookieName,
-} from "../../shared/web-session.js";
+} from "../../shared/web/web-session.js";
 
 /** The `__Host-` prefix: a browser takes it only host-only, Secure, Path=/. */
 export const HOST_PREFIX = "__Host-";

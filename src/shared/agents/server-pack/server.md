@@ -126,7 +126,7 @@ Reads (they change nothing):
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
-- `ask_withdraw`: withdraw your question once it is settled another way.
+- `ask_withdraw`: withdraw your question once it is settled another way, or (with `request`) your own pending write request once it turns out wrong.
 - `page_view`: a one-time link to open this Den's own pages read-only, as
   you, to look, take a screenshot or check a fix. It changes nothing, and
   ends in a few minutes.
@@ -173,6 +173,10 @@ Held (each waits for the person's Allow):
   without asking runs only on the person's own Allow, never by itself.
   Agents with a mode of their own keep it: the Allow names them, and the
   person may make them follow too.
+- `project_agent_cap`: set how many agents one project runs at once
+  (`max`; 0 goes back to the install's cap). It can only be lower than
+  the install's. Lowering it follows the policy; raising it or clearing
+  it runs only on the person's own Allow.
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
@@ -190,6 +194,8 @@ Held (each waits for the person's Allow):
   `setting_change` can't reach. Den checks every value first; on a
   personal install it's written at once and the person is told; on a
   strict one it follows their choice for Limits and performance.
+  Turning `gate.route_agents` off, or dropping a program from
+  `gate.route_commands`, waits for the person's own Allow on both.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.
@@ -234,6 +240,10 @@ Held (each waits for the person's Allow):
   box (another machine whose browsers take gate slots;
   docs/gate-slots.md). Den checks the box first; it waits for the
   person's Allow, and nothing changes until then.
+- `gate_runner_entry_set`: let a repo's CI jobs run on a test box the
+  person set (its labels, routing variable, slots, heavy or light, who
+  answers for it). It waits for the person's Allow. Nothing starts a
+  runner yet: it is a setting.
 - `host_restart`: when doctor's terminal host row says a restart
   is needed and offers it (Den's own restart failed or never ran). It
   waits for the person's Allow, then for no agent mid-turn, restarts the

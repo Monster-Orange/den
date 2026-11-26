@@ -18,9 +18,9 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { execFile, spawn, spawnSync } from "child_process";
+import { execFile, spawn } from "child_process";
 
-import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
+import { findServiceContainerAsync } from "../../shared/environment-manager/service-container.js";
 import { hasRunningOpctlContainers } from "../../shared/environment-manager/service-runner.js";
 import { resolveServiceInProjects } from "../../shared/environment-manager/service-in-projects.js";
 import { checkServiceHealth } from "../../shared/environment-manager/health.js";
@@ -276,7 +276,11 @@ export async function resolveHistorySource(
 
   // 1. The service's container: its compose stack's, else opctl's
   //    conventional one (opctl_<base>_<hash>).
-  const conventional = findServiceContainer(repoName, repoPath, svcName);
+  const conventional = await findServiceContainerAsync(
+    repoName,
+    repoPath,
+    svcName,
+  );
   if (conventional) return { kind: "docker", container: conventional };
 
   // 2. Container named by the manifest log command's docker ps filter.
@@ -387,24 +391,29 @@ function dumpDockerLogs(
 
 /**
  * Drop snapshots whose container no longer exists (their docker history is
- * gone with the container; the snapshot is orphaned disk). Call at web-server
- * startup, like pruneDeadDaemons().
+ * gone with the container; the snapshot is orphaned disk). Keeps one written
+ * since the prune began (its container restarted), and one it can't stat.
  */
-export function pruneDeadSnapshots(): number {
+export async function pruneDeadSnapshots(): Promise<number> {
   let removed = 0;
+  const began = Date.now();
   let entries: string[];
   try {
     entries = fs.readdirSync(HISTORY_DIR);
   } catch {
     return 0;
   }
-  const out = spawnSync("docker", ["ps", "-a", "--format", "{{.Names}}"], {
-    encoding: "utf-8",
-    timeout: 10_000,
-  });
-  if (out.status !== 0) return 0; // docker unavailable — keep everything
+  const names = await new Promise<string | null>((resolve) =>
+    execFile(
+      "docker",
+      ["ps", "-a", "--format", "{{.Names}}"],
+      { encoding: "utf-8", timeout: 10_000 },
+      (err, stdout) => resolve(err ? null : (stdout ?? "")),
+    ),
+  );
+  if (names === null) return 0; // docker unavailable — keep everything
   const alive = new Set(
-    (out.stdout ?? "")
+    names
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean),
@@ -412,8 +421,14 @@ export function pruneDeadSnapshots(): number {
   for (const entry of entries) {
     if (!entry.endsWith(".log")) continue;
     if (!alive.has(entry.slice(0, -4))) {
+      const file = path.join(HISTORY_DIR, entry);
       try {
-        fs.rmSync(path.join(HISTORY_DIR, entry), { force: true });
+        if (!(fs.statSync(file).mtimeMs < began)) continue;
+      } catch {
+        continue;
+      }
+      try {
+        fs.rmSync(file, { force: true });
         removed++;
       } catch {
         /* best effort */

@@ -13,13 +13,13 @@
  */
 import { execFileSync } from "child_process";
 import { readUserConfig, writeUserConfig } from "./den-config.js";
-import { parseGithubName } from "./web-session.js";
+import { parseGithubName } from "./web/web-session.js";
 import {
   githubDisplayName,
   readWebOwner,
   setWebOwnerName,
   type WebOwner,
-} from "./web-owner.js";
+} from "./web/web-owner.js";
 
 /** Who `gh` is signed in as here: the login, and the display name if set. */
 export interface GhUser {
@@ -188,6 +188,12 @@ export interface PublicNameDeps {
   readOwner?: () => WebOwner | null;
   /** Keep the linked owner's display name. */
   setOwnerName?: (login: string, name: string) => void;
+  /**
+   * Why no name was kept, in a few plain words (never the token, never
+   * GitHub's whole answer). Not called when the owner already has a name,
+   * or when no owner is linked yet: those are usual starts.
+   */
+  onSkip?: (why: string) => void;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -201,11 +207,16 @@ export interface PublicNameDeps {
 export async function ownerNameFromGithub(
   deps: PublicNameDeps,
 ): Promise<string | null> {
+  const skip = (why: string): null => {
+    deps.onSkip?.(why);
+    return null;
+  };
+  const timeoutMs = deps.timeoutMs ?? 10_000;
   try {
     const env = deps.env ?? process.env;
     // A test or CI run asks a fake GitHub only, never github.com.
     if ((env.JEST_WORKER_ID || env.CI || env.DEN_TEST_SENTINEL) && !deps.fake)
-      return null;
+      return skip("a test or CI run asks only a fake GitHub");
     const owner = (deps.readOwner ?? (() => readWebOwner()))();
     if (!owner || owner.name) return null;
     const r = await (deps.fetch ?? fetch)(
@@ -215,23 +226,36 @@ export async function ownerNameFromGithub(
           accept: "application/vnd.github+json",
           "x-github-api-version": "2022-11-28",
         },
-        signal: AbortSignal.timeout(deps.timeoutMs ?? 10_000),
+        signal: AbortSignal.timeout(timeoutMs),
       },
     );
-    if (!r.ok) return null;
+    if (!r.ok) return skip(`GitHub answered ${r.status}`);
     const j = (await r.json()) as {
       id?: unknown;
       login?: unknown;
       name?: unknown;
     };
     const name = githubDisplayName(j.name);
-    if (!name || owner.owner !== `github:${String(j.id)}`) return null;
-    (deps.setOwnerName ?? ((l, n) => void setWebOwnerName(l, n)))(
-      owner.login,
-      name,
-    );
+    if (!name) return skip("GitHub's profile has no name");
+    if (owner.owner !== `github:${String(j.id)}`)
+      return skip("GitHub answered for someone else");
+    try {
+      (deps.setOwnerName ?? ((l, n) => void setWebOwnerName(l, n)))(
+        owner.login,
+        name,
+      );
+    } catch (err) {
+      return skip(
+        `the name couldn't be saved: ${String((err as Error)?.message ?? err).slice(0, 120)}`,
+      );
+    }
     return name;
-  } catch {
-    return null;
+  } catch (err) {
+    const e = err as Error;
+    return skip(
+      e?.name === "TimeoutError"
+        ? `GitHub didn't answer within ${timeoutMs / 1000} s`
+        : `GitHub didn't answer: ${String(e?.message ?? err).slice(0, 120)}`,
+    );
   }
 }

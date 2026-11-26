@@ -155,13 +155,32 @@ describe("the switch", () => {
     const ex = config({ DEN_TEST_QUARANTINE: "exclude" });
     expect(ex.testEnvironment).toBe("<rootDir>/tests/quarantine-env.cjs");
     expect(ex.testPathIgnorePatterns).toBeUndefined();
-    const only = config({ DEN_TEST_QUARANTINE: "only" });
-    const pat = (only.testPathIgnorePatterns as string[]).map(
-      (p) => new RegExp(p),
-    );
-    const ignored = (f: string) => pat.some((p) => p.test(path.join(ROOT, f)));
-    expect(ignored(q.loadQuarantine().entries[0].file)).toBe(false);
-    expect(ignored("tests/unit/test-infra/quarantine.test.ts")).toBe(true);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-q-only-"));
+    const ignoredBy = (entries: Entry[]) => {
+      const list = path.join(dir, `${entries.length}.json`);
+      fs.writeFileSync(list, JSON.stringify({ entries }));
+      const only = config({
+        DEN_TEST_QUARANTINE: "only",
+        DEN_TEST_QUARANTINE_FILE: list,
+      });
+      const pat = (only.testPathIgnorePatterns as string[]).map(
+        (p) => new RegExp(p),
+      );
+      return (f: string) => pat.some((p) => p.test(path.join(ROOT, f)));
+    };
+    const one = ignoredBy([
+      {
+        file: FIXTURE,
+        test: FLAKY,
+        issue: 397,
+        added: "2026-11-17",
+        evidence: ev,
+      },
+    ]);
+    expect(one(FIXTURE)).toBe(false);
+    expect(one("tests/unit/test-infra/quarantine.test.ts")).toBe(true);
+    expect(ignoredBy([])(FIXTURE)).toBe(true);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
 

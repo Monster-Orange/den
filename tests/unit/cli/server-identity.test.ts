@@ -73,6 +73,7 @@ describe("classifyServerInfo", () => {
   it("an empty 200 is a server still starting, not a foreign one", () => {
     expect(classifyServerInfoResponse(200, "", OWN, noCwd)).toEqual({
       kind: "unresponsive",
+      why: "empty",
     });
   });
 

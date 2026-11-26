@@ -129,15 +129,16 @@ export function groupsLineHtml(read, t) {
   return "";
 }
 
-/** By project | By group, only when Hub's groups are there. */
 export function viewSwitchHtml(read, by, t) {
-  if (!groupsOffered(read)) return "";
+  const offered = groupsOffered(read);
+  const shown = by === "group" && !offered ? "need" : by;
   const b = (k) =>
-    `<button type="button" data-by="${k}" aria-pressed="${by === k}">${esc(t(`ag.by.${k}`))}</button>`;
+    `<button type="button" data-by="${k}" aria-pressed="${shown === k}">${esc(t(`ag.by.${k}`))}</button>`;
   return (
     `<div class="seg agby" role="group" aria-label="${esc(t("ag.by.label"))}" data-by-switch>` +
+    b("need") +
     b("project") +
-    b("group") +
+    (offered ? b("group") : "") +
     `</div>`
   );
 }
@@ -176,8 +177,16 @@ export function byGroupSections(rows, groups) {
  * The list's body in the By group view. Hub has none: "No groups yet",
  * with Open Groups in Hub (groupsUrl).
  */
-export function groupsViewHtml(rows, groups, { t, rowHtml, groupsUrl }) {
-  const s = byGroupSections(rows, groups);
+export function groupsViewHtml(
+  rows,
+  groups,
+  { t, rowHtml, groupsUrl, order = (xs) => xs },
+) {
+  const raw = byGroupSections(rows, groups);
+  const s = {
+    groups: raw.groups.map((g) => ({ ...g, rows: order(g.rows) })),
+    none: order(raw.none),
+  };
   const open = httpUrl(groupsUrl);
   const head = s.groups.length
     ? ""

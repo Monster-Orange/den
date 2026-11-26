@@ -7,6 +7,7 @@ import {
   readEnv,
   type ProductProfile,
 } from "./profile.js";
+import { ownStateDirOf } from "./state-folder.js";
 
 /** Den's package name: the engine root is the directory that has it. */
 export const ENGINE_PACKAGE = "@monster-orange/den";
@@ -228,5 +229,22 @@ export function getInvokeCwd(): string {
 export function getStateDir(): string {
   const profile = getProfile();
   const home = readEnv(profile, "HOME")?.trim();
-  return home ? path.resolve(home) : profile.stateDir;
+  if (home) return path.resolve(home);
+  return ownStateDir() ?? profile.stateDir;
+}
+
+let ownMemo: { root: string; dir: string | null } | null = null;
+onProfileCacheReset(() => {
+  ownMemo = null;
+});
+
+function ownStateDir(): string | null {
+  let root: string;
+  try {
+    root = getDistRoot();
+  } catch {
+    return null;
+  }
+  if (ownMemo?.root !== root) ownMemo = { root, dir: ownStateDirOf(root) };
+  return ownMemo.dir;
 }
