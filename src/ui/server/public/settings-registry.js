@@ -3846,6 +3846,21 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
   },
   {
+    id: "server.gate_release_pass_other",
+    category: "server",
+    label:
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes",
+    description:
+      "While a release run with priority waits, a cpu or browser run of the other kind asked before it doesn't start in a slot it needs, unless it has waited longer than this. It never stops a running one. 0: it passes none of them. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
+    keywords: ["gate", "slot", "priority", "release", "cpu", "browser", "wait"],
+    scope: "user",
+    keys: ["gate_slots.release_pass_other_kind_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.releasePassOtherKindMinutes ?? 30,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { release_pass_other_kind_minutes: v } }),
+  },
+  {
     id: "server.gate_priority_agents",
     category: "server",
     label: "Agents may ask for release priority",

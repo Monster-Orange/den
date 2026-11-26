@@ -351,14 +351,17 @@ export function fakeBed({
           ([a, l]) =>
             `${a}: ${l.length} held, oldest 0 min: ${l[0].held_reason}`,
         );
-        const checks = fixed
-          ? [
-              {
-                id: "hub_held_comments",
-                detail: rows.join("; ") || "no Hub comments held",
-              },
-            ]
-          : [];
+        const checks = [
+          { id: "node", status: "ok", detail: "v24" },
+          ...(fixed
+            ? [
+                {
+                  id: "hub_held_comments",
+                  detail: rows.join("; ") || "no Hub comments held",
+                },
+              ]
+            : []),
+        ];
         return { code: 0, out: JSON.stringify({ ok: true, checks }), err: "" };
       }
       return { code: 0, out: "", err: "" };
