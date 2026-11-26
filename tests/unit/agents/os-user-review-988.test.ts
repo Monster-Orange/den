@@ -237,6 +237,7 @@ describe("issue 988 review, should 5: whose launch files", () => {
         run: async () => 0,
         err: (m) => errs.push(m),
         runtimeProblems: () => [],
+        owed: () => [],
       };
       await expect(
         runAgentSession(["scout", "0123456789abcdef0123456789abcdef"], d),
@@ -323,6 +324,7 @@ function rig(
       return { ok: true, stdout: "" };
     },
     facts: () => o.facts ?? NONE,
+    owed: () => [],
     setOn: (on) => set.push(on),
     on: () => set.at(-1) ?? false,
     out: (l) => out.push(l),
@@ -390,6 +392,33 @@ describe("issue 988 slice 3b review: the login's groups", () => {
         { uid: -1, gids: [] },
       ).join("\n"),
     ).not.toContain("can't read the agents' login's groups");
+  });
+
+  it("a login with no uid that can be read is a problem too", () => {
+    const f = readOsUserFacts(
+      { ...LAYOUT, runtime: { ...LAYOUT.runtime, engineRoot: "/srv/den" } },
+      path.join(tmp, "state"),
+      {
+        exec: (cmd, args) =>
+          cmd === "getent" && args[0] === "passwd"
+            ? {
+                status: 0,
+                stdout:
+                  "den-agents-robin:x::455::/opt/den/robin/home:/usr/sbin/nologin\n",
+              }
+            : cmd === "id" && args[0] === "-G"
+              ? { status: 0, stdout: "455\n" }
+              : { status: 1, stdout: "" },
+        personUid: 1000,
+        stat: () => null,
+        read: () => null,
+        chain: () => [],
+        runtime: () => [],
+      },
+    );
+    expect((f.runtime ?? []).join("\n")).toContain(
+      "can't read the agents' login's uid",
+    );
   });
 
   it("at launch, no groups is refused the same way", () => {
