@@ -1147,7 +1147,8 @@
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "local-dev.html"
     },
@@ -1597,7 +1598,8 @@
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "agents.html, local-dev.html"
     },
@@ -1860,7 +1862,8 @@
         "tests/unit/server/whats-new-dialog.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "local-dev.html, services.html"
     },
@@ -2078,7 +2081,8 @@
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "loaded by 12 pages"
     },
@@ -2250,6 +2254,7 @@
         "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
+        "tests/unit/test-infra/brittle-weekly-841.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -2345,7 +2350,8 @@
       ],
       "run": [
         "tests/unit/scripts/kit-version.test.ts",
-        "tests/unit/test-infra/brittle-ratchet.test.ts"
+        "tests/unit/test-infra/brittle-ratchet.test.ts",
+        "tests/unit/test-infra/brittle-weekly-841.test.ts"
       ],
       "why": "tests that run scripts/brittle-ratchet.mjs"
     },
@@ -2503,7 +2509,8 @@
         "scripts/no-close-keywords.mjs"
       ],
       "run": [
-        "tests/unit/scripts/no-close-keywords.test.ts"
+        "tests/unit/scripts/no-close-keywords.test.ts",
+        "tests/unit/test-infra/pr-text-queue-1235.test.ts"
       ],
       "why": "tests that run scripts/no-close-keywords.mjs"
     },

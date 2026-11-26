@@ -150,7 +150,7 @@ describe("the brittle-pattern ratchet (issue 839)", () => {
     expect(r.out).toMatch(/line 3\b/);
     expect(r.out).toMatch(/0 -> 1/);
     expect(r.out).toMatch(/new file/);
-    expect(r.out).toMatch(/getByRole|getByLabel/);
+    expect(r.out).toMatch(/byRole\(page|byLabel\(page/);
     expect(r.out).toMatch(/wait for a state|toBeVisible|expect\.poll/);
   });
 
