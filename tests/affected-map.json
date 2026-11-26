@@ -2463,6 +2463,7 @@
         "tests/unit/test-infra/gate-746-teardown-1293.test.ts",
         "tests/unit/test-infra/gate-828.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
+        "tests/unit/test-infra/gate-974-probes.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
         "tests/unit/test-infra/gate-cli-json-840.test.ts",
         "tests/unit/test-infra/gate-evidence.test.ts",
@@ -3134,6 +3135,15 @@
     },
     {
       "when": [
+        "gate/732.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/gate-974-probes.test.ts"
+      ],
+      "why": "tests that load gate/732.mjs"
+    },
+    {
+      "when": [
         "gate/746.mjs"
       ],
       "run": [
@@ -3170,6 +3180,15 @@
         "tests/unit/test-infra/gate-93-pointer.test.ts"
       ],
       "why": "tests that load gate/93.mjs"
+    },
+    {
+      "when": [
+        "gate/974.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/gate-974-probes.test.ts"
+      ],
+      "why": "tests that load gate/974.mjs"
     },
     {
       "when": [
@@ -4880,8 +4899,12 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/workspace-routes.ts"],
-      "run": ["tests/unit/server/project-agent-cap-1634.integration.test.ts"],
+      "when": [
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/project-agent-cap-1634.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5517,7 +5540,9 @@
         "src/ui/server/public/agents-page.js",
         "src/ui/server/term-size-lead.ts"
       ],
-      "run": ["tests/unit/server/size-claim-1724.browser.test.ts"],
+      "run": [
+        "tests/unit/server/size-claim-1724.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5525,7 +5550,9 @@
         "src/ui/server/session-routes.ts",
         "src/ui/server/term-size-lead.ts"
       ],
-      "run": ["tests/unit/server/size-claim-1724.integration.test.ts"],
+      "run": [
+        "tests/unit/server/size-claim-1724.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
