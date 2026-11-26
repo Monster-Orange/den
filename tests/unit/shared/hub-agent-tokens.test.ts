@@ -23,7 +23,7 @@ import { hubAgentTokenLines } from "../../../src/ui/cli/doctor-command.js";
 import {
   readUnrevoked,
   recordUnrevoked,
-} from "../../../src/shared/hub-binding.js";
+} from "../../../src/shared/hub/hub-binding.js";
 import { retryUnrevoked } from "../../../src/ui/server/hub-change.js";
 import { agentFilesDir } from "../../../src/shared/agents/records.js";
 import {
