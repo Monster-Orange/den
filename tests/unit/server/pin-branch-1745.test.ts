@@ -134,11 +134,6 @@ const deps = (gh: string[], extra: Partial<PinCommitDeps> = {}) => ({
   ...extra,
 });
 
-const pushed = () =>
-  fs.existsSync(path.join(tmp, "pushed.log"))
-    ? fs.readFileSync(path.join(tmp, "pushed.log"), "utf8").trim().split("\n")
-    : [];
-
 const heads = () =>
   git(
     tmp,
