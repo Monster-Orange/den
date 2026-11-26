@@ -19,7 +19,7 @@
  * but the ones `deps` gives.
  */
 import type { JournalEntry } from "./hub-delivery-journal.js";
-import { redactSecrets } from "./redact.js";
+import { redactSecrets } from "../redact.js";
 import {
   ackBody,
   deliveryRaw,

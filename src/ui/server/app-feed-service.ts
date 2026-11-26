@@ -36,7 +36,7 @@ import {
   type FeedStore,
   type StoredEvent,
 } from "../../shared/app-feed-reader.js";
-import type { Delivery } from "../../shared/hub-delivery.js";
+import type { Delivery } from "../../shared/hub/hub-delivery.js";
 import {
   checkedAddress,
   type FeedLookup,

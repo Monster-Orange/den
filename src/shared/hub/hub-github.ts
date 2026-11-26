@@ -9,7 +9,7 @@ import {
   readHubConfig,
   readHubToken,
   scrubToken,
-} from "./hub.js";
+} from "../hub.js";
 import { readCoverage, type OrgCoverage } from "./hub-project-sync.js";
 
 export async function githubCoverage(): Promise<
