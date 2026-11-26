@@ -6507,8 +6507,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     // Issue 1373: the agents' cap in force (user.yml over den.yml).
     agents_limits: (() => {
       try {
+        const a = readAgentsConfig(undefined, user);
         return {
-          max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
+          max_concurrent: a.maxConcurrent,
+          max_subagents: a.maxSubagents ?? 2 * a.maxConcurrent,
+          subagents_respect_load_hold: a.subagentsRespectLoadHold !== false,
         };
       } catch {
         return null;

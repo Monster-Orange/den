@@ -5355,6 +5355,50 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_limits: { max_concurrent: v } }),
   },
   {
+    id: "agents.max_subagents",
+    category: "agents",
+    label: "Subagents at once",
+    description:
+      "How many subagents the agents on this machine may run at once, all together. A start past this is refused, and the agent is told this setting's name. Unset, twice Agents at once. __DEN_CLI__ config agents.max_subagents=8",
+    keywords: [
+      "agents",
+      "subagents",
+      "swarm",
+      "limit",
+      "max_subagents",
+      "at once",
+    ],
+    scope: "user",
+    keys: ["agents_limits.max_subagents"],
+    control: { type: "number", min: 1, max: 2000, step: 1 },
+    read: (ctx) =>
+      ctx.data.agents_limits?.max_subagents ??
+      2 * (ctx.data.agents_limits?.max_concurrent ?? 4),
+    write: (v, ctx) => ctx.post({ agents_limits: { max_subagents: v } }),
+  },
+  {
+    id: "agents.subagents_respect_load_hold",
+    category: "agents",
+    label: "No new subagents under load",
+    description:
+      "On, while the machine's load is over the agents' load ceiling, a new subagent is refused, and the agent is told this setting's name. Off, subagents start whatever the load. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    keywords: [
+      "agents",
+      "subagents",
+      "load",
+      "hold",
+      "swarm",
+      "subagents_respect_load_hold",
+    ],
+    scope: "user",
+    keys: ["agents_limits.subagents_respect_load_hold"],
+    control: { type: "toggle" },
+    read: (ctx) =>
+      ctx.data.agents_limits?.subagents_respect_load_hold !== false,
+    write: (v, ctx) =>
+      ctx.post({ agents_limits: { subagents_respect_load_hold: !!v } }),
+  },
+  {
     // den#156: the Agents list's waits (user.yml agents_list.*).
     id: "agents.list_host_wait",
     category: "agents",
