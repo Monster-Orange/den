@@ -9,7 +9,7 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { writeWebOwner } from "../../../src/shared/web-owner.js";
+import { writeWebOwner } from "../../../src/shared/web/web-owner.js";
 import { localDate, localDateTime } from "../../../src/shared/local-time.js";
 
 const ROOT = path.join(__dirname, "../../..");

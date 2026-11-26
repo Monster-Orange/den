@@ -1252,6 +1252,10 @@
       "この時間待った印付きのリリース実行は追い越されない（分）",
     "set.server.gate_priority_pass.d":
       "優先されたリリース実行は、同じ種類の他のすべての待機中の実行より先に進みます。リリース優先の印が付いた実行どうしでは、この時間待っているものは追い越しません。0 では他の印付きの実行を追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
+    "set.server.gate_release_pass_other":
+      "待機中のリリース実行が、先に頼まれた別の種類の実行を追い越せる待ち時間の上限（分）",
+    "set.server.gate_release_pass_other.d":
+      "優先されたリリース実行が待っている間、先に頼まれた別の種類（cpu またはブラウザー）の実行は、その実行が必要とする枠では始まりません。この時間より長く待っているものは始まります。実行中のものは止めません。0 ではどれも追い越しません。__DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
     "set.server.gate_priority_agents":
       "エージェントもリリースの優先を依頼できる",
     "set.server.gate_priority_agents.d":
@@ -1377,6 +1381,9 @@
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "プロジェクトごとのエージェント数",
+    "set.agents.max_per_project.d":
+      "1 つのプロジェクトで同時に動かせるエージェントの数です。0 は「同時に動かせるエージェント数」以外の上限なしです。プロジェクトは自分用にもっと低い値を設定できます（workspaces.yml のそのプロジェクトの agents.max_per_project）。これを超える起動は拒否され、どの上限で止まったかが表示されます。__DEN_CLI__ config agents.max_per_project=10",
     "set.server.sessions_max": "同時に開けるターミナル数",
     "set.server.sessions_max.d":
       "同時に動かせる通常のターミナルの数です。エージェントは数に入りません。これを超える新しいターミナルは断られ、その旨が表示されます。__DEN_CLI__ config sessions.max_concurrent=8",
@@ -2994,6 +3001,8 @@
       "__DEN_TITLE__ は {to} に切り替えられませんでした: {why}。{from} のままです。設定 › Hub でもう一度サインインしてください",
     "ap.hubSwitchSignin": "{url} のサインインを開いています…",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
+    "bell.m.hubMoved":
+      "プロジェクト {project} は {hub} に移動しました。リンクを保つには、このインストールをその Hub に切り替えてください。",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
     "bell.m.hostRestarted":
@@ -3089,6 +3098,12 @@
       "ログアウトしていた間（{min} 分）に止まったエージェント: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
+    "bell.m.deliveryFileBad":
+      "保留中の配信 {n} 件を読めませんでした。ファイルは {moved} として保存しました。",
+    "bell.m.deliveryFileBadUncounted":
+      "{file} を読めず、保留中の配信の数もわかりませんでした。ファイルは {moved} として保存しました。",
+    "bell.m.deliveryFileBadKept":
+      "Den は {file} を読めず、移すこともできませんでした。保留中だった内容なしで配信を続けます。",
     "bell.m.notAtPrompt":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが入力プロンプトにいません",
     "bell.m.held.busy":
@@ -3117,6 +3132,8 @@
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} が出ました。都合のよいときに更新を許可してください (このインストールは {have})",
+    "bell.m.updateRollbackFailed":
+      "__DEN_TITLE__ を {v} に更新できず、元に戻す処理も失敗しました: __DEN_TITLE__ {from} は起動しない可能性があります。{root} でバージョンを {from} に戻し、そこで npm install を実行してください。理由: {why}",
     "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",

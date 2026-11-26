@@ -1,7 +1,7 @@
 // A fake bed for gate/252.mjs (tests/unit/test-infra/gate-252-runner.test.ts):
 // one stub agent in project "north" whose mode is set from a fake Agents
-// page's ⋯ › Mode. Den restarts it at its next idle (the stub's idle
-// prompt) in the new mode, in a new session, with an audit row. `den`:
+// page's ⋯ › Mode. Den restarts it once its turn is quiet (two looks with
+// nothing typed) in the new mode, in a new session, with an audit row. `den`:
 //   "good":       as Den does;
 //   "noRestart":  the mode is saved but the agent never restarts;
 //   "noAudit":    it restarts, but no audit row is written;
@@ -45,8 +45,11 @@ const t = (k, v = {}) =>
   );
 const SOURCE = { own: "its own setting", install: "the Den-wide default" };
 const ROW_NAME = `${t("ag.openName", { id: `${WS} / tester` })} · idle`;
+const ROW_TEXT = `tester ${ID} idle`;
 
 export function fakeBed({ den = "good" } = {}) {
+  const RENAME_HELP =
+    "  x agents rename <id> <name>\n      Other sessions see it as x-<ws>:<name> from its next start or resume.";
   const st = {
     agent: null,
     session: 1,
@@ -61,12 +64,14 @@ export function fakeBed({ den = "good" } = {}) {
           ]
         : [],
     pendingIdle: 0,
+    quiet: 0,
   };
   const want = () => st.own ?? "auto";
   const source = () => (st.own ? "own" : "install");
   // closed, "top" (the ⋯ menu) or "mode" (its Mode radios).
   let menuOpen = "closed";
   let said = null;
+  let onPost = null;
   let tagShown = null;
   let busyOn = null; // the element that showed busy: "more", "other" or none
   let watching = null; // the label of the button the check watches
@@ -86,9 +91,13 @@ export function fakeBed({ den = "good" } = {}) {
           : "more";
   }
 
+  function typed() {
+    st.quiet = 0;
+  }
+
   function idle() {
     if (den === "noRestart" || want() === st.running) return;
-    if (--st.pendingIdle > 0) return;
+    if (++st.quiet < 2) return;
     st.running = want();
     st.session++;
     if (den !== "noAudit" && den !== "oldAudit")
@@ -113,30 +122,46 @@ export function fakeBed({ den = "good" } = {}) {
   const page = {
     async waitForSelector() {}, // the row's mode tag (read by evaluate)
     locator(sel) {
-      if (sel !== `[data-agent="${ID}"]`)
-        return {
-          async waitFor() {
-            fail(sel);
-          },
-        };
       return {
-        getByRole(role, o = {}) {
-          const found =
-            role === "button" &&
-            o.name instanceof RegExp &&
-            o.name.test(ROW_NAME);
-          return {
-            async waitFor() {
-              if (!found) fail(String(o.name));
-            },
-            async click() {
-              if (!found) fail(String(o.name));
-            },
-          };
+        async waitFor() {
+          fail(sel);
         },
       };
     },
     getByRole(role, o = {}) {
+      if (role === "button" && o.name instanceof RegExp) {
+        let text = "";
+        const found = () => o.name.test(ROW_NAME) && ROW_TEXT.includes(text);
+        const row = {
+          filter(f) {
+            text = f.hasText;
+            return row;
+          },
+          first: () => row,
+          async waitFor() {
+            if (!found()) fail(String(o.name));
+          },
+          async click() {
+            if (!found()) fail(String(o.name));
+          },
+          locator() {
+            const tag = {
+              first: () => tag,
+              async waitFor() {
+                if (!found() || !tagShown) fail("[data-mode]");
+              },
+              async getAttribute(a) {
+                return a === "data-mode" ? tagShown.mode : tagShown.source;
+              },
+              async textContent() {
+                return tagShown.text;
+              },
+            };
+            return tag;
+          },
+        };
+        return row;
+      }
       if (role === "button")
         return {
           async count() {
@@ -152,7 +177,12 @@ export function fakeBed({ den = "good" } = {}) {
       if (role === "menuitem")
         return {
           async click() {
-            if (menuOpen !== "top" || !/^Mode: /.test(o.name)) fail(o.name);
+            const now = t("ag.mode.item", { m: t(`pm.name.${st.running}`) });
+            if (
+              menuOpen !== "top" ||
+              !(o.name instanceof RegExp ? o.name.test(now) : o.name === now)
+            )
+              fail(o.name);
             menuOpen = "mode";
           },
         };
@@ -171,10 +201,33 @@ export function fakeBed({ den = "good" } = {}) {
         },
         async click() {
           if (menuOpen !== "mode" || !m) fail(o.name);
-          setMode(m === "follow" ? null : m);
+          if (den !== "refused") setMode(m === "follow" ? null : m);
           menuOpen = "closed";
+          onPost?.(
+            den === "refused"
+              ? { status: 403, body: { ok: false, code: "fixture_scope" } }
+              : { status: 200, body: { ok: true } },
+          );
         },
       };
+    },
+    waitForResponse(pred, opts = {}) {
+      return new Promise((ok, no) => {
+        setTimeout(
+          () => no(new Error("timeout")),
+          Math.min(opts.timeout ?? 50, 50),
+        );
+        onPost = (x) => {
+          const res = {
+            url: () =>
+              `http://bed.invalid/api/workspaces/${WS}/agents/${ID}/mode`,
+            request: () => ({ method: () => "POST" }),
+            status: () => x.status,
+            json: async () => x.body,
+          };
+          if (pred(res)) ok(res);
+        };
+      });
     },
     getByText(text) {
       return {
@@ -221,13 +274,14 @@ export function fakeBed({ den = "good" } = {}) {
         out:
           args[1] === "--help"
             ? den === "oldCli"
-              ? "one agent's mode: a running agent takes it from its next start"
-              : "A running agent\n    restarts at its next idle, on the same conversation, to take it."
+              ? `${RENAME_HELP}\n  x agents permission <id> [ask|edits]\n      one agent's mode: a running agent takes it from its next start`
+              : `${RENAME_HELP}\n  x agents permission <id> [ask|edits]\n      one agent's mode. A running agent\n      restarts at its next idle, on the same conversation, to take it.\n  x agents permission -w <ws> [ask|edits]\n      the project's mode`
             : "",
         err: "",
       };
     },
     async api(p) {
+      if (p === "/api/sessions") idle();
       if (p === "/api/sessions")
         return {
           sessions:
@@ -261,7 +315,7 @@ export function fakeBed({ den = "good" } = {}) {
       return { ok: false };
     },
     readBed(rel) {
-      return rel === "audit.jsonl"
+      return rel === "state:audit.jsonl"
         ? st.audit.map((detail) => JSON.stringify({ detail })).join("\n") + "\n"
         : null;
     },
@@ -273,7 +327,7 @@ export function fakeBed({ den = "good" } = {}) {
         async running() {
           return 10;
         },
-        idlePrompt: idle,
+        idlePrompt: typed,
         state() {
           return st.agent ? { id: ID } : null;
         },

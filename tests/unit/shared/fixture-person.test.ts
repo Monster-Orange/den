@@ -31,8 +31,8 @@ import {
   checkLoginCode,
   mintLoginCode,
   readWebAuthConfig,
-} from "../../../src/shared/web-session.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-session.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 
 let tmp = "";
 beforeEach(() => {

@@ -2505,6 +2505,10 @@
       "Waiting this long, a marked release run is never passed, in minutes",
     "set.server.gate_priority_pass.d":
       "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
+    "set.server.gate_release_pass_other":
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes",
+    "set.server.gate_release_pass_other.d":
+      "While a release run with priority waits, a cpu or browser run of the other kind asked before it doesn't start in a slot it needs, unless it has waited longer than this. It never stops a running one. 0: it passes none of them. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
     "set.server.gate_priority_agents": "Agents may ask for release priority",
     "set.server.gate_priority_agents.d":
       "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
@@ -2627,6 +2631,9 @@
     "set.agents.max_concurrent": "Agents at once",
     "set.agents.max_concurrent.d":
       "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "Agents per project",
+    "set.agents.max_per_project.d":
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -3984,6 +3991,8 @@
       "__DEN_TITLE__ couldn't switch to {to}: {why}. It stays on {from}; sign in again in Settings › Hub",
     "ap.hubSwitchSignin": "Opening {url}'s sign-in…",
     "bell.m.pick": "{n} projects need your pick",
+    "bell.m.hubMoved":
+      "Project {project} moved to {hub}. Switch this install to that Hub to keep it linked.",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
     "bell.pickBody.one":
@@ -4086,6 +4095,14 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
+    "bell.m.deliveryFileBad":
+      "Den couldn't read {n} held deliveries; kept the file as {moved}.",
+    "bell.m.deliveryFileBad.one":
+      "Den couldn't read {n} held delivery; kept the file as {moved}.",
+    "bell.m.deliveryFileBadUncounted":
+      "Den couldn't read {file} or count its held deliveries; kept the file as {moved}.",
+    "bell.m.deliveryFileBadKept":
+      "Den couldn't read {file} and couldn't move it aside; delivery goes on without what it held.",
     "bell.m.notAtPrompt":
       "{name}: {n} messages wait for {m} min. Waiting: the agent isn't at its prompt",
     "bell.m.notAtPrompt.one":
@@ -4138,6 +4155,8 @@
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} is out. Allow the update when it suits you (this install runs {have})",
+    "bell.m.updateRollbackFailed":
+      "__DEN_TITLE__ couldn't update to {v}, and the rollback failed too: __DEN_TITLE__ {from} may not start. Put the pin back on {from} in {root} and run npm install there. Why: {why}",
     "bell.m.updateFailed": "__DEN_TITLE__ couldn't update to {v}: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow",
