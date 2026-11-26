@@ -352,7 +352,6 @@ export async function mountSettings(deps) {
       state.q,
     );
   }
-  /** Issue 774: a row may say it has no use in this browser (`shown`). */
   function rowShown(r) {
     try {
       return typeof r.shown !== "function" || r.shown(ctx) !== false;

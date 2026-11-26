@@ -150,11 +150,6 @@ export interface PushSubscription {
   at: string;
   /** What the device is ("iPhone", "Mac"...), from its browser; "" unknown. */
   device?: string;
-  /**
-   * Issue 774: who added it (their person key). Only that person's open
-   * tab may stand in for the device; one added before 774 has none, and
-   * no tab stands in for it.
-   */
   person?: string;
 }
 
@@ -309,7 +304,6 @@ export interface PushOptions {
   timeoutMs: number;
   ttlSeconds: number;
   fetch?: typeof fetch;
-  /** Issue 774: only these endpoints (the rest wait on an open tab). */
   only?: readonly string[];
 }
 

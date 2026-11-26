@@ -54,12 +54,6 @@ const NO_SHELL: Record<string, number> = {
   "embed-page.js": 2,
 };
 
-/**
- * Writes no person makes, so no button and no pop-up: alerts.js's tab
- * posts its presence and acks a streamed alert on the alert stream (issue
- * 774 row 7b), only where this browser has a push subscription. Held
- * exactly: a new write there, or a write gone, changes this number.
- */
 const BACKGROUND: Record<string, number> = {
   "alerts.js": 1,
 };

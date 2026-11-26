@@ -1058,8 +1058,6 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/alerts/unsubscribe",
   "/api/alerts/test",
   "/api/alerts/forget",
-  // Issue 774 row 7b: an open tab says which device it is, and that it
-  // showed an alert.
   "/api/alerts/presence",
   "/api/alerts/ack",
   // This install's Hub link.

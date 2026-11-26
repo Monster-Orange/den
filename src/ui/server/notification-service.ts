@@ -277,7 +277,6 @@ export function pushDeps(): {
 }
 
 let handoff: AlertHandoff | null = null;
-/** Issue 774 row 7b: the open tabs that show an alert before its push. */
 export function alertHandoff(): AlertHandoff {
   handoff ??= new AlertHandoff({
     windowMs: () => alertPrefs(readUserConfig()).tabFirstSeconds * 1000,
@@ -293,16 +292,11 @@ export function alertFeed(): AlertFeed {
     zone: () => timeZonePref(readUserConfig().time_zone),
     title: () => product().title,
     nameOf,
-    // Issue 774: an agent (or its project) the person muted never alerts.
     muted: (agent, workspace) =>
       (store ?? notificationDeps().store).muted(
         `agent:${agent}`,
         `workspace/${workspace}`,
       ),
-    // Issue 774: the heading is the bell's words, the line under it the
-    // project (as an open tab shows it).
-    // Issue 774 row 7b: a device with a visible Den tab gets the alert
-    // there first; its push goes only if no tab acks it in time.
     push: async (a, prefs) => {
       const send = (only: string[]) =>
         void pushAll(

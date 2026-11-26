@@ -1,14 +1,3 @@
-/**
- * Issue 774: the two short sounds an open Den tab plays with an alert,
- * when the person turned Sounds on (Settings › Notifications): one for
- * "needs you", a softer one for "finished". They ship with Den: made
- * here with the browser's Web Audio, no file to fetch. A browser plays
- * sound only after the person has used the page once, so the first
- * click or key on the page wakes the audio (primeAlertSounds). Only an
- * open tab plays them: a closed tab or a phone uses its own alert sound.
- */
-
-/** Each sound: its notes (Hz), how long each lasts (s), and its loudness. */
 export const ALERT_SOUNDS = {
   needs: { notes: [660, 880], seconds: 0.14, gain: 0.2 },
   finished: { notes: [523], seconds: 0.22, gain: 0.08 },
@@ -16,7 +5,6 @@ export const ALERT_SOUNDS = {
 
 let audio = null;
 
-/** The page's one audio context, or null where there is none. */
 function context(win) {
   if (audio) return audio;
   const AC = win.AudioContext || win.webkitAudioContext;
@@ -29,7 +17,6 @@ function context(win) {
   return audio;
 }
 
-/** Wake the audio on the person's next click or key (a browser's rule). */
 export function primeAlertSounds(win = window) {
   const wake = () => {
     try {
@@ -43,7 +30,6 @@ export function primeAlertSounds(win = window) {
     win.addEventListener?.(ev, wake, { once: true, capture: true });
 }
 
-/** Play sound `kind` ("needs" or "finished"); false when it can't. */
 export function playAlertSound(win, kind) {
   const s = ALERT_SOUNDS[kind];
   const c = s && context(win);

@@ -1732,11 +1732,6 @@ async function helpersRunning(
   return true;
 }
 
-/**
- * Issues 773 and 774: one rule for "needs you", for the rail's count and
- * the tab's: a running agent stopped on a permission, a question or an
- * Allow. Idle ("input"), stopped and terminals don't count.
- */
 export function isNeedsYouRow(r: {
   kind?: string;
   state?: string;
@@ -1751,11 +1746,6 @@ export function isNeedsYouRow(r: {
   );
 }
 
-/**
- * Issue 774: how many agents need the person now, every project (the
- * tab's title and icon), by the same rows and rule as the rail. No host:
- * nothing runs, so none.
- */
 export async function needsYouNow(deps: SessionRouteDeps): Promise<number> {
   const d = resolve(deps);
   let sessions: SessionInfo[] = [];
@@ -1775,16 +1765,9 @@ export async function needsYouNow(deps: SessionRouteDeps): Promise<number> {
   return n;
 }
 
-/** How long open tabs share one needs-you count (each polls every 5 s). */
 const NEEDS_SHARED_MS = 2000;
 let needsShared: { at: number; key: unknown; n: Promise<number> } | null = null;
 
-/**
- * needsYouNow, shared for NEEDS_SHARED_MS: several open tabs polling
- * GET /api/alerts list the host's sessions once between them. `key` is
- * the alert feed's seq: a new alert since lists again, so it never
- * carries the count from before it.
- */
 export function needsYouShared(
   deps: SessionRouteDeps,
   now: () => number = Date.now,

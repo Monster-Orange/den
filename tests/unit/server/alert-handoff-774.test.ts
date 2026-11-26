@@ -1,14 +1,3 @@
-/**
- * Issue 774, mock v3 row 7b (Den Builder's ruling): this computer has a
- * tab open and push is on for it. The open tab shows the alert; the push
- * to this same device is skipped while a tab shows it. A device is its
- * push subscription's endpoint (per browser profile), never an IP or a
- * user agent. No ack in time, a hidden tab or a closed one: the push goes.
- * Reviewer A: the server names the tab and binds it to its person; a tab
- * claims only its person's own subscription; the endpoint is kept as a
- * hash; several tabs on one device: the first ack drops it in the others;
- * streams per person are capped, the oldest dropped.
- */
 import { describe, expect, it } from "@jest/globals";
 import {
   AlertHandoff,
@@ -19,7 +8,6 @@ import type { Alert } from "../../../src/ui/server/alert-feed.js";
 const PHONE = "https://push.example/phone";
 const LAPTOP = "https://push.example/laptop";
 const OTHERS = "https://push.example/someone-else";
-/** The stored subscriptions, by person (the claim check). */
 const OWN: Record<string, string[]> = {
   "person:a": [PHONE, LAPTOP],
   "person:b": [OTHERS],
@@ -100,7 +88,6 @@ describe("774 row 7b: the open tab first, then push", () => {
     const t = r.tab("person:a", LAPTOP, true);
     r.deliver(r.alert("x1"));
     expect(r.shown(t)).toEqual(["x1"]);
-    // The other devices have no tab: pushed at once.
     expect(r.pushed).toEqual([[PHONE, OTHERS]]);
     expect(r.h.ack(t, "person:a", "x1")).toBe("ok");
     r.fire();
@@ -149,7 +136,6 @@ describe("774 row 7b: the open tab first, then push", () => {
     expect(r.h.ack(a, "person:a", "x1")).toBe("ok");
     expect(r.dropped(b)).toEqual(["x1"]);
     expect(r.dropped(a)).toEqual([]);
-    // b's late ack: nothing pending any more.
     expect(r.h.ack(b, "person:a", "x1")).toBe("not_pending");
     r.fire();
     expect(r.pushed).toEqual([]);
@@ -243,7 +229,6 @@ describe("774 row 7b: the open tab first, then push", () => {
     r.tab("person:a", null, false);
     expect(r.ended).toEqual([a]);
     expect(r.h.tabCount()).toBe(3);
-    // The dropped tab no longer stands in for the laptop.
     r.deliver(r.alert("x1"), [LAPTOP]);
     expect(r.pushed).toEqual([[LAPTOP]]);
     expect(r.ended).not.toContain(b);
@@ -267,7 +252,6 @@ describe("774 row 7b: the open tab first, then push", () => {
         { endpoint: LAPTOP, visible: true },
         () => true,
       );
-    // Still the one timer set when the alert happened.
     expect(r.timers.size).toBe(1);
     r.fire();
     expect(r.pushed).toEqual([[LAPTOP]]);

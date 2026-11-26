@@ -6177,17 +6177,10 @@ function waitingAgentIds(): Set<string> {
   return out;
 }
 
-/**
- * Issue 774: how many agents need the person now, every project (the
- * tab's title and icon): the rail's rows and rule (session-routes.ts
- * isNeedsYouRow), so the tab, the rail and the Agents page agree.
- */
 function needsYouCount(): Promise<number> {
-  // Issue 774: a new alert since the last list lists again.
   return needsYouShared(sessionListDeps(), Date.now, alertFeed().latest());
 }
 
-/** The Agents list's deps (session-routes.ts), shared with the tab count. */
 function sessionListDeps(): SessionRouteDeps {
   return {
     waitingAgents: waitingAgentIds,
@@ -6195,7 +6188,6 @@ function sessionListDeps(): SessionRouteDeps {
     rotationPolicy: () => policyResolver(agentWebDeps()),
     restartResume: () => restartResolver(agentWebDeps()),
     modeOf: () => modeResolver(agentWebDeps()),
-    // Issue 773: each agent's state for the person asking.
     agentStates: agentStateDeps,
   };
 }

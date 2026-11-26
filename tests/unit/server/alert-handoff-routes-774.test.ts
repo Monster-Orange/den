@@ -1,17 +1,3 @@
-/**
- * Issue 774 row 7b: the routes of the open tab first, then push.
- *
- *   GET  /api/alerts/stream    an open tab's event stream; the first event
- *                              names the tab (the server's id, bound to the
- *                              caller's person and to this stream)
- *   POST /api/alerts/presence  {tab, endpoint?, visible}: which of the
- *                              caller's own push subscriptions this tab is
- *   POST /api/alerts/ack       {tab, id}: the tab showed alert `id`
- *
- * All three are a person's: an agent's token and the fixture (test)
- * session are refused. The endpoint never rides in a URL. A tab may claim
- * only a subscription its own person added (subscribe records who).
- */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";

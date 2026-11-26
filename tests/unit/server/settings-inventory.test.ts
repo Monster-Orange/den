@@ -160,11 +160,9 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     quiet_to: true,
     push_timeout_seconds: true,
     push_ttl_seconds: true,
-    // Issue 774: a finished turn, sounds, the count in the tab.
     finished: true,
     sound: true,
     tab_count: true,
-    // Issue 774 row 7b: the open tab first, and the stream cap.
     tab_first_seconds: true,
     max_streams: true,
   },
@@ -421,7 +419,6 @@ describe("the settings inventory (R21)", () => {
         // Issue 367: how long a push may take, and a push service keeps it.
         "alerts.push_timeout_seconds",
         "alerts.push_ttl_seconds",
-        // Issue 774: a finished turn, sounds, the count in the tab.
         "alerts.finished",
         "alerts.sound",
         "alerts.tab_count",

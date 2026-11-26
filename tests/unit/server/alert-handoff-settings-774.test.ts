@@ -1,9 +1,3 @@
-/**
- * Issue 774 row 7b: the tab-first window and the stream cap are Settings
- * with permissive defaults (alerts.tab_first_seconds 3, clamped 1–10;
- * alerts.max_streams 20 per person, 1–200), in user.yml, the CLI's config
- * keys and Settings › Notifications, in en/es/ja.
- */
 import fs from "node:fs";
 import { describe, expect, it } from "@jest/globals";
 import {
@@ -63,7 +57,6 @@ describe("774: alerts.tab_first_seconds and alerts.max_streams", () => {
     const cap = rows.find((r) => r.id === "notifications.max_streams");
     expect(first?.keys).toEqual(["alerts.tab_first_seconds"]);
     expect(cap?.keys).toEqual(["alerts.max_streams"]);
-    // English in shell.js; es and ja follow it (i18n.test.ts, the parity).
     const en = fs.readFileSync("src/ui/server/public/shell.js", "utf-8");
     for (const k of [
       "set.notifications.tab_first",

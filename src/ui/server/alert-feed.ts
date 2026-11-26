@@ -33,12 +33,7 @@ export interface Alert {
   agent: string;
   /** The product's title (the notification's heading). */
   title: string;
-  /**
-   * The bell's words: who, and what it waits on. Nothing else. Issue
-   * 774: the notification's heading.
-   */
   body: string;
-  /** Issue 774: the agent's project (the line under the heading), or "". */
   project: string;
   /** The agent's page. */
   link: string;
@@ -51,10 +46,6 @@ export interface AlertFeedDeps {
   title: () => string;
   nameOf: (agent: string) => string;
   now?: () => number;
-  /**
-   * Issue 774: whether the person muted this agent (or its project):
-   * a muted one never alerts. Absent, none is.
-   */
   muted?: (agent: string, workspace: string) => boolean;
   /** Web Push to the person's devices (S2); absent, none. */
   push?: (a: Alert, prefs: AlertPrefs) => Promise<unknown>;
@@ -127,7 +118,6 @@ export class AlertFeed {
     return a;
   }
 
-  /** The newest alert's number (0: none yet). */
   latest(): number {
     return this.seq;
   }

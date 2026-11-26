@@ -125,10 +125,6 @@ export interface NotificationRouteDeps {
     /** A test alert to every device: each one's push service's answer. */
     test?: () => Promise<{ endpoint: string; status: number }[]>;
   };
-  /**
-   * Issue 774 row 7b: an open tab shows an alert first; the push to that
-   * same device waits (alert-handoff.ts).
-   */
   handoff?: AlertHandoff;
   /**
    * Issue 746: the held writes waiting on the person (the approval
@@ -143,10 +139,6 @@ export interface NotificationRouteDeps {
   seen?: SeenMarks;
   doneAgents?: (person: string) => DoneAgent[];
   seenDone?: (person: string) => DoneAgent[];
-  /**
-   * Issue 774: how many agents need the person now, every project (the
-   * tab's title and icon). Absent: none.
-   */
   needsYou?: () => number | Promise<number>;
 }
 
@@ -180,10 +172,6 @@ const refuse = (
   error: string,
 ) => sendJson(res, { ok: false, code, error }, status);
 
-/**
- * Issue 774: the person an open tab speaks for, or null: never an agent's
- * token, never the fixture (test) session.
- */
 function tabPerson(req: http.IncomingMessage, agent: unknown): string | null {
   if (agent) return null;
   const p = personKey(req);
@@ -441,7 +429,6 @@ export async function handleNotificationRoutes(
     sendJson(res, {
       ok: true,
       ...(deps.alerts?.after(after) ?? { seq: 0, alerts: [] }),
-      // Issue 774: the count in the tab, quiet hours and mutes or not.
       count,
     });
     return true;
@@ -494,7 +481,6 @@ export async function handleNotificationRoutes(
         res.end();
       },
     );
-    // A comment line keeps proxies from closing a quiet stream.
     beat = setInterval(() => void res.write(": beat\n\n"), 25_000);
     beat.unref?.();
     req.on("close", stop);

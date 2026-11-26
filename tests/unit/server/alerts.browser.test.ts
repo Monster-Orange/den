@@ -194,14 +194,11 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       ).__shown.map((n) => ({ title: n.title, body: n.body, tag: n.tag })),
     );
     expect(shown).toHaveLength(1);
-    // Issue 774: the words are the heading, the project under them.
     expect(shown[0].title).toBe("planner needs your permission");
     expect(shown[0].body).toBe("north");
-    // Issue 774: the tab says how many agents need the person.
     await p.waitForFunction(() => document.title.startsWith("(1) "), null, {
       timeout: 15_000,
     });
-    // The icon's badge is drawn once the theme's icon has loaded.
     await p.waitForFunction(
       () =>
         (
@@ -300,7 +297,6 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       alerts: { quiet_from: "22:00", quiet_to: "07:00" },
     });
     await s!.settings({ alerts: { quiet_from: null, quiet_to: null } });
-    // Issue 774: the three new rows; their switches save.
     const fin = p.locator('[data-focus-key="notifications-alert_finished"]');
     expect(await fin.isChecked()).toBe(false);
     await fin.click();
@@ -310,7 +306,6 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       .click();
     const count = p.locator('[data-focus-key="notifications-tab_count"]');
     expect(await count.isChecked()).toBe(true);
-    // The sound switch saves: poll the saved Settings (every 50 ms).
     const end = Date.now() + 10_000;
     while (
       ((await s!.settingsGet()).alerts as { sound?: boolean } | undefined)

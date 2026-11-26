@@ -440,8 +440,6 @@ export class Attention {
           : { key: "bell.m.turn", vars: { name } },
         link,
       });
-      // Issue 774: alerts outside the bell too, when its person turned
-      // that on (the feed decides) and isn't looking at it.
       if (!this.onScreen(agent))
         try {
           this.d.alert?.({ agent, workspace, why: "finished" });

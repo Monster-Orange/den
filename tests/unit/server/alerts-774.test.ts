@@ -1,24 +1,3 @@
-/**
- * Issue 774: browser alerts, optional sounds, and a count in the tab
- * title and icon. One test clause per rule of the approved mock (Den
- * project in Hub, version 3):
- *
- *   1  Settings › Notifications: three new rows (finished, sounds, the
- *      tab count); defaults finished off, sounds off, count on.
- *   1c the browser blocks notifications: the row says so, the bell and
- *      the tab count still work.
- *   1d the browser can't show them: a note, no error; fewer rows.
- *   3  the two alerts: "needs you" in the shipped words, "finished" new;
- *      the heading is the words, the line under it the project, never
- *      the tool line or the question.
- *   4  the tab title "(2) Den · Agents"; the icon badge a digit, "9+"
- *      from ten; zero shows nothing.
- *   6  when it stays quiet (each row of the table).
- *   7  no double alert: two tabs show one, one sound.
- *
- * Browser side only: nothing is raised from the Den computer itself.
- * Invented names only.
- */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -47,7 +26,6 @@ import {
 import { ALERT_SOUNDS } from "../../../src/ui/server/public/alert-sounds.js";
 import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
 
-/** The fields of a settings row these tests read. */
 type Row = {
   read: (ctx: unknown) => unknown;
   keys?: readonly string[];
@@ -190,10 +168,8 @@ describe("774 clauses 1c and 1d: a browser that can't notify", () => {
       const note = row("notifications.desktop").control.notice();
       expect(note).toContain("Home Screen");
       expect(note).toContain("The bell and the tab count still work.");
-      // Fewer rows: the finished alert and push need notifications.
       expect(row("notifications.alert_finished").shown?.()).toBe(false);
       expect(row("notifications.phone").shown?.()).toBe(false);
-      // Sounds and the count still work there.
       expect(row("notifications.alert_sound").shown?.() ?? true).toBe(true);
       expect(row("notifications.tab_count").shown?.() ?? true).toBe(true);
     });
@@ -261,9 +237,6 @@ describe("774 clause 4: the tab title and icon", () => {
     expect(badgeText(10)).toBe("9+");
     expect(badgeText(12)).toBe("9+");
   });
-
-  // The count's rule (running agents on a permission, a question or an
-  // Allow) is the rail's: tab-count-773-774.test.ts.
 });
 
 describe("774 clause 6: when it stays quiet", () => {
@@ -368,7 +341,6 @@ describe("774 clause 6: when it stays quiet", () => {
 });
 
 describe("774 clause 7: no double alert", () => {
-  /** A browser: two tabs share its storage. */
   function browserTabs() {
     const store = new Map<string, string>();
     const localStorage = {
@@ -487,7 +459,6 @@ describe("the tab badge takes the theme's colors (774)", () => {
 });
 
 describe("issue 774: the agent in front of the person, from the Agents page's address", () => {
-  /** A page at `url` whose list has session `sid` as agent `agent`'s row. */
   const win = (url: string, rows: Record<string, string> = {}) => ({
     location: { href: `https://den.example.test${url}` },
     document: {

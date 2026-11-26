@@ -30,7 +30,6 @@ import { tabCount } from "./tab-count.js";
 
 const POLL_MS = 5000;
 const CLAIMED = "den-alerts-shown";
-/** A tab behind waits this long before it claims, so the one in front wins. */
 const BEHIND_WAIT_MS = 1500;
 
 /** Only Den's own pages: an alert's link. */
@@ -62,7 +61,6 @@ async function pushed(win) {
 
 /** Show `a` as a notification; a click opens its page in this tab. */
 export function showAlert(win, a) {
-  // Issue 774: the words are the heading, the project the line under it.
   const n = new win.Notification(a.body || a.title || "", {
     body: a.project || "",
     tag: a.id,
@@ -79,15 +77,7 @@ export function showAlert(win, a) {
   return n;
 }
 
-/**
- * Issue 774: what alert `a` does in this tab: { notify, sound } (sound
- * "needs", "finished" or null). `prefs`: the person's switches
- * ({desktop, sound}); `env`: this tab now ({front, permission ("granted",
- * "denied", "default" or "unsupported"), pushed, agent: the agent this
- * page shows, or null}).
- */
 export function alertPlan(a, prefs, env) {
-  // Looking at that agent: nothing (its page says it).
   if (env.front && env.agent && env.agent === a.agent)
     return { notify: false, sound: null };
   const notify =
@@ -100,15 +90,9 @@ export function alertPlan(a, prefs, env) {
   return { notify, sound };
 }
 
-/**
- * Issue 774: alert `a` in this tab, once per browser. `deps`: { show(a),
- * play(kind), wait(ms) } (the page's own, or a test's).
- */
 export async function deliverAlert(win, a, prefs, env, deps) {
   if (!a?.id) return null;
   if (!env.front) await deps.wait(BEHIND_WAIT_MS);
-  // The tab in front claims even when it does nothing: a tab behind then
-  // shows no notification for what the person sees already.
   if (!claim(win, a.id)) return null;
   const plan = alertPlan(a, prefs, env);
   if (plan.notify) {
@@ -125,11 +109,9 @@ export async function deliverAlert(win, a, prefs, env, deps) {
       /* no sound: the bell has it */
     }
   }
-  // What this tab did (null: another tab of this browser has it).
   return plan;
 }
 
-/** This tab now: { front, permission, pushed, agent } (alertPlan's env). */
 function tabEnv(win) {
   const doc = win.document;
   const N = win.Notification;
@@ -141,14 +123,6 @@ function tabEnv(win) {
   };
 }
 
-/**
- * Issue 774 row 7b: this tab's alert stream (GET /api/alerts/stream).
- * The server names the tab; the tab says which device it is (this
- * browser's push subscription's endpoint, in the body) and whether it
- * shows. An alert streamed here is this device's: its push waits, so the
- * tab shows it itself and acks it. `o`: { prefs() (the person's switches,
- * from the last poll), deps (deliverAlert's), post(path, body) }.
- */
 export function alertStream(win, o) {
   let tab = "";
   const presence = async () => {
@@ -165,12 +139,10 @@ export function alertStream(win, o) {
       tab = e.tab;
       await presence();
     } else if (e?.type === "drop" && typeof e.id === "string") {
-      // Another tab of this device showed it: never here too.
       claim(win, e.id);
     } else if (e?.type === "alert" && tab && e.alert?.id) {
       const env = tabEnv(win);
       const plan = await deliverAlert(win, e.alert, o.prefs(), env, o.deps);
-      // Ack only what reached the person here: otherwise the push goes.
       if (plan && (plan.notify || plan.sound || env.front))
         await o.post("/api/alerts/ack", { tab, id: e.alert.id });
     }
@@ -178,11 +150,6 @@ export function alertStream(win, o) {
   return { onEvent, presence };
 }
 
-/**
- * The agent this page shows, or null: the Agents page's session in front
- * (?front=, else its one ?open=), as its list row's agent id (an alert
- * names the agent, the address names the session).
- */
 export function pageAgent(win) {
   try {
     const u = new URL(win.location.href);
@@ -219,10 +186,6 @@ export function initAlerts(win = window) {
     wait: (ms) => new Promise((r) => win.setTimeout(r, ms)),
   };
   let lastPrefs = { desktop: true, sound: false, tab_count: true };
-  // Issue 774 row 7b: the stream, only where this browser has a push
-  // subscription (or once it subscribes here). Without one there is no
-  // push for this tab to beat, and the poll shows the alerts: a page's
-  // load opens nothing and writes nothing (R21).
   let streaming = false;
   const openStream = () => {
     if (streaming) return;
@@ -269,7 +232,6 @@ export function initAlerts(win = window) {
       const b = await r.json();
       const prefs = b.prefs || { desktop: true, sound: false, tab_count: true };
       lastPrefs = prefs;
-      // Issue 774: the count, quiet hours or not; zero shows nothing.
       tab.show(prefs.tab_count === false ? 0 : Number(b.count) || 0);
       if (prefs.sound && !primed) {
         primed = true;
@@ -349,7 +311,6 @@ export async function pushOn(api, send, win = window) {
     subscription: typeof sub.toJSON === "function" ? sub.toJSON() : sub,
   });
   if (!kept) throw new Error("subscribe refused");
-  // Issue 774 row 7b: this page's alert stream opens now (initAlerts).
   try {
     win.dispatchEvent(new win.Event("den:push-on"));
   } catch {

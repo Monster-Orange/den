@@ -414,7 +414,6 @@ function alertRows() {
       },
     },
     {
-      // Issue 774: a finished turn alerts too (alerts.finished, default off).
       id: "notifications.alert_finished",
       category: "notifications",
       label: "Also tell me when an agent finishes",
@@ -429,7 +428,6 @@ function alertRows() {
       write: (v, ctx) => ctx.post({ alerts: { finished: v === true } }),
     },
     {
-      // Issue 774: a short sound from an open tab (alerts.sound, default off).
       id: "notifications.alert_sound",
       category: "notifications",
       label: "Sounds",
@@ -443,7 +441,6 @@ function alertRows() {
       write: (v, ctx) => ctx.post({ alerts: { sound: v === true } }),
     },
     {
-      // Issue 774: the count in the tab (alerts.tab_count, default on).
       id: "notifications.tab_count",
       category: "notifications",
       label: "Count in the tab",
@@ -472,7 +469,6 @@ function alertRows() {
         "iphone",
       ],
       scope: "user",
-      // Issue 774: not where the browser can't notify at all.
       shown: () => !!notifyApi(),
       control: { type: "custom", render: drawPush },
       keys: ["alerts.phone"],
@@ -569,8 +565,6 @@ function alertRows() {
       write: (v, ctx) => ctx.post({ alerts: { push_ttl_seconds: v } }),
     },
     {
-      // Issue 774 row 7b: with a tab open on a device, it shows the alert
-      // first; the push to that device waits this long for it.
       id: "notifications.tab_first",
       category: "notifications",
       label: "Open tab first",
@@ -599,10 +593,6 @@ function alertRows() {
   ];
 }
 
-/**
- * Issue 774: the Sounds switch, and a play button for each sound (they
- * write nothing: they let the person hear them).
- */
 function drawSounds(host, ctx, io) {
   const on = ctx.data.alerts?.sound === true;
   host.innerHTML =

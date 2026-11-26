@@ -1,9 +1,3 @@
-/**
- * Issue 774 + 773: the count in the tab reads the same "needs you" list as
- * the Agents page and the rail (mock 774 v3, notes for the developers): a
- * running agent stopped on a permission, a question or an Allow. One rule,
- * isNeedsYouRow, for the rail's count and the tab's.
- */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -30,7 +24,6 @@ describe("one rule for needs you (the page, the rail, the tab)", () => {
     expect(isNeedsYouRow(row({ waiting: true, waitingWhy: "asked" }))).toBe(
       true,
     );
-    // A held Allow: waiting, with no hook reason.
     expect(isNeedsYouRow(row({ waiting: true }))).toBe(true);
   });
 
@@ -39,7 +32,6 @@ describe("one rule for needs you (the page, the rail, the tab)", () => {
       false,
     );
     expect(isNeedsYouRow(row({ waiting: false }))).toBe(false);
-    // A stopped agent with a held Allow is in Stopped, not Needs you.
     expect(isNeedsYouRow(row({ waiting: true, state: "stopped" }))).toBe(false);
     expect(
       isNeedsYouRow({ kind: "shell", state: "running", waiting: true }),

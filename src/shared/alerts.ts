@@ -36,13 +36,6 @@ import type { UiLanguage } from "./ui-language.js";
 /** What the agent waits on. */
 export type AlertWhy = "permission" | "asked" | "allow" | "finished";
 
-/**
- * Issue 774 (built for #780): what each kind does, read from here, never
- * hard-wired where it is used: whether it alerts ("opt-in": only with
- * alerts.finished on), which sound an open tab plays, and whether it
- * counts in the tab. Issue 773's attention states are to feed this table
- * when they land.
- */
 export const ALERT_KINDS: Readonly<
   Record<
     AlertWhy,
@@ -124,15 +117,10 @@ export interface AlertPrefs {
   pushTimeoutSeconds: number;
   /** How long a push service keeps an alert for a device that is off. */
   pushTtlSeconds: number;
-  /** Issue 774: a finished turn alerts too (default off). */
   finished: boolean;
-  /** Issue 774: an open tab plays a short sound with each alert (default off). */
   sound: boolean;
-  /** Issue 774: the count in the tab's title and icon (default on). */
   tabCount: boolean;
-  /** Issue 774: an open tab's time to show an alert before the push. */
   tabFirstSeconds: number;
-  /** Issue 774: open tabs' alert streams per person. */
   maxStreams: number;
 }
 
@@ -149,7 +137,6 @@ export const ALERT_DEFAULTS: AlertPrefs = {
   maxStreams: 20,
 };
 
-/** The switches as user.yml stores them, and each one's prefs field. */
 const SWITCHES = {
   desktop: "desktop",
   phone: "phone",
@@ -206,10 +193,6 @@ export function alertPrefs(user: unknown): AlertPrefs {
   };
 }
 
-/**
- * Issue 367: the push limits a page may set, and each one's widest range.
- * Issue 774: the tab-first window and the stream cap.
- */
 const PUSH_LIMITS = {
   push_timeout_seconds: { min: 1, max: 3600 },
   push_ttl_seconds: { min: 0, max: 2_419_200 },
@@ -217,7 +200,6 @@ const PUSH_LIMITS = {
   max_streams: { min: 1, max: 200 },
 } as const;
 
-/** A stored whole number within `k`'s range, else `fallback`. */
 function within(
   v: unknown,
   k: keyof typeof PUSH_LIMITS,
@@ -245,7 +227,6 @@ export function alertSettings(user: UserConfig): Record<string, unknown> {
     // Issue 367: the push limits, their defaults when unset.
     push_timeout_seconds: p.pushTimeoutSeconds,
     push_ttl_seconds: p.pushTtlSeconds,
-    // Issue 774: a finished turn, sounds, the count in the tab.
     finished: p.finished,
     sound: p.sound,
     tab_count: p.tabCount,

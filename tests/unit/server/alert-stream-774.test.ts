@@ -1,10 +1,3 @@
-/**
- * Issue 774 row 7b, the tab's side: an open tab holds the alert stream,
- * says which device it is (its push subscription's endpoint, in a POST
- * body) and whether it shows, shows a streamed alert itself (the push to
- * this device waits for it), and acks it. One alert shows once per
- * browser, whether the poll or the stream brings it first.
- */
 import { describe, expect, it } from "@jest/globals";
 import { alertStream } from "../../../src/ui/server/public/alerts.js";
 

@@ -1,10 +1,3 @@
-/**
- * Issue 774 row 7b: a page opens the alert stream only when this browser
- * has a push subscription, or once it subscribes. With no subscription
- * there is no push for the open tab to beat (the server keeps no device
- * for it), and the poll shows the alerts. So a page's load opens no
- * stream and writes nothing (R21: loading a page writes nothing).
- */
 import { describe, expect, it } from "@jest/globals";
 import { initAlerts } from "../../../src/ui/server/public/alerts.js";
 
@@ -91,8 +84,6 @@ describe("774 row 7b: when a page opens the alert stream", () => {
   });
 
   it("subscribed: loading writes one thing, the tab's presence", async () => {
-    // The one load-time write where push is on: an in-memory heartbeat
-    // (this tab, a hash of its endpoint, whether it shows), never saved.
     const r = rig({ sub: true });
     initAlerts(r.win);
     await flush();

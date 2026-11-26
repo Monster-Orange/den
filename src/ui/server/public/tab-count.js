@@ -1,37 +1,15 @@
-/**
- * Issue 774: how many agents need the person, in the tab's title and on
- * its icon, so a tab behind others still says it. The count goes in
- * front of the whole title: "(2) Den · Agents". On the 16 px icon the
- * badge is a dot with the digit, "9+" from ten; the title carries the
- * exact count. Zero shows nothing: the title and the theme's icon as
- * they were.
- *
- * The page (shell.js) and the theme (appearance.js) set the title and
- * the icon; this follows them: a new title gets the count again, and a
- * new theme icon is the one the badge is drawn on.
- */
-
 const PREFIX = /^\(\d+\)\s/;
 
-/** `title` with the count `n` in front (none at zero). */
 export function titleWithCount(title, n) {
   const base = String(title ?? "").replace(PREFIX, "");
   return n > 0 ? `(${n}) ${base}` : base;
 }
 
-/** The icon badge's text: "" at zero, the digit, "9+" from ten. */
 export function badgeText(n) {
   if (!(n > 0)) return "";
   return n > 9 ? "9+" : String(Math.floor(n));
 }
 
-/**
- * The theme's colors for the badge, from its tokens on the page: the
- * accent dot, ringed in the page's background, the digit in the color
- * that reads on the accent. A canvas takes no CSS variables, so they are
- * read once per drawing, with the theme's sans for the digit. Empty when
- * the page has no theme yet.
- */
 export function badgeColors(doc) {
   const cs = doc.defaultView?.getComputedStyle?.(doc.documentElement);
   const v = (name) => (cs ? cs.getPropertyValue(name).trim() : "");
@@ -43,12 +21,6 @@ export function badgeColors(doc) {
   };
 }
 
-/**
- * The badge drawn on a 64 px icon (the mock's, scaled with it): a dot in
- * the theme's accent top right, ringed in its background, with the digit
- * in the color that reads on the accent. A color the theme doesn't give
- * leaves the canvas's own.
- */
 function drawBadge(g, text, colors) {
   g.beginPath();
   g.arc(46, 18, 17, 0, Math.PI * 2);
@@ -63,11 +35,9 @@ function drawBadge(g, text, colors) {
   g.fillText(text, 46, text.length > 1 ? 24.1 : 25.9);
 }
 
-/** The tab's count painter for this page: show(n). */
 export function tabCount(win = window) {
   const doc = win.document;
   let n = 0;
-  /** The theme's icon (the badge is drawn on it), by the link it is on. */
   let base = null;
   let drawn = null;
   let drawing = 0;
@@ -113,7 +83,6 @@ export function tabCount(win = window) {
     img.src = base;
   };
 
-  // The page or the theme changed the title or the icon: follow it.
   try {
     const Obs = win.MutationObserver;
     if (typeof Obs === "function" && doc.head)

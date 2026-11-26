@@ -111,9 +111,6 @@ describe("issue 172: alerts on the real server", () => {
     expect(text).not.toContain("sk-live");
     expect(text).not.toContain("southward");
     expect(alerts[0].title).toBeTruthy();
-    // Issue 774: the project for the line under the heading; the count of
-    // agents that need the person (one agent, two needs: one); the
-    // switches the tab acts on, at their defaults.
     expect(alerts.map((a) => (a as A & { project: string }).project)).toEqual([
       "north",
       "north",
@@ -188,7 +185,6 @@ describe("issue 172: alerts on the real server", () => {
       expect(stub.received).toHaveLength(1);
       const got = stub.received[0];
       expect(got.vapidOk).toBe(true);
-      // Issue 774: the words are the heading, the project under them.
       expect(JSON.parse(got.text!)).toMatchObject({
         title: "planner asked you",
         body: "north",
