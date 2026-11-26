@@ -85,10 +85,28 @@ describe("gate/1668 rows", () => {
     expect(r[1].detail).toContain("max in flight 9000");
   });
 
-  it("server-info that never overlapped a list is not measured, never a PASS", () => {
+  it("a list fast enough that no probe overlapped it judges both rows on that bound, no throw", () => {
+    const quick = {
+      ...fast,
+      tries: times(Math.floor(limits.probe / 10)),
+      medianMs: Math.floor(limits.probe / 10),
+      probes: probes(4, 0),
+      inFlight: 0,
+      maxProbeMs: null,
+    };
+    const r = rows(quick);
+    expect(r.map((x) => x.ok)).toEqual([true, true]);
+    expect(r[1].detail).toContain("so nothing could wait behind it longer");
+    const stuck = rows({ ...quick, probes: probes(limits.probe * 2, 0) });
+    expect(stuck[1].ok).toBe(false);
+  });
+
+  it("a slow list no probe overlapped is not measured, never a PASS", () => {
     expect(() =>
       rows({
         ...fast,
+        tries: times(limits.probe * 3),
+        medianMs: limits.probe * 3,
         probes: probes(3, limits.min - 1),
         inFlight: limits.min - 1,
       }),

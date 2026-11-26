@@ -12,7 +12,7 @@ export const IDLE_TRIES = 3;
 
 export const clauses = [
   `with ${SEED_AGENTS} agents, each with helpers and ${SEED_MB} MB of transcript, the agents list (GET /api/sessions) answers within ${LIMIT_MS} ms (the median of ${TRIES} tries after a warm-up)`,
-  `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries; its idle time is shown beside it)`,
+  `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries, unless the list itself answers within ${PROBE_MS} ms, so nothing can wait behind it longer; its idle time is shown beside it)`,
 ];
 export const SEED_WAY =
   "one real stub start makes a template agent; the gate process then writes the other agents' records, transcripts and helpers into that test Den's own state (the one home whose template record holds the token it just made), so seeding takes seconds and /api/sessions reads them as it reads any agent";
@@ -288,7 +288,9 @@ export function expect(cells) {
       `1668 not measured: the list showed helpers on ${r.helperRows} of ${SEED_AGENTS} seeded agents`,
     );
   const seedLine = `seeded ${SEED_AGENTS} agents in ${r.seedMs} ms, rows with helpers ${r.helperRows}; ${SEED_WAY}`;
-  if ((r.inFlight ?? 0) < IN_FLIGHT_MIN)
+  const few = (r.inFlight ?? 0) < IN_FLIGHT_MIN;
+  const bounded = few && r.medianMs !== null && r.medianMs <= PROBE_MS;
+  if (few && !bounded)
     throw new Error(
       `1668 not measured: server-info started while the list was still in flight on ${r.inFlight ?? 0} of ${TRIES} tries (needs ${IN_FLIGHT_MIN}); list tries ${JSON.stringify((r.tries ?? []).map((t) => t.ms))} ms`,
     );
@@ -302,8 +304,11 @@ export function expect(cells) {
     ),
     row(
       clauses[1],
-      allOk(r.probes) && r.maxProbeMs <= PROBE_MS,
-      `${seedLine}; server-info idle ${r.idleMs} ms (median of ${IDLE_TRIES}); during each list ${JSON.stringify((r.probes ?? []).map((p) => (p.inFlight ? p.ms : `${p.ms} (list done)`)))} ms, max in flight ${r.maxProbeMs} over ${r.inFlight} of ${TRIES} (limit ${PROBE_MS})`,
+      allOk(r.probes) &&
+        (bounded
+          ? r.probes.every((p) => p.ms <= PROBE_MS)
+          : r.maxProbeMs <= PROBE_MS),
+      `${seedLine}; server-info idle ${r.idleMs} ms (median of ${IDLE_TRIES}); during each list ${JSON.stringify((r.probes ?? []).map((p) => (p.inFlight ? p.ms : `${p.ms} (list done)`)))} ms, ${bounded ? `in flight on ${r.inFlight} of ${TRIES}, but the list answered in ${r.medianMs} ms (median), within ${PROBE_MS}, so nothing could wait behind it longer; max ${Math.max(...r.probes.map((p) => p.ms))}` : `max in flight ${r.maxProbeMs} over ${r.inFlight} of ${TRIES}`} (limit ${PROBE_MS})`,
     ),
   ];
 }
