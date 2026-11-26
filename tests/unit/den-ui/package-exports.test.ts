@@ -20,7 +20,11 @@ describe("den-ui package exports", () => {
     const srcExports = Object.fromEntries(
       Object.entries(pkg.exports).filter(
         // The marks and the site folder (issue 644) are folders: below.
-        ([k]) => !k.startsWith("./inventory") && !k.endsWith("/*"),
+        // The kit's themes (issue 788) are in src/themes/: below.
+        ([k]) =>
+          !k.startsWith("./inventory") &&
+          !k.endsWith("/*") &&
+          !k.startsWith("./themes/"),
       ),
     ) as Record<string, string>;
     const files = fs
@@ -39,6 +43,23 @@ describe("den-ui package exports", () => {
         base.endsWith(".css") ? `./${base}` : `./${base.replace(/\.js$/, "")}`,
       );
     }
+  });
+
+  it("exports each built theme in src/themes/ by its path (issue 788)", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(PKG, "package.json"), "utf-8"),
+    ) as { exports: Record<string, string> };
+    const themes = fs
+      .readdirSync(path.join(PKG, "src", "themes"))
+      .filter((f) => f.endsWith(".css"))
+      .sort();
+    expect(themes.length).toBeGreaterThan(0);
+    const exported = Object.entries(pkg.exports)
+      .filter(([k]) => k.startsWith("./themes/"))
+      .sort(([a], [b]) => a.localeCompare(b));
+    expect(exported).toEqual(
+      themes.map((f) => [`./themes/${f}`, `./src/themes/${f}`]),
+    );
   });
 
   it("exports the marks and the site folder (issue 644), each a folder in src/", () => {

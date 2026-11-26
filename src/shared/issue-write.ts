@@ -23,6 +23,9 @@
  */
 
 /** The actions issue_write does. */
+import { isRepoName } from "./repo-name.js";
+import { needsFiledCheck } from "./filed-text-check.js";
+
 export const ISSUE_WRITE_ACTIONS = [
   "create",
   "comment",
@@ -70,6 +73,19 @@ export const ISSUE_WRITES_PER_HOUR = {
   max: 10_000,
 } as const;
 
+/**
+ * Issue 1127: agents.issue_writes_visibility_minutes, how old a repo's
+ * visibility may be when the words check asks it (a repo made public is
+ * checked from then on, at most this late). Default and range.
+ */
+export const ISSUE_WRITES_VISIBILITY_MINUTES = {
+  default: 10,
+  min: 1,
+  max: 1440,
+} as const;
+
+export const ISSUE_WRITES_PUBLIC_DEFAULT = true;
+
 /** A title's length, GitHub's own limit. */
 export const ISSUE_TITLE_MAX = 256;
 /** A body's or comment's length, in characters (GitHub's own limit). */
@@ -79,11 +95,12 @@ const NAME_MAX = 100;
 /** Labels on one call. */
 const LABELS_MAX = 20;
 
-const REPO_RE = /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/;
-
 export interface IssueWriteSettings {
   roles: string[];
   perHour: number;
+  /** Issue 1127: agents.issue_writes_visibility_minutes. */
+  visibilityMinutes: number;
+  publicRepos: boolean;
 }
 
 type UserLike = { agents?: Record<string, unknown> | null } | null | undefined;
@@ -132,7 +149,28 @@ export function issueWriteSettings(
       );
     perHour = p;
   }
-  return { roles, perHour };
+  const [v, vFrom] = pick("issue_writes_visibility_minutes");
+  let visibilityMinutes: number = ISSUE_WRITES_VISIBILITY_MINUTES.default;
+  if (v !== undefined && v !== null) {
+    if (
+      typeof v !== "number" ||
+      !Number.isInteger(v) ||
+      v < ISSUE_WRITES_VISIBILITY_MINUTES.min ||
+      v > ISSUE_WRITES_VISIBILITY_MINUTES.max
+    )
+      throw new Error(
+        `agents.issue_writes_visibility_minutes must be a whole number from ${ISSUE_WRITES_VISIBILITY_MINUTES.min} to ${ISSUE_WRITES_VISIBILITY_MINUTES.max} (${vFrom}; got ${JSON.stringify(v)})`,
+      );
+    visibilityMinutes = v;
+  }
+  const [pub, pubFrom] = pick("issue_writes_public");
+  if (pub !== undefined && pub !== null && typeof pub !== "boolean")
+    throw new Error(
+      `agents.issue_writes_public is true or false (${pubFrom}; got ${JSON.stringify(pub)})`,
+    );
+  const publicRepos =
+    typeof pub === "boolean" ? pub : ISSUE_WRITES_PUBLIC_DEFAULT;
+  return { roles, perHour, visibilityMinutes, publicRepos };
 }
 
 /** One checked write. */
@@ -232,7 +270,8 @@ export function checkIssueWrite(a: unknown): IssueCheck {
       error: `action: one of ${ISSUE_WRITE_ACTIONS.join(", ")}`,
     };
   const repo = typeof a.repo === "string" ? a.repo.trim() : "";
-  if (!REPO_RE.test(repo))
+  // Never "." or ".." (a URL would fold it into another path).
+  if (!isRepoName(repo))
     return { ok: false, error: "repo: a GitHub repo, owner/name", action };
   if (action === "create") {
     const title = typeof a.title === "string" ? a.title.trim() : "";
@@ -324,7 +363,12 @@ function plainName(v: string, max: number): string {
 }
 
 /** The footer every created issue and comment carries (in English: GitHub's). */
-export function issueWriteFooter(agent: string, install: string): string {
+export function issueWriteFooter(
+  agent: string,
+  install: string,
+  visibility: "public" | "private" | "internal" | null,
+): string {
+  if (needsFiledCheck(visibility)) return "— written by an agent";
   return `— written by agent ${plainName(agent, 60)} in ${plainName(install, 60)}`;
 }
 

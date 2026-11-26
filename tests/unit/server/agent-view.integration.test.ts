@@ -25,7 +25,10 @@ import {
   revokeAgentTokens,
 } from "../../../src/shared/actor-token.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
+import {
+  personToken,
+  readWebSecret,
+} from "../../../src/shared/web/web-secret.js";
 import { FIRST_RUN_FILE } from "../../../src/ui/server/first-run.js";
 import { ROUTES } from "../../../src/ui/server/route-classes.js";
 
@@ -289,6 +292,10 @@ describe("clause 1: a view for the agent's own Den, through its token", () => {
       /^http:\/\/localhost:\d+\/auth\?agent_view=/,
     );
     expect(v.link.json.minutes).toBe(10);
+    // Issue 1243: the answer says the link is the agent's own, never a person's.
+    expect(String(v.link.json.note)).toMatch(
+      /your own browser on this machine.*Never give it to a person/,
+    );
     expect([v.r.status, String(v.r.headers.location)]).toEqual([
       303,
       "/agents",

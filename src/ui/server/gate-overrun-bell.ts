@@ -14,6 +14,7 @@ import {
   type GateEntry,
   type GateSettings,
 } from "../../shared/gates/rules.js";
+import type { GateStore } from "../../shared/gates/store.js";
 
 /** One overrun slot as GET /api/notifications' `waiting` lists it. */
 export interface GateOverrunWaiting {
@@ -60,4 +61,15 @@ export function gateOverrunWaiting(
         ...(agent ? { agent } : {}),
       };
     });
+}
+
+/**
+ * Issue 1339: the bell's overrun lines, read without the gate-slot lock
+ * (GateStore.peekAll): the bell's refresh never waits on a gate run.
+ */
+export function bellGateOverruns(
+  store: Pick<GateStore, "peekAll" | "settings">,
+  now = Date.now(),
+): GateOverrunWaiting[] {
+  return gateOverrunWaiting(store.peekAll(), store.settings(), now);
 }

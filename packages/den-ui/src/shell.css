@@ -41,8 +41,8 @@ body.den-has-shell > #den-content {
 }
 .den-top :focus-visible,
 .den-rail :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 .den-skip {
   position: fixed;
@@ -123,7 +123,7 @@ body.den-has-shell > #den-content {
      menu still drops below it. */
   will-change: transform;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
   min-width: 0;
   color: var(--text);
 }
@@ -375,7 +375,7 @@ body.den-has-shell > #den-content {
   gap: 6px;
   min-height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: var(--radius-button, 4px);
   background: transparent;
   color: var(--text);
@@ -406,7 +406,7 @@ body.den-has-shell > #den-content {
   justify-content: flex-start;
   margin-top: auto;
   padding: 8px 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px var(--edge-style, solid) var(--border);
 }
 .den-report-off [data-den-report] {
   display: none !important;
@@ -456,8 +456,12 @@ body.den-has-shell > #den-content {
   flex-direction: column;
   padding: 10px 8px;
   background: var(--surface);
-  border-right: 1px solid var(--border);
+  border-right: 1px var(--edge-style, solid) var(--border);
   overflow-y: auto;
+  /* Issue 1341: an entry scrolled into view (keyboard focus) stops above
+     the sticky foot, never under it (WCAG 2.4.11). shell-client sets the
+     foot's height. */
+  scroll-padding-bottom: var(--den-rail-foot-h, 0px);
   z-index: 15;
   color: var(--text);
 }
@@ -475,6 +479,76 @@ body.den-has-shell > #den-content {
 }
 .den-rail > .den-rail-group:first-child > .den-gh {
   padding-top: 2px;
+}
+/* Issue 1444: a section's entries; its heading folds them. The heading is
+   the toggle only once the kit's script made it one (a button), so with
+   no script every entry shows. */
+.den-gb {
+  display: contents;
+}
+button.den-gh {
+  appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  width: 100%;
+  text-align: start;
+  align-items: center;
+  cursor: pointer;
+}
+/* Margins, not gap, and corners only while focused: the heading at rest
+   keeps the signed-off nav's styles (nav-inventory). */
+button.den-gh > span:first-child {
+  margin-inline-end: auto;
+}
+button.den-gh > .den-bdg,
+button.den-gh > .den-gh-chev {
+  margin-inline-start: 6px;
+}
+button.den-gh:hover {
+  color: var(--muted);
+}
+button.den-gh:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+button.den-gh > .den-bdg {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.den-gh-chev {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.den-rail-group[data-folded] .den-gh-chev {
+  transform: rotate(-90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-gh-chev {
+    transition: none;
+  }
+}
+/* Hidden only once hydrateRailFolds marked the rail (data-folds): a
+   script that failed to load or threw leaves every entry showing. */
+[data-folds] .den-rail-group[data-folded] > :not(.den-gh) {
+  display: none;
+}
+/* The heading is a tap's height from the first paint (it becomes the
+   toggle when the script runs), so hydrating moves nothing. */
+@media (scripting: enabled) and (max-width: 720px),
+  (scripting: enabled) and (pointer: coarse) {
+  .den-rail-group > .den-gh {
+    min-height: var(--tap);
+    align-items: center;
+  }
 }
 /* A group's "from" tag never makes its heading taller, on any font: its
    box (a 12px line and its border, 14px) is centred on the heading's line
@@ -567,6 +641,13 @@ body.den-has-shell > #den-content {
   background: color-mix(in srgb, var(--bad) 16%, transparent);
   color: var(--bad);
 }
+/* Issue 773: something needs the person (the rail's Agents count): the
+   amber pill. */
+.den-bdg.warn {
+  background: var(--warn);
+  color: var(--bg);
+  font-weight: 600;
+}
 /* Issue 307: a pin's or a cross-app link's kind (PROJECT, DEN, SERVICE,
    HUB, an artifact's word), at the row's end. Its look is the scope
    labels' (.den-k); this only places it. */
@@ -588,6 +669,25 @@ body.den-has-shell > #den-content {
 }
 .den-rail-grow {
   flex: 1;
+}
+/* Issue 1341: the foot stays in view when the groups are taller than the
+   rail. The rail scrolls; the foot is sticky at its bottom, over the
+   groups that scroll under it. The foot's background reaches over the
+   rail's 10 px bottom padding (a negative margin), so nothing shows
+   below it, and its entries sit where they did when the groups fit.
+   bottom is -10px because a sticky box's inset is measured from inside
+   its scroller's padding: 0 would lift the foot 10 px. The rail keeps
+   its padding, so its height is unchanged. */
+.den-rail-foot {
+  position: sticky;
+  bottom: -10px;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: -10px;
+  padding-bottom: 10px;
+  background: var(--surface);
 }
 .den-sr {
   position: absolute;
@@ -674,6 +774,13 @@ body.den-rail-collapsed .den-rail .den-ni-kind {
   }
   body.den-rail-collapsed .den-rail .den-ni-kind {
     display: inline;
+  }
+}
+/* Issue 1444: the rail as icons has no headings to open, so a folded
+   section's entries show there (the drawer below 720px folds them). */
+@media (min-width: 721px) {
+  body.den-rail-collapsed [data-folds] .den-rail-group[data-folded] > .den-gb {
+    display: contents;
   }
 }
 body.den-rail-collapsed .den-rail .den-lbl,
@@ -783,7 +890,7 @@ body.den-has-shell .den-upd {
   font-size: 10px;
   padding: 2px 8px;
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   color: var(--muted);
   background: none;
   cursor: pointer;
@@ -974,7 +1081,7 @@ body.den-has-shell .den-upd {
   align-items: center;
   gap: 8px;
   background: var(--sunken);
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-radius: var(--radius-button);
   padding: 5px 10px;
   color: var(--faint);
@@ -1005,7 +1112,7 @@ body.den-has-shell .den-upd {
 .den-search kbd,
 .den-top .den-rb kbd {
   font: 11px var(--mono);
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-bottom-width: 2px;
   border-radius: 4px;
   padding: 0 5px;
@@ -1042,7 +1149,7 @@ body.den-has-shell .den-upd {
   overflow: auto;
   background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: 10px;
   box-shadow: 0 8px 28px color-mix(in srgb, var(--text) 25%, transparent);
   /* On <body>: its own font, not a page's default (a serif). */
@@ -1061,7 +1168,7 @@ body.den-has-shell .den-upd {
   gap: 8px;
   align-items: center;
   padding: 4px 12px 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
 }
 .den-bell-hd h2 {
   font-size: 13px;
@@ -1083,6 +1190,12 @@ body.den-has-shell .den-upd {
   align-items: flex-start;
   padding: 6px 12px;
 }
+.den-bell-row:has(a[href]),
+.den-bell-row:has(a[href]) a[href] {
+  /* Issue 420: a row that opens on a click looks it, its link too (WebKit
+     gives a link cursor: auto of its own, so it doesn't inherit this). */
+  cursor: pointer;
+}
 .den-bell-row:hover {
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }
@@ -1102,7 +1215,7 @@ body.den-has-shell .den-upd {
 }
 /* Issue 101: Needs you, then Earlier, each under a quiet heading. */
 .den-bell-sec + .den-bell-sec {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border); /* issue 1137: a row divider stays solid */
 }
 .den-bell-sech {
   margin: 0;
@@ -1220,7 +1333,7 @@ body.den-has-shell .den-upd {
   position: fixed;
   z-index: 45;
   background: var(--raised);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: 10px;
   box-shadow: var(--shadow);
   padding: 6px;
@@ -1235,8 +1348,8 @@ body.den-has-shell .den-upd {
   outline: none;
 }
 .den-pop :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 .den-pop .den-ml {
   font: 11px var(--mono);
@@ -1303,7 +1416,7 @@ body.den-has-shell .den-upd {
   margin: 0 0 4px;
   -webkit-appearance: none;
   appearance: none;
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   background: var(--bg);
   color: var(--text);
   border-radius: var(--radius-button);
