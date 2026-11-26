@@ -25,7 +25,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import { CLAIM_NONCES_FILE } from "../../shared/claim-code.js";
-import { WEB_SESSIONS_FILE } from "../../shared/web-session.js";
+import { WEB_SESSIONS_FILE } from "../../shared/web/web-session.js";
 
 export const FIRST_RUN_FILE = "web-first-run.json";
 

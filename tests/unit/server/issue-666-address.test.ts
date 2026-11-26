@@ -34,7 +34,7 @@ import {
   readWebUrl,
   setWebUrl,
   type WebUrl,
-} from "../../../src/shared/web-url.js";
+} from "../../../src/shared/web/web-url.js";
 import {
   setConfigAuditSink,
   type ConfigAuditRow,

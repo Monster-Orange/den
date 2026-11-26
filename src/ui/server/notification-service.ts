@@ -29,7 +29,7 @@ import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
 import { uiLanguage } from "../../shared/ui-language.js";
 import { timeZonePref } from "./time-zone-pref.js";
 import { product } from "../../shared/product.js";
-import { readWebUrl } from "../../shared/web-url.js";
+import { readWebUrl } from "../../shared/web/web-url.js";
 import { pushContact } from "../../shared/push-contact.js";
 import { PushSubscriptions, pushAll, pushEach, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";

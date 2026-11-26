@@ -20,9 +20,9 @@ import {
   setWebOwnerName,
   syncWebOwnerName,
   writeWebOwner,
-} from "../../../src/shared/web-owner.js";
+} from "../../../src/shared/web/web-owner.js";
 import type { UserConfig } from "../../../src/shared/den-config.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
 import {
   PERSON_ONLY_SETTINGS,
   patchCliRows,
