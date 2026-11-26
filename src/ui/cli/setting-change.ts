@@ -36,6 +36,7 @@ import {
   limitInForce,
   readMcpConfig,
   USER_ONLY_WIDENING,
+  AGENTS_RESERVED_KEYS,
   type DenConfig,
   type InstallMode,
   type UserConfig,
@@ -426,6 +427,16 @@ const WIDENS_AT: readonly [
   // Issue 1264 (Reviewer A): a program in effect now and missing after
   // runs outside the gate: widens. Adding one, or reordering, doesn't.
   // With no old value known, judged against the default list.
+  [
+    "gate.throwaway_sweep",
+    (v, before) => {
+      const to = level(v);
+      const from = level(before);
+      if (to === null) return true;
+      return from === null ? to === 0 : to < from;
+    },
+    ["personal", "strict"],
+  ],
   [
     "gate.route_commands",
     (v, before) => {
@@ -930,6 +941,12 @@ function patchKey(
   const field = FIELD_KEYS.find((f) => matchesSetting(f.key, key));
   if (field) return field.patch(user, value);
   if (configKeyNames().includes(key)) return patchConfigKey(user, key, value);
+  const agentKey = /^agents\.([^.]+)\./.exec(key)?.[1];
+  if (agentKey && AGENTS_RESERVED_KEYS.includes(agentKey))
+    return {
+      ok: false,
+      error: `${key}: agents.${agentKey} is one of Den's own settings, not an agent's id`,
+    };
   const entry = SETTING_KEYS.find((e) => matchesSetting(e.key, key));
   if (!entry)
     return { ok: false, unknown: true, error: `unknown setting ${key}` };

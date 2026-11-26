@@ -38,7 +38,8 @@ export type GateSettingKey =
   | "browser_box_default"
   | "browser_host_only"
   | "route_agents"
-  | "route_commands";
+  | "route_commands"
+  | "throwaway_sweep";
 
 export const GATE_MEANINGS: Record<
   UiLanguage,
@@ -104,6 +105,8 @@ export const GATE_MEANINGS: Record<
       "Agents' test, typecheck and browser runs go through the gate (1 yes, 0 no: they run as written and are counted)",
     route_commands:
       "The programs Den's agent hook sends through the gate, comma-separated",
+    throwaway_sweep:
+      "Den removes throwaway test containers whose gate run has ended (1 yes, 0 no: they stay until removed by hand)",
   },
   es: {
     cpu_slots: "Ejecuciones de pruebas unitarias a la vez en esta máquina",
@@ -169,6 +172,8 @@ export const GATE_MEANINGS: Record<
       "Las pruebas, comprobaciones de tipos y pruebas de navegador de los agentes pasan por la cola (1 sí, 0 no: se ejecutan tal cual y se cuentan)",
     route_commands:
       "Los programas que el hook de agentes de Den manda a la cola, separados por comas",
+    throwaway_sweep:
+      "Den quita los contenedores de prueba desechables cuya ejecución en la cola ha terminado (1 sí, 0 no: se quedan hasta que alguien los quite a mano)",
   },
   ja: {
     cpu_slots: "このマシンで同時に動くユニットテストの数",
@@ -227,6 +232,8 @@ export const GATE_MEANINGS: Record<
       "エージェントのテスト、型チェック、ブラウザテストを順番待ちに通す（1 はい、0 いいえ: そのまま実行して数える）",
     route_commands:
       "Den のエージェント用フックが順番待ちに通すプログラム（カンマ区切り）",
+    throwaway_sweep:
+      "順番待ちの実行が終わった使い捨てのテスト用コンテナを Den が削除する（1 はい、0 いいえ: 手で削除するまで残る）",
   },
 };
 

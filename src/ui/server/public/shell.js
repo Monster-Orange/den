@@ -2577,6 +2577,9 @@
     "set.server.gate_route_agents": "Agents' heavy runs go through the gate",
     "set.server.gate_route_agents.d":
       "On, an agent's single test, typecheck or browser run takes a gate slot like any other. Off, it runs as written and is counted below. __DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_throwaway_sweep": "Remove throwaway test containers",
+    "set.server.gate_throwaway_sweep.d":
+      "On, Den removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
     "set.server.gate_route_commands": "Programs sent through the gate",
     "set.server.gate_route_commands.d":
       'Comma-separated program names, or npm test and npm run test* (* matches any end). Empty: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
@@ -3475,6 +3478,20 @@
     "ap.det.agent_mode.running":
       "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
     "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
+    "ap.do.den_env_hold_on":
+      "Hold secret-looking variables back from {count} agents started before (each at its next start): {names}",
+    "ap.do.den_env_allow_keep":
+      "Keep {names} for every agent, and hold the rest back from {count} agents started before",
+    "ap.det.den_env_hold_on.sets":
+      "Sets agents.env_hold_existing: true in config/local/user.yml.",
+    "ap.det.den_env_hold_on.next":
+      "Each agent loses them at its next start; one that runs now keeps them until then.",
+    "ap.det.den_env_hold_on.allow":
+      "Names it keeps from agents.env_allow stay.",
+    "ap.det.den_env_allow_keep.adds":
+      "Adds {names} to agents.env_allow in config/local/user.yml: every agent here gets them.",
+    "ap.det.den_env_allow_keep.on":
+      "Sets agents.env_hold_existing: true: other secret-looking variables are held back from each agent at its next start.",
     "ap.det.agent_sandbox_set.self":
       "{agent} is asking for this itself: it wants its own sandbox {value}.",
     "ap.det.agent_sandbox_set.on":
@@ -4226,8 +4243,12 @@
       "__DEN_TITLE__ {v}: its pin is committed ({sha}) but the push failed: {why}. __DEN_TITLE__ tries again at the next update check",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
+    "bell.m.pinPrRenamed":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request on {branch}, since {why}",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch}), not pushed: the branch requires signed commits and no agents' signing key is set (doctor says how)",
     "bell.m.pinPushedBehind":
       "__DEN_TITLE__ updated to {v}: its pin is pushed ({sha}), but the checkout is behind and has local changes, so pull to get the pin",
     "bell.m.pinPrAhead":

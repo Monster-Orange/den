@@ -201,6 +201,7 @@ export type GateSettingsPatch = {
   route_agents?: number | null;
   /** Issue 1264: the programs routed, comma-separated. */
   route_commands?: string | null;
+  throwaway_sweep?: number | null;
 };
 
 /**
@@ -311,6 +312,7 @@ export const GATE_LIMITS: Record<
   browser_requires_container: { min: 0, max: 2, int: true },
   // Issue 1264: Den's agent hook routes heavy runs; 1 yes, 0 no.
   route_agents: { min: 0, max: 1, int: true },
+  throwaway_sweep: { min: 0, max: 1, int: true },
 };
 
 /**
@@ -1283,6 +1285,8 @@ export class GateStore {
           text("browser_box_default").trim() === "local" ? "local" : "any",
         browserHostOnly: text("browser_host_only"),
         routeAgents: onOff(v.route_agents) ?? GATE_DEFAULTS.routeAgents,
+        throwawaySweep:
+          num("throwaway_sweep", GATE_DEFAULTS.throwawaySweep ? 1 : 0) !== 0,
         routeCommands: (() => {
           const l = parseRouteCommands(text("route_commands"));
           return typeof l === "string" || !l.length

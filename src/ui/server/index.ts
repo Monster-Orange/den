@@ -302,6 +302,8 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserEnvHoldExisting,
+  addUserEnvAllow,
   setUserAgentSandbox,
   setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
@@ -657,6 +659,7 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
 import { accountNameOf } from "../../shared/agents/catalog.js";
+import { agentKeyInForce } from "../../shared/agents/git-signing.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -1580,6 +1583,15 @@ import {
   listRecords as listAgentRecords,
   readRecord as readAgentRecord,
 } from "../../shared/agents/records.js";
+import {
+  askEnvHold,
+  envAllowKeepOp,
+  envHoldOnOp,
+  wouldHold,
+} from "../../shared/agents/env-hold-rollout.js";
+import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
+import { shellEnvNames } from "../cli/doctor-env-hold.js";
+import { workspaceEntryRaw as workspaceEntryOf } from "../../shared/environment-manager/workspaces.js";
 import {
   askSandboxOn,
   legacyAgentIds,
@@ -5702,6 +5714,8 @@ function approvalDeps(): ApprovalDeps {
     gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    envHoldOn: envHoldOnOp(envHoldOpDeps()),
+    envAllowKeep: envAllowKeepOp(envHoldOpDeps()),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
     sandboxOn: sandboxOnServerOp(),
     // Issue 208: a Verify run on a shared environment.
@@ -6242,7 +6256,10 @@ async function runPinCommit(
     return { did: "skipped", version, why: "server_agent.pin_commit: off" };
   let signingKey: string | undefined;
   try {
-    signingKey = readAgentsConfig().git?.signingKey;
+    signingKey = agentKeyInForce(
+      readAgentsConfig().git,
+      getStateDir(),
+    )?.signingKey;
   } catch {
     signingKey = undefined;
   }
@@ -6251,6 +6268,28 @@ async function runPinCommit(
     stateDir: getStateDir(),
     git: pc.pinGit(getDistRoot(), { signingKey }),
     mode,
+    signed: !!signingKey,
+    signaturesRequired: pc.ghSignaturesRequired(
+      (argv, cwd) =>
+        new Promise((resolve) =>
+          execFile(
+            argv[0],
+            argv.slice(1),
+            { cwd, timeout: 30_000, maxBuffer: 1024 * 1024 },
+            (err, out, errOut) =>
+              resolve({
+                code: err
+                  ? typeof (err as { code?: unknown }).code === "number"
+                    ? (err as { code: number }).code
+                    : null
+                  : 0,
+                out: `${out ?? ""}${errOut ?? ""}`,
+              }),
+          ),
+        ),
+      ["gh"],
+      getDistRoot(),
+    ),
     ...(policy
       ? {
           allow: () => {
@@ -6291,6 +6330,57 @@ async function runPinCommit(
         }
       : {}),
   });
+}
+
+function envHoldOpDeps(): import("../../shared/agents/env-hold-rollout.js").EnvHoldOpDeps {
+  return {
+    rows: () => {
+      const s = readAgentsConfig().envHold;
+      if (!s) return [];
+      return wouldHold(
+        listAgentRecords(getStateDir()),
+        s,
+        shellEnvNames(),
+        (ws) => {
+          try {
+            return checkProjectEnvAllow(
+              ws,
+              (
+                workspaceEntryOf(ws) as
+                  | { agents?: { env_allow?: unknown } }
+                  | undefined
+              )?.agents?.env_allow,
+            );
+          } catch {
+            return [];
+          }
+        },
+      ).filter((r) => r.names.length > 0);
+    },
+    turnOn: () => setUserEnvHoldExisting(),
+    keep: (names) => addUserEnvAllow(names),
+  };
+}
+
+function startEnvHoldAsk(): void {
+  const ask = () => {
+    try {
+      const ap = approvalDeps();
+      const deps = envHoldOpDeps();
+      void askEnvHold(
+        ap.queue,
+        envAllowKeepOp(deps),
+        envHoldOnOp(deps),
+        deps.rows,
+      ).then((asked) => {
+        if (asked) syncHeldWrites();
+      });
+    } catch {
+      return;
+    }
+  };
+  ask();
+  setInterval(ask, 60 * 60_000).unref();
 }
 
 /** #176: den_pin_commit, held for the person when the policy says ask. */
@@ -6357,7 +6447,9 @@ async function pinBellNotice(
   step: import("./pin-commit.js").PinStep,
 ): Promise<void> {
   try {
-    const { pinBellMessage } = await import("./pin-commit.js");
+    const { pinBellMessage, pinAgentLine } = await import("./pin-commit.js");
+    const line = pinAgentLine(step, product().title);
+    if (line) void tellHeldAsker(SERVER_AGENT_ID, line).catch(() => undefined);
     const m = pinBellMessage(step, product().title);
     if (!m) return;
     const store = notificationDeps().store;
@@ -12492,6 +12584,7 @@ void CRASH_GATE.then(() =>
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
     void matchFreeTextRestartsNow().catch(() => undefined);
+    startEnvHoldAsk();
     void pruneDeadSnapshots()
       .then((n) => {
         if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
