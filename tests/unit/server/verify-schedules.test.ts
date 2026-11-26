@@ -18,7 +18,7 @@ import * as http from "http";
 import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
-import { approveKeyHash } from "../../../src/shared/web-session.js";
+import { approveKeyHash } from "../../../src/shared/web/web-session.js";
 import {
   handleScheduleRoutes,
   tickSchedules,

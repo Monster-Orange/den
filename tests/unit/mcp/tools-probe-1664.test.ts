@@ -10,8 +10,8 @@ import {
   identifyServer,
   webReadyWaits,
 } from "../../../src/ui/cli/server-identity.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
-import { denWebBase } from "../../../src/shared/web-dial.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
+import { denWebBase } from "../../../src/shared/web/web-dial.js";
 
 const OWN = { root: "/srv/acme", product: "acme" };
 const headers = () => ({ "x-den-actor": "agent" });

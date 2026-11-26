@@ -2,7 +2,7 @@
  * Issue 750: Den reads an install's groups from Hub (GET /api/groups) and
  * links to Hub's own group pages (Open, and Message group: Hub's composer,
  * the person's own Hub sign-in); it stores none. The contract lives in one
- * module (src/shared/hub-groups.ts). A stub Hub stands in. Invented names.
+ * module (src/shared/hub/hub-groups.ts). A stub Hub stands in. Invented names.
  */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as http from "http";
@@ -14,7 +14,7 @@ import {
   groupHubUrl,
   isOwnAgent,
   parseGroups,
-} from "../../../src/shared/hub-groups.js";
+} from "../../../src/shared/hub/hub-groups.js";
 
 const servers: http.Server[] = [];
 afterEach(async () => {

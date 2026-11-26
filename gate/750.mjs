@@ -77,7 +77,7 @@ const LEAD = "g750-lead";
 const HELD = "g750-held";
 const WS = "gate-750";
 // What Den sends Hub for an agent whose Hub tools failed to load (issue
-// 750, src/shared/hub-delivery.ts HUB_TOOLS_UNAVAILABLE).
+// 750, src/shared/hub/hub-delivery.ts HUB_TOOLS_UNAVAILABLE).
 const HELD_REASON = "hub_tools_unavailable";
 let D2 = null;
 
