@@ -740,7 +740,7 @@ export function initBell(doc = document) {
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
-  // Issue 1332: the control a paint couldn't give the keyboard back to (its
+  // The control a paint couldn't give the keyboard back to (its
   // row wasn't drawn: a refresh that came back without it). The next paint
   // that draws it again focuses it, unless the person moved on meanwhile.
   let lost = "";

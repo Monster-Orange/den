@@ -236,7 +236,7 @@ describe("the bell's Allow row: Review", () => {
 });
 
 /**
- * Issue 1332: a refresh that comes back without the focused row (a slow or
+ * A refresh that comes back without the focused row (a slow or
  * partial answer) drops the keyboard to the page. When the row is drawn
  * again, focus goes back to the same button; a person who moved on
  * elsewhere keeps where they went.

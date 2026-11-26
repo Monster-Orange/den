@@ -86,6 +86,7 @@ describe("issue 988 slice 3: a token never goes in a process's environment", () 
         return 0;
       },
       err: () => {},
+      runtimeProblems: () => [],
     };
     await expect(runAgentSession(["scout", N], d)).resolves.toBe(0);
     const s = started[0]!;
