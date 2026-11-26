@@ -26,12 +26,16 @@ const setAside = (d: string) => {
     JSON.stringify({ at: "2026-11-24T00:00:00.000Z" }),
   );
 };
-const doctor = (d: string, installMode: "personal" | "strict") =>
+const doctor = (
+  d: string,
+  installMode: "personal" | "strict",
+  running = true,
+) =>
   sharedUserLines("Den", {
     stateDir: d,
     registry: path.join(root, "installs"),
     home: root,
-    serverRunning: () => false,
+    serverRunning: () => running,
     installMode,
     unsandboxed: () => [],
     reposOf: () => [],
@@ -65,6 +69,19 @@ describe("issue 1399: doctor says whether agents can read the activity trail", (
       "agents can't read the activity trail, because the older trail isn't set aside yet. Restart Den; if it fails again, Den's log says why",
     );
     expect(trailLine(r)).toBe(`  activity trail  ⚠  ${c?.detail}`);
+  });
+
+  it("personal, not set aside and Den not started yet: ok, as its first start sets it aside", () => {
+    const r = doctor(stateDir(), "personal", false);
+    expect(trailCheck(r)).toEqual({
+      id: "trail_set_aside",
+      status: "ok",
+      detail:
+        "agents read the activity trail once Den sets the older trail aside, at its next start",
+    });
+    expect(trailLine(r)).toBe(
+      "  activity trail  ✓  agents read the activity trail once Den sets the older trail aside, at its next start",
+    );
   });
 
   it("personal, a set-aside folder with no marker still warns", () => {

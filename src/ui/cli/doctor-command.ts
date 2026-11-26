@@ -1850,9 +1850,12 @@ export function sharedUserLines(
     })();
   const trailSetAside = agentsMayReadTrail({ mode: installMode }, stateDir);
   const trailReadable = o.trailReadable ?? trailSetAside;
+  const trailOk = trailSetAside || !running;
   const trailDetail = trailSetAside
     ? "agents can read the activity trail"
-    : `agents can't read the activity trail, because the older trail isn't set aside yet. Restart ${title}; if it fails again, ${title}'s log says why`;
+    : running
+      ? `agents can't read the activity trail, because the older trail isn't set aside yet. Restart ${title}; if it fails again, ${title}'s log says why`
+      : `agents read the activity trail once ${title} sets the older trail aside, at its next start`;
   const trailShown = installMode === "personal";
   const rules = bothSpellings(stateDir).flatMap((d) =>
     stateDirDenyRules(d, home, { trailReadable }),
@@ -1928,7 +1931,7 @@ export function sharedUserLines(
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
       `  state folder  ${mark(!folderShared)}  ${folderDetail}`,
       ...(trailShown
-        ? [`  activity trail  ${mark(trailSetAside)}  ${trailDetail}`]
+        ? [`  activity trail  ${mark(trailOk)}  ${trailDetail}`]
         : []),
       ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
@@ -1953,7 +1956,7 @@ export function sharedUserLines(
         ? [
             {
               id: "trail_set_aside",
-              status: trailSetAside ? ("ok" as const) : ("warn" as const),
+              status: trailOk ? ("ok" as const) : ("warn" as const),
               detail: trailDetail,
             },
           ]
