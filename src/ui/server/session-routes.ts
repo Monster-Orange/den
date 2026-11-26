@@ -1826,8 +1826,8 @@ async function helpersRunning(
   const keep = agentRowFilter(req);
   const rows = await listWithHelpers(sessions, d);
   let needs = 0;
-  for (const r of rows)
-    if ((!keep || keep(r.workspace)) && isNeedsYouRow(r)) needs += 1;
+  for (const r of keep ? rows.filter((x) => keep(x.workspace)) : rows)
+    if (isNeedsYouRow(r)) needs += 1;
   sendJson(res, { running: helpersRunningIn(rows, keep), needs });
   return true;
 }
