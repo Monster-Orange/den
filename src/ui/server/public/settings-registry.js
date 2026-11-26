@@ -4151,7 +4151,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Remove throwaway test containers",
     description:
-      "On, Den's server removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
+      "On, Den removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
     keywords: ["gate", "docker", "container", "throwaway", "sweep", "cleanup"],
     scope: "user",
     keys: ["gate_slots.throwaway_sweep"],

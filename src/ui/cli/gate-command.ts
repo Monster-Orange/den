@@ -211,7 +211,7 @@ export const GATE_HELP = {
     "    [--browser-box-default any|local]   where a browser run with no --box goes",
     '    [--browser-host-only "<project>, label:<pattern>"]   browser runs kept here ("" clears)',
     "    [--route-agents 0|1]   agents' heavy runs go through the gate (0: run as written, counted)",
-    "    [--throwaway-sweep 0|1]   Den's server removes throwaway test containers whose run ended (0: never runs docker for them)",
+    "    [--throwaway-sweep 0|1]   Den removes throwaway test containers whose run ended (0: never runs docker for them)",
     '    [--route-commands "jest, vitest, tsc, playwright, npm test, npm run test*"]   the programs routed ("" clears)',
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
