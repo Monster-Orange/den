@@ -251,7 +251,6 @@ describe("issue 765: POST /api/workspaces/:ws/agents/:id/defer", () => {
       (await call({ until: new Date(Date.now() - H).toISOString() })).status,
     ).toBe(400);
     expect((await call({ until: 5 })).status).toBe(400);
-    // Past agents.rotation_defer_max_hours (168 h unset): refused, naming it.
     const far = await call({
       until: new Date(Date.now() + 8 * 24 * H).toISOString(),
     });
@@ -266,7 +265,6 @@ describe("issue 765: POST /api/workspaces/:ws/agents/:id/defer", () => {
   });
 });
 
-// Slice B: an agent asks (agent_rotation_defer), held for the person's Allow.
 import {
   checkAgentRotationDefer,
   resolveAgentsDeps,
@@ -293,7 +291,6 @@ describe("issue 765: agent_rotation_defer (the held ask)", () => {
     expect(c.args).toEqual({ agent: "be-dev", project: "north", until });
     expect(c.summary).toMatch(/^Put be-dev's rotation off until /);
     expect(c.details.join("\n")).toMatch(/nothing rotates it/);
-    // A late Allow runs the stored args: the time doesn't move.
     const ran = await runAgentRotationDefer(
       d,
       c.args as unknown as Record<string, unknown>,
@@ -301,7 +298,6 @@ describe("issue 765: agent_rotation_defer (the held ask)", () => {
     );
     expect(ran).toEqual({ ok: true, agent: "be-dev", project: "north", until });
     expect(readRotation(filesOf(r, "be-dev"))?.deferredUntil).toBe(until);
-    // off: stops it, said as a clear.
     const off = checkAgentRotationDefer(d, { agent: "be-dev", until: "off" });
     expect(off.ok && off.params).toEqual({ agent: "be-dev", clears: "1" });
     await runAgentRotationDefer(d, off.ok ? (off.args as never) : {});
@@ -347,7 +343,6 @@ describe("issue 765: agent_rotation_defer (the held ask)", () => {
   });
 });
 
-// Fix 2: how far off it may go, a setting (agents.rotation_defer_max_hours).
 import {
   agentsRotationDeferMaxHours,
   AGENTS_RESERVED_KEYS,

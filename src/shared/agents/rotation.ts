@@ -535,7 +535,6 @@ const DEFER_WORDS =
 export function parseDeferTime(
   raw: string,
   now: Date = new Date(),
-  /** The furthest off it may be (ms), agents.rotation_defer_max_hours. */
   maxMs?: number,
 ): Date | null {
   const v = raw.trim();

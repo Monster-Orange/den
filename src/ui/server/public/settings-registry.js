@@ -5103,7 +5103,6 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ held_writes: { wait_minutes: v } }),
   },
   {
-    // agents.rotation_defer_max_hours).
     id: "agents.rotation_defer_max",
     category: "agents",
     label: "Longest a rotation can be put off",

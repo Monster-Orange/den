@@ -1079,13 +1079,8 @@ export const SHELL_PATH_TIMEOUT = { default: 10, min: 1, max: 120 } as const;
  * waits for the login and the interactive shell's PATH: 10 when unset,
  * 1 to 120. A wrong value throws, naming the key.
  */
-/**
- * Issue 765: agents.rotation_defer_max_hours (user.yml): the furthest off
- * a rotation can be put, in hours. 168 (7 days) when unset, 1 to 8760.
- */
 export const ROTATION_DEFER_MAX_HOURS = { default: 168, min: 1, max: 8760 };
 
-/** Issue 765: agents.rotation_defer_max_hours; a wrong value throws, naming it. */
 export function agentsRotationDeferMaxHours(
   read: () => UserConfig = readUserConfig,
 ): number {

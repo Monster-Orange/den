@@ -5525,7 +5525,6 @@ function approvalDeps(): ApprovalDeps {
       hold: (card, agent) =>
         holdForPerson("host_restart", card as HeldCheck, agent),
     }),
-    // Issue 765: put an agent's rotation off until a time.
     agentRotationDefer: {
       check: (a, who) => checkAgentRotationDefer(agentWebDeps(), a, who),
       run: (a) => runAgentRotationDefer(agentWebDeps(), a),

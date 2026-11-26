@@ -259,7 +259,6 @@ export interface HeldActionDeps {
   eventFeedRemove?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
-  /** Issue 765: agent_rotation_defer's check and save (agent-ops.ts). */
   agentRotationDefer?: HeldOp;
   /** Issue 1328: agent_sandbox_set's check and write (agents/sandbox-set.ts). */
   agentSandbox?: HeldOp;

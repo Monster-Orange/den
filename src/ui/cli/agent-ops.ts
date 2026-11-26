@@ -6942,10 +6942,6 @@ export async function runAgentMode(
   };
 }
 
-/**
- * Issue 765: agents.rotation_defer_max_hours in ms, read at each use; its
- * default when user.yml can't be read.
- */
 export function rotationDeferMaxMs(): number {
   try {
     return agentsRotationDeferMaxHours() * 3_600_000;
@@ -6957,18 +6953,9 @@ export function rotationDeferMaxMs(): number {
 export interface AgentRotationDeferArgs {
   agent: string;
   project: string;
-  /** The time to come (ISO 8601), fixed when asked; null: off. */
   until: string | null;
 }
 
-/**
- * Issue 765: checks an agent_rotation_defer ask: put agent `agent`'s
- * rotation off until `until` (+2h, HH:MM, an ISO time), or `off` (null).
- * The time is fixed when asked, so a late Allow never moves it. A
- * project's agent asks for its own project's agents (itself too); Den's
- * agent for any. Putting it off keeps an agent in its session past its
- * rotation, so it widens: held for the person's Allow.
- */
 export function checkAgentRotationDefer(
   d: AgentsResolved,
   raw: Record<string, unknown>,
@@ -7048,7 +7035,6 @@ export function checkAgentRotationDefer(
   }
 }
 
-/** Issue 765: on Allow, puts it off (or stops), as the ask fixed it. */
 export async function runAgentRotationDefer(
   d: AgentsResolved,
   raw: Record<string, unknown>,

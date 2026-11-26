@@ -429,7 +429,6 @@ const AGENTS_SHELL: Record<string, Limit> = {
   },
 };
 
-/** Issue 765: user.yml agents.rotation_defer_max_hours (den-config.ts). */
 const AGENTS_ROTATION: Record<string, Limit> = {
   defer_max_hours: {
     key: "rotation_defer_max_hours",
