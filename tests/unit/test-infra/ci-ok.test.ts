@@ -121,19 +121,14 @@ describe("issue 843: ci-ok, the merge queue's one required check", () => {
 
   it("issue 1522: a slow checkout can't time the job out (GitHub shows that as cancelled, a false red)", () => {
     const j = ci.jobs["ci-ok"];
-    // At 2 minutes, a checkout that took 2 (PR 1518's run, 08:00:33Z to
-    // 08:02:36Z) cancelled the one required check.
     expect(j["timeout-minutes"]).toBeGreaterThanOrEqual(10);
     const co = (j.steps ?? []).find((s) =>
       String(s.uses ?? "").startsWith("actions/checkout@"),
     );
     expect(co).toBeDefined();
     if (!co) return;
-    // The checkout has its own limit, under the job's, so a stuck one
-    // fails as itself and the job's own step still has time to run.
     expect(co["timeout-minutes"]).toBeGreaterThan(0);
     expect(co["timeout-minutes"]).toBeLessThan(j["timeout-minutes"] ?? 0);
-    // One commit, one file: the checkout stays as small as it can be.
     expect(co.with?.["fetch-depth"]).toBe(1);
     expect(co.with?.["sparse-checkout"]).toBe("scripts/ci-ok.mjs");
   });
