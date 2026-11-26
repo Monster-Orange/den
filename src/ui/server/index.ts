@@ -64,6 +64,7 @@ import {
   agentStateDeps,
   alertFeed,
   attentionDetail,
+  attentionActivity,
   attentionWaiting,
   notificationDeps,
 } from "./notification-service.js";
@@ -5395,6 +5396,10 @@ function approvalDeps(): ApprovalDeps {
               const m = await import("./hub-connect.js");
               return new m.HubConnect().disconnect(force);
             },
+            switching: async (s) => {
+              const m = await import("./hub-switch.js");
+              m.beginHubSwitch(await m.hubSwitchDeps(), s);
+            },
             // Issue 726: the old Hub's state is archived, its bell cleared.
             changed: async (url) => {
               const m = await import("./hub-change.js");
@@ -6435,6 +6440,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return {
           probeSeconds: c.readyProbeSeconds,
           startSeconds: c.startWaitSeconds,
+          toolsProbeSeconds: c.toolsProbeSeconds,
         };
       } catch {
         return null;
@@ -10144,6 +10150,7 @@ async function handleRequest(
       {
         waitingAgents: waitingAgentIds,
         waitingWhy: waitingReasons,
+        activity: attentionActivity,
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),

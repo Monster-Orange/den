@@ -31,6 +31,7 @@ interface RowLike {
   state?: string;
   waiting?: boolean;
   waitingWhy?: string;
+  activity?: string;
 }
 
 export function agentStateOf(
@@ -42,13 +43,13 @@ export function agentStateOf(
     return null;
   const id = row.agent;
   const needs = !!row.waiting && row.waitingWhy !== "input";
-  const workingAt = d.working().get(id);
+  const workingAt = row.activity === "idle" ? undefined : d.working().get(id);
   const latest = d.seen.latest(agentSubject(id));
   const done =
     !!latest && !d.seen.isSeen({ subject: agentSubject(id), person });
   const attn: AgentAttn = needs
     ? "needs"
-    : workingAt !== undefined
+    : workingAt !== undefined || row.activity === "working"
       ? "working"
       : done
         ? "done"

@@ -364,6 +364,11 @@ export function buildRules(map = readMap()) {
       run: others.filter((t) => /["'`]examples["'`/]/.test(read(t))),
       why: "tests that read examples/",
     },
+    {
+      when: ["gate/**"],
+      run: tests.filter((t) => t.startsWith("tests/unit/test-infra/gate-")),
+      why: "the live checks' own tests (runners, shape, clauses)",
+    },
   );
   // Scripts a test runs by path (a spawn is not an import).
   for (const f of fs
@@ -376,6 +381,20 @@ export function buildRules(map = readMap()) {
         when: [`scripts/${f}`],
         run,
         why: `tests that run scripts/${f}`,
+      });
+  }
+  for (const f of fs
+    .readdirSync(path.join(ROOT, "gate"))
+    .filter((f) => f.endsWith(".mjs"))
+    .sort()) {
+    const run = tests.filter(
+      (t) => t !== SELF && read(t).includes(`gate/${f}`),
+    );
+    if (run.length)
+      rules.push({
+        when: [`gate/${f}`],
+        run,
+        why: `tests that load gate/${f}`,
       });
   }
   // Tests that start Den as a process: each runs when its subject changes.

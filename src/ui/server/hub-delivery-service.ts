@@ -164,8 +164,6 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   return token ? { url: cfg.url, token } : null;
 }
 
-/**
- */
 async function syncAgentGrant(url: string): Promise<void> {
   try {
     const g = await import("../../shared/hub-agent-grant.js");
