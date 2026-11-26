@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { PassThrough } from "stream";
 import { toolsStaleMessage } from "../../../src/ui/server/engine-stamp.js";
-import { superviseMcp } from "../../../src/ui/mcp/supervisor.js";
+import { childCommand, superviseMcp } from "../../../src/ui/mcp/supervisor.js";
 
 const CHILD = path.join(__dirname, "../../fixtures/mcp-handoff/child.mjs");
 let dir = "";
@@ -86,7 +86,7 @@ function harness() {
     input.end();
     await sup.done;
   };
-  return { start, call, request, stop, seen, logs };
+  return { start, call, request, send, stop, seen, logs };
 }
 
 describe("Den updated under a running tools process (issue 1664)", () => {
@@ -132,6 +132,30 @@ describe("Den updated under a running tools process (issue 1664)", () => {
     await h.stop();
   });
 
+  it("two calls racing a handoff both run on the new code, in order; one cancelled meanwhile never runs", async () => {
+    const h = harness();
+    await h.start();
+    update("0.4.91", "build-b");
+    const a = h.call();
+    const b = h.call();
+    const gone = h.request("tools/call", { name: "t", arguments: {} });
+    h.send({
+      jsonrpc: "2.0",
+      method: "notifications/cancelled",
+      params: { requestId: 4, reason: "test" },
+    });
+    expect(await a).toMatch(/^version=0\.4\.91 /);
+    expect(await b).toMatch(/^version=0\.4\.91 /);
+    const settled = await Promise.race([
+      gone.then(() => "answered"),
+      new Promise((r) => setTimeout(() => r("never"), 300)),
+    ]);
+    expect(settled).toBe("never");
+    const handoffs = h.logs.filter((l) => l.includes("the next calls run"));
+    expect(handoffs).toHaveLength(1);
+    await h.stop();
+  });
+
   it("a new version that fails to start: the old one keeps answering", async () => {
     const h = harness();
     await h.start();
@@ -164,6 +188,25 @@ describe("Den updated under a running tools process (issue 1664)", () => {
       pids.add((await h.call()).match(/pid=(\d+)/)?.[1] ?? "");
     expect(pids.size).toBe(1);
     await h.stop();
+  });
+});
+
+describe("what a fresh tools process is given", () => {
+  it("the parent's own flags and env, unchanged, plus only the child marker", () => {
+    const argv = [
+      "--workspace",
+      "north",
+      "--actor",
+      "agent:a1",
+      "--grant",
+      "west",
+    ];
+    const env = { DEN_ACTOR_TOKEN: "tok", PATH: "/bin" };
+    const c = childCommand(argv, "/engine", env);
+    expect(c.file).toBe(path.join("/engine", "bin", "den"));
+    expect(c.args).toEqual(["mcp", ...argv]);
+    expect(c.env).toEqual({ ...env, DEN_MCP_CHILD: "1" });
+    expect(env).toEqual({ DEN_ACTOR_TOKEN: "tok", PATH: "/bin" });
   });
 });
 

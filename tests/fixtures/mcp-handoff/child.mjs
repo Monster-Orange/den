@@ -33,14 +33,23 @@ process.stdin.on("data", (c) => {
             id: m.id,
             result: {
               content: [
-                { type: "text", text: `version=${version} pid=${process.pid} inits=${inits}` },
+                {
+                  type: "text",
+                  text: `version=${version} pid=${process.pid} inits=${inits}`,
+                },
               ],
             },
           }),
         ms,
       );
     } else if (m.method === "tools/list") {
-      out({ jsonrpc: "2.0", id: m.id, result: { tools: [{ name: `tool_${version}`, inputSchema: { type: "object" } }] } });
+      out({
+        jsonrpc: "2.0",
+        id: m.id,
+        result: {
+          tools: [{ name: `tool_${version}`, inputSchema: { type: "object" } }],
+        },
+      });
     } else if (m.id !== undefined && m.method) {
       out({ jsonrpc: "2.0", id: m.id, result: {} });
     }

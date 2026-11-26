@@ -118,7 +118,9 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
     try {
       to(JSON.parse(line) as Message);
     } catch {
-      o.log(`[mcp] supervisor: an unreadable line from Den's tools was dropped`);
+      o.log(
+        `[mcp] supervisor: an unreadable line from Den's tools was dropped`,
+      );
     }
   };
 
@@ -180,7 +182,9 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
     const old = current;
     const next = start();
     if (await handshake(next)) {
-      o.log(`[mcp] supervisor: Den was updated; the next calls run the new tools`);
+      o.log(
+        `[mcp] supervisor: Den was updated; the next calls run the new tools`,
+      );
       adopt(next, old);
     } else {
       failedStamp = next.stamp;
@@ -198,7 +202,10 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
     swapping = true;
     const next = start();
     void handshake(next).then((ok) => {
-      if (!ok) o.log(`[mcp] supervisor: a fresh tools process did not answer its start`);
+      if (!ok)
+        o.log(
+          `[mcp] supervisor: a fresh tools process did not answer its start`,
+        );
       adopt(next, null);
       swapping = false;
       flush();
@@ -218,8 +225,13 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
       asked.delete(m.id);
       return send(owner, m);
     }
-    if (m.method === "notifications/cancelled" && m.params?.requestId !== undefined) {
+    if (
+      m.method === "notifications/cancelled" &&
+      m.params?.requestId !== undefined
+    ) {
       const id = m.params.requestId;
+      const queued = queue.findIndex((q) => q.id === id);
+      if (queued !== -1) return void queue.splice(queued, 1);
       const owner = [...all].find((t) => t.inflight.has(id));
       if (owner) send(owner, m);
       return;
@@ -246,17 +258,30 @@ export function superviseMcp(o: SuperviseOptions): { done: Promise<void> } {
   return { done };
 }
 
+export function childCommand(
+  argv: readonly string[],
+  engineRoot: string,
+  env: NodeJS.ProcessEnv,
+): { file: string; args: string[]; env: NodeJS.ProcessEnv } {
+  return {
+    file: path.join(engineRoot, "bin", "den"),
+    args: ["mcp", ...argv],
+    env: { ...env, [MCP_CHILD_ENV]: "1" },
+  };
+}
+
 export async function superviseStdio(
   argv: string[],
   engineRoot: string,
 ): Promise<void> {
-  const bin = path.join(engineRoot, "bin", "den");
   const { done } = superviseMcp({
-    spawn: () =>
-      spawn(bin, ["mcp", ...argv], {
+    spawn: () => {
+      const c = childCommand(argv, engineRoot, process.env);
+      return spawn(c.file, c.args, {
         stdio: ["pipe", "pipe", "inherit"],
-        env: { ...process.env, [MCP_CHILD_ENV]: "1" },
-      }),
+        env: c.env,
+      });
+    },
     stamp: () => readEngineStamp(engineRoot).buildId,
     input: process.stdin,
     output: process.stdout,
