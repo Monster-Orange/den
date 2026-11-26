@@ -16,6 +16,7 @@
     "./base.css": "./src/base.css",
     "./themes/sketch.css": "./src/themes/sketch.css",
     "./time": "./src/time.js",
+    "./attention": "./src/attention.js",
     "./update-pill": "./src/update-pill.js",
     "./update-pill.css": "./src/update-pill.css",
     "./busy": "./src/busy.js",

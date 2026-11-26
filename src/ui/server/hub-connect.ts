@@ -18,10 +18,11 @@
  * Where the token goes (SEC-0: the install's, never Den's): the install's
  * own secrets store when it keeps secrets (1Password, Doppler: a new item
  * or key, like the saved admin password), else a file Den keeps for this
- * install, <state dir>/hub/token (mode 600, its folder 700). Either way the
+ * install and Hub, <state dir>/hub/token-<slot> (600, folder 700). Either way the
  * value travels on stdin or into the file, never in argv, and never to the
  * browser, a log or an API answer.
  */
+import { createHash } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -49,7 +50,13 @@ import {
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
-import { getStateDir } from "../../shared/paths.js";
+import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import { readWebAuthConfig } from "../../shared/web/web-session.js";
+import { stateDirShared } from "../../shared/state-folder.js";
+import {
+  listOtherInstalls,
+  registryDir,
+} from "../../shared/install-registry.js";
 import {
   hubOrigin,
   readHubBinding,
@@ -127,7 +134,7 @@ export interface HubConnectDeps {
   exchange: typeof hubExchange;
   revoke: typeof hubRevoke;
   /** Keep the token for this install; what hub.token should say. */
-  store: (token: string) => Promise<StoredToken>;
+  store: (token: string, hubUrl: string) => Promise<StoredToken>;
   /** Remove a token Connect stored (best effort). */
   forget: (cfg: HubConfig) => Promise<void>;
   readToken: (cfg: HubConfig) => Promise<string | null>;
@@ -135,6 +142,7 @@ export interface HubConnectDeps {
   writeUser: (u: Record<string, unknown>) => void;
   /** This install's label on Hub (1–40 characters). */
   installLabel: () => string;
+  stateShared?: () => { shared: boolean; boundOrigin: string | null };
   relinkMoved?: (
     hubUrl: string,
     token: string,
@@ -295,20 +303,74 @@ export function edgeDenUrl(
 export function defaultInstallLabel(
   cli = product().cli,
   host = os.hostname(),
+  o: { machineName?: string | null; stateDir?: string; others?: number } = {},
 ): string {
-  const machine = host.split(".")[0] || "this machine";
+  const machine = o.machineName?.trim() || host.split(".")[0] || "this machine";
+  const id =
+    o.others && o.stateDir
+      ? createHash("sha256")
+          .update(path.resolve(o.stateDir))
+          .digest("hex")
+          .slice(0, 4)
+      : "";
   // Hub's rule: 1–40 of [A-Za-z0-9 ._-], starting with a letter or digit.
   const label = `${cli} on ${machine}`
     .replace(/[^A-Za-z0-9 ._-]/g, "-")
     .replace(/^[^A-Za-z0-9]+/, "")
-    .slice(0, 40)
+    .slice(0, id ? 35 : 40)
     .trimEnd();
+  if (id) return `${label || "den"} ${id}`;
   return label || "den";
 }
 
+function installLabelHere(): string {
+  let machineName: string | undefined;
+  try {
+    machineName = readWebAuthConfig(
+      getDistRoot(),
+      product().configFile,
+    ).machineName;
+  } catch {
+    machineName = undefined;
+  }
+  const stateDir = getStateDir();
+  let others = 0;
+  try {
+    others = listOtherInstalls(registryDir(), { ownStateDir: stateDir }).length;
+  } catch {
+    others = 0;
+  }
+  return defaultInstallLabel(undefined, undefined, {
+    machineName,
+    stateDir,
+    others,
+  });
+}
+
+export function hubTokenSlot(hubUrl: string, stateDir = getStateDir()): string {
+  let origin = hubUrl;
+  try {
+    origin = new URL(hubUrl).origin;
+  } catch {
+    origin = hubUrl;
+  }
+  let dir = path.resolve(stateDir);
+  try {
+    dir = fs.realpathSync(dir);
+  } catch {
+    dir = path.resolve(stateDir);
+  }
+  return createHash("sha256")
+    .update(`${dir}\0${origin}`)
+    .digest("hex")
+    .slice(0, 10);
+}
+
+const SLOT = /^[0-9a-f]{10}$/;
+
 /** The file Den keeps an install's Hub token in, when its store can't. */
-export function hubTokenFile(stateDir = getStateDir()): string {
-  return path.join(stateDir, "hub", "token");
+export function hubTokenFile(stateDir = getStateDir(), slot?: string): string {
+  return path.join(stateDir, "hub", slot ? `token-${slot}` : "token");
 }
 
 /** Write the token to its 0600 file (folder 0700), replacing any old one. */
@@ -323,21 +385,33 @@ function writeTokenFile(file: string, token: string): void {
  * key, named from the distribution (never Den's own vault). Null for env
  * (gone at restart) and none, and for a backend nobody chose.
  */
-export function storeRefFor(backend: string): Partial<SecretRef> | null {
+export function storeRefFor(
+  backend: string,
+  slot?: string,
+): Partial<SecretRef> | null {
   switch (backend) {
     case "1password":
-      return { item: `${product().title} Hub token`, field: "token" };
+      return {
+        item: `${product().title} Hub token${slot ? ` ${slot}` : ""}`,
+        field: "token",
+      };
     case "doppler":
-      return { key: envKey("HUB_TOKEN") };
+      return {
+        key: envKey(slot ? `HUB_TOKEN_${slot.toUpperCase()}` : "HUB_TOKEN"),
+      };
     default:
       return null;
   }
 }
 
-async function defaultStore(token: string): Promise<StoredToken> {
+async function defaultStore(
+  token: string,
+  hubUrl: string,
+): Promise<StoredToken> {
+  const slot = hubTokenSlot(hubUrl);
   const st = secretsStatus(readSecretsConfig(), process.env);
   const ref =
-    !st.implicit && st.detect.available ? storeRefFor(st.backend) : null;
+    !st.implicit && st.detect.available ? storeRefFor(st.backend, slot) : null;
   if (ref) {
     const full: SecretRef = {
       vault: ref.vault ?? "",
@@ -358,7 +432,7 @@ async function defaultStore(token: string): Promise<StoredToken> {
       // The store refused (signed out, locked): keep it in the file instead.
     }
   }
-  const file = hubTokenFile();
+  const file = hubTokenFile(undefined, slot);
   writeTokenFile(file, token);
   return { kind: "file", source: `file:${file}`, where: file };
 }
@@ -368,19 +442,41 @@ function isOwnStoreRef(cfg: HubConfig): boolean {
   if (!cfg.tokenRef) return false;
   const st = secretsStatus(readSecretsConfig(), process.env);
   const ours = storeRefFor(st.backend);
+  return !!ours && isDensOwnRef(cfg.tokenRef, ours);
+}
+
+export function isDensOwnRef(
+  ref: Partial<SecretRef>,
+  ours: Partial<SecretRef>,
+): boolean {
+  if ((ref.vault ?? "") !== (ours.vault ?? "")) return false;
+  const got = ours.item ? ref.item : ref.key;
+  const base = ours.item ?? ours.key ?? "";
+  if (!got || !base) return false;
+  const sep = ours.item ? " " : "_";
   return (
-    !!ours &&
-    (ours.item
-      ? cfg.tokenRef.item === ours.item
-      : cfg.tokenRef.key === ours.key)
+    got === base ||
+    (got.startsWith(base + sep) &&
+      SLOT.test(got.slice(base.length + 1).toLowerCase()))
   );
+}
+
+function isSlotted(cfg: HubConfig): boolean {
+  if (cfg.tokenSource?.kind === "file")
+    return path.basename(cfg.tokenSource.path) !== "token";
+  const r = cfg.tokenRef;
+  const name = r?.item ?? r?.key ?? "";
+  return SLOT.test(name.slice(-10).toLowerCase());
 }
 
 /** Connect's own file, when `cfg` points at it (never a distribution's path). */
 function isOwnFile(cfg: HubConfig, file = hubTokenFile()): boolean {
+  if (cfg.tokenSource?.kind !== "file") return false;
+  const p = path.resolve(cfg.tokenSource.path);
+  if (path.dirname(p) !== path.dirname(path.resolve(file))) return false;
+  const name = path.basename(p);
   return (
-    cfg.tokenSource?.kind === "file" &&
-    path.resolve(cfg.tokenSource.path) === path.resolve(file)
+    name === "token" || (name.startsWith("token-") && SLOT.test(name.slice(6)))
   );
 }
 
@@ -400,7 +496,8 @@ export function hubTokenRotation(
   return {
     owns: (cfg) => isOwnFile(cfg, file) || isOwnStoreRef(cfg),
     write: async (cfg, token) => {
-      if (isOwnFile(cfg, file)) return writeTokenFile(file, token);
+      if (isOwnFile(cfg, file) && cfg.tokenSource?.kind === "file")
+        return writeTokenFile(cfg.tokenSource.path, token);
       if (cfg.tokenRef && isOwnStoreRef(cfg))
         return (deps.setRef ?? ((r, v) => getSecretsProvider().set(r, v)))(
           cfg.tokenRef,
@@ -422,14 +519,33 @@ export function hubTokenRotation(
 async function defaultForget(cfg: HubConfig): Promise<void> {
   if (cfg.tokenSource?.kind === "file") {
     // Only the file Connect made: never a path a distribution chose.
-    if (isOwnFile(cfg)) fs.rmSync(hubTokenFile(), { force: true });
+    if (isOwnFile(cfg)) fs.rmSync(cfg.tokenSource.path, { force: true });
     return;
   }
-  // Stores have no delete here: blank the value (the token is revoked).
-  if (cfg.tokenRef && isOwnStoreRef(cfg))
-    await getSecretsProvider()
-      .set(cfg.tokenRef, " ")
-      .catch(() => undefined);
+  // A slot is deleted; the old shared item is blanked (its token is revoked).
+  if (cfg.tokenRef && isOwnStoreRef(cfg)) {
+    const ref = cfg.tokenRef;
+    const store = getSecretsProvider();
+    const blank = () => store.set(ref, " ");
+    await (
+      isSlotted(cfg) && store.delete
+        ? store.delete(ref, { wholeItem: true }).catch(blank)
+        : blank()
+    ).catch(() => undefined);
+  }
+}
+
+function sameSlot(cfg: HubConfig, s: StoredToken): boolean {
+  if (s.kind === "file")
+    return (
+      cfg.tokenSource?.kind === "file" &&
+      `file:${cfg.tokenSource.path}` === s.source
+    );
+  return (
+    !!cfg.tokenRef &&
+    (cfg.tokenRef.item ?? "") === (s.ref.item ?? "") &&
+    (cfg.tokenRef.key ?? "") === (s.ref.key ?? "")
+  );
 }
 
 export function defaultHubConnectDeps(): HubConnectDeps {
@@ -449,7 +565,11 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     readToken: (c) => readHubToken(c),
     readUser: () => readUserConfig() as Record<string, unknown>,
     writeUser: (u) => writeUserConfig(u as never),
-    installLabel: () => defaultInstallLabel(),
+    installLabel: installLabelHere,
+    stateShared: () => ({
+      shared: stateDirShared(getStateDir(), getDistRoot()),
+      boundOrigin: readHubBinding(getStateDir())?.origin ?? null,
+    }),
     relinkMoved: async (hubUrl, token, company) => {
       const [m, hub, link, la, ns] = await Promise.all([
         import("./hub-relink-after-move.js"),
@@ -623,7 +743,9 @@ export class HubConnect {
     origin: string,
     url?: unknown,
     opts: { switch?: boolean } = {},
-  ): { ok: true; location: string } | { ok: false; error: string } {
+  ):
+    | { ok: true; location: string }
+    | { ok: false; error: string; code?: string; hub?: string } {
     const typed = typeof url === "string" ? url.trim().replace(/\/+$/, "") : "";
     let sw: { to: string } | null = null;
     try {
@@ -638,6 +760,20 @@ export class HubConnect {
       return { ok: false, error: bad.replace("hub.url", "Hub's address") };
     const badOrigin = callbackOriginProblem(origin);
     if (badOrigin) return { ok: false, error: badOrigin };
+    let st: ReturnType<NonNullable<HubConnectDeps["stateShared"]>> | null;
+    try {
+      st = this.deps.stateShared?.() ?? null;
+    } catch {
+      st = null;
+    }
+    if (st?.shared && st.boundOrigin && !sameHub(st.boundOrigin, hubUrl))
+      return {
+        ok: false,
+        code: "state_folder_shared",
+        hub: hubUrl,
+        error:
+          "Another copy of Den on this computer shares this install's state folder, and it is on another Hub. Give this install its own state folder first: Den asks you to Allow it, then carries on.",
+      };
     this.sweep();
     const state = newHubState();
     const { verifier, challenge } = newPkce();
@@ -817,7 +953,7 @@ export class HubConnect {
     const oldToken = read && read !== grant.token ? read : null;
     let stored: StoredToken;
     try {
-      stored = await this.deps.store(grant.token);
+      stored = await this.deps.store(grant.token, hubUrl);
     } catch (e) {
       // Don't leave a live token nobody can find: revoke it.
       await this.deps.revoke(hubUrl, grant.token).catch(() => undefined);
@@ -851,6 +987,8 @@ export class HubConnect {
           /* best effort */
         }
       });
+    if (leaving && !sameSlot(leaving, stored))
+      await this.deps.forget(leaving).catch(() => undefined);
     // Issue 726: another Hub or company: the old one's state goes first.
     const company = grant.company?.slug || grant.company?.name || undefined;
     let rebound = true;

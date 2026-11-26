@@ -271,22 +271,49 @@ describe("after setup", () => {
     await p.context().close();
   }, 60_000);
 
-  it("Agents lists it under Server, not under a workspace", async () => {
+  it("Agents ranks it by its state like any agent, tagged Server (issue 773)", async () => {
     if (!browser) return;
     const p = await open(s!, "/agents");
-    const g = p.locator('#agl .wsg[data-ws="den-server"]');
-    await g.waitFor({ timeout: 20_000 });
-    expect((await g.locator(".wsh span").first().textContent())?.trim()).toBe(
-      "Server",
+    const row = p.locator("#agl div[data-band] button[data-kind]", {
+      hasText: "Acme agent",
+    });
+    await row.waitFor({ timeout: 20_000 });
+    expect(await row.locator('[data-ptag="server"]').count()).toBe(1);
+    expect(
+      await p.evaluate(
+        () =>
+          [...document.querySelectorAll('#agl [data-ws="den-server"]')].filter(
+            (e) => !e.closest("[data-band]"),
+          ).length,
+      ),
+    ).toBe(0);
+    const band = await row.evaluate((e) =>
+      e.closest("[data-band]")?.getAttribute("data-band"),
     );
-    expect(await g.locator(".wsh a").count()).toBe(0);
-    expect(await g.locator(".agr").first().textContent()).toContain(
-      "Acme agent",
+    expect(["needs", "done", "working", "idle"]).toContain(band);
+    await p.context().close();
+  }, 60_000);
+
+  it("one project's view leaves it out: only All projects lists it (issue 773)", async () => {
+    if (!browser) return;
+    const p = await open(s!, "/agents?ws=north");
+    await p.waitForFunction(
+      () => {
+        const l = document.getElementById("agl");
+        return (
+          !!l &&
+          !l.hasAttribute("aria-busy") &&
+          !l.querySelector("[role=status][aria-label]")
+        );
+      },
+      null,
+      { timeout: 20_000 },
     );
-    // It is the list's first group.
-    expect(await p.locator("#agl .wsg").first().getAttribute("data-ws")).toBe(
-      "den-server",
-    );
+    expect(
+      await p
+        .locator("#agl button[data-kind]", { hasText: "Acme agent" })
+        .count(),
+    ).toBe(0);
     await p.context().close();
   }, 60_000);
 

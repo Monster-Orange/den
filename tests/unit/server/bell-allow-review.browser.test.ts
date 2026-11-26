@@ -265,6 +265,47 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
       const a = document.activeElement as HTMLElement | null;
       return a?.dataset?.bell ?? a?.tagName ?? "";
     });
+  const keyboardNow = (p: Page) =>
+    p.evaluate(() => {
+      const a = document.activeElement as HTMLElement | null;
+      const start = (window as { reviewAtStart?: Element }).reviewAtStart;
+      const review = document.querySelector(
+        '[data-ap-row] [data-bell="review"]',
+      );
+      return JSON.stringify({
+        active: a
+          ? `${a.tagName}${JSON.stringify(a.dataset)}${a.id ? `#${a.id}` : ""}`
+          : null,
+        pageHasFocus: document.hasFocus(),
+        panelOpen: document
+          .querySelector("#den-bell")
+          ?.getAttribute("aria-expanded"),
+        reviewAtStartConnected: start?.isConnected ?? null,
+        sameReviewAsAtStart: start ? start === review : null,
+      });
+    });
+  async function reviewHasKeyboard(p: Page, ms: number, when: string) {
+    try {
+      await p.waitForFunction(
+        () =>
+          (document.activeElement as HTMLElement)?.dataset?.bell === "review",
+        null,
+        { timeout: ms },
+      );
+    } catch {
+      throw new Error(
+        `Review doesn't have the keyboard ${when}: ${await keyboardNow(p)}`,
+      );
+    }
+  }
+  async function focusReview(p: Page) {
+    const review = row(p).locator('[data-bell="review"]');
+    await review.evaluate((el) => {
+      (window as { reviewAtStart?: Element }).reviewAtStart = el;
+    });
+    await review.focus();
+    await reviewHasKeyboard(p, 5_000, "before the row drops");
+  }
   async function dropTheRow(p: Page) {
     const c = await answers(p);
     c.dropping = true;
@@ -279,15 +320,11 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
   it("Review keeps the keyboard when its row comes back", async () => {
     if (skip()) return;
     const p = await bellAt(1440);
-    await row(p).locator('[data-bell="review"]').focus();
+    await focusReview(p);
     const bringBack = await dropTheRow(p);
     await bringBack();
     await row(p).waitFor();
-    await p.waitForFunction(
-      () => (document.activeElement as HTMLElement)?.dataset?.bell === "review",
-      null,
-      { timeout: 5_000 },
-    );
+    await reviewHasKeyboard(p, 5_000, "after the row comes back");
     expect(await focused(p)).toBe("review");
     await p.context().close();
   }, 60_000);
@@ -295,7 +332,7 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
   it("the window losing and getting focus back meanwhile isn't moving on: Review still gets the keyboard", async () => {
     if (skip()) return;
     const p = await bellAt(1440);
-    await row(p).locator('[data-bell="review"]').focus();
+    await focusReview(p);
     const bringBack = await dropTheRow(p);
     await p.evaluate(() => {
       document.body.dispatchEvent(
@@ -305,11 +342,7 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
     });
     await bringBack();
     await row(p).waitFor();
-    await p.waitForFunction(
-      () => (document.activeElement as HTMLElement)?.dataset?.bell === "review",
-      null,
-      { timeout: 5_000 },
-    );
+    await reviewHasKeyboard(p, 5_000, "after the row comes back");
     expect(await focused(p)).toBe("review");
     await p.context().close();
   }, 60_000);
@@ -317,7 +350,7 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
   it("a person who moved focus elsewhere meanwhile keeps it", async () => {
     if (skip()) return;
     const p = await bellAt(1440);
-    await row(p).locator('[data-bell="review"]').focus();
+    await focusReview(p);
     const bringBack = await dropTheRow(p);
     // The person tabs on to the bell's own button.
     await p.focus("#den-bell");
