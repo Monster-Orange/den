@@ -130,6 +130,7 @@
     ["agents.resume_max_wait", "agents"],
     ["server.health_poll", "server"],
     ["server.health_poll_hidden", "server"],
+    ["server.git_reads", "server"],
     ["agents.issue_writes", "agents"],
     ["agents.issue_writes_per_hour", "agents"],
     ["agents.issue_writes_visibility_minutes", "agents"],

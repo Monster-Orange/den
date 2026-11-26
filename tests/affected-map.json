@@ -2490,6 +2490,11 @@
       "why": "tests that run scripts/release-tree.sh"
     },
     {
+      "when": ["scripts/settings-pin.mjs"],
+      "run": ["tests/unit/server/settings-registry-order.test.ts"],
+      "why": "tests that run scripts/settings-pin.mjs"
+    },
+    {
       "when": ["scripts/setup-secrets.ts"],
       "run": [
         "tests/unit/cli/secrets-preflight.test.ts",
