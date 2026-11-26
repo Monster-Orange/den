@@ -149,6 +149,24 @@ describe("updateDen (SRV-1b)", () => {
     });
   });
 
+  it("a test install's flag rides only on the rollback's restart (issue 832)", async () => {
+    const r = rig({ restartEnv: { DEN_TEST_INSTALL: "1" } });
+    await updateDen("latest", r.deps);
+    const plan = JSON.parse(
+      fs.readFileSync(path.join(updateDir(stateDir), "plan.json"), "utf8"),
+    );
+    expect(plan.restartEnv).toEqual({ DEN_TEST_INSTALL: "1" });
+  });
+
+  it("no restartEnv given: an empty one in the plan (issue 832)", async () => {
+    const r2 = rig();
+    await updateDen("latest", r2.deps);
+    const plan2 = JSON.parse(
+      fs.readFileSync(path.join(updateDir(stateDir), "plan.json"), "utf8"),
+    );
+    expect(plan2.restartEnv).toEqual({});
+  });
+
   it("an install that fails puts the pin back, installs the old one, and says so", async () => {
     const r = rig({}, (argv) =>
       argv.includes("--save-exact")
