@@ -10,6 +10,7 @@ import { isServerScope } from "../../shared/agents/server-agent.js";
 import { randomUUID } from "crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { MCP_CHILD_ENV, superviseStdio } from "./supervisor.js";
 import { agentAuditHeaders } from "../../shared/agent-actor.js";
 import {
   readAgentsConfig,
@@ -69,6 +70,7 @@ export interface DenMcpOptions {
    * engineWatch on the engine root, read now).
    */
   engine?: { check(): EngineCheck };
+  supervised?: boolean;
 }
 
 /**
@@ -121,6 +123,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
   // its tools are the old Den's, and how to load the new ones.
   const engine = opts.engine ?? engineWatch(getEngineRoot);
   const isAgent = opts.scope?.actor.startsWith("agent:") === true;
+  const supervised = opts.supervised ?? process.env[MCP_CHILD_ENV] === "1";
   const server = new McpServer(
     { name: p.name, version: engineVersion() ?? "0.0.0" },
     {
@@ -199,7 +202,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
               ? [
                   {
                     type: "text" as const,
-                    text: toolsStaleMessage(e, isAgent),
+                    text: toolsStaleMessage(e, isAgent, supervised),
                   },
                 ]
               : []),
@@ -549,6 +552,10 @@ export async function runMcp(rawArgv: string[]): Promise<void> {
       api,
       ...(scope ? { scope } : {}),
     });
+    return;
+  }
+  if (process.env[MCP_CHILD_ENV] !== "1") {
+    await superviseStdio(rawArgv, getEngineRoot());
     return;
   }
   const server = createDenMcpServer({
