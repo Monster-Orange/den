@@ -221,4 +221,14 @@ describe("approving (someone already in)", () => {
         ),
       ]).toMatchObject([p, { ok: false, code: "agent_forbidden" }]);
   });
+  it("issue 1371: an agent's token is refused Undo of a setting at the guard: 403", () => {
+    expect(
+      checkRequest(
+        req("POST", "/api/settings/undo", {
+          authorization: "Bearer den_at_agent",
+        }),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: false, status: 403, code: "agent_forbidden" });
+  });
 });

@@ -15,14 +15,14 @@
  */
 import { SERVER_SCOPE } from "./agents/server-agent.js";
 import { isCatchAllProject } from "./catch-all-project.js";
-import { parseHubProjectLink } from "./hub-project-link.js";
+import { hubProjectOf } from "./hub-project-link.js";
 import type { WorkspacesFile } from "./types/index.js";
 import { workspaceDisplayName } from "./workspace-name.js";
+import { isRepoName } from "./repo-name.js";
 
 /** Hub's limits: more is a 400 with no change. */
 export const SYNC_MAX_PROJECTS = 500;
 export const SYNC_MAX_REPOS = 50;
-const REPO_RE = /^[a-z0-9_.-]{1,100}\/[a-z0-9_.-]{1,100}$/;
 const ORG_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/;
 
 /** A URL the person may be sent to: https on github.com, nothing else. */
@@ -99,14 +99,15 @@ export function projectList(
         ...new Set(
           reposOf(ws)
             .map((r) => r.toLowerCase())
-            .filter((r) => REPO_RE.test(r)),
+            .filter((r) => isRepoName(r)),
         ),
       ].slice(0, SYNC_MAX_REPOS);
       return {
         workspace: ws,
         name: workspaceDisplayName(ws, cfg).slice(0, 200),
         repos,
-        hub_project: parseHubProjectLink(cfg?.hub_project)?.id ?? null,
+        // Issue 646: never an id from another Hub or company.
+        hub_project: hubProjectOf(ws, () => file)?.id ?? null,
         agents: agentsOf(ws),
         ...(isCatchAllProject(ws) ? { catch_all: true as const } : {}),
       };
@@ -143,7 +144,7 @@ export function readSyncReply(body: unknown): {
       const workspace = plain(o.workspace, 64);
       const repo = plain(o.repo, 201).toLowerCase();
       const org = plain(o.org, 39);
-      if (!workspace || !REPO_RE.test(repo) || !ORG_RE.test(org)) return [];
+      if (!workspace || !isRepoName(repo) || !ORG_RE.test(org)) return [];
       return [
         {
           workspace,

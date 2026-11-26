@@ -354,6 +354,16 @@ function shapeTokenLines(shape: NonNullable<ThemeManifest["shape"]>): string[] {
       "  --danger-bg: transparent;",
       "  --danger-border: var(--bad);",
       "  --danger-text: var(--bad);",
+      // Issue 1137: danger is the one solid edge, 2px; one hover tint for
+      // every button; disabled is a faint label at full opacity; the focus
+      // ring in --text, 2px out.
+      "  --danger-edge-width: 2px;",
+      "  --danger-edge-style: solid;",
+      "  --hover-tint: color-mix(in srgb, var(--text) 6%, transparent);",
+      "  --btn-disabled-text: var(--faint);",
+      "  --btn-disabled-opacity: 1;",
+      "  --focus-ring: var(--text);",
+      "  --focus-offset: 2px;",
     );
   return out;
 }

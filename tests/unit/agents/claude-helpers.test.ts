@@ -339,6 +339,24 @@ describe("workflows", () => {
     );
   }
 
+  it("issue 1592: a workflow file rewritten in one tick is read again", () => {
+    helper("w9", { ...without("finished"), toolUseId: "toolu_wf" }, midTurn);
+    const file = path.join(
+      transcript.replace(/\.jsonl$/, ""),
+      "workflows",
+      "wf_0a1b2c3d-4e5.json",
+    );
+    // A whole-ms stamp, now: utimes keeps no sub-ms part.
+    const tick = new Date();
+    workflow([{ agentId: "w9", state: "done" }]);
+    fs.utimesSync(file, tick, tick);
+    expect(one("w9").status).toBe("done");
+    // The run marks it failed in the same tick of a coarse file clock.
+    workflow([{ agentId: "w9", state: "error" }]);
+    fs.utimesSync(file, tick, tick);
+    expect(one("w9").status).toBe("failed");
+  });
+
   it("a workflow agent: its run, phase and label; error is failed, done is done; the run's own toolUseId notification doesn't decide it", () => {
     helper(
       "w1",

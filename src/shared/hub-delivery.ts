@@ -747,7 +747,31 @@ export type AckState =
   | "refused"
   | "working"
   | "done"
-  | "failed";
+  | "failed"
+  // Issue 750: held here, with a reason (Hub shows "Held: {reason}", or
+  // "Can't reach Hub" for HUB_TOOLS_UNAVAILABLE). Only to a Hub that
+  // lists ACK_HELD_FEATURE: an older one refuses it.
+  | "held";
+
+/** Issue 750: the feature a Hub lists (whoami features) when it takes `held`. */
+export const ACK_HELD_FEATURE = "deliveries.ack_held";
+/** Issue 750: the reason for an agent whose Hub tools failed to load. */
+export const HUB_TOOLS_UNAVAILABLE = "hub_tools_unavailable";
+
+/**
+ * Issue 750: the ack for a delivery held because its agent's Hub tools
+ * failed to load: `held` when Hub lists ACK_HELD_FEATURE, else `queued`
+ * (every Hub takes it), with the same reason either way.
+ */
+export function toolsHeldAck(features: readonly string[] | undefined): {
+  state: "held" | "queued";
+  reason: typeof HUB_TOOLS_UNAVAILABLE;
+} {
+  return {
+    state: features?.includes(ACK_HELD_FEATURE) ? "held" : "queued",
+    reason: HUB_TOOLS_UNAVAILABLE,
+  };
+}
 
 /** The ack's JSON body: a reason is plain text, at most 300 characters. */
 export function ackBody(
@@ -778,7 +802,9 @@ export type DeliveryTrouble =
   | "refused"
   | "unreachable"
   | "closed"
-  | "silent";
+  | "silent"
+  /** The stream is open, but its cursor hasn't moved while Hub lists comments waiting. */
+  | "stale";
 
 const TROUBLES: readonly DeliveryTrouble[] = [
   "rejected",
@@ -787,6 +813,7 @@ const TROUBLES: readonly DeliveryTrouble[] = [
   "unreachable",
   "closed",
   "silent",
+  "stale",
 ];
 
 /** A thrown error's trouble: HubCallError's kind, else unreachable. */
@@ -806,6 +833,7 @@ export const TROUBLE_TEXT: Record<DeliveryTrouble, string> = {
   unreachable: "Den can't reach Hub",
   closed: "Hub keeps closing the comment stream",
   silent: "the comment stream went silent",
+  stale: "the comment stream is open, but Hub lists comments it hasn't sent",
 };
 
 /**
@@ -821,12 +849,34 @@ export interface DeliveryHealth {
   lastDeliveryAt: number | null;
   trouble: DeliveryTrouble | null;
   troubleAt: number | null;
+  /** When the open stream opened (null: not open). */
+  streamSince?: number | null;
+  /**
+   * The last list read: how many it gave and the cursor after
+   * it, or its error (ids and counts only, never a comment's text).
+   */
+  lastPoll?: {
+    at: number;
+    ok: boolean;
+    count?: number;
+    lastId?: string | null;
+    error?: string;
+  } | null;
+  /** When the cursor (the last delivery id) last moved. */
+  cursorAt?: number | null;
+  /**
+   * The stream open, the cursor still for
+   * hub.delivery_stale_hours, and Hub's list has `waiting` after it.
+   * Cleared when a delivery moves the cursor.
+   */
+  stale?: { since: number; waiting: number } | null;
   /** The Hub it reads (doctor's file only). */
   url?: string;
 }
 
 /**
- * Issue 702: the trouble to say, or null. Said only after `minutes`
+ * The trouble to say, or null. "stale" at once
+ * (the loop waited hub.delivery_stale_hours). Else said only after `minutes`
  * (hub.delivery_alert_minutes; 0: never) with no good read and no open
  * stream, counted from the last good read, else from the start.
  */
@@ -835,6 +885,8 @@ export function deliveryAlert(
   now: number,
   minutes: number,
 ): DeliveryTrouble | null {
+  // Its own setting (hub.delivery_stale_hours), open stream or not.
+  if (h.stale) return "stale";
   if (!(minutes > 0) || h.streamOpen) return null;
   const from = Math.max(h.lastOkAt ?? 0, h.since);
   if (now - from < minutes * 60_000) return null;

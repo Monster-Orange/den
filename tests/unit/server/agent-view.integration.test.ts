@@ -289,6 +289,10 @@ describe("clause 1: a view for the agent's own Den, through its token", () => {
       /^http:\/\/localhost:\d+\/auth\?agent_view=/,
     );
     expect(v.link.json.minutes).toBe(10);
+    // Issue 1243: the answer says the link is the agent's own, never a person's.
+    expect(String(v.link.json.note)).toMatch(
+      /your own browser on this machine.*Never give it to a person/,
+    );
     expect([v.r.status, String(v.r.headers.location)]).toEqual([
       303,
       "/agents",

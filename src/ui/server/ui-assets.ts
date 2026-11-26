@@ -49,6 +49,10 @@ export const UI_MODULES: readonly string[] = [
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
   "/agent-order.js",
+  // Issue 750: the agents page's By group view.
+  "/agent-groups.js",
+  // Issue 1407: one agent's answer to a restart for its tools.
+  "/restart-result.js",
   "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
@@ -72,6 +76,8 @@ export const UI_MODULES: readonly string[] = [
   "/view-scope.js",
   // ON-6: the server agent's page.
   "/server-agent-page.js",
+  // Issue 52: the Coach tab on the server agent's page.
+  "/coach-tab.js",
   // 0.4.18: the service panel (rail pins, Graph ⋯, Services names).
   "/svc-panel.js",
   // D30: the shared searchable picker (Settings › Agents › Rotation).
@@ -184,8 +190,14 @@ export const KIT_FILES: readonly string[] = [
   "setting-row.css",
   "setting-field.js",
   "setting-field.css",
+  // Issue 750: the group header (the agents page's By group view).
+  "group-header.js",
+  "group-header.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  // Issue 789: a preview in a sandboxed frame, and the script inside it.
+  "preview.js",
+  "preview-frame.js",
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",
@@ -377,6 +389,8 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/busy.css",
   // den-ui 0.6.2: the ask-and-tell dialogs' look, likewise.
   "/kit/dialog.css",
+  // Issue 750: the group header's look (the agents page's By group view).
+  "/kit/group-header.css",
 ];
 
 /**

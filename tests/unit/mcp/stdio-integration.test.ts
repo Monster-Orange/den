@@ -1,6 +1,6 @@
 /**
  * Integration: spawn `bin/den mcp` (Den's own profile, in a throwaway root
- * whose org config enables two actions) against a stub web server, and
+ * whose user.yml enables two actions) against a stub web server, and
  * speak raw JSON-RPC over its stdio: initialize, tools/list, one read tool,
  * one refused action. Every stdout line must be a protocol message.
  */
@@ -67,7 +67,13 @@ beforeAll(async () => {
   fs.mkdirSync(path.join(root, "config"));
   fs.writeFileSync(
     path.join(root, "config", "den.yml"),
-    "environments: [local]\nmcp:\n  actions: [service_up, run_tests]\n",
+    "environments: [local]\n",
+  );
+  // Issue 1072: action tools are turned on in user.yml only.
+  fs.mkdirSync(path.join(root, "config", "local"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "config", "local", "user.yml"),
+    "mcp:\n  actions: [service_up, run_tests]\n",
   );
 
   child = spawnServer(

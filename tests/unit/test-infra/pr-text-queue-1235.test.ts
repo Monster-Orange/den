@@ -42,6 +42,10 @@ describe("closing-keywords on the merge queue (issue 1235)", () => {
     expect(check?.run).toContain('"$RANGE_BASE..$RANGE_HEAD"');
   });
 
+  it("changelog-line runs on pull requests only (a merge group has no body or pull request range)", () => {
+    expect(wf.jobs["changelog-line"]?.if).toBe("github.event_name == 'pull_request'");
+  });
+
   it("a merge-queue run has its own concurrency group (it has no pull request number)", () => {
     expect(wf.concurrency.group).toMatch(/pull_request\.number/);
     expect(wf.concurrency.group).toMatch(/github\.ref/);

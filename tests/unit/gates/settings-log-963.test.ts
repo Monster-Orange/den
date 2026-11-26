@@ -133,6 +133,10 @@ describe("issue 963: each setting says what it means", () => {
     "cpu_slots_beside_browser",
     "cpu_slots_beside_release_browser",
     "cpu_hold_load",
+    // Issue 1132.
+    "max_start_load",
+    "max_start_wait_minutes",
+    "reap_grace_seconds",
     "local_browser_slots",
     "overrun_margin_minutes",
     "remote_renew_seconds",
@@ -156,6 +160,9 @@ describe("issue 963: each setting says what it means", () => {
     "class_windows",
     "browser_box_default",
     "browser_host_only",
+    // Issue 1264.
+    "route_agents",
+    "route_commands",
   ];
 
   it.each(["en", "es", "ja"] as UiLanguage[])(

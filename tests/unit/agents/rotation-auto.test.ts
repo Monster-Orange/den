@@ -41,6 +41,7 @@ import {
 } from "../../../src/ui/cli/agent-ops.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";
+import { recentActions } from "../../../src/ui/server/audit.js";
 import { ACTOR_TOKEN_ENV } from "../../../src/shared/actor-token.js";
 import { GOOD_HANDOFF } from "./helpers/handoff.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
@@ -86,7 +87,11 @@ function compact(r: Rig, id: string, n: number): void {
     noteCompaction(files(r, id), { session_id: token, trigger: "auto" }, after);
 }
 
-/** Its transcript's last record: mid-turn (a tool call) or idle. */
+const mtimes: Record<string, Date> = {};
+/**
+ * Its transcript's last record: mid-turn (a tool call) or idle. A rewrite
+ * keeps the file's mtime.
+ */
 function turn(r: Rig, id: string, busy: boolean): void {
   const dir = path.join(r.dir, "cc", "projects", "p");
   fs.mkdirSync(dir, { recursive: true });
@@ -97,10 +102,12 @@ function turn(r: Rig, id: string, busy: boolean): void {
       content: [{ type: "text", text: "ok" }],
     },
   });
-  fs.writeFileSync(
-    path.join(dir, `${rec(r, id).resumeToken}.jsonl`),
-    `${line}\n`,
-  );
+  const file = path.join(dir, `${rec(r, id).resumeToken}.jsonl`);
+  fs.writeFileSync(file, `${line}\n`);
+  // Busy and idle are the same length; a rewrite inside one
+  // mtime tick (a few ms on Linux) kept the mtime too. Every run does so.
+  const t = (mtimes[file] ??= new Date(Date.now()));
+  fs.utimesSync(file, t, t);
 }
 
 /** A send that records what it typed (the real one types into the PTY). */
@@ -404,6 +411,22 @@ describe("the routes", () => {
     });
     expect(bad.status).toBe(400);
     expect(String(bad.json.error)).toMatch(/auto, ask or off/);
+    // Issue 1391: agents may read the trail. The row is written only
+    // after every field is checked, so a refused value never reaches it,
+    // and a kept row holds only checked values.
+    const typed = await call("PUT", "/api/agents/rotation", {
+      scope: "install",
+      key: "on_due",
+      value: "s3cr3t-typed-in",
+    });
+    expect(typed.status).toBe(400);
+    const rows = recentActions().filter((e) =>
+      e.detail.startsWith("rotation "),
+    );
+    expect(rows.map((e) => e.detail).join("\n")).not.toContain("s3cr3t");
+    expect(rows.map((e) => e.detail)).toContain(
+      "rotation persona be-dev after_compactions = 5",
+    );
     const clear = await call("PUT", "/api/agents/rotation", {
       scope: "persona",
       target: "be-dev",

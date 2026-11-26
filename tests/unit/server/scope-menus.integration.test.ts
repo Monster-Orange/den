@@ -191,9 +191,48 @@ afterAll(async () => {
 });
 
 /** A page of the real server; records every non-GET request. */
+/**
+ * Hold the Workspaces page's own load-time selection (its first
+ * selectWorkspace, which rewrites the URL to ?ws=<name>, a same-document
+ * navigation) until a top-bar menu item is clicked: the order a loaded
+ * machine gave in the 0.4.87 dry run, where the page's project list
+ * answered after the pill was up and the pick was made.
+ */
+async function selectionLandsOnThePick(p: Page): Promise<void> {
+  await p.addInitScript(() => {
+    let fn: ((...a: unknown[]) => unknown) | undefined;
+    let held: unknown[] | null = null;
+    let released = false;
+    document.addEventListener(
+      "click",
+      (e) => {
+        if (released) return;
+        if (!(e.target as Element)?.closest?.(".den-pop .den-mi")) return;
+        released = true;
+        if (held && fn) fn(...held);
+      },
+      true,
+    );
+    Object.defineProperty(window, "selectWorkspace", {
+      configurable: true,
+      get: () =>
+        fn &&
+        ((...a: unknown[]) => {
+          if (released) return fn!(...a);
+          held = a;
+          return Promise.resolve();
+        }),
+      set: (v: (...a: unknown[]) => unknown) => {
+        fn = v;
+      },
+    });
+  });
+}
+
 async function open(
   url: string,
   size = { width: 1440, height: 800 },
+  before?: (p: Page) => Promise<void>,
 ): Promise<{ p: Page; writes: string[] }> {
   const ctx = await browser!.newContext({ viewport: size });
   // A signed-in browser: its picks write (a write needs a sign-in on this
@@ -217,6 +256,7 @@ async function open(
         `${r.method()} ${new URL(r.url()).pathname} ${r.postData() ?? ""}`,
       );
   });
+  await before?.(p);
   await p.goto(`http://127.0.0.1:${port}${url}`);
   await p.waitForSelector(".den-rail .den-ni");
   await p.evaluate(() =>
@@ -334,18 +374,28 @@ describe("Workspace ▾ (R4)", () => {
 
   it("a page whose URL names a workspace (?ws=) follows the pick, so Workspaces never disagrees with the top bar", async () => {
     if (!browser) return;
-    const { p } = await open("/local-dev?ws=ws-a");
+    // The page's own selection lands as the pick is clicked, as under
+    // load: its ?ws= rewrite is a same-document navigation, so wait for
+    // the pick's URL itself, never for "a navigation".
+    const { p } = await open(
+      "/local-dev?ws=ws-a",
+      undefined,
+      selectionLandsOnThePick,
+    );
     await p.waitForSelector("#ws-pill:not([hidden])");
     await p.click("#ws-pill");
     await Promise.all([
-      p.waitForNavigation(),
+      p.waitForURL((u) => u.searchParams.get("project") === "ws-b"),
       p.click('.den-pop .den-mi:has-text("ws-b")'),
     ]);
     expect(new URL(p.url()).searchParams.get("project")).toBe("ws-b");
     await p.waitForSelector("#ws-pill:not([hidden])");
     await p.click("#ws-pill");
     await Promise.all([
-      p.waitForNavigation(),
+      // All active drops both (the URL right now has ?project=ws-b).
+      p.waitForURL(
+        (u) => !u.searchParams.has("ws") && !u.searchParams.has("project"),
+      ),
       p.click('.den-pop .den-mi:has-text("All active")'),
     ]);
     expect(new URL(p.url()).searchParams.has("ws")).toBe(false);
@@ -360,9 +410,12 @@ describe("Workspace ▾ (R4)", () => {
     await post("/api/workspaces", { name: "ws-a", action: "focus" });
     const { p, writes } = await open("/local-dev?ws=ws-a");
     await p.waitForSelector("#ws-pill:not([hidden])");
+    // The page's own selection (its ?ws= rewrite) first, so it can't land
+    // between the pick's URL and its reload; then wait for the URL itself.
+    await p.waitForSelector('.ws-item.active[data-name="ws-a"]');
     await p.click("#ws-pill");
     await Promise.all([
-      p.waitForNavigation(),
+      p.waitForURL((u) => u.searchParams.get("project") === "ws-b"),
       p.click('.den-pop .den-mi:has-text("ws-b")'),
     ]);
     // In view already: the CLI default only.

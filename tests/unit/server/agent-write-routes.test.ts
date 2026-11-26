@@ -53,6 +53,8 @@ const AGENTS_MAY: Record<string, string> = {
   "POST /api/approvals/:id/withdraw":
     "takes back its own held write (issue 142); another's is refused, nothing runs",
   "POST /api/activity": "an agent's report of a refused call, appended only",
+  "POST /api/audit/cli":
+    "issue 1369: an agent's den command's audit entry, appended only, recorded as the agent",
   "GET /api/service/exec":
     "MCP service lifecycle: up, down, restart, local only (checked for an agent)",
   "HEAD /api/service/exec": "as GET",
