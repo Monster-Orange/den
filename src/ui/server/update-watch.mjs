@@ -11,9 +11,6 @@
  *
  * The plan (written by den-update.ts, 0600, no secrets):
  *   { port, to, from, fromPid, waitMs, pollMs?, root, backups: [{ saved,
- *     path }], npm: [cmd, ...args], restart: [cmd, ...args], restartEnv?:
- *     { NAME: value } (issue 832: added to the restart's env only, never
- *     npm's), stateFile, restartMarker: { path, marker } }
  *
  * It waits up to waitMs for this Den's /api/server-info to answer the new
  * version from a new pid. Then it writes { state: "good" } and exits.

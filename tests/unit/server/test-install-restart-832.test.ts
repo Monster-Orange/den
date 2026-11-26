@@ -1,9 +1,3 @@
-/**
- * Issue 832: Den's own restart of a test install keeps the test-install
- * mark. The server reads the launcher's flag once at boot and takes it out
- * of its own env (agents and terminals never inherit it); Den hands it back
- * only to the restart it starts itself.
- */
 import { describe, expect, it } from "@jest/globals";
 import { getProfile } from "../../../src/shared/paths.js";
 import { envName } from "../../../src/shared/profile.js";
@@ -26,10 +20,8 @@ describe("a test install's restart keeps its mark (issue 832)", () => {
   it("the flag at boot: taken out of the server's env, handed only to its restart", () => {
     const env: NodeJS.ProcessEnv = { [FLAG]: "1", HOME: "/h" };
     expect(takeTestInstallLaunchFlag(getProfile(), env)).toBe(true);
-    // What agents and terminals inherit (the server's env) has no flag.
     expect(env[FLAG]).toBeUndefined();
     expect(testInstallRestartEnv()).toEqual({ [FLAG]: "1" });
-    // The restart Den starts itself has it, with the port.
     const r = webRestartEnv(7000, env);
     expect(r[FLAG]).toBe("1");
     expect(r.PORT).toBe("7000");

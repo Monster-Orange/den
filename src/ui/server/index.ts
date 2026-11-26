@@ -3767,9 +3767,6 @@ async function confirmFirstRunLink(
  * own start environment (never a file), then taken out of it so nothing
  * this server starts (agents, terminals) inherits it.
  */
-// Issue 832: held in test-install-launch.ts, which hands it back only to
-// the restart Den starts itself (spawnDetachedWebRestart, the update
-// watch's rollback).
 const TEST_INSTALL_LAUNCH_FLAG = takeTestInstallLaunchFlag(getProfile());
 
 /**
@@ -5270,7 +5267,6 @@ function approvalDeps(): ApprovalDeps {
         npmView: (spec) => u.npmViewVersion(npm, spec, root),
         npm,
         cli: [cli.cmd, ...cli.baseArgs],
-        // Issue 832: the rollback's restart only, never npm.
         restartEnv: testInstallRestartEnv(),
         run: (argv, cwd) => u.runCommand(argv, cwd, env),
         watch: (script, plan) =>

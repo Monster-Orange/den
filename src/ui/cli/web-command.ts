@@ -632,12 +632,6 @@ export function webServerEnv(
   return { ...base, PORT: String(port), ...secretsProcessEnv(cfg, base) };
 }
 
-/**
- * Issue 832: the env of a restart a running server starts itself: the
- * daemon's env plus the test-install flag when this server was launched
- * with it (test-install-launch.ts). Nothing else this server starts gets
- * the flag.
- */
 export function webRestartEnv(
   port: number,
   base: NodeJS.ProcessEnv = process.env,

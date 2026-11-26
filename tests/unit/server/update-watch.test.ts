@@ -143,7 +143,6 @@ describe("update-watch.mjs (SRV-1b)", () => {
       fs.existsSync(restarted)
         ? { pid: 3333, version: "1.0.0" }
         : { pid: 1111, version: "1.0.0" };
-    // Each command writes what it saw of the flag.
     const saw = (file: string) => [
       NODE,
       "-e",
