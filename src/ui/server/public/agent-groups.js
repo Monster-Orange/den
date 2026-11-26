@@ -129,10 +129,6 @@ export function groupsLineHtml(read, t) {
   return "";
 }
 
-/**
- * By need | By project | By group: By group only when Hub's groups are
- * there. A By group with none of them shows By need pressed.
- */
 export function viewSwitchHtml(read, by, t) {
   const offered = groupsOffered(read);
   const shown = by === "group" && !offered ? "need" : by;

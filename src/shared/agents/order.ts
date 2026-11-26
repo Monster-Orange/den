@@ -185,11 +185,6 @@ export function moveInOrder(
   return [...rest.slice(0, at), id, ...rest.slice(at)];
 }
 
-/**
- * Agent `id`'s place (0 first) in project `ws`'s saved order,
- * or undefined when the person set none for it. The Agents page keeps that
- * order inside each band (the kit's inPersonOrder).
- */
 export function placeInOrder(
   orderOf: (ws: string) => readonly string[],
   ws: string,

@@ -284,7 +284,6 @@ describe("#80: a project's view holds only its own", () => {
     await p.waitForFunction(
       () => new URLSearchParams(location.search).get("project") === "north",
     );
-    // The whole list (bands and Stopped) is north's: it re-rendered.
     await p.waitForFunction(() => {
       const xs = Array.from(
         document.querySelectorAll(

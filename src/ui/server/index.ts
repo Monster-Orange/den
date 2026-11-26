@@ -10147,7 +10147,6 @@ async function handleRequest(
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),
-        // Each agent's state for the person asking.
         agentStates: agentStateDeps,
       },
     )

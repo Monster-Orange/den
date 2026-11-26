@@ -1,8 +1,3 @@
-/**
- * A removed agent's seen marks go when its record is purged
- * for good (marks.json never keeps every agent ever removed). Within the
- * undo window they stay, so Undo brings it back as it was.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import fs from "node:fs";
 import os from "node:os";

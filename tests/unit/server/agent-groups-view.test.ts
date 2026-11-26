@@ -109,10 +109,6 @@ const OK = {
   ],
 };
 
-/**
- * Without Hub's groups: By need and By project only, By need pressed (the
- * person's By group waits for the groups).
- */
 const expectNoGroupButton = (h: string) => {
   expect(h).toContain('data-by="need" aria-pressed="true"');
   expect(h).toContain('data-by="project" aria-pressed="false"');

@@ -212,10 +212,6 @@ export interface SessionRouteDeps {
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
-  /**
-   * What each running agent's state for the person asking is
-   * made of (absent: no states; the page ranks every agent Idle).
-   */
   agentStates?: () => AgentStateDeps;
 }
 
@@ -396,10 +392,6 @@ function tellViewers(id: string): void {
 export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
-  /**
-   * An agent's place (0 first) in its project's saved
-   * order, when the person set one; the page keeps it inside each band.
-   */
   place?: number;
   /** `<dist>-<ws>:<name>`. */
   name: string;
@@ -435,7 +427,6 @@ export interface ListedSession {
   orphan?: boolean;
   persona?: string;
   runtime?: string;
-  /** The runtime's name for people ("Claude Code"). */
   runtimeLabel?: string;
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
@@ -530,13 +521,8 @@ export interface ListedSession {
     rangAt?: string;
     paused?: true;
   };
-  /**
-   * Its state for the person asking (running agents only):
-   * needs, done (finished, not seen), working or idle; and since when.
-   */
   attn?: "needs" | "done" | "working" | "idle";
   attnSince?: string;
-  /** What it waits to do (Needs you: a permission's tool). */
   attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
@@ -727,7 +713,6 @@ export function listedSessions(
       ...(rec.outside ? { outside: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
-      // Its name for people, for the row's second line.
       ...(getRuntime(rec.runtime)?.label
         ? { runtimeLabel: getRuntime(rec.runtime)?.label }
         : {}),
@@ -869,8 +854,6 @@ export function listedSessions(
     });
   }
   const order = [...active];
-  // Each agent's place in its project's saved order (read once
-  // per project), for the page's bands.
   const saved = new Map<string, readonly string[]>();
   const orderOf = (ws: string) => {
     if (!saved.has(ws)) saved.set(ws, agentOrderOf(ws));
@@ -964,7 +947,6 @@ export async function handleSessionList(
     wanted?.known ? wanted.workspace : undefined,
     sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
   );
-  // Each running agent's state for this person.
   let states: AgentStateDeps | undefined;
   try {
     states = deps.agentStates?.();
@@ -1711,7 +1693,6 @@ async function helpersRunning(
     /* no host: nothing runs, so no helper runs */
   }
   let running = 0;
-  // The rail's Agents item counts the agents that need you.
   let needs = 0;
   for (const r of listedSessions(sessions, d)) {
     running += r.helpers?.running ?? 0;

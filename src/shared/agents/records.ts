@@ -475,10 +475,6 @@ export function restoreRecord(stateDir: string, id: string): boolean {
   return true;
 }
 
-/**
- * Forget removed records older than `keepMs` for good, and their seen
- * marks.
- */
 export function purgeRemoved(
   stateDir: string,
   keepMs = UNDO_KEEP_MS,
@@ -496,8 +492,6 @@ export function purgeRemoved(
     try {
       if (now - fs.statSync(f).mtimeMs > keepMs) {
         fs.unlinkSync(f);
-        // Gone for good, so its seen marks go too (within the
-        // undo window they stay, for Undo).
         try {
           seenMarks(stateDir).forget(agentSeenSubject(n.slice(0, -5)));
         } catch {

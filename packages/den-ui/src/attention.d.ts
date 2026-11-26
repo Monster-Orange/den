@@ -12,13 +12,10 @@ export type AttentionOverride = Partial<
 >;
 export interface AttentionItem {
   state: AttentionStateName | string;
-  /** An ISO time: since when it waits (needs) or when it finished (done). */
   since?: string;
   name?: string;
   id?: string;
-  /** The person's own order: the group (project) it is ordered in. */
   group?: string;
-  /** Its place in that group's order (0 first), when the person set one. */
   place?: number;
 }
 export interface AttentionCounts {

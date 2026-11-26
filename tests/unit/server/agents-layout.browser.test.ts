@@ -571,8 +571,6 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await termsUp(p, 2);
     expect(await shown(p)).toEqual([sid.reviewer, sid.builder]);
     await expectFits(p);
-    // The list's row says it needs you with its mark as well as its chip
-    // (the "!" mark, in the Needs you band).
     expect(
       await p.locator(`button[data-id="${sid.builder}"] [data-mark=needs]`).count(),
     ).toBe(1);

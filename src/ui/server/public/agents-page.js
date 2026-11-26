@@ -243,17 +243,11 @@ const PHONE = "(max-width: 720px)";
 const MAX_NAME = 40;
 const REFRESH_MS = 5_000;
 
-/** The list's views; savedBy() reads it while st is made. */
 const BY = ["need", "project", "group"];
 
 const st = {
   root: null,
-  /**
-   * Agents this page opened, id → the finish it saw (attnSince):
-   * Done shows Idle at once, until the server's list agrees.
-   */
   seenNow: new Map(),
-  /** The list could not load (no list yet): Retry. */
   loadFailed: false,
   /**
    * Issue 1407: each agent's answer to a restart for its tools (ws\0id →
@@ -267,7 +261,6 @@ const st = {
   dragClick: false,
   /** Issue 226: on a phone, whether the Stopped group's agents show them. */
   reorderStopped: false,
-  // The band a phone's Reorder is on, or null.
   reorderBand: null,
   /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
   reconnect: reconnectOptions(undefined),
@@ -495,10 +488,6 @@ function viewWorkspaces() {
   return pickedWorkspace() ? [pickedWorkspace()] : (st.data?.workspaces ?? []);
 }
 
-/**
- * The one project the view is on (?ws=, or the scope bar's pick), or null
- * on All projects.
- */
 function pickedWorkspace() {
   const all = st.data?.workspaces ?? [];
   const ws = urlWorkspace();
@@ -1047,11 +1036,6 @@ function waitingText(r) {
   return s && s !== k ? s : t("ag.waiting");
 }
 
-/**
- * The agents this person has seen now: the ones the page opened
- * (st.seenNow) and the ones in a pane on screen. Each with the finish it
- * saw, so a later finish is Done again.
- */
 function seenMap() {
   const out = new Map(st.seenNow);
   if (typeof document !== "undefined" && document.visibilityState !== "hidden")
@@ -1062,7 +1046,6 @@ function seenMap() {
   return out;
 }
 
-/** The person opened agent row `id`: its Done is seen. */
 function markOpened(id) {
   const r = rowOf(id);
   if (!r || r.kind !== "agent") return;
@@ -1070,32 +1053,22 @@ function markOpened(id) {
   sayLooking([r.agent]);
 }
 
-/**
- * NT-2: this page shows these agents now (no alert for them),
- * and the person has seen their finished work.
- */
 function sayLooking(agents) {
   // busy-ok: a background ping while the tab is looked at; no button
   if (agents.length)
     void api("POST", "/api/notifications/looking", { agents }).catch(() => {});
 }
 
-/** The list shows more than one project (each row is tagged). */
 function allProjects() {
   return viewWorkspaces().length > 1;
 }
 
-/**
- * What a row's state is about, on its second line: `detail`,
- * and `time` (Needs you: how long, which a phone's card drops).
- */
 function attnParts(r, attn) {
   const ago = (iso) =>
     iso && Number.isFinite(Date.parse(iso))
       ? formatTime(iso, { style: "relative" })
       : "";
   if (r.kind !== "agent") return { detail: cwdText(r) };
-  // Mock v3: Needs you's and Working's time without "ago" ("3 min").
   if (attn === "needs") {
     const w = needsWhy(r);
     return {
@@ -1111,7 +1084,6 @@ function attnParts(r, attn) {
     };
   if (attn === "working")
     return { detail: r.attnSince ? sinceShort(r.attnSince) : "" };
-  // Idle: seen just now (opened on this page), else its last finish.
   if (r.attn === "done") return { detail: t("ag.meta.seen") };
   return { detail: r.attnSince ? ago(r.attnSince) : cwdText(r) };
 }
@@ -1123,8 +1095,6 @@ function rowHtml(r) {
     r.kind === "agent"
       ? nameHtml(r)
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
-  // The state's chip, and on line 2 the project tag, the
-  // runtime and what the state is about.
   const seen = seenMap();
   const attn = rowState(r, seen);
   const right = chipHtml(r, seen);
@@ -1189,7 +1159,6 @@ function rowHtml(r) {
         ? `<span class="meta" data-meta>${ptag}${meta}</span>`
         : "") +
     tags +
-    // Mock v3: a phone's card ends in a › (CSS shows it there only).
     (attn ? `<span class="agchev" data-chev aria-hidden="true">›</span>` : "") +
     `</button>`;
   // D28: a running agent whose rotation is due: its callout, with buttons
@@ -1301,8 +1270,6 @@ function paintList() {
       `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
     );
   if (!st.data) {
-    // Three placeholder rows while the first list loads; the
-    // list that could not load says so, with Retry.
     setList(
       el,
       notes.join("") +
@@ -1312,8 +1279,6 @@ function paintList() {
     );
     return;
   }
-  // ON-6: the server agent, tagged Server. In All projects
-  // only; one project's view shows only its own agents.
   // D71: agents whose workspace was deleted, under its old name.
   const orphans = st.data.sessions.filter(
     (s) => s.orphan && belongsOn(PAGE, s),
@@ -1382,24 +1347,16 @@ function paintList() {
     );
   // Issue 482: the Agents page says once where the shells went.
   if (PAGE !== "terminal") notes.push(movedNote());
-  // One list in four bands, sorted by who needs the person
-  // (D37: the agents that aren't running in one "Stopped (n)" group at the
-  // bottom, as before).
   const inView = shown.flatMap((ws) =>
     st.data.sessions.filter((s) => s.workspace === ws && belongsOn(PAGE, s)),
   );
   const stopped = inView.filter(inStopped);
-  // Without Hub's groups, one line says why; with them, By
-  // group too. Two or more agents need a restart for their
-  // tools: one Restart for them all, and Restart all now for those that wait.
   if (PAGE !== "terminal") {
     const bar = toolsBarHtml(inView);
     if (bar) notes.push(bar);
   }
   const gLine = PAGE === "terminal" ? "" : groupsLineHtml(st.groupsRead, t);
   if (gLine) notes.push(gLine);
-  // By need (the bands, the default), By project, By group: the
-  // last two sort each group's agents by need too.
   const running = inView.filter((s) => !inStopped(s));
   const need = (xs) => byNeed(xs, { seenNow: seenMap() });
   const byGroup =
@@ -1426,8 +1383,6 @@ function paintList() {
       groups.length || stopped.length
         ? groups
             .map(
-              // The heading's id is the group's place: a project's name
-              // could hold a space, which an IDREF can't.
               (g, i) =>
                 `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)} role="group" aria-labelledby="agp-${i}"><div class="wsh"><span id="agp-${i}">${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
                 g.rows.map((r) => rowHtml(r)).join("") +
@@ -1446,7 +1401,6 @@ function paintList() {
                 reorderBandHtml(b) +
                 b.rows
                   .map((r) =>
-                    // A phone's Reorder gives the band's rows Up and Down.
                     orderRowHtml(
                       rowHtml(r),
                       r,
@@ -1519,8 +1473,6 @@ function fitListFloor() {
   const right = agx.querySelector("#agr");
   const pane = right?.querySelector(".pane:not([hidden])");
   if (pane) {
-    // The runs dock open takes up to half the screen: the list keeps its
-    // first row (a band's heading above it included) within the room.
     if (document.querySelector(".den-dock.open"))
       px = Math.max(LIST_FLOOR_MIN_PX, upTo(rows[0]));
     const gap = parseFloat(getComputedStyle(agx).rowGap) || 0;
@@ -1611,10 +1563,6 @@ function terminalsHref() {
     : "/terminals";
 }
 
-/**
- * The person's By need (the default), By project or
- * By group, kept in this browser.
- */
 function savedBy() {
   try {
     const v = localStorage.getItem("den-agents-by");
@@ -1714,7 +1662,6 @@ function inView(s) {
   if (!s) return false;
   // Issue 482: a shell is on the Terminals page, an agent on Agents.
   if (!belongsOn(PAGE, s)) return false;
-  // The server agent in All projects only.
   if (s.server || s.workspace === SERVER_WS) return !pickedWorkspace();
   if (s.orphan) return true;
   return viewWorkspaces().includes(s.workspace);
@@ -1839,8 +1786,6 @@ async function paneFollowsProject() {
 
 function paintSub() {
   const rows = visibleRows();
-  // The agents, then each state above zero, then the scope
-  // (stopped agents are outside the four states).
   const count = st.root.querySelector("#ag-count");
   if (count)
     count.textContent =
@@ -1986,11 +1931,8 @@ async function refreshOnce() {
   } catch {
     /* the last list stays; the next ask may answer */
   }
-  // No list yet, and this ask failed: "could not load", Retry.
   st.loadFailed = !st.data && !st.signedOut;
   followAgents();
-  // D32: the rail's Agents badge: helpers running now. The
-  // agents that need you, over it.
   window.denShell?.setState?.({
     helpersRunning: (st.data?.sessions ?? []).reduce(
       (n, r) => n + (r.helpers?.running ?? 0),
@@ -2000,8 +1942,6 @@ async function refreshOnce() {
       (st.data?.sessions ?? []).filter((r) => !inStopped(r)),
     ),
   });
-  // Once the server's list agrees an opened agent isn't Done
-  // (or a new finish came), the page's own mark for it goes.
   for (const [id, at] of st.seenNow) {
     const r = rowOf(id);
     if (!r || r.attn !== "done" || r.attnSince !== at) st.seenNow.delete(id);
@@ -2421,7 +2361,6 @@ async function pick(id, add) {
     st.claimOnOpen = live;
   } else if (st.focusOnOpen === id) st.focusOnOpen = null;
   if (st.panes.has(id)) {
-    // Opening the agent is the whole action: its Done is seen.
     markOpened(id);
     paintLayout();
     paintList();
@@ -3474,7 +3413,6 @@ function pathAnchor(p, e) {
 }
 
 async function openPane(id, { front = true } = {}) {
-  // Opening the agent (its terminal) is seen: Done turns Idle.
   markOpened(id);
   if (st.panes.has(id)) {
     st.panes.get(id).term?.focus();
@@ -3773,16 +3711,7 @@ const agentPath = (r, verb) =>
 // ── Issue 96: a project's agents in the person's order ─────────────────
 // A grip and a pointer drag (mouse, pen and touch), ⋯ Move up, Move down
 // and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in
-// Working's and Idle's headers and the Stopped group's. A row moves inside its group (agent-order.js; issue
-// 773: a running one inside its band, among its project's agents); the
-// server stores the order in the person's user config and every list
-// follows. The bands still set the order between bands.
 
-/**
- * The agent ids of r's group, as the list shows them. A running
- * agent moves among its project's agents in its band (the bands set the
- * order between bands); a stopped one in the Stopped group, as before.
- */
 const groupOf = (r) =>
   inStopped(r)
     ? orderGroup(st.data?.sessions ?? [], r, inStopped)
@@ -3794,18 +3723,12 @@ const groupOf = (r) =>
 
 /** The grip a pointer drags a row by (any pointer: mouse, pen, touch). */
 const gripHtml = (r) =>
-  // None in Needs you and Done (their order is the wait's).
   orderable(r, SERVER_WS) && (inStopped(r) || groupOf(r).length > 0)
     ? `<span class="agrip" data-grip="" role="img" aria-label="${esc(t("ag.ord.gripOne", { id: displayName(r) }))}" title="${esc(t("ag.ord.grip"))}">⠿</span>`
     : "";
 
-/** A running row that can move: two or more in its group. */
 const runningMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
 
-/**
- * Per band: a phone's Reorder (or Done) in a band
- * the person orders (Working, Idle), when a project has two agents in it.
- */
 function reorderBandHtml(b) {
   if (!phone() || !personOrdered(b.state) || !b.rows.some(runningMovable))
     return "";
@@ -3926,8 +3849,6 @@ function showMoved(r, to) {
   const rest = all.filter((s) => s !== r);
   const at = rest.indexOf(other) + (to.after ? 1 : 0);
   st.data.sessions = [...rest.slice(0, at), r, ...rest.slice(at)];
-  // The bands follow each agent's place; the server stores the
-  // project's whole order on a move, so every agent of it has one now.
   let n = 0;
   for (const s of st.data.sessions)
     if (s.kind === "agent" && s.agent && s.workspace === r.workspace)
@@ -3978,7 +3899,6 @@ function wireOrder(agl) {
       over.kind !== "agent" ||
       over.workspace !== r.workspace ||
       inStopped(over) !== inStopped(r) ||
-      // A running row drops inside its own band only.
       !groupOf(r).includes(over.agent)
     )
       return null;
@@ -6343,7 +6263,6 @@ export async function mountAgentsPage(root) {
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
       if (which === "switch-back") return void switchBack();
-      // The list that could not load, asked again.
       if (which === "retry-list") return void refresh();
       // #80: the helpers badge opens or closes them under its agent.
       if (which === "helpers-toggle") {
@@ -6357,7 +6276,6 @@ export async function mountAgentsPage(root) {
       if (which === "reorder") {
         if (act.hasAttribute("data-stopped"))
           st.reorderStopped = !st.reorderStopped;
-        // A band the person orders (Working, Idle).
         else if (act.dataset.band)
           st.reorderBand =
             st.reorderBand === act.dataset.band ? null : act.dataset.band;

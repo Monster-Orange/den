@@ -238,15 +238,9 @@ function subjectHtml(scope, s, ui) {
     .join("");
 }
 
-/**
- * One Done row: "<name> finished", its project, when. `seen`
- * (mock v3's Earlier): "<project> · seen" under it, and its own kind.
- */
 function doneRowHtml(d, seen = false) {
   const link = safeLink(d.link);
   const text = tr("bell.doneRow", { name: d.name || d.agent });
-  // Mock v3: "Server" for the server agent, as everywhere else; else the
-  // project's name as the person sees it.
   const where = d.server ? tr("ag.tag.server") : d.project || d.workspace || "";
   return (
     `<div class="den-bell-row" data-kind="${seen ? "seen-done" : "done"}" data-agent="${esc(d.agent)}">` +
@@ -311,7 +305,6 @@ function allowRowHtml(w, open) {
   );
 }
 
-/** The badge's count: Needs you plus Done, not seen. */
 export function bellCountOf(b) {
   return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
 }
@@ -549,7 +542,6 @@ export function bellPanel(b, ui = {}) {
         allowsHtml(allows, u.reviews) +
         overrunsHtml(overrunsOf(b)) +
         groupsHtml(groups, u, true),
-      // Done, not seen, under Needs you (when there is any).
       ...(done.length
         ? { done: done.map((d) => doneRowHtml(d)).join("") }
         : {}),
@@ -881,10 +873,7 @@ export function initBell(doc = document) {
     }
     const what = el.dataset.bell;
     if (what === "settings") return;
-    // A Done row opens the agent; opening it is seen.
     if (what === "open" || what === "open-done") {
-      // Marked read first (a Done row, seen); the link then
-      // opens the agent. Sent so it outlives the page the link leaves.
       const id = el.closest("[data-id]")?.dataset.id;
       const agent = el.closest("[data-agent]")?.dataset.agent;
       const [path, body] =

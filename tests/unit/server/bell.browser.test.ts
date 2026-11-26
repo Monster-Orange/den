@@ -256,7 +256,6 @@ describe("NT-3: the bell", () => {
     await p.waitForFunction(
       () =>
         [...document.querySelectorAll('span[data-attn="needs"]')].some(
-          // The wide chip's words (a phone's short one is hidden by CSS).
           (e) => (e as HTMLElement).innerText === "Needs you · question",
         ),
       null,

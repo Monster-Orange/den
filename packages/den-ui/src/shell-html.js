@@ -884,7 +884,6 @@ function bellSectionHtml(id, word, rows) {
   );
 }
 
-/** Needs you, then Done, then Earlier. */
 function bellSectionsHtml(s, lang) {
   const needs = s.needs || "";
   return (
@@ -896,7 +895,6 @@ function bellSectionsHtml(s, lang) {
           esc(kitT(lang, "kit.bell.needsNone")) +
           "</p>",
     ) +
-    // The agents that finished since the person last looked.
     (s.done
       ? bellSectionHtml("done", kitT(lang, "kit.bell.done"), s.done)
       : "") +
