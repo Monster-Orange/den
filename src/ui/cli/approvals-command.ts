@@ -14,8 +14,8 @@
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
 import { product } from "../../shared/product.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export const APPROVALS_HELP = {
   usage: "approvals withdraw <id> | approvals list --mine",

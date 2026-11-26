@@ -23,7 +23,7 @@
  * session made on a loopback name then.
  */
 
-import { isLoopbackName } from "../../shared/web-url-check.js";
+import { isLoopbackName } from "../../shared/web/web-url-check.js";
 
 /** How the address answered the check (address-check.ts's WantedAnswer). */
 export type NamedAnswer = "den" | "other" | "nothing" | "unknown";

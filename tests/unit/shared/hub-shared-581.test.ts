@@ -21,7 +21,7 @@ import {
   parseHubNote,
   switchOf,
 } from "../../../src/shared/notifications.js";
-import { syncHubNotes } from "../../../src/shared/hub-notes-sync.js";
+import { syncHubNotes } from "../../../src/shared/hub/hub-notes-sync.js";
 import { enCatalog, langCatalog } from "../server/helpers/en-catalog.js";
 
 const HUB = "https://hub.example.test";

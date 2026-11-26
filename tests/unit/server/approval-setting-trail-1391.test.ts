@@ -31,7 +31,7 @@ import type { DenConfig } from "../../../src/shared/den-config.js";
 import {
   APPROVE_KEY_HEADER,
   approveKeyHash,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 
 // Not token-shaped: redactSecrets alone would keep it.
 const TYPED = "s3cr3t-typed-in";

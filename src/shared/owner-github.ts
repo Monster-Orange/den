@@ -13,13 +13,13 @@
  */
 import { execFileSync } from "child_process";
 import { readUserConfig, writeUserConfig } from "./den-config.js";
-import { parseGithubName } from "./web-session.js";
+import { parseGithubName } from "./web/web-session.js";
 import {
   githubDisplayName,
   readWebOwner,
   setWebOwnerName,
   type WebOwner,
-} from "./web-owner.js";
+} from "./web/web-owner.js";
 
 /** Who `gh` is signed in as here: the login, and the display name if set. */
 export interface GhUser {

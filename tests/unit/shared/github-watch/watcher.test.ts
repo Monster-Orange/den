@@ -11,7 +11,7 @@ import * as os from "os";
 import * as path from "path";
 import { GithubWatcher } from "../../../../src/shared/github-watch/watcher.js";
 import type { GithubWatchSettings } from "../../../../src/shared/github-watch/settings.js";
-import type { Delivery } from "../../../../src/shared/hub-delivery.js";
+import type { Delivery } from "../../../../src/shared/hub/hub-delivery.js";
 import { FakeGithub } from "./fake-github.js";
 
 const A = "acme/north";
@@ -293,6 +293,9 @@ describe("the final message", () => {
     t = w.nextAt;
     await w.tick();
     await w.deliver();
+    t = w.nextAt;
+    await w.tick();
+    await w.deliver();
     expect(sent).toHaveLength(1);
     const dv = sent[0];
     expect(dv.agent).toBe("planner");
@@ -320,6 +323,10 @@ describe("the final message", () => {
     await w.create(ask({ pr: 1 }));
     finishedChecks();
     relayOk = false;
+    await w.tick();
+    t = w.nextAt;
+    await w.tick();
+    t = w.nextAt;
     await w.tick();
     await w.deliver();
     expect(sent).toHaveLength(0);
