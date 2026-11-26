@@ -8,6 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 - You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
 - More of Den's CLI has a `--json` form, for scripts and checks: `agents accounts list --json` (no token or account ref in it), `edge route --for <proxy> --json`, and `sessions start --json`. `doctor --json` also gives a check's notes, the lines the plain doctor marks healthy. The plain text is unchanged.

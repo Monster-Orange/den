@@ -970,8 +970,8 @@ export async function handleApprovalRoutes(
     if (reason)
       try {
         deps.withdrawn?.(r.approval, reason, asker);
-      } catch {
-        /* the bell is best effort */
+      } catch (bellError) {
+        void bellError;
       }
     sendJson(res, { ok: true, ...approvalView(r.approval) });
     return true;
