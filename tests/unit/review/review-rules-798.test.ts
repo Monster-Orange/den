@@ -418,9 +418,6 @@ describe("in the layered manifest", () => {
 });
 
 describe("a PR that edits the review rules", () => {
-  // The rules come from the base branch, so a PR that sets `rules: []`
-  // would pass under the old rules and turn reviews off once merged.
-  // Such a PR always gets one blocking review, whatever the rules say.
   const core = reviewSchema.parse(CORE);
   const base = { file: YML, review: core };
 
@@ -450,13 +447,10 @@ describe("a PR that edits the review rules", () => {
     expect(reviewRulesGuard({ file: null, review: undefined }, base)).toEqual(
       blocking,
     );
-    // A head whose section Den can't read is a change too.
     expect(reviewRulesGuard(base, null)).toEqual(blocking);
   });
 
   it("on real refs, swapping the yml manifest for the json one can't hide an edit", () => {
-    // reviewAt reads the manifest names in order, so a head that deletes
-    // the yml and adds a json manifest gets its section from the json.
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), "den-review-guard-"));
     try {
       const git = (...a: string[]) =>
