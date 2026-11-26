@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { KIT_FILES, UI_MODULES } from "../../../src/ui/server/ui-assets.js";
 import { ROUTES } from "../../../src/ui/server/route-classes.js";
+import { agentsSource } from "./helpers/agents-source.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 
@@ -16,8 +17,10 @@ const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const ownRoute = (u: string) =>
   ROUTES.some((r) => r.path === u && r.methods.includes("GET"));
 
-function importsOf(file: string): string[] {
-  const src = fs.readFileSync(path.join(PUBLIC, file), "utf-8");
+const importsOf = (file: string) =>
+  importsIn(fs.readFileSync(path.join(PUBLIC, file), "utf-8"));
+
+function importsIn(src: string): string[] {
   return [
     ...src.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+"(\/[^"]+)"/gm),
     ...src.matchAll(/^\s*import\s+"(\/[^"]+)"/gm),
@@ -28,7 +31,7 @@ describe("every page module's URL imports are served", () => {
   const files = fs.readdirSync(PUBLIC).filter((f) => f.endsWith(".js"));
 
   it("finds the agents page's imports, the By group view's among them", () => {
-    expect(importsOf("agents-page.js")).toEqual(
+    expect(importsIn(agentsSource())).toEqual(
       expect.arrayContaining(["/agent-groups.js", "/kit/busy.js"]),
     );
   });
