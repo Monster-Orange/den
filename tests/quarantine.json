@@ -16,19 +16,6 @@
       }
     },
     {
-      "file": "tests/unit/server/agents-terminal.browser.test.ts",
-      "test": "an agent's pane as a terminal (AG-4b) D40: picking an agent puts the keyboard in its terminal a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (Shift+Tab)",
-      "issue": 1832,
-      "added": "2026-11-26",
-      "evidence": {
-        "failed_run": 45876385372,
-        "failed_job": 140106374303,
-        "job": "pr-shards (24.13.0, 15)",
-        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
-        "note": "No CI run on this sha passed it (a red is never re-run). It failed with the pane holding the keyboard (Expected false, Received true at line 834). Only the Shift+Tab case failed; the click case passed in the same run."
-      }
-    },
-    {
       "file": "tests/unit/agents/server-agent.test.ts",
       "test": "the server agent running, a second start leaves it as it is; stopped, it resumes its conversation (AG-14)",
       "issue": 1833,
