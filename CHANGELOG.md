@@ -12,6 +12,7 @@ config and manifest changes a distribution must make to move to it under
 - An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
 - The Agents page shows every running agent in one list across projects, in four bands: Needs you, Done (finished, not yet seen), Working and Idle. Needs you and Done put the longest wait first; Working and Idle go A to Z until you drag them. Opening an agent marks its finished turn seen, per person, on every device, and the marks survive a restart (issue 773).
 - Peek: a click on an agent's row in the bell opens that agent's live terminal in a panel over the page you are on, so you can answer it without leaving your view. Esc closes it and puts focus back on the row; the row's "Open in Agents" link still goes to the Agents page (issue 791).
+- Browser alerts for finished turns: an open Den tab can play a sound when an agent finishes or needs you, and shows how many agents need you in its title and icon. Settings › Notifications has "Sounds" and "Count in the tab" (`alerts.sound`, `alerts.tab_count`). When a Den tab is open and in front on a device that also gets push, the tab shows the alert and that device's push is skipped; if the tab hasn't shown it within `alerts.tab_first_seconds` (3 by default), the push goes (issue 774).
 
 ### Fixed
 
