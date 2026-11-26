@@ -180,3 +180,39 @@ describe("0.4.46: agents.restore_on_boot", () => {
     ).toThrow("agents.restore_hub_wait_seconds must be a number, at least 0");
   });
 });
+
+describe("issue 1129: the resume goes through the restart queue", () => {
+  it("one at a time, the agent that was working first, each waiting a gap", async () => {
+    const r = await fourThenRestart();
+    const { noteActivity } =
+      await import("../../../src/shared/agents/activity.js");
+    const { RestartQueue } =
+      await import("../../../src/shared/agents/restart-queue.js");
+    noteActivity(r.stateDir, "planner", false);
+    noteActivity(r.stateDir, "helper", true);
+    const gaps: number[] = [];
+    const queue = new RestartQueue({
+      config: () => ({ batch: 1, gapMs: 30_000, loadCeiling: 0 }),
+      load: () => 0,
+      now: () => 0,
+      sleep: async (ms) => {
+        gaps.push(ms);
+        await settle();
+      },
+    });
+    const before = r.made.length;
+    const found = await markInterrupted(resolveAgentsDeps(r.deps), {
+      restoreAll: true,
+      queue,
+    });
+    expect(found.resumed.sort()).toEqual(["helper", "planner"]);
+    const tokens = r.made
+      .slice(before)
+      .map((p) => p.args[p.args.indexOf("--resume") + 1]);
+    expect(tokens).toEqual([
+      record(r, "helper").resumeToken,
+      record(r, "planner").resumeToken,
+    ]);
+    expect(gaps).toEqual([30_000]);
+  }, 30_000);
+});

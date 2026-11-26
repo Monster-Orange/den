@@ -24,7 +24,7 @@
  */
 import { createHash, randomBytes } from "crypto";
 import { FIXTURE_READ_DENY } from "./fixture-person.js";
-import { AGENT_VIEW_MINUTES, AGENT_VIEW_RANGE } from "./web-session.js";
+import { AGENT_VIEW_MINUTES, AGENT_VIEW_RANGE } from "./web/web-session.js";
 
 export { AGENT_VIEW_MINUTES, AGENT_VIEW_RANGE };
 
@@ -34,6 +34,8 @@ export const AGENT_VIEW_LINK_PARAM = "agent_view";
 export const AGENT_VIEW_VIA = "agent-view";
 /** How long the one-time link waits to be opened. */
 export const AGENT_VIEW_LINK_TTL_MS = 60_000;
+/** Issue 1243: said beside the link (agent-view-note.ts). */
+export { AGENT_VIEW_LINK_NOTE } from "./agent-view-note.js";
 /** The most unopened links kept at once (the oldest go first). */
 const MAX_PENDING = 64;
 

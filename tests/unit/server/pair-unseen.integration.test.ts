@@ -19,7 +19,7 @@ import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { signedIn, type SignedIn } from "./helpers/signed-in.js";
 

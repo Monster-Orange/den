@@ -22,6 +22,7 @@ import {
   type AgentsResolved,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
 afterEach(cleanupRigs);
 
@@ -71,13 +72,8 @@ async function stateOf(r: Rig, id = "planner"): Promise<string> {
 }
 
 function auditRows(r: Rig): Record<string, unknown>[] {
-  const f = path.join(r.stateDir, "audit.jsonl");
-  if (!fs.existsSync(f)) return [];
-  return fs
-    .readFileSync(f, "utf-8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Record<string, unknown>);
+  // Issue 1369: the file and the CLI's queue.
+  return readAuditRows(r.stateDir);
 }
 
 function bell(r: Rig): Array<Record<string, unknown>> {

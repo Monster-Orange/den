@@ -59,7 +59,7 @@
  *   handoff-check <id|file|->  (den#4) the handoff check (handoff.ts), like
  *           handback-check.
  *
- * Nothing here takes a grant: grants come from the org config only. The
+ * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import {
@@ -67,12 +67,17 @@ import {
   legacyAgentIds,
 } from "../../shared/agents/sandbox-rollout.js";
 import {
+  plainText,
+  readSandboxNotes,
+} from "../../shared/agents/sandbox-set.js";
+import {
   gatherApiOnly,
   readApiOnlyAudit,
   type ApiOnlyRules,
 } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import * as path from "path";
+import { realPath, SESSION_TMP_RE } from "../../shared/agents/sandbox.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import {
   listUploads,
@@ -310,11 +315,15 @@ export const AGENTS_HELP = {
     "    the install's secrets store. status: whether it is there and when it was",
     "    set. clear: removes it from the store, the way set kept it (asks first",
     "    unless --yes). set and clear are a person's only",
-    "{cli} `agents accounts` list | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]",
+    "{cli} `agents accounts` list [--json] | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]",
     "    Claude accounts for agents (Claude account A, B, ... unless named); each token",
     "    its own item in the install's secrets store; set-token reads it like",
     "    token set. Agents sign in with the first in the order. The token that",
     "    exists today is Claude account A. Changes are a person's only",
+    "{cli} `agents os-login` setup | remove | check",
+    "    agents run under a login of their own (macOS, Linux), so they can't read Den's state",
+    "    or your files. setup shows each step and runs it with sudo once you say",
+    "    yes; remove undoes it and checks nothing is left. A person's only",
     "{cli} agents handoff-check <id|file|-> [--json]",
     "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
@@ -1380,10 +1389,7 @@ function files(args: string[], d: AgentsResolved): number {
  * `agents permission -w <ws> [<mode>|--clear]` (den#48): the mode the
  * workspace's agents start with when the start names none.
  */
-async function permission(
-  args: string[],
-  d: AgentsResolved,
-): Promise<number> {
+async function permission(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents permission";
   const p = parseArgs(where, args, { "--workspace": true, "--clear": false });
   const ws = workspaceFlag(where, p);
@@ -1494,7 +1500,12 @@ function startedLine(
 }
 
 /** Issue 989: an agent's own route on the server, in its project. */
-function agentRoute(d: AgentsResolved, id: string, ws: string | undefined, verb: string): string {
+function agentRoute(
+  d: AgentsResolved,
+  id: string,
+  ws: string | undefined,
+  verb: string,
+): string {
   const rec = agentRecord(d, id, ws);
   return `/api/workspaces/${encodeURIComponent(rec.workspace)}/agents/${encodeURIComponent(rec.id)}/${verb}`;
 }
@@ -1636,7 +1647,7 @@ function rename(args: string[], d: AgentsResolved): number {
  * a stopped agent's folder, a repo of its project or a folder in it. A
  * conversation belongs to its folder, so its next start is a new one.
  */
-function folder(args: string[], d: AgentsResolved): number {
+async function folder(args: string[], d: AgentsResolved): Promise<number> {
   const where = "agents folder";
   personOnly(where, d, "an agent's folder");
   const p = parseArgs(where, args, {
@@ -1651,10 +1662,23 @@ function folder(args: string[], d: AgentsResolved): number {
   const dir = str(p, "--folder");
   if ((repo === undefined) === (dir === undefined))
     throw new UsageError(`${where} needs --repo <repo> or --folder <path>`);
-  const rec = setAgentFolder(d, id, workspaceFlag(where, p), {
+  const to = {
     ...(repo !== undefined ? { repo: checkRepoName(repo) } : {}),
     ...(dir !== undefined ? { folder: dir } : {}),
-  });
+  };
+  const ws = workspaceFlag(where, p);
+  // Issue 1182: the running server changes it, audited as the person; with
+  // none listening the CLI changes the record as before.
+  const json = await askServer(d, agentRoute(d, id, ws, "folder"), to);
+  if (json === "refused") return 1;
+  const rec =
+    json === null
+      ? setAgentFolder(d, id, ws, to)
+      : {
+          cwd: String(json.cwd ?? ""),
+          repo: typeof json.repo === "string" ? json.repo : undefined,
+          project: typeof json.project === "string" ? json.project : undefined,
+        };
   d.out(
     `agent ${id} now works in ${rec.cwd}${rec.repo ? ` (${rec.project} › ${rec.repo})` : ""}; its next start is a new conversation there`,
   );
@@ -2114,7 +2138,29 @@ async function accountsCmd(
       );
     const flag = runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`;
     if (sub === "list") {
-      if (rest.length) throw new UsageError(`${where} takes only --runtime`);
+      const json = rest.includes("--json");
+      if (rest.some((a) => a !== "--json"))
+        throw new UsageError(`${where} takes only --runtime and --json`);
+      if (json) {
+        d.out(
+          JSON.stringify(
+            {
+              runtime: { id: runtimeId, name: rt.name },
+              accounts: A.accountsView(stateDir, runtimeId, refOf).map((v) => ({
+                id: v.id,
+                label: v.label,
+                tokenSet: v.configured,
+                setAt: v.setAt,
+                store: v.store,
+                first: v.first,
+              })),
+            },
+            null,
+            2,
+          ),
+        );
+        return 0;
+      }
       d.out(`${rt.name} (${runtimeId}):`);
       for (const v of A.accountsView(stateDir, runtimeId, refOf)) {
         const st = v.configured
@@ -2204,6 +2250,22 @@ async function accountsCmd(
           d.out("Nothing removed.");
           return 0;
         }
+      }
+      // Issue 1182: the running server removes it, audited as the person;
+      // with none listening the CLI removes it as before.
+      const json = await askServer(d, "/api/agents/accounts/remove", {
+        runtime: runtimeId,
+        account: acct.id,
+      });
+      if (json === "refused") return 1;
+      if (json !== null) {
+        d.out(
+          `✓ removed ${String(json.removed ?? label(acct))}` +
+            (typeof json.store === "string"
+              ? `; its token is gone from ${json.store}`
+              : ""),
+        );
+        return 0;
       }
       const name = A.accountRefName(runtimeId, acct.id);
       const r = await A.removeAccount({
@@ -2669,6 +2731,13 @@ async function doctor(
     for (const l of sandboxLines(sandbox)) d.out(l);
     d.out("");
   }
+  // Issue 1072: widening keys in the distribution's config, not read.
+  const notRead = notReadFromOrg(d);
+  const skipped = notAgentBlocks(d);
+  if (notRead.length || skipped.length) {
+    for (const l of notReadLines(notRead, skipped)) d.out(l);
+    d.out("");
+  }
   d.out(
     `\`${d.cli} doctor --probe\` checks the env each runtime's session gets.`,
   );
@@ -2709,6 +2778,100 @@ export interface SandboxReport {
   outside: { id: string; project: string; reason: string }[];
   /** The rollout: agents from before the sandbox, not turned on yet. */
   fromBefore: number;
+  /** Issue 1325: running agents' own temp folders (their TMPDIR). */
+  tmp?: { id: string; dir: string }[];
+  /** Issue 1325: session temp folders no agent's record names (left over). */
+  leftoverTmp?: string[];
+  /**
+   * Issue 1328: agents whose own sandbox is off (agents.<id>.sandbox), with
+   * when, why and who asked when agent_sandbox_set turned it off.
+   */
+  turnedOff?: { id: string; at?: string; why?: string; by?: string }[];
+  /**
+   * Issue 1391: a personal install with the sandbox off for all agents (its
+   * default): said once, as information, with no warning to turn it on.
+   */
+  personalOff?: boolean;
+  /** Issue 1391: the install's mode, said once (install_mode). */
+  mode?: "personal" | "strict";
+  /** Issue 1391: which file set it. */
+  modeFrom?: "den.yml" | "user.yml" | "default";
+}
+
+/**
+ * Issue 1325: den-XXXXXX folders in `base` of this user's that no agent's
+ * record names: a session's that outlived it.
+ */
+export function leftoverSessionTmps(
+  named: string[],
+  base: string = "/tmp",
+): string[] {
+  const keep = new Set(named.map((x) => realPath(x)));
+  const root = realPath(base);
+  const uid = process.getuid?.();
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => SESSION_TMP_RE.test(n))
+    .map((n) => path.join(root, n))
+    .filter((p) => {
+      try {
+        const st = fs.lstatSync(p);
+        return st.isDirectory() && (uid === undefined || st.uid === uid);
+      } catch {
+        return false;
+      }
+    })
+    .filter((p) => !keep.has(p))
+    .sort();
+}
+
+/** Issue 1072: the widening keys Den no longer reads from the org config. */
+export function notReadFromOrg(d: AgentsResolved): string[] {
+  const out: string[] = [];
+  try {
+    out.push(...(d.agentsConfig().notReadFromOrg ?? []));
+  } catch {
+    /* a bad config is its own row */
+  }
+  try {
+    out.push(...d.mcpNotReadFromOrg());
+  } catch {
+    /* a bad config is its own row */
+  }
+  return out;
+}
+
+export function notReadLines(
+  keys: string[],
+  skipped: { id: string; keys: string[] }[] = [],
+): string[] {
+  return [
+    "Settings read from config/local only",
+    ...keys.map(
+      (k) =>
+        `  ${k} is in the distribution's config, which Den no longer reads for it: move it to config/local/user.yml`,
+    ),
+    ...skipped.map(
+      (b) =>
+        `  agents.${b.id} in config/local/user.yml is not an agent block (keys: ${b.keys.join(", ")}), so Den skips it: an agent's block takes grants and sandbox only`,
+    ),
+  ];
+}
+
+/** Issue 1072: user.yml blocks that look like an agent's but aren't. */
+export function notAgentBlocks(
+  d: AgentsResolved,
+): { id: string; keys: string[] }[] {
+  try {
+    return d.agentsConfig().notAgentBlocks ?? [];
+  } catch {
+    return []; /* a bad config is its own row */
+  }
 }
 
 export function sandboxReport(d: AgentsResolved): SandboxReport {
@@ -2728,8 +2891,45 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
     listRecords(d.stateDir()),
     d.agentsConfig(),
   );
+  const recs = listRecords(d.stateDir());
+  const tmp = recs
+    .filter((r) => r.session && !r.stoppedAt && r.sessionTmp)
+    .map((r) => ({ id: r.id, dir: r.sessionTmp! }));
+  const leftoverTmp = leftoverSessionTmps(
+    recs.flatMap((r) => (r.sessionTmp ? [r.sessionTmp] : [])),
+    d.sessionTmpBase,
+  );
+  // Issue 1328: every agent whose own sandbox is off, and the note.
+  let own: Record<string, { sandbox?: boolean }> = {};
+  try {
+    own = d.agentsConfig().agents ?? {};
+  } catch {
+    /* a bad config is its own row */
+  }
+  const notes = readSandboxNotes(d.stateDir());
+  let personalOff = false;
+  let mode: SandboxReport["mode"];
+  let modeFrom: SandboxReport["modeFrom"];
+  try {
+    const c = d.agentsConfig();
+    mode = c.mode;
+    modeFrom = c.modeFrom;
+    personalOff = c.mode === "personal" && c.sandbox === false;
+  } catch {
+    /* a bad config is its own row */
+  }
+  const turnedOff = Object.entries(own)
+    .filter(([, a]) => a.sandbox === false)
+    .map(([id]) => ({ id, ...(notes[id] ?? {}) }))
+    .sort((a, b) => a.id.localeCompare(b.id));
   return {
+    ...(turnedOff.length ? { turnedOff } : {}),
+    ...(personalOff ? { personalOff } : {}),
+    ...(mode ? { mode } : {}),
+    ...(modeFrom ? { modeFrom } : {}),
     fromBefore: fromBefore.length,
+    ...(tmp.length ? { tmp } : {}),
+    ...(leftoverTmp.length ? { leftoverTmp } : {}),
     here: {
       applied: probe.applied,
       ...(probe.tool ? { tool: probe.tool } : {}),
@@ -2741,6 +2941,40 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
 
 export function sandboxLines(r: SandboxReport): string[] {
   const out = ["Agent sandbox (agents can't write Den's state)"];
+  // Issue 1391: off by default on a personal install, so information, said
+  // once: nothing to turn on, and no agent outside it is a warning.
+  // Vision's ruling (issue 1391): after the upgrade, one info row.
+  if (r.mode === "personal" && r.modeFrom === "default")
+    out.push(
+      "  ℹ Install mode: personal (default). To switch, set install_mode: strict in den.yml (a distribution's installs) or choose it in Settings",
+    );
+  if (r.personalOff) {
+    out.push(
+      "  ℹ off: this is a personal install (install_mode: personal), so agents can use Docker, sockets and your own tools. On a shared machine, or a company's install, set install_mode: strict (or agents.sandbox: on) in config/local/user.yml",
+    );
+  } else {
+    if (r.mode === "strict")
+      out.push(
+        `  ℹ a strict install (install_mode: strict${r.modeFrom === "den.yml" ? ", set in den.yml by the distribution" : r.modeFrom === "user.yml" ? ", set in config/local/user.yml" : ""}): the sandbox is on, and agents' held writes follow the approval policy`,
+      );
+    else if (r.mode === "personal")
+      out.push(
+        "  ℹ a personal install, with the sandbox set on in config/local/user.yml",
+      );
+    sandboxOnLines(r, out);
+  }
+  // Issue 1325: where each session's own sockets and temp files go.
+  for (const t of r.tmp ?? [])
+    out.push(`  ✓ ${t.id}'s temp folder (TMPDIR, its own sockets): ${t.dir}`);
+  for (const dir of r.leftoverTmp ?? [])
+    out.push(
+      `  ⚠ ${dir} is an agent's temp folder no agent uses now: Den didn't see its agent's run end; it is safe to remove`,
+    );
+  return out;
+}
+
+/** The sandbox's lines where it is on by default (strict, or set on). */
+function sandboxOnLines(r: SandboxReport, out: string[]): void {
   // On by default: an agent outside it is a warning, never information.
   out.push(
     r.here.applied
@@ -2751,10 +2985,21 @@ export function sandboxLines(r: SandboxReport): string[] {
     out.push(
       `  ⚠ Sandbox is off for ${agentsCount(r.fromBefore)} (started before it): Allow Turn on in the bell, or set agents.sandbox: on in config/local/user.yml`,
     );
+  // Issue 1328: a person's choice, said as such (not a ⚠ to ask about).
+  // The notes file can be edited by hand: no control or format characters.
+  for (const x of r.turnedOff ?? []) {
+    const id = plainText(x.id);
+    const by = plainText(x.by ?? "") || "a person";
+    const why = plainText(x.why ?? "") || "no reason noted";
+    out.push(
+      x.at
+        ? `  ℹ ${id}: sandbox off since ${new Date(x.at).toLocaleString()}, asked by ${by}: ${why}`
+        : `  ℹ ${id}: sandbox off (set in config/local/user.yml, no reason noted)`,
+    );
+  }
   if (!r.outside.length) out.push("  ✓ every running agent is inside it");
   for (const x of r.outside)
     out.push(`  ⚠ ${x.id} (${x.project}) runs outside it: ${x.reason}`);
-  return out;
 }
 
 /** D65 v2: doctor's lines on which repo each agent works on. */
@@ -2837,7 +3082,7 @@ export async function cmdAgents(
           return link(rest, d, "add");
         case "folder":
           await loadAgentWorkspaces(deps);
-          return folder(rest, d);
+          return await folder(rest, d);
         case "unlink":
           await loadAgentWorkspaces(deps);
           return link(rest, d, "remove");
@@ -2863,6 +3108,21 @@ export async function cmdAgents(
           return await tokenCmd(rest, d, deps);
         case "accounts":
           return await accountsCmd(rest, d, deps);
+        case "session": {
+          const { runAgentSession, defaultAgentSessionDeps } =
+            await import("../../shared/agents/os-user-session.js");
+          return await runAgentSession(rest, defaultAgentSessionDeps(d.env));
+        }
+        case "os-login": {
+          const { cmdOsUser, defaultOsUserDeps } =
+            await import("./os-user-command.js");
+          return await cmdOsUser(rest, {
+            ...defaultOsUserDeps(d.cli),
+            env: d.env,
+            out: d.out,
+            err: d.err,
+          });
+        }
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }

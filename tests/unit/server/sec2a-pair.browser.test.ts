@@ -22,7 +22,7 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { cliPrefix } from "../../../src/shared/cli-command.js";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
 import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
@@ -125,6 +125,9 @@ async function edgePage(
   if (before) await before(p);
   const r = await p.goto(`http://${EDGE}:${port}/settings?x=1`);
   expect(r?.status()).toBe(401);
+  // Issue 1333: the page asks for a code only on its button.
+  await p.waitForSelector("#den-pair-start, #den-pair-code");
+  if (await p.$("#den-pair-start")) await p.click("#den-pair-start");
   // D67: the browser way, with the code shown big. Issue 819: it is the
   // only way; no command approves this computer.
   await p.waitForSelector("#den-pair-code");

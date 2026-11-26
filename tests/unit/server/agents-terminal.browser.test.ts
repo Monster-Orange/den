@@ -660,8 +660,12 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
                 else held.push({ k, f });
               });
             }
+            const was = Object.getOwnPropertyDescriptor(this, "readyState");
+            let written: number | undefined = was?.value;
             Object.defineProperty(this, "readyState", {
-              get: () => (go.has("open") ? super.readyState : W.CONNECTING),
+              get: () =>
+                go.has("open") ? (written ?? super.readyState) : W.CONNECTING,
+              set: (v: number) => (written = v),
             });
           }
         }
@@ -810,7 +814,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await p.context().close();
     }, 60_000);
 
-    for (const how of ["click", "Tab"] as const)
+    for (const how of ["click", "Shift+Tab"] as const)
       it(`a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (${how})`, async () => {
         if (skip()) return;
         const p = await page(`/agents?layout=focus`);
@@ -822,7 +826,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         // Elsewhere: the list's heading, not a row (a click that picks nothing).
         if (how === "click")
           await p.locator("#agl").click({ position: { x: 4, y: 2 } });
-        else await p.keyboard.press("Tab");
+        else await p.keyboard.press("Shift+Tab");
         await releaseIo(p);
         await new Promise((r) => setTimeout(r, 500));
         expect(
@@ -1110,6 +1114,74 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       /restarts at its next idle/.test(document.body.textContent ?? ""),
     );
     await p.context().close();
+  }, 60_000);
+
+  const JOB_CMD = "npm run dev";
+  it("issue 1407: a stale agent with a background job: its row names the job, with Restart now (ends the job)", async () => {
+    if (skip()) return;
+    const p = await page(`/agents?open=${sid.planner}&layout=focus`);
+    await p.route("**/api/sessions*", async (r) => {
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mcpStale?: unknown }[];
+        };
+        for (const x of body.sessions)
+          if (x.agent === "planner")
+            x.mcpStale = {
+              adds: [],
+              drops: [],
+              den: { from: "0.0.1-old", to: "0.0.2-new" },
+            };
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
+    });
+    const posted: unknown[] = [];
+    await p.route("**/agents/planner/restart", (r) => {
+      const body = r.request().postDataJSON() as { when: string };
+      posted.push(body);
+      return body.when === "now"
+        ? r.fulfill({
+            contentType: "application/json",
+            body: '{"ok":true,"agent":"planner"}',
+          })
+        : r.fulfill({
+            status: 409,
+            contentType: "application/json",
+            body: JSON.stringify({
+              error:
+                "agent planner: a background job it started is still running (npm run dev, 12 min). Restart now ends the job.",
+              code: "job_running",
+              job: { command: JOB_CMD, minutes: 12 },
+            }),
+          });
+    });
+    await p.reload();
+    const st = (id: string) => `#agl .agst:has(.agr[data-id="${sid[id]}"])`;
+    await p.waitForSelector(`${st("planner")} [data-act="tools-restart"]`);
+    await p.click(`${st("planner")} [data-act="tools-restart"]`);
+    const line = `${st("planner")} [data-rs-agent="planner"]`;
+    await p.waitForSelector(line);
+    // The job's state, and what it runs (the server's words, as sent).
+    expect(await p.getAttribute(line, "data-rs-state")).toBe("job");
+    expect(await p.textContent(`${line} [data-rs-line]`)).toContain(JOB_CMD);
+    // Its Restart now replaces the row's Restart while it waits.
+    expect(
+      await p.locator(`${st("planner")} [data-act="tools-restart"]`).count(),
+    ).toBe(0);
+    expect(await p.locator(`${line} [data-rs-now]`).count()).toBe(1);
+    await p.click(`${line} [data-rs-now]`);
+    await p.waitForFunction(() => {
+      const b = document.querySelector('[data-rs-agent="planner"]');
+      return !b || b.getAttribute("data-rs-state") === "done";
+    });
+    expect(posted).toEqual([{ when: "after-turn" }, { when: "now" }]);
+    await p.context().close();
+    // The 409 (job_running) is this test's own answer: the console says so.
+    for (let i = errors.length - 1; i >= 0; i--)
+      if (/status of 409 \(Conflict\)/.test(errors[i])) errors.splice(i, 1);
   }, 60_000);
 
   it("MODE-3: a row and its pane say the mode; a mismatch says both and has Restart to apply, one click, now", async () => {

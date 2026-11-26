@@ -25,6 +25,7 @@ import type { Browser, Page } from "playwright";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser, pageIsMac } from "../helpers/browser.js";
+import { uiModuleFile } from "../../../src/ui/server/ui-assets.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
@@ -156,10 +157,13 @@ async function mount(o: Opts = {}): Promise<{
     const kitShell = kitAsset(url.pathname);
     if (kitShell) return r.fulfill(kitShell);
     const file = /^\/([\w-]+\.js)$/.exec(url.pathname);
-    if (file && fs.existsSync(path.join(PUBLIC, file[1])))
+    const served =
+      file &&
+      (uiModuleFile(url.pathname, PUBLIC) ?? path.join(PUBLIC, file[1]));
+    if (served && fs.existsSync(served))
       return r.fulfill({
         contentType: "text/javascript; charset=utf-8",
-        body: fs.readFileSync(path.join(PUBLIC, file[1]), "utf-8"),
+        body: fs.readFileSync(served, "utf-8"),
       });
     // UK-2: the kit's files, as Den serves them under /kit/.
     const kit = /^\/kit\/([\w-]+\.(?:js|css))$/.exec(url.pathname);
@@ -562,12 +566,22 @@ describe("the ⌘K palette (R17)", () => {
       "Logs of shop/db ACTION",
       // #80 (0.4.45): a fuzzy match, last ("Sh…o…p" in its label).
       "Show up to this many helpers under an agent SETTING",
+      // Issue 1166: fuzzy too ("s…h…o…p" in "minutes with no progress").
+      "GitHub watch: minutes with no progress SETTING",
+      // Issue 1194: fuzzy too ("s…h…o…p" in "most hours open").
+      "GitHub watch: most hours open SETTING",
       // Issue 403: fuzzy too ("S…h…o…p" in "Report screenshots, kept for").
       "Report screenshots, kept for SETTING",
+      "Terminal size hold after a page closes SETTING",
       // Issue 403: and its size limit, looser still (…p in "kept").
       "Report screenshots, largest kept SETTING",
       // Issue 1048: fuzzy too ("s…h…o…p" in "this load per").
       "Hold new unit test runs over this load per core SETTING",
+      // Issue 1274: fuzzy too ("s…h…o…p" in "this much swap in use").
+      "Hold new runs here over this much swap in use (GB) SETTING",
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes SETTING",
+      // Issue 816: fuzzy too ("s…h…o…p" in "installs on this computer").
+      "Test installs on this computer SETTING",
     ]);
     await p.keyboard.press("ArrowDown");
     expect(await p.getAttribute(q, "aria-activedescendant")).toBe(

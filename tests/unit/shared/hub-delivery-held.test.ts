@@ -9,11 +9,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SeenDeliveries } from "../../../src/shared/hub-delivery";
+import { SeenDeliveries } from "../../../src/shared/hub/hub-delivery";
 import {
   DeliveryLoop,
   type DeliveryHub,
-} from "../../../src/shared/hub-delivery-loop";
+} from "../../../src/shared/hub/hub-delivery-loop";
 
 let dir = "";
 beforeEach(() => {
