@@ -503,13 +503,13 @@ describe("the terminal's own status (OSC 7501) sets working or idle", () => {
     ).toBe("working");
   });
 
-  it("a 7501 idle makes it Idle while a turn's working mark is still held", async () => {
+  it("a 7501 idle leaves it Working while the hook says a turn is under way", async () => {
     const d = mk();
     await d.a.event("builder", "north", { event: "resumed", from: "prompt" });
     expect(
       agentStateOf({ ...row("builder"), activity: "idle" }, "person:a", d.deps)
         ?.attn,
-    ).toBe("idle");
+    ).toBe("working");
   });
 
   it("a wait for the person still wins over a 7501 working", () => {

@@ -43,7 +43,7 @@ export function agentStateOf(
     return null;
   const id = row.agent;
   const needs = !!row.waiting && row.waitingWhy !== "input";
-  const workingAt = row.activity === "idle" ? undefined : d.working().get(id);
+  const workingAt = d.working().get(id);
   const latest = d.seen.latest(agentSubject(id));
   const done =
     !!latest && !d.seen.isSeen({ subject: agentSubject(id), person });

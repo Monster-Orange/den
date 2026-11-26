@@ -1875,8 +1875,6 @@
     "ag.none": "このプロジェクトにはまだエージェントがありません",
     "ag.personaOf": "ペルソナ {persona}",
     "ag.state.running": "実行中",
-    "ag.activity.working": "作業中",
-    "ag.activity.idle": "アイドル",
     "ag.state.stopping": "停止中…",
     "ag.state.stopped": "停止済み",
     "ag.state.ended": "終了",
