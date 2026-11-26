@@ -124,6 +124,7 @@
     ["agents.approvals_watch", "agents"],
     ["agents.approvals_critical", "agents"],
     ["agents.held_wait", "agents"],
+    ["agents.rotation_defer_max", "agents"],
     ["server.install_mode", "server"],
     ["server.restore_services", "server"],
     ["agents.resume_batch", "agents"],

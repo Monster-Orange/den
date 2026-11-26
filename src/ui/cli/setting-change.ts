@@ -238,6 +238,7 @@ export const WIDENING_SETTINGS: readonly string[] = [
   // Issue 1127: a longer wait keeps a repo made public treated as private.
   "agents.issue_writes_visibility_minutes",
   "agents.keep_running_after_logout",
+  "agents.rotation_defer_max_hours",
   "services.restore_on_boot",
   "held_writes.wait_minutes",
   "hub.groups",
