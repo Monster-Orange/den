@@ -191,7 +191,10 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
             ).map((x) => `${new URL(x.url).pathname}:${x.readyState}`),
           )
           .catch(() => ["?"]);
-        const xterm = await d.locator("textarea").count().catch(() => -1);
+        const xterm = await d
+          .locator("textarea")
+          .count()
+          .catch(() => -1);
         throw new Error(
           `${e.message}\npeek data-conn=${conn} status=${JSON.stringify(status)} pageerrors=${JSON.stringify(errors)} sockets=${JSON.stringify(socks)} xterm=${xterm}`,
         );
