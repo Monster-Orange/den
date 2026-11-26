@@ -27,8 +27,8 @@ import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { rankFindings, readWebUrl } from "../../shared/web-url.js";
-import { loopbackRefusal } from "../../shared/web-url-check.js";
+import { rankFindings, readWebUrl } from "../../shared/web/web-url.js";
+import { loopbackRefusal } from "../../shared/web/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
@@ -120,7 +120,7 @@ import {
   deliveryAlert,
   readDeliveryHealth,
   TROUBLE_TEXT,
-} from "../../shared/hub-delivery.js";
+} from "../../shared/hub/hub-delivery.js";
 import {
   lostFiles,
   lostMarkLines,
@@ -213,7 +213,7 @@ import {
   type WhereRow,
 } from "./doctor-where.js";
 import { hostLabel } from "./service-command.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export interface DoctorRow {
   kind: string;
@@ -876,12 +876,12 @@ function agoText(ms: number): string {
  * None when the server hasn't written it.
  */
 export function hubDeliveryLines(
-  h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
+  h: import("../../shared/hub/hub-delivery.js").DeliveryHealth | null,
   now: number,
   minutes: number,
   /** P0-D4: the delivery log's last 24 h (journalSummary), when there is one. */
   journal:
-    | import("../../shared/hub-delivery-journal.js").JournalSummary
+    | import("../../shared/hub/hub-delivery-journal.js").JournalSummary
     | null = null,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!h) return { lines: [], problem: false };
@@ -968,7 +968,7 @@ async function hubDeliveryDoctor(): Promise<
     /* the Hub row says what's wrong with the hub block */
   }
   const { journalSummary } =
-    await import("../../shared/hub-delivery-journal.js");
+    await import("../../shared/hub/hub-delivery-journal.js");
   return hubDeliveryLines(
     readDeliveryHealth(
       path.join(getStateDir(), "hub", "deliveries-health.json"),
@@ -1025,7 +1025,10 @@ async function hubAddressRows(
 ): Promise<{ lines: string[]; checks: OnboardCheck[] }> {
   if (!st.configured || !st.connected) return { lines: [], checks: [] };
   const [{ readDenUrlTell, denUrlTellRow }, { readWebUrl }] = await Promise.all(
-    [import("../../shared/hub-den-url.js"), import("../../shared/web-url.js")],
+    [
+      import("../../shared/hub/hub-den-url.js"),
+      import("../../shared/web/web-url.js"),
+    ],
   );
   const row = denUrlTellRow(
     readDenUrlTell(getStateDir()),
@@ -1182,7 +1185,7 @@ async function projectMcpDoctor(): Promise<{
  */
 export function hubGithubLines(
   cov:
-    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { orgs: import("../../shared/hub/hub-project-sync.js").OrgCoverage[] }
     | { error: string }
     | null,
 ): { lines: string[]; checks: OnboardCheck[] } {
@@ -1264,8 +1267,8 @@ async function projectsWithHubProject(): Promise<
   const { emptyProjectTest } = await import("../../shared/empty-project.js");
   const { listRecords } = await import("../../shared/agents/records.js");
   const { hubProjectOf, hubLinkElsewhere } =
-    await import("../../shared/hub-project-link.js");
-  const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
+    await import("../../shared/hub/hub-project-link.js");
+  const { lostHubLinks } = await import("../../shared/hub/hub-links-seen.js");
   try {
     const file = readWorkspacesFile();
     const all = file.workspaces;
@@ -1320,7 +1323,7 @@ export interface DoctorAddress {
  * one isn't checked yet. It is never offered to confirm.
  */
 export function addressLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   title: string,
   cli: string,
   checked: DoctorAddress | null = null,
@@ -1518,7 +1521,7 @@ function fixtureLineNow(): string | null {
  * one; this row says so (ℹ, ok) instead of a second ⚠ to ask about.
  */
 export function sessionHostLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   works: boolean,
   title: string,
   cli: string,
@@ -1634,7 +1637,7 @@ async function pushSubscriptionCount(): Promise<number | undefined> {
  * on. None: nothing is lost yet, so ℹ and ok. Unknown (left out): warn.
  */
 export function pushContactLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   title: string,
   cli: string,
   subscriptions?: number,
@@ -2807,6 +2810,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const rr = await repoRootRows();
       r.checks.push(rr.check);
       if (rr.problem) r.ok = false;
+      {
+        const { osUserDoctorRow } = await import("./os-user-command.js");
+        const ou = osUserDoctorRow(product().cli);
+        if (ou) {
+          r.checks.push(ou.check);
+          if (ou.problem) r.ok = false;
+        }
+      }
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
       // Issue 1131: agents' refused calls in the last hour.
@@ -2821,6 +2832,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (vm.lines.length) r.checks.push(vm.check);
       // Issue 1263: throwaway containers left over from gate runs.
       r.checks.push((await throwawayRows()).check);
+      const ra = await routeAgentsRows();
+      if (ra.check) r.checks.push(ra.check);
       // The shared GitHub watcher: calls left, reset, watches, interval.
       const gw = await githubWatchRow();
       if (gw.check) r.checks.push(gw.check);
@@ -2850,7 +2863,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         ).checks,
       );
       if (st.configured && st.connected) {
-        const { githubCoverage } = await import("../../shared/hub-github.js");
+        const { githubCoverage } =
+          await import("../../shared/hub/hub-github.js");
         r.checks.push(...hubGithubLines(await githubCoverage()).checks);
       }
     }
@@ -2983,6 +2997,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // Issue 583: a far too broad repo root, and why Validate refuses it.
   const roots = await repoRootRows();
   for (const l of roots.lines) console.log(l);
+  const { osUserDoctorRow } = await import("./os-user-command.js");
+  const osUser = osUserDoctorRow(product().cli);
+  if (osUser) console.log(osUser.line);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
   for (const l of (await tokenRefusalRow()).lines) console.log(l);
@@ -2991,6 +3008,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of (await gateBoxRows()).lines) console.log(l);
   // Issue 1274: memory VMs promise, against the machine's RAM.
   for (const l of (await gateVmRows()).lines) console.log(l);
+  for (const l of (await routeAgentsRows()).lines) console.log(l);
   // Issue 1263: throwaway containers left over from gate runs.
   {
     const tw = await throwawayRows();
@@ -3024,7 +3042,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ).lines)
       console.log(l);
     if (st.configured && st.connected) {
-      const { githubCoverage } = await import("../../shared/hub-github.js");
+      const { githubCoverage } = await import("../../shared/hub/hub-github.js");
       for (const l of hubGithubLines(await githubCoverage()).lines)
         console.log(l);
     }
@@ -3150,7 +3168,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       roots.problem ||
       cfg.problem ||
       sign.problem ||
-      addr.problem
+      addr.problem ||
+      !!osUser?.problem
       ? 1
       : 0;
   }
@@ -3178,6 +3197,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     hm.problem ||
     roots.problem ||
     cfg.problem ||
+    !!osUser?.problem ||
     found
     ? 1
     : 0;
@@ -3189,6 +3209,16 @@ export async function cmdDoctor(args: string[]): Promise<number> {
  * Issue 1274: the VMs here and what they promise. DEN_GATE_VMS=0 skips the
  * reading (the test setup sets it: a test never reads this machine's VMs).
  */
+async function routeAgentsRows() {
+  try {
+    const { routeAgentsRow } = await import("./doctor-route-agents.js");
+    const { GateStore } = await import("../../shared/gates/store.js");
+    return routeAgentsRow(new GateStore(), product().cli);
+  } catch {
+    return { lines: [] as string[], check: null };
+  }
+}
+
 async function gateVmRows() {
   const none = {
     lines: [] as string[],

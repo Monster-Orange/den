@@ -12,7 +12,7 @@ import {
   denUrlTellProblem,
   readDenUrlTell,
   tellHubDenUrl,
-} from "../../../src/shared/hub-den-url.js";
+} from "../../../src/shared/hub/hub-den-url.js";
 import { HubCallError, hubPutDenUrl } from "../../../src/shared/hub.js";
 import { setConfigAuditSink } from "../../../src/shared/config-audit.js";
 import { readAuditRows } from "../../../src/shared/audit-queue.js";

@@ -46,7 +46,7 @@ import {
   type SettingCategory,
 } from "../../shared/approval-policy.js";
 import { patchHubAllowTools, patchHubUrl } from "../../shared/hub.js";
-import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
+import { patchHubDeliveryLoop } from "../../shared/hub/hub-loop.js";
 import { patchAlerts } from "../../shared/alerts.js";
 import { checkIntent } from "../../shared/agents/permissions.js";
 import { parseMachineName } from "../../shared/cli-command.js";
@@ -66,7 +66,7 @@ import {
 } from "../../shared/review-lines.js";
 import { configKeyNames, patchConfigKey } from "./config-command.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
-import { GATE_DEFAULTS } from "../../shared/gates/rules.js";
+import { GATE_DEFAULTS, onOff } from "../../shared/gates/rules.js";
 
 export const SETTING_CHANGE_ACTION = "setting_change";
 /** The longest reason an ask may give (one line). */
@@ -237,6 +237,7 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "agents.issue_writes_per_hour",
   // Issue 1127: a longer wait keeps a repo made public treated as private.
   "agents.issue_writes_visibility_minutes",
+  "agents.issue_writes_public",
   "agents.keep_running_after_logout",
   "services.restore_on_boot",
   "held_writes.wait_minutes",
@@ -273,6 +274,7 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "install_mode",
       "agents.sandbox",
       "agents.sandbox_sockets",
+      "agents.os_login",
       "agents.*.sandbox",
       "agents.*.grants",
       "approvals",
@@ -282,6 +284,7 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "held_writes.**",
       "agents.issue_writes",
       "agents.issue_writes_per_hour",
+      "agents.issue_writes_public",
       "agents.keep_running_after_logout",
       "services.restore_on_boot",
       "local_dev",
@@ -386,6 +389,11 @@ const WIDENS_AT: readonly [
   widens: (v: unknown, before?: unknown) => boolean,
   modes: readonly InstallMode[],
 ][] = [
+  [
+    "agents.issue_writes_public",
+    (v) => onOff(v) !== false,
+    ["personal", "strict"],
+  ],
   // Issue 1395 (Vision; Reviewer C): judged by old and new together, any
   // lowering of the container requirement widens on strict; with no old
   // value known, off (0) does.
@@ -408,10 +416,8 @@ const WIDENS_AT: readonly [
   [
     "gate.route_agents",
     (v, before) => {
-      const to = level(v);
-      const from = level(before);
-      if (to === null) return true;
-      return from === null ? to === 0 : to < from;
+      const to = onOff(v);
+      return to === null || (!to && onOff(before) !== false);
     },
     ["personal", "strict"],
   ],

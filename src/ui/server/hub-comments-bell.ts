@@ -7,7 +7,7 @@
 import {
   TROUBLE_TEXT,
   type DeliveryTrouble,
-} from "../../shared/hub-delivery.js";
+} from "../../shared/hub/hub-delivery.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 
 export const HUB_COMMENTS_SUBJECT = "record:hub-comments-arriving";

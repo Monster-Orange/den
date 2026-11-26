@@ -317,6 +317,37 @@ describe("the map (tests/affected-map.json)", () => {
     expect(files.length).toBeLessThan(TESTS.length / 10);
   });
 
+  it("a Settings row change runs the pin test and every test that reads the Settings files", () => {
+    const s = select({
+      changed: ["src/ui/server/public/settings-registry.js"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+      importersOf: {
+        "tests/unit/server/helpers/settings-sources.ts": [
+          "tests/unit/server/settings-sources.test.ts",
+        ],
+      },
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain(
+      "tests/unit/server/settings-registry-order.test.ts",
+    );
+    expect(files).toContain("tests/unit/server/settings-sources.test.ts");
+  });
+
+  it("a change to the Settings pin's fixture runs the pin test", () => {
+    const s = select({
+      changed: ["tests/fixtures/settings-registry-order.json"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(Object.keys(s.files)).toContain(
+      "tests/unit/server/settings-registry-order.test.ts",
+    );
+  });
+
   it("a pull request touching the request guard runs everything", () => {
     const s = select({
       changed: ["src/ui/server/request-guard.ts"],
@@ -362,8 +393,8 @@ describe("tests that start Den as a process (issue 708)", () => {
   // Pull request 704's change: the server process sends the acks, and the
   // integration test reaches it over HTTP, never by an import.
   const PR_704 = [
-    "src/shared/hub-delivery-loop.ts",
-    "src/shared/hub-delivery.ts",
+    "src/shared/hub/hub-delivery-loop.ts",
+    "src/shared/hub/hub-delivery.ts",
     "src/ui/cli/agent-ops.ts",
     "src/ui/server/attention.ts",
     "src/ui/server/hub-delivery-service.ts",
@@ -428,9 +459,9 @@ describe("tests that start Den as a process (issue 708)", () => {
       call<string[]>(MAP_GEN, "subjectOf", t, text, {});
     expect(subj("tests/unit/server/hub-delivery.integration.test.ts")).toEqual(
       [
-        "src/shared/hub-delivery-journal.ts",
-        "src/shared/hub-delivery-loop.ts",
-        "src/shared/hub-delivery.ts",
+        "src/shared/hub/hub-delivery-journal.ts",
+        "src/shared/hub/hub-delivery-loop.ts",
+        "src/shared/hub/hub-delivery.ts",
         "src/ui/server/hub-delivery-service.ts",
       ].sort(),
     );

@@ -294,7 +294,7 @@ export function resetTurnCache(): void {
  * each try, until a turn's record shows; never the file's start (that is
  * the conversation's first turn). None in the last `maxBytes`: null, can't
  * tell. A verdict is kept while the file's size and mtime stay the same,
- * and (issue 1592) only once its mtime is older than its read by more
+ * and only once its mtime is older than its read by more
  * than MTIME_TICK_MS: a same-size write in the same tick is read again.
  *
  * Issue 607: `since` is when the agent's live session started (ms). A turn

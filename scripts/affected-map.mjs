@@ -177,12 +177,21 @@ export function startsDen(tests) {
 }
 
 let srcFiles = null;
-const sources = () =>
-  (srcFiles ??= fs
+const shimPaths = () => {
+  const f = path.join(ROOT, "scripts", "shims.json");
+  return new Set(
+    fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf-8")).shims : [],
+  );
+};
+const sources = () => {
+  if (srcFiles) return srcFiles;
+  const shims = shimPaths();
+  return (srcFiles = fs
     .readdirSync(path.join(ROOT, "src"), { recursive: true })
     .map((f) => `src/${f.split(path.sep).join("/")}`)
-    .filter((f) => f.endsWith(".ts"))
+    .filter((f) => f.endsWith(".ts") && !shims.has(f))
     .sort());
+};
 
 /**
  * A test's subject: the src files named like it, the src files its text
@@ -334,6 +343,18 @@ export function buildRules(map = readMap()) {
       importers: ["tests/unit/server/helpers/en-catalog.ts"],
       mentions: true,
       why: "the UI catalogs",
+    },
+    {
+      when: [
+        `${PUB}/settings-registry.js`,
+        `${PUB}/settings-common.js`,
+        `${PUB}/settings-ui-*.js`,
+        `${PUB}/settings-rows-*.js`,
+        "tests/fixtures/settings-registry-order.json",
+      ],
+      run: ["tests/unit/server/settings-registry-order.test.ts"],
+      importers: ["tests/unit/server/helpers/settings-sources.ts"],
+      why: "the Settings rows: their pin and the tests that read them",
     },
     {
       when: [`${PUB}/**`],

@@ -17,7 +17,7 @@ import {
   stdoutLine,
   webLogPath,
   webLogWriter,
-} from "../../../src/shared/web-log-file.js";
+} from "../../../src/shared/web/web-log-file.js";
 
 let tmp = "";
 beforeEach(() => {

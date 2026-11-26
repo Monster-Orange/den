@@ -15,7 +15,7 @@ import {
   checkWebUrl,
   isLoopbackName,
   loopbackRefusal,
-} from "../../shared/web-url-check.js";
+} from "../../shared/web/web-url-check.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -23,7 +23,7 @@ import * as readline from "node:readline";
 import { execFileSync } from "node:child_process";
 import { ENGINE_PACKAGE, getEngineRoot } from "../../shared/paths.js";
 import { profileFrom } from "../../shared/profile.js";
-import { hubUrlProblem } from "../../shared/hub-url.js";
+import { hubUrlProblem } from "../../shared/hub/hub-url.js";
 import { parse as parseYaml } from "yaml";
 import { plural } from "../../shared/plural.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";

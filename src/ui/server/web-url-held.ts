@@ -10,9 +10,9 @@
  */
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
-import { checkWebUrl } from "../../shared/web-url-check.js";
-import { loopbackRefusal } from "../../shared/web-url-check.js";
-import type { WebUrl, WebUrlChange } from "../../shared/web-url.js";
+import { checkWebUrl } from "../../shared/web/web-url-check.js";
+import { loopbackRefusal } from "../../shared/web/web-url-check.js";
+import type { WebUrl, WebUrlChange } from "../../shared/web/web-url.js";
 import type { HeldAction, HeldCheck } from "./approval-routes.js";
 import { checkAnswers, type WebUrlRouteDeps } from "./web-url-routes.js";
 
