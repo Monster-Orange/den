@@ -12,6 +12,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A pull request's `github_watch` reports only that pull request's own checks. For each workflow it counts the newest run on the head: an older run a label or an edit replaced, a run cancelled by a newer one, and `workflow_dispatch` or `push` runs that only share the head's commit are left out. Before it reports a failure it checks which run the failure came from, which can add one interval. (issue 1279)
 - After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.
 
 ### Fixed
