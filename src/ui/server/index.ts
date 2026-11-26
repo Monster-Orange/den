@@ -6101,7 +6101,9 @@ function startEnvHoldAsk(): void {
       ).then((asked) => {
         if (asked) syncHeldWrites();
       });
-    } catch {}
+    } catch {
+      return;
+    }
   };
   ask();
   setInterval(ask, 60 * 60_000).unref();

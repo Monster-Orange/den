@@ -253,7 +253,9 @@ export async function askEnvHold(
         detailKeys: c.detailKeys,
       });
       asked = true;
-    } catch {}
+    } catch {
+      continue;
+    }
   }
   return asked;
 }

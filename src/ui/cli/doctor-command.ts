@@ -2759,6 +2759,36 @@ function collapseDoneKey(): string[] {
   }
 }
 
+function envHoldDoctorLines(): string[] {
+  try {
+    const hold = readAgentsConfig().envHold;
+    if (!hold) return [];
+    const present = shellEnvNames();
+    const legacy = wouldHold(
+      listAgentRecords(getStateDir()),
+      hold,
+      present,
+      (ws) => {
+        try {
+          return checkProjectEnvAllow(
+            ws,
+            (
+              workspaceEntryRaw(ws) as
+                | { agents?: { env_allow?: unknown } }
+                | undefined
+            )?.agents?.env_allow,
+          );
+        } catch {
+          return [];
+        }
+      },
+    );
+    return envHoldLines(readBrand().name, hold, present, legacy).lines;
+  } catch {
+    return [];
+  }
+}
+
 export async function cmdDoctor(args: string[]): Promise<number> {
   const probe = args.includes("--probe");
   const json = args.includes("--json");
@@ -3045,34 +3075,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
-  try {
-    const hold = readAgentsConfig().envHold;
-    if (hold) {
-      const present = shellEnvNames();
-      const legacy = wouldHold(
-        listAgentRecords(getStateDir()),
-        hold,
-        present,
-        (ws) => {
-          try {
-            return checkProjectEnvAllow(
-              ws,
-              (
-                workspaceEntryRaw(ws) as
-                  | { agents?: { env_allow?: unknown } }
-                  | undefined
-              )?.agents?.env_allow,
-            );
-          } catch {
-            return [];
-          }
-        },
-      );
-      for (const l of envHoldLines(readBrand().name, hold, present, legacy)
-        .lines)
-        console.log(l);
-    }
-  } catch {}
+  for (const l of envHoldDoctorLines()) console.log(l);
   const checked = await doctorAddress(product().cli);
   const edges = await edgeAddresses();
   const addr = addressLines(
