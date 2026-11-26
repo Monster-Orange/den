@@ -85,6 +85,17 @@ describe("gate.throwaway_sweep: the setting", () => {
     }
   });
 
+  it("a hand-edited value that isn't 0 reads as on (the safe side)", () => {
+    for (const v of [0.5, 0.2, 1]) {
+      const s = new GateStore({ dir: gateDir({ throwaway_sweep: v }) });
+      expect(s.settings().throwawaySweep).toBe(true);
+    }
+    expect(
+      new GateStore({ dir: gateDir({ throwaway_sweep: 0 }) }).settings()
+        .throwawaySweep,
+    ).toBe(false);
+  });
+
   it("has a meaning in each language", () => {
     for (const lang of Object.keys(
       GATE_MEANINGS,

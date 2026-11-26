@@ -1272,7 +1272,7 @@ export class GateStore {
           v.route_agents !== false &&
           num("route_agents", GATE_DEFAULTS.routeAgents ? 1 : 0) === 1,
         throwawaySweep:
-          num("throwaway_sweep", GATE_DEFAULTS.throwawaySweep ? 1 : 0) === 1,
+          num("throwaway_sweep", GATE_DEFAULTS.throwawaySweep ? 1 : 0) !== 0,
         routeCommands: (() => {
           const l = parseRouteCommands(text("route_commands"));
           return typeof l === "string" || !l.length
