@@ -39,6 +39,14 @@
       "packages/den-ui/src/busy-report.js",
       "src/ui/server/public/busy-den.js"
     ],
+    "tests/unit/server/size-claim-1724.integration.test.ts": [
+      "src/ui/server/session-routes.ts",
+      "src/ui/server/term-size-lead.ts"
+    ],
+    "tests/unit/server/size-claim-1724.browser.test.ts": [
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/term-size-lead.ts"
+    ],
     "tests/unit/cli/repo-add-no-run.integration.test.ts": [
       "src/ui/cli/doctor-command.ts"
     ],
@@ -958,6 +966,7 @@
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
+        "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
@@ -1154,6 +1163,7 @@
         "tests/unit/server/settings-hub-project.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
+        "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
@@ -1466,6 +1476,7 @@
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
+        "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
@@ -1601,6 +1612,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
+        "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
@@ -1699,6 +1711,7 @@
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
+        "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
@@ -1833,6 +1846,7 @@
         "tests/unit/server/signin-this-machine.browser.test.ts",
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
+        "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
@@ -1963,6 +1977,7 @@
         "tests/unit/server/settings-hub-project.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
+        "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
         "tests/unit/server/terminal-reuse.browser.test.ts",
@@ -2171,6 +2186,7 @@
         "tests/unit/server/signin-this-machine.browser.test.ts",
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
+        "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
@@ -4871,8 +4887,12 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/workspace-routes.ts"],
-      "run": ["tests/unit/server/project-agent-cap-1634.integration.test.ts"],
+      "when": [
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/project-agent-cap-1634.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -4958,7 +4978,9 @@
         "packages/den-ui/src/busy-report.js",
         "src/ui/server/public/busy-den.js"
       ],
-      "run": ["tests/unit/server/report-from-failure-177.browser.test.ts"],
+      "run": [
+        "tests/unit/server/report-from-failure-177.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5508,6 +5530,26 @@
       ],
       "run": [
         "tests/unit/server/signin-token.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/term-size-lead.ts"
+      ],
+      "run": [
+        "tests/unit/server/size-claim-1724.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/session-routes.ts",
+        "src/ui/server/term-size-lead.ts"
+      ],
+      "run": [
+        "tests/unit/server/size-claim-1724.integration.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },

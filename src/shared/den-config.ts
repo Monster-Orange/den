@@ -3229,9 +3229,13 @@ export interface SessionsConfig {
    * failed, and the bell says so) (default 30; 0: no look).
    */
   host_restart_check_seconds?: number;
+  size_claim_grace_seconds?: number;
+  size_leave_grace_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
+export const DEFAULT_SIZE_CLAIM_GRACE_SECONDS = 30;
+export const DEFAULT_SIZE_LEAVE_GRACE_SECONDS = 3;
 export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
 export const DEFAULT_HOST_RESTART_CHECK_SECONDS = 30;
 export const DEFAULT_PTY_WARN_ABOVE = 400;
@@ -3247,6 +3251,8 @@ export interface ResolvedSessionsConfig {
   hostRestartWaitSeconds: number;
   hostRestartNote: boolean;
   hostRestartCheckSeconds: number;
+  sizeClaimGraceSeconds: number;
+  sizeLeaveGraceSeconds: number;
 }
 
 const SESSIONS_KEYS = [
@@ -3258,6 +3264,8 @@ const SESSIONS_KEYS = [
   "host_restart_wait_seconds",
   "host_restart_note",
   "host_restart_check_seconds",
+  "size_claim_grace_seconds",
+  "size_leave_grace_seconds",
 ];
 
 /**
@@ -3295,6 +3303,8 @@ export const SESSIONS_SETTINGS_KEYS = [
   "pty_close_seconds",
   "pty_warn_above",
   "pty_machine_warn_percent",
+  "size_claim_grace_seconds",
+  "size_leave_grace_seconds",
 ] as const;
 
 /** What is wrong with one sessions.<key> value, in den-config's words; null: fine. */
@@ -3325,6 +3335,8 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
     hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
     hostRestartNote: true,
     hostRestartCheckSeconds: DEFAULT_HOST_RESTART_CHECK_SECONDS,
+    sizeClaimGraceSeconds: DEFAULT_SIZE_CLAIM_GRACE_SECONDS,
+    sizeLeaveGraceSeconds: DEFAULT_SIZE_LEAVE_GRACE_SECONDS,
   };
   const check = raw.host_restart_check_seconds;
   if (check !== undefined) {
@@ -3406,6 +3418,32 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
         `sessions.close_grace_seconds: must be a number of seconds, 0 to 300 (got ${JSON.stringify(grace)})`,
       );
     out.closeGraceSeconds = grace;
+  }
+  const claim = raw.size_claim_grace_seconds;
+  if (claim !== undefined) {
+    if (
+      typeof claim !== "number" ||
+      !Number.isFinite(claim) ||
+      claim < 0 ||
+      claim > 3600
+    )
+      throw new Error(
+        `sessions.size_claim_grace_seconds: must be a number of seconds, 0 to 3600 (got ${JSON.stringify(claim)})`,
+      );
+    out.sizeClaimGraceSeconds = claim;
+  }
+  const leave = raw.size_leave_grace_seconds;
+  if (leave !== undefined) {
+    if (
+      typeof leave !== "number" ||
+      !Number.isFinite(leave) ||
+      leave < 0 ||
+      leave > 300
+    )
+      throw new Error(
+        `sessions.size_leave_grace_seconds: must be a number of seconds, 0 to 300 (got ${JSON.stringify(leave)})`,
+      );
+    out.sizeLeaveGraceSeconds = leave;
   }
   const max = raw.max_concurrent;
   if (max !== undefined) {
