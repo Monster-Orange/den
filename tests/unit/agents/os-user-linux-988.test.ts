@@ -97,6 +97,7 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
   beforeAll(() => {
     allowWrites(`/home/${PERSON}`);
     allowWrites(RUNTIME);
+    allowWrites(p.dir);
   });
 
   it("setup runs, and doctor (reading as the person) finds it all as it should be", () => {
