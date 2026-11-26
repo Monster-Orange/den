@@ -2,8 +2,8 @@
 // busy for typing; restarts still wait for, or ask about, the job.
 //
 // A stub in the bed's workspace linked to Hub's e2e project ends its turn,
-// then gets the stub's `/bg <secs>` verb (typed in as a message from the
-// page): it forks a detached shell under the stub's own process that
+// then gets the stub's `/bg <secs>` verb (typed straight into the stub,
+// as 1407 does: the fixture person may not use Den's /say): it forks a detached shell under the stub's own process that
 // sources a file under shell-snapshots/ and sleeps, as Claude Code's
 // background shells look to Den.
 //
@@ -21,6 +21,8 @@
 // running, and skips if it isn't or nobody could look (needs-background-job).
 // No turn started: clause 2 skips (needs-turn). No Hub: every clause skips
 // (needs-hub). Names are new each run.
+
+import { execFileSync } from "node:child_process";
 
 export const issue = 732;
 export const items = [732, 829];
@@ -76,19 +78,6 @@ function sessionOf(ctx, id) {
   return parse(ctx.readBed(`state:agents/${id}.json`))?.session?.id ?? null;
 }
 
-/** A message from the page (POST …/say): { status, code }. */
-async function say(ctx, id, text) {
-  const r = await ctx.fetch(
-    `/api/workspaces/${encodeURIComponent(WS)}/agents/${encodeURIComponent(id)}/say`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
-    },
-  );
-  return { status: r?.status ?? null, code: parse(r?.body)?.code ?? null };
-}
-
 /** Restart after its turn, as the page asks it: { status, code, job }. */
 async function restartProbe(ctx, id) {
   const r = await ctx.fetch(
@@ -125,9 +114,17 @@ export async function jobPresent(a, name) {
       10000,
     );
     const out = String(r?.out ?? "").trim();
-    return out === "yes" ? true : out === "no" ? false : null;
+    if (out === "yes" || out === "no") return out === "yes";
   } catch {
-    return null;
+    /* the stub's shell gave no answer: look from here */
+  }
+  try {
+    execFileSync("pgrep", ["-f", `snapshot-zsh-[0-9]+-${name}\\.sh`], {
+      stdio: "ignore",
+    });
+    return true;
+  } catch (e) {
+    return e?.status === 1 ? false : null;
   }
 }
 
@@ -178,13 +175,14 @@ export async function run(ctx, s) {
   r.transcript = !!ctx.transcriptPath(s.id);
   await endTurn(ctx, a, s.id, "Watching the build log in the background.");
 
-  // The background shell: the stub's `/bg <secs>` verb, typed in as a
-  // message from the page, forks a detached shell of its own that sources
-  // a file under shell-snapshots/ and sleeps, as Claude Code's background
-  // shells look to Den. Its turn ends at once.
+  // The background shell: the stub's `/bg <secs>` verb, typed into the
+  // stub, forks a detached shell of its own that sources a file under
+  // shell-snapshots/ and sleeps, as Claude Code's background shells look to
+  // Den. Its turn ends at once.
+  if (!a.line) return { ...r, noLine: true };
   r.job = jobName();
-  const bg = await say(ctx, s.id, `/bg ${JOB_S} ${r.job}`);
-  r.bg = { status: bg.status, code: bg.code };
+  a.line(`/bg ${JOB_S} ${r.job}`);
+  r.bg = "line";
   await ctx.sleep(2000);
   await endTurn(ctx, a, s.id, "Started the watcher in the background.");
   await ctx.sleep(2000);
@@ -271,7 +269,7 @@ export async function teardown(ctx, s) {
     const a = ctx.agent(s.id, { workspace: WS });
     if (a.state()) {
       // The stub's exit ends its background shells too; /bg-stop first.
-      await say(ctx, s.id, "/bg-stop").catch(() => null);
+      a.line?.("/bg-stop");
       a.remove();
     }
   } catch {
@@ -288,6 +286,11 @@ export function expect(res) {
     return skipAll(
       "needs-hub",
       "the bed has no Hub, so no comment can reach an agent",
+    );
+  if (r.noLine)
+    return skipAll(
+      "needs-stub-line",
+      "the bed's stub has no line to type /bg into, so no background job ran",
     );
   if (!r.running)
     return clauses.map((clause) => ({
