@@ -1,9 +1,4 @@
 /* eslint-env browser */
-// Live check for issue 406: the rail's account entry shows two lines, as
-// Hub's does: the person's name, then @login. Each cell opens the Services
-// page signed in as the bed's person and reads the entry (#den-ident
-// den-acct) and what Den knows of the person (/api/session). Read only
-// (issue 406): reads one page and the session.
 export const issue = 406;
 export const items = [406];
 export const readOnly = true;
@@ -21,7 +16,6 @@ export async function setup() {
 export async function run(ctx) {
   const tag = `${ctx.browser}-${ctx.width}`;
   await ctx.goto(ctx.page, "/services");
-  // The entry's label: the kit's account block inside #den-ident.
   await ctx.page.waitForFunction(
     () =>
       document.getElementById("den-ident")?.getElementsByClassName("den-acct")
@@ -62,9 +56,6 @@ export async function run(ctx) {
   await ctx.page
     .locator("#den-ident")
     .screenshot({ path: ctx.evidence(`${tag}-entry.png`) });
-  // What Den knows of the person (shell.js accountModel): a GitHub
-  // identity, or the owner linked to this computer. (Hub's name for the
-  // same login can also fill the name.)
   const id = session?.identity ?? null;
   const gh =
     id?.kind === "github" && id.login
@@ -85,7 +76,6 @@ export function expect(cells) {
   const rs = cells.map((c) => c.result).filter(Boolean);
   const say = (r) =>
     `${r.tag}: ${r.entry.map((l) => `"${l.text}" ${l.fontSize}px`).join(" over ")} (Den knows ${r.name ? `the name "${r.name}"` : "no name"})`;
-  // Two lines: the name (den-acct-n) over @login (den-acct-l).
   const two = (r) =>
     r.entry.length === 2 &&
     /den-acct-n/.test(r.entry[0].cls) &&
@@ -93,8 +83,6 @@ export function expect(cells) {
     /^@\S+$/.test(r.entry[1].text) &&
     r.entry[1].top > r.entry[0].top &&
     (!r.name || r.entry[0].text === r.name);
-  // A name Den knows but doesn't show is a failure; no name anywhere is
-  // the one-line entry the issue keeps (as in Hub): not this clause's case.
   const named = rs.filter((r) => r.name || two(r));
   const look = (r) =>
     r.entry.every(

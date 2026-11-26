@@ -1,10 +1,3 @@
-/**
- * Issues 981, 898 and 406: their live checks (gate/981.mjs, gate/898.mjs,
- * gate/406.mjs) can fail. Each check's expect() is fed cells with the
- * measures the bug gave (red) and the measures the fix gives (green), in a
- * child node (the gate files are ESM), as the bed's harness calls it:
- * expect(cells) with one argument.
- */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as path from "path";
@@ -55,7 +48,6 @@ describe("issue 981's live check", () => {
   it("with the fix: both clauses pass", () => {
     const r = rows(981, [cell("webkit", [bar(true)])]);
     expect(r.map((x) => x.ok)).toEqual([true, true]);
-    // Not digits-dash-digits: the bed masks that shape as a pairing code.
     expect(r[0].detail).toContain("picker x 300 to 440, Search from x 452");
     expect(r[0].detail).not.toMatch(/\d+-\d+/);
   });

@@ -1,13 +1,4 @@
 /* eslint-env browser */
-// Live check for issue 898: on an iPad the project drop-down's checkmark
-// wrapped onto a line of its own. The bed keeps one active project with a
-// long name (BED_LONG_NAME); setup puts it in view, so it is the checked
-// row. Each cell opens the Services page signed in as the bed's person, in a
-// touch context of its own at iPad sizes (the cell's browser, the page's own
-// sign-in), opens the project picker and measures that row. Teardown puts
-// the person's view back. The fixture person may change the view only
-// (FIXTURE_WRITES): the check never makes, activates or deletes a project.
-// Without the bed's project, both clauses are not run (needs-long-project).
 export const issue = 898;
 export const items = [898];
 export const clauses = [
@@ -15,11 +6,6 @@ export const clauses = [
   "a long project name is cut short with an ellipsis instead of wrapping",
 ];
 
-/**
- * The bed's long-named project: 64 characters, Den's longest name. At iPad
- * widths the picker's label box is about 340px; 52 characters (338px) fit,
- * so the name is the longest Den allows.
- */
 export const BED_LONG_NAME =
   "Gate 898 a project whose name runs well past the row on any iPad";
 
@@ -37,7 +23,6 @@ const SIZES = [
   [1180, 820],
 ];
 
-/** A touch page at `width` x `height`, signed in as the cell's page is. */
 async function touchPage(ctx, width, height) {
   const base = ctx.page.context();
   const c = await base.browser().newContext({
@@ -48,7 +33,6 @@ async function touchPage(ctx, width, height) {
     isMobile: true,
     reducedMotion: "reduce",
   });
-  // As the bed does: What's new never covers the page under test.
   await c.addInitScript(() =>
     document.addEventListener("DOMContentLoaded", () => {
       const s = document.createElement("style");
@@ -57,11 +41,10 @@ async function touchPage(ctx, width, height) {
     }),
   );
   const p = await c.newPage();
-  await p.goto(`${ctx.url}/services`, { waitUntil: "networkidle" });
+  await ctx.goto(p, "/services");
   return p;
 }
 
-// Setup never throws: the runner calls teardown with what setup returned.
 export async function setup(ctx) {
   const s = {};
   try {
@@ -116,7 +99,6 @@ export async function run(ctx, s) {
         const ls = getComputedStyle(lab);
         return {
           text: lab.textContent,
-          // Cut short: the label's text is wider than its box, with an ellipsis.
           cut: lab.scrollWidth > lab.clientWidth,
           ellipsis: ls.textOverflow === "ellipsis",
           nowrap: ls.whiteSpace === "nowrap",
@@ -128,7 +110,6 @@ export async function run(ctx, s) {
           ),
           labelRight: Math.round(l.right),
           rowRight: Math.round(r.right),
-          // How long the label is against the row: a short one can't wrap.
           labelW: Math.round(row.firstElementChild.scrollWidth),
           rowW: Math.round(r.width),
           mark: after.content,
@@ -173,7 +154,6 @@ export function expect(cells) {
       detail: `the bed has no active project named "${BED_LONG_NAME}"`,
     }));
   const detail = all.map(say).join("; ");
-  // Which of the long-name conditions a row missed, so a FAIL says why.
   const missed = (r) =>
     r.error
       ? []

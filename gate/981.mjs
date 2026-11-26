@@ -1,10 +1,4 @@
 /* eslint-env browser */
-// Live check for issue 981: on a tablet the top bar's Search box covered the
-// project picker, so a tap on the picker opened Search. Each cell opens the
-// Services page signed in as the bed's person, in a touch context of its own
-// at an iPad's sizes (the cell's browser, the page's own sign-in), measures
-// the picker and Search, then taps the picker. Read only (issue 981): reads
-// the top bar and opens the picker's menu, which only changes the view.
 export const issue = 981;
 export const items = [981];
 export const readOnly = true;
@@ -20,7 +14,6 @@ const SIZES = [
   [820, 1180],
 ];
 
-/** A touch page at `width` x `height`, signed in as the cell's page is. */
 async function touchPage(ctx, width, height) {
   const base = ctx.page.context();
   const c = await base.browser().newContext({
@@ -31,7 +24,6 @@ async function touchPage(ctx, width, height) {
     isMobile: true,
     reducedMotion: "reduce",
   });
-  // As the bed does: What's new never covers the page under test.
   await c.addInitScript(() =>
     document.addEventListener("DOMContentLoaded", () => {
       const s = document.createElement("style");
@@ -40,7 +32,7 @@ async function touchPage(ctx, width, height) {
     }),
   );
   const p = await c.newPage();
-  await p.goto(`${ctx.url}/services`, { waitUntil: "networkidle" });
+  await ctx.goto(p, "/services");
   return p;
 }
 
