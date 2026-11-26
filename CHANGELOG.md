@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.90] - unreleased
 
+### Added
+
+- An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
+
 ### Fixed
 
 - No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).
