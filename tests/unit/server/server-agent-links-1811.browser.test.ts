@@ -1,12 +1,3 @@
-/**
- * Issue 1811: every link Den gives to the server agent opens its page,
- * /server-agent, where its question is on screen. Before, each opened
- * /agents?project=den-server&agent=server, a project nobody can see.
- *
- * The demo distribution on the real web server, with a scripted PTY: the
- * server agent "asks" by printing its question. Invented names only.
- * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
@@ -41,12 +32,10 @@ beforeAll(async () => {
     throw err;
   }
   s = await startAgentsPageServer({ fresh: true });
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
 }, 90_000);
 
 afterAll(async () => {
@@ -62,8 +51,8 @@ async function page(at: string): Promise<Page> {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
         localStorage.setItem(k, v);
-    } catch {
-      /* none */
+    } catch (e) {
+      void e;
     }
   }, latest);
   const p = await ctx.newPage();
@@ -82,10 +71,7 @@ async function onServerAgentWithQuestion(p: Page): Promise<void> {
   );
   expect(new URL(p.url()).pathname).toBe("/server-agent");
   await p.waitForFunction(
-    (q) =>
-      (
-        document.querySelector(".sa-term .xterm-rows")?.textContent ?? ""
-      ).includes(q),
+    (q) => (document.querySelector("#sa-pane")?.textContent ?? "").includes(q),
     QUESTION,
     { timeout: 20_000 },
   );
@@ -96,9 +82,8 @@ describe("issue 1811: links to the server agent open its page", () => {
 
   beforeAll(async () => {
     if (!browser) return;
-    // The server agent starts on a fresh Den's first page, then asks.
     const p = await page("/");
-    await p.waitForSelector(".sa-term .xterm", { timeout: 20_000 });
+    await p.waitForSelector("#sa-pane [data-id]", { timeout: 20_000 });
     s!.made[0].emit(`${QUESTION}\r\n`);
     await p.context().close();
 
@@ -147,13 +132,13 @@ describe("issue 1811: links to the server agent open its page", () => {
       const p = await page("/services");
       await p.waitForSelector("#den-bell");
       await p.click("#den-bell");
-      await p.locator("#den-bell-pop .den-bell-sec").first().waitFor();
+      await p.locator("#den-bell-pop").waitFor();
       const updates = p.locator(
         '#den-bell-pop [data-bell="updates"][aria-expanded="false"]',
       );
       if (kind === "bell" && (await updates.count())) await updates.click();
       const a = p.locator(
-        `#den-bell-pop .den-bell-row[data-id="${id}"] a[data-bell="open"]`,
+        `#den-bell-pop [data-id="${id}"] a[data-bell="open"]`,
       );
       await a.waitFor({ timeout: 15_000 });
       expect(await a.getAttribute("href")).toBe("/server-agent");
