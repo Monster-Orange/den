@@ -2330,6 +2330,7 @@
         "tests/unit/test-infra/gate-1407-clauses.test.ts",
         "tests/unit/test-infra/gate-142-runner.test.ts",
         "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-143-runner.test.ts",
         "tests/unit/test-infra/gate-252-runner.test.ts",
         "tests/unit/test-infra/gate-380-runner.test.ts",
         "tests/unit/test-infra/gate-402-clauses.test.ts",
@@ -2665,6 +2666,11 @@
         "tests/unit/test-infra/gate-142-stubs.test.ts"
       ],
       "why": "tests that load gate/142.mjs"
+    },
+    {
+      "when": ["gate/143.mjs"],
+      "run": ["tests/unit/test-infra/gate-143-runner.test.ts"],
+      "why": "tests that load gate/143.mjs"
     },
     {
       "when": ["gate/252.mjs"],
