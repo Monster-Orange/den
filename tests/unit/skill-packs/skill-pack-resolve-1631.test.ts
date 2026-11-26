@@ -34,7 +34,8 @@ describe("issue 1631: the skills an agent gets", () => {
     expect(skills).toContain("swarm");
     expect(skills).not.toContain("statechart");
     expect(skills).not.toContain("setup-pstack");
-    expect(skills.length).toBe(55);
+    expect(skills).not.toContain("poteto-mode");
+    expect(skills.length).toBe(53);
   });
 
   it("exclude takes skills out, and a list picks exactly those", () => {

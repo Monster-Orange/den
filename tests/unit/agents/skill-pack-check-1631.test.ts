@@ -145,4 +145,45 @@ describe("issue 1631: a skill_packs change reaches a running agent on its own", 
     expect(after).not.toEqual(before);
     expect(fs.existsSync(path.join(after[0]!, "skills", "tdd"))).toBe(false);
   }, 30_000);
+
+  it("Den's record holds the pack folders each launch passed", async () => {
+    const r = await oneAgent();
+    expect(record(r, "lead").skillPackDirs).toEqual(
+      pluginDirs(r.made.at(-1)!.args),
+    );
+  }, 30_000);
+
+  it("its settings file gone or edited: Den's record still shows the drift, and it restarts", async () => {
+    const r = await oneAgent();
+    const files = path.join(r.stateDir, "agent-files", "lead", "settings.json");
+    fs.rmSync(files, { force: true });
+    r.config.agents.lead = {
+      ...(r.config.agents.lead ?? { grants: [] }),
+      skillPacks: "off",
+    };
+    await endedTurn(r, "lead");
+    const c = skillPackCheck(resolveAgentsDeps(r.deps), { pollMs: 20 });
+    expect(await c.tick()).toEqual(["lead"]);
+    await c.pending();
+    expect(pluginDirs(r.made.at(-1)!.args)).toEqual([]);
+    expect(record(r, "lead").skillPackDirs).toEqual([]);
+  }, 30_000);
+
+  it("no record of its packs and no settings file: packs now off still restarts it", async () => {
+    const r = await oneAgent();
+    const file = path.join(r.stateDir, "agents", "lead.json");
+    const rec = record(r, "lead");
+    delete rec.skillPackDirs;
+    fs.writeFileSync(file, JSON.stringify(rec));
+    fs.rmSync(path.join(r.stateDir, "agent-files", "lead", "settings.json"), {
+      force: true,
+    });
+    r.config.agents.lead = {
+      ...(r.config.agents.lead ?? { grants: [] }),
+      skillPacks: "off",
+    };
+    await endedTurn(r, "lead");
+    const c = skillPackCheck(resolveAgentsDeps(r.deps), { pollMs: 20 });
+    expect(await c.tick()).toEqual(["lead"]);
+  }, 30_000);
 });

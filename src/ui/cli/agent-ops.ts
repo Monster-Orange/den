@@ -241,6 +241,7 @@ import * as os from "os";
 import {
   agentSkillPacks,
   readSkillPacksConfig,
+  SKILL_PACK_RUNTIMES,
 } from "../../shared/skill-packs/launch.js";
 import { SKILL_PACK_CACHE } from "../../shared/skill-packs/build.js";
 import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
@@ -4644,6 +4645,7 @@ export async function startAgent(
               ...(req.allow !== undefined ? { allow: ch.extras } : {}),
               ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
               ...subagentsField(rt, persona, cfg),
+              skillPackDirs: (input.skillPacks ?? []).map((x) => x.dir),
               workspace: ws,
               cwd: input.worktree,
               // D65 v2: its project and repo outlive every new conversation.
@@ -7445,6 +7447,7 @@ export async function resumeAgent(
               ...base,
               ...(permission ? { permission } : {}),
               ...subagentsField(rt, persona, cfg),
+              skillPackDirs: (input.skillPacks ?? []).map((x) => x.dir),
               cwd: rec.cwd,
               peerName,
               ...(token ? { launched: true } : {}),
@@ -8970,9 +8973,11 @@ export async function skillPackDrift(
   const out: { id: string; workspace: string }[] = [];
   for (const rec of listRecords(d.stateDir())) {
     if (!live.some((x) => x.ref.id === rec.session.id)) continue;
-    const had = launchedPackDirs(agentFilesDir(d.stateDir(), rec.id));
+    const had =
+      rec.skillPackDirs?.map((x) => path.resolve(x)).sort() ??
+      launchedPackDirs(agentFilesDir(d.stateDir(), rec.id));
     const p = find(rec);
-    if (had === null || !p) continue;
+    if (!p || !SKILL_PACK_RUNTIMES.includes(rec.runtime)) continue;
     let want: string[];
     try {
       want = (skillPacksFor(d, cfg, p, rec.id, rec.runtime).skillPacks ?? [])
@@ -8981,7 +8986,7 @@ export async function skillPackDrift(
     } catch {
       continue;
     }
-    if (want.join("\n") !== had.join("\n"))
+    if (had === null ? !want.length : want.join("\n") !== had.join("\n"))
       out.push({ id: rec.id, workspace: rec.workspace });
   }
   return out;
