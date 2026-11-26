@@ -563,8 +563,8 @@ async function attach(st) {
 function fitBox(st) {
   try {
     st.fit?.fit();
-  } catch (e) {
-    void e;
+  } catch (notLaidOutYet) {
+    void notLaidOutYet;
   }
 }
 
@@ -624,15 +624,15 @@ function onText(st, msg) {
 function detachTerm(st) {
   try {
     st.pane?.stop();
-  } catch (e) {
-    void e;
+  } catch (paneClosed) {
+    void paneClosed;
   }
   st.pane = null;
   st.sock = null;
   try {
     st.term?.dispose();
-  } catch (e) {
-    void e;
+  } catch (termGone) {
+    void termGone;
   }
   st.term = null;
   st.fit = null;
