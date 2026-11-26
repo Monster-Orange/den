@@ -231,7 +231,7 @@ describe("issue 607: a turn cut by a terminal host restart", () => {
     await started(r, null);
     r.made[0].emit("> ");
     const recAt = Date.parse(record(r, "planner").startedAt as string);
-    // Issue 1592: both writes land in one tick of the file's clock (a
+    // Both writes land in one tick of the file's clock (a
     // fast Linux box stamps mtimes by its timer tick), at the same size.
     const tick = new Date();
     write(r, cutAt(new Date(recAt - 60_000)));

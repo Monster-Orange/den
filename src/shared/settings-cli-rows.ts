@@ -41,7 +41,7 @@
  *                                     user.yml agents.draft_hold_max_minutes
  *                                     (issue 1311)
  *   agent_issue_writes: { roles?: [role, …] | null, per_hour?,
- *     visibility_minutes? }           user.yml agents.issue_writes,
+ *     visibility_minutes?, public? }  user.yml agents.issue_writes,
  *                                     agents.issue_writes_per_hour and
  *                                     agents.issue_writes_visibility_minutes
  *                                     (issue_write; issue 1127)
@@ -115,7 +115,7 @@ import {
   ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
-import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
+import { LOOKUP_LIMITS } from "./proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
 import { SERVER_LOG_LIMITS } from "./server-log-file.js";
@@ -826,9 +826,22 @@ export function patchCliRows(
       return {
         ok: false,
         error:
-          "agent_issue_writes is an object: roles, per_hour, visibility_minutes",
+          "agent_issue_writes is an object: roles, per_hour, visibility_minutes, public",
       };
-    const { roles, ...rest } = iw;
+    const { roles, public: pub, ...rest } = iw;
+    if (pub !== undefined && pub !== null && typeof pub !== "boolean")
+      return {
+        ok: false,
+        error: "agent_issue_writes.public is true, false or null",
+      };
+    if (pub !== undefined)
+      apply.push(() => {
+        const a = isObj(user.agents) ? { ...user.agents } : {};
+        if (pub === null) delete a.issue_writes_public;
+        else a.issue_writes_public = pub;
+        if (Object.keys(a).length) user.agents = a;
+        else delete user.agents;
+      });
     if (
       roles !== undefined &&
       roles !== null &&
