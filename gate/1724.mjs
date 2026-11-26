@@ -28,7 +28,7 @@ async function paneSizes(page, sid) {
   return page
     .evaluate((id) => {
       const d = globalThis.document.querySelector(
-        `.pane[data-id="${id}"]`,
+        `[data-id="${id}"][data-cols]`,
       )?.dataset;
       const n = (x) => (x ? Number(x) : null);
       if (!d) return null;
@@ -48,7 +48,7 @@ async function openPane(ctx, page, sid) {
     `/agents?project=${encodeURIComponent(WS)}&open=${encodeURIComponent(sid)}`,
   );
   await page
-    .waitForSelector(`.pane[data-id="${sid}"] .xterm-rows`, { timeout: 30000 })
+    .waitForSelector(`[data-id="${sid}"][data-cols]`, { timeout: 30000 })
     .catch(() => {});
 }
 
@@ -65,10 +65,12 @@ async function desktop(ctx, sid) {
 }
 
 async function takeOver(ctx, d, ipadPage, sid) {
-  const btn = d.page.locator(`.pane[data-id="${sid}"] [data-act="take-size"]`);
+  const btn = d.page.locator(
+    `[data-id="${sid}"][data-cols] [data-act="take-size"]`,
+  );
   await btn.waitFor({ timeout: TAKE_MS }).catch(() => {});
   if (!(await btn.count())) return { took: false, why: "no Take over" };
-  await btn.first().click();
+  await btn.click();
   const want = async () => (await paneSizes(d.page, sid))?.own ?? null;
   const tookMs = await ctx.until(
     async () => same(await ptyOf(ipadPage, sid), await want()),
