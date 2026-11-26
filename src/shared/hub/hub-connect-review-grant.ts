@@ -20,7 +20,7 @@
  * Anything else (no review, an older Hub, a cap passed): issue 646's flow.
  */
 import { createHash } from "crypto";
-import { isCatchAllProject } from "./catch-all-project.js";
+import { isCatchAllProject } from "../catch-all-project.js";
 
 export const REVIEW_MAX_PROJECTS = 50;
 export const REVIEW_MAX_BYTES = 6144;

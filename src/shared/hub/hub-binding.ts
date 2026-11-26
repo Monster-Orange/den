@@ -24,9 +24,9 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { EMBED_PREFIX } from "./hub-delivery.js";
-import type { WorkspacesFile } from "./types/index.js";
-import { WORKSPACE_NAME_MAX } from "./workspace-name.js";
-import { writeFileAtomic } from "./atomic-write.js";
+import type { WorkspacesFile } from "../types/index.js";
+import { WORKSPACE_NAME_MAX } from "../workspace-name.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 /** The hub/* files that belong to one Hub (archived on a change). */
 export const HUB_STATE_FILES = [

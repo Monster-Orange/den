@@ -24,7 +24,7 @@
  * No timers of its own: tick() is called on a beat and reads when due.
  */
 import fs from "node:fs";
-import { writeFileAtomic } from "./atomic-write.js";
+import { writeFileAtomic } from "../atomic-write.js";
 import path from "node:path";
 import {
   LOCAL_PREFIX,

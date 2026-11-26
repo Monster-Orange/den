@@ -33,7 +33,7 @@
  *   Den never sends to a group itself. What reached each member is Den's
  *   delivery acks (hub-delivery.ts: `held`), shown on Hub's own page.
  */
-import { HubCallError, hubCall } from "./hub.js";
+import { HubCallError, hubCall } from "../hub.js";
 
 /**
  * Issue 750: what the connected Hub's whoami lists when it serves groups
