@@ -111,6 +111,7 @@ describe("gate-slot routes", () => {
       overrunBellMultiple: 2,
       priorityMax: 1,
       priorityPassLimitMinutes: 0,
+      releasePassOtherKindMinutes: 30,
       priorityAgents: true,
       priorityRunners: true,
       claimMinutes: 3,
