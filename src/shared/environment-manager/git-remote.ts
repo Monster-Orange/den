@@ -10,8 +10,10 @@
  * spaces, a leading `-`).
  */
 
-/** A GitHub slug, as the clone guards accept it. */
-export const SAFE_SLUG_RE = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
+import { REPO_NAME_RE } from "../repo-name.js";
+
+/** A GitHub slug, as the clone guards accept it: the one repo-name rule. */
+export const SAFE_SLUG_RE = REPO_NAME_RE;
 
 const REMOTE_RE =
   /^(?:(?:https?|ssh|git|file):\/\/[A-Za-z0-9._~@:%+/-]+|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[A-Za-z0-9._~+/-]+|\/[A-Za-z0-9._~@+/-]+)$/;

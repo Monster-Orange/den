@@ -42,6 +42,7 @@ import {
   resetAddressCache,
   type AddressRouteDeps,
 } from "../../../src/ui/server/address-routes.js";
+import { denWebBase } from "../../../src/shared/web-dial.js";
 
 const KEY = identityKey(Buffer.alloc(32, 1));
 
@@ -241,6 +242,7 @@ function fakeProbe(den: string[], other: string[] = []) {
 // eslint-disable-next-line no-restricted-syntax -- the browser's origin Den prints
 const DIRECT = "http://localhost:7777";
 const WANTED = "http://den.acme.localhost";
+const DIAL = denWebBase(7777, undefined);
 
 describe("the port Den states and every route's port are one (Den Design)", () => {
   // One source: the port Den's server listens on. The address Den gives
@@ -255,7 +257,7 @@ describe("the port Den states and every route's port are one (Den Design)", () =
         wanted: WANTED,
         key: KEY,
         settings: { timeoutMs: 1000, retries: 0, cacheMs: 0 },
-        probe: fakeProbe([direct], [WANTED]),
+        probe: fakeProbe([denWebBase(webPort, undefined), direct], [WANTED]),
         owner: () => ({
           owner: "nginx",
           kind: "container",
@@ -288,7 +290,7 @@ describe("the check", () => {
       wanted: WANTED,
       key: KEY,
       settings,
-      probe: fakeProbe([DIRECT, WANTED]),
+      probe: fakeProbe([DIAL, DIRECT, WANTED]),
     });
     expect([
       s.address,
@@ -302,7 +304,7 @@ describe("the check", () => {
       wanted: WANTED,
       key: KEY,
       settings,
-      probe: fakeProbe([DIRECT], [WANTED]),
+      probe: fakeProbe([DIAL, DIRECT], [WANTED]),
       owner: () => ({
         owner: "nginx",
         kind: "container",

@@ -19,9 +19,11 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
+import * as os from "os";
 import {
   clearPermissionModesCache,
   parseModes,
+  permissionModesOf,
 } from "../../../src/shared/agents/den-claude.js";
 import { clearVersionCache } from "../../../src/shared/agents/runtime-search.js";
 import { ACTOR_TOKEN_ENV } from "../../../src/shared/actor-token.js";
@@ -88,6 +90,31 @@ describe("parseModes", () => {
       ),
     ).toBe(null);
     expect(parseModes("Usage: claude [options]")).toBe(null);
+  });
+});
+
+describe("issue 1592: the modes a Claude Code takes, kept per file", () => {
+  it("a binary rewritten in one tick, at the same size, is asked again", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-modes-"));
+    try {
+      const bin = path.join(dir, "claude");
+      const ran = path.join(dir, "ran");
+      // An install stamps its files with one fixed time (npm does).
+      const stamp = new Date(Date.now() - 60 * 60_000);
+      const put = (modes: string[]) => {
+        fs.writeFileSync(bin, CLAUDE_SHIM(ran, "9.9.9", modes), {
+          mode: 0o755,
+        });
+        fs.utimesSync(bin, stamp, stamp);
+      };
+      put(["acceptEdits", "plan"]);
+      expect(permissionModesOf(bin)).toEqual(["acceptEdits", "plan"]);
+      // An update in place, its file the same size and stamp.
+      put(["acceptEdits", "auto"]);
+      expect(permissionModesOf(bin)).toEqual(["acceptEdits", "auto"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

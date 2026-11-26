@@ -1,17 +1,7 @@
-/**
- * Issue 1085: a stopped agent's detail panel (den-svp-acts: Resume, Start
- * fresh, Remove, its output) draws every action at the kit's small
- * row-action size (den-btn sm), the size of the stopped rows' own
- * actions, so Remove is never the one large button. No new size.
- */
 import { describe, expect, it } from "@jest/globals";
-import * as fs from "fs";
-import * as path from "path";
+import { agentsSource } from "./helpers/agents-source.js";
 
-const SRC = fs.readFileSync(
-  path.join(process.cwd(), "src/ui/server/public/agents-page.js"),
-  "utf-8",
-);
+const SRC = agentsSource();
 
 /** detailsHtml's text: from its declaration to the next top-level one. */
 function detailsHtml(): string {
