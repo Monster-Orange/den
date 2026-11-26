@@ -2,7 +2,7 @@ import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
-import { hubUrlProblem } from "./hub-url.js";
+import { hubUrlProblem } from "./hub/hub-url.js";
 
 const OWNER = "owner.json";
 const RECORD = path.join("config", "local", "state-dir.json");

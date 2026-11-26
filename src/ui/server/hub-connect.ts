@@ -51,7 +51,7 @@ import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
-import { readWebAuthConfig } from "../../shared/web-session.js";
+import { readWebAuthConfig } from "../../shared/web/web-session.js";
 import { stateDirShared } from "../../shared/state-folder.js";
 import {
   listOtherInstalls,

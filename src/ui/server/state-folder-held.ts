@@ -1,4 +1,4 @@
-import { hubUrlProblem } from "../../shared/hub-url.js";
+import { hubUrlProblem } from "../../shared/hub/hub-url.js";
 import type { HeldCheck } from "./approval-routes.js";
 import type { AskedBy } from "./approvals.js";
 

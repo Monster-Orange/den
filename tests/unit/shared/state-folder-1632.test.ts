@@ -13,7 +13,10 @@ import {
 } from "../../../src/shared/state-folder.js";
 import { HubConnect } from "../../../src/ui/server/hub-connect.js";
 import { sharedUserLines } from "../../../src/ui/cli/doctor-command.js";
-import { bindHub, readHubBinding } from "../../../src/shared/hub-binding.js";
+import {
+  bindHub,
+  readHubBinding,
+} from "../../../src/shared/hub/hub-binding.js";
 import {
   checkStateFolderOwn,
   runStateFolderOwn,
