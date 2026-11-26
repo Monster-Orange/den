@@ -45,6 +45,7 @@ const t = (k, v = {}) =>
   );
 const SOURCE = { own: "its own setting", install: "the Den-wide default" };
 const ROW_NAME = `${t("ag.openName", { id: `${WS} / tester` })} · idle`;
+const ROW_TEXT = `tester ${ID} idle`;
 
 export function fakeBed({ den = "good" } = {}) {
   const st = {
@@ -113,30 +114,46 @@ export function fakeBed({ den = "good" } = {}) {
   const page = {
     async waitForSelector() {}, // the row's mode tag (read by evaluate)
     locator(sel) {
-      if (sel !== `[data-agent="${ID}"]`)
-        return {
-          async waitFor() {
-            fail(sel);
-          },
-        };
       return {
-        getByRole(role, o = {}) {
-          const found =
-            role === "button" &&
-            o.name instanceof RegExp &&
-            o.name.test(ROW_NAME);
-          return {
-            async waitFor() {
-              if (!found) fail(String(o.name));
-            },
-            async click() {
-              if (!found) fail(String(o.name));
-            },
-          };
+        async waitFor() {
+          fail(sel);
         },
       };
     },
     getByRole(role, o = {}) {
+      if (role === "button" && o.name instanceof RegExp) {
+        let text = "";
+        const found = () => o.name.test(ROW_NAME) && ROW_TEXT.includes(text);
+        const row = {
+          filter(f) {
+            text = f.hasText;
+            return row;
+          },
+          first: () => row,
+          async waitFor() {
+            if (!found()) fail(String(o.name));
+          },
+          async click() {
+            if (!found()) fail(String(o.name));
+          },
+          locator() {
+            const tag = {
+              first: () => tag,
+              async waitFor() {
+                if (!found() || !tagShown) fail("[data-mode]");
+              },
+              async getAttribute(a) {
+                return a === "data-mode" ? tagShown.mode : tagShown.source;
+              },
+              async textContent() {
+                return tagShown.text;
+              },
+            };
+            return tag;
+          },
+        };
+        return row;
+      }
       if (role === "button")
         return {
           async count() {

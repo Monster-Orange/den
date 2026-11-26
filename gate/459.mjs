@@ -90,12 +90,77 @@ const words = (p, key, vars) =>
 
 const answering = async (ctx) => !!(await ctx.api("/api/server-info"));
 
+const heldFile = (ctx) =>
+  path.join(
+    ctx.o?.denHome || path.join(ctx.o?.home || process.env.HOME, ".den-gate"),
+    "hub",
+    "deliveries-seen.json",
+  );
+
+function heldOf(ctx) {
+  if (!ctx.o?.bed) return null;
+  try {
+    const h = JSON.parse(fs.readFileSync(heldFile(ctx), "utf8"))?.held;
+    return {
+      queue: (h?.queue?.[ID] ?? []).map((x) => ({
+        id: x?.id ?? null,
+        held_reason: x?.held_reason ?? null,
+      })),
+      active: h?.active?.[ID] ? true : false,
+    };
+  } catch (e) {
+    return { error: String(e?.code ?? e?.message ?? e).slice(0, 80) };
+  }
+}
+
+function clearHeld(ctx) {
+  if (!ctx.o?.bed) return null;
+  const file = heldFile(ctx);
+  try {
+    const all = JSON.parse(fs.readFileSync(file, "utf8"));
+    const h = all?.held;
+    const n = (h?.queue?.[ID]?.length ?? 0) + (h?.active?.[ID] ? 1 : 0);
+    if (!n) return 0;
+    delete h.queue?.[ID];
+    delete h.active?.[ID];
+    const left =
+      Object.keys(h.queue ?? {}).length + Object.keys(h.active ?? {}).length;
+    writeWhole(file, JSON.stringify({ ...all, held: left ? h : null }));
+    return n;
+  } catch (e) {
+    return String(e?.code ?? e?.message ?? e).slice(0, 80);
+  }
+}
+
+async function sessionRow(ctx) {
+  try {
+    const d = await ctx.api("/api/sessions");
+    const s = (d?.sessions ?? []).find((x) => x.agent === ID);
+    return s
+      ? { state: s.state ?? null, attention: s.attention ?? null, id: s.id }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function snapshot(ctx, name) {
+  const v = { at: Date.now(), row: await sessionRow(ctx), held: heldOf(ctx) };
+  try {
+    fs.writeFileSync(ctx.evidence(`${name}.json`), JSON.stringify(v, null, 2));
+  } catch {
+    v.saved = false;
+  }
+  return v;
+}
+
 async function restartDen(ctx) {
   const down = (await ctx.cli(["web", "down", "--json"]))?.code ?? null;
   await ctx.until(async () => !(await answering(ctx)), 15000);
+  const cleared = clearHeld(ctx);
   const up = (await ctx.cli(["web", "up", "--no-open"]))?.code ?? null;
   const ms = await ctx.until(() => answering(ctx), 60000);
-  return { down, up, ms };
+  return { down, up, ms, cleared };
 }
 
 /** The stub's project, from the sessions list. */
@@ -265,8 +330,10 @@ export async function run(ctx, s) {
 
     // 2: one event, one pointer, typed at the prompt, never the app's text.
     const t1 = Date.now();
+    r.atStart = await snapshot(ctx, "before-pointer");
     r.sent1 = feed.send(e1, JSON.stringify({ text: BAIT }));
     r.first = await pointerSince(ctx, t1, 30000);
+    r.atPointer = await snapshot(ctx, "at-pointer");
 
     // 3: the same id again: nothing new.
     // Counted from t1 past the first pointer(s): a clock tick can't hide one or count one twice.
@@ -301,10 +368,7 @@ export async function run(ctx, s) {
 
     // 5: Settings › Project's row.
     const pg = ctx.page;
-    await ctx.goto(
-      pg,
-      `/settings?project=${encodeURIComponent(r.ws)}&q=feed`,
-    );
+    await ctx.goto(pg, `/settings?project=${encodeURIComponent(r.ws)}&q=feed`);
     const row = pg.locator(`[data-feed="${FEED}"]`);
     await row.waitFor({ timeout: 15000 }).catch(() => {});
     r.row = await row
@@ -375,7 +439,7 @@ export function expect(cells) {
         first[0].enter === true &&
         first[0].text.includes(`"${FEED}"`) &&
         !first.some((x) => x.text.includes(BAIT)),
-      detail: `${first.length} line(s) typed after ${r.first?.took} ms: ${JSON.stringify(first).slice(0, 400)}${why}`,
+      detail: `${first.length} line(s) typed after ${r.first?.took} ms: ${JSON.stringify(first).slice(0, 400)}; held cleared at start ${JSON.stringify(r.restart?.cleared ?? null)}; before: ${JSON.stringify({ row: r.atStart?.row, held: r.atStart?.held })}; at pointer: ${JSON.stringify({ row: r.atPointer?.row, held: r.atPointer?.held })}${why}`,
     },
     {
       clause: clauses[2],
