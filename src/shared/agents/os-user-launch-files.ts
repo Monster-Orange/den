@@ -19,7 +19,7 @@ export interface AgentLaunchSpec {
   argv: string[];
   cwd: string;
   env: Record<string, string>;
-  tokenEnv?: string;
+  tokenFdEnv?: string;
 }
 
 function checkSpec(s: AgentLaunchSpec): void {
@@ -35,9 +35,19 @@ function checkSpec(s: AgentLaunchSpec): void {
     throw new Error(
       `launch files: the working folder must be absolute (got ${JSON.stringify(s.cwd)})`,
     );
-  if (s.tokenEnv !== undefined && !ENV_NAME_RE.test(s.tokenEnv))
+  if ((s as { tokenEnv?: unknown }).tokenEnv !== undefined)
     throw new Error(
-      `launch files: the token's env name "${s.tokenEnv}" is not an env name`,
+      "launch files: a token never goes in the environment; tokenFdEnv names the variable that gives its file descriptor",
+    );
+  if (
+    s.tokenFdEnv !== undefined &&
+    !(
+      ENV_NAME_RE.test(s.tokenFdEnv) &&
+      s.tokenFdEnv.endsWith("_FILE_DESCRIPTOR")
+    )
+  )
+    throw new Error(
+      `launch files: "${s.tokenFdEnv}" is not an env name ending in _FILE_DESCRIPTOR`,
     );
   for (const [k, v] of Object.entries(s.env)) {
     if (!ENV_NAME_RE.test(k) || typeof v !== "string")
@@ -79,7 +89,7 @@ export function writeAgentLaunch(agentsDir: string, s: AgentLaunchSpec): void {
     );
   writeFileAtomic(
     file,
-    `${JSON.stringify({ agentId: s.agentId, argv: s.argv, cwd: s.cwd, env: s.env, ...(s.tokenEnv ? { tokenEnv: s.tokenEnv } : {}) }, null, 2)}\n`,
+    `${JSON.stringify({ agentId: s.agentId, argv: s.argv, cwd: s.cwd, env: s.env, ...(s.tokenFdEnv ? { tokenFdEnv: s.tokenFdEnv } : {}) }, null, 2)}\n`,
     { mode: FILE_MODE },
   );
 }
@@ -150,12 +160,13 @@ export function readAgentLaunch(
     );
   const raw = JSON.parse(
     fs.readFileSync(path.join(agentsDir, agentId, LAUNCH_FILE), "utf8"),
-  ) as AgentLaunchSpec;
-  const s: AgentLaunchSpec = {
+  ) as AgentLaunchSpec & { tokenEnv?: unknown };
+  const s: AgentLaunchSpec & { tokenEnv?: unknown } = {
     agentId: raw.agentId,
     argv: raw.argv,
     cwd: raw.cwd,
     env: raw.env ?? {},
+    ...(raw.tokenFdEnv !== undefined ? { tokenFdEnv: raw.tokenFdEnv } : {}),
     ...(raw.tokenEnv !== undefined ? { tokenEnv: raw.tokenEnv } : {}),
   };
   checkSpec(s);

@@ -38,6 +38,16 @@ export function projectSync(): ProjectSync {
       );
     },
     spelling: projectRepos,
+    moved: (m) =>
+      void Promise.all([
+        import("../../shared/hub-moved.js"),
+        import("./notification-service.js"),
+      ])
+        .then(([hm, ns]) => {
+          const store = ns.notificationDeps().store;
+          for (const x of m) store.add(hm.movedNote(x));
+        })
+        .catch(() => undefined),
     send: async (projects) => {
       const at = await hubAndToken();
       if (!at) return null;

@@ -66,7 +66,7 @@ import {
 } from "../../shared/review-lines.js";
 import { configKeyNames, patchConfigKey } from "./config-command.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
-import { GATE_DEFAULTS } from "../../shared/gates/rules.js";
+import { GATE_DEFAULTS, onOff } from "../../shared/gates/rules.js";
 import {
   readSkillPacksConfig,
   SKILL_PACKS_DIR,
@@ -489,10 +489,8 @@ const WIDENS_AT: readonly [
   [
     "gate.route_agents",
     (v, before) => {
-      const to = level(v);
-      const from = level(before);
-      if (to === null) return true;
-      return from === null ? to === 0 : to < from;
+      const to = onOff(v);
+      return to === null || (!to && onOff(before) !== false);
     },
     ["personal", "strict"],
   ],
