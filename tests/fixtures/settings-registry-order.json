@@ -140,6 +140,7 @@
     ["agents.pane_reconnect_window", "agents"],
     ["agents.pane_reconnect_wait", "agents"],
     ["agents.max_concurrent", "agents"],
+    ["agents.max_per_project", "agents"],
     ["agents.list_host_wait", "agents"],
     ["agents.shell_path_wait", "agents"],
     ["agents.draft_hold_max", "agents"],

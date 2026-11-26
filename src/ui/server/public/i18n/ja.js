@@ -1377,6 +1377,9 @@
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "プロジェクトごとのエージェント数",
+    "set.agents.max_per_project.d":
+      "1 つのプロジェクトで同時に動かせるエージェントの数です。0 は「同時に動かせるエージェント数」以外の上限なしです。プロジェクトは自分用にもっと低い値を設定できます（workspaces.yml のそのプロジェクトの agents.max_per_project）。これを超える起動は拒否され、どの上限で止まったかが表示されます。__DEN_CLI__ config agents.max_per_project=10",
     "set.server.sessions_max": "同時に開けるターミナル数",
     "set.server.sessions_max.d":
       "同時に動かせる通常のターミナルの数です。エージェントは数に入りません。これを超える新しいターミナルは断られ、その旨が表示されます。__DEN_CLI__ config sessions.max_concurrent=8",

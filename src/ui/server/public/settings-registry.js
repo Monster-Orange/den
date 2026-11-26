@@ -5472,6 +5472,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_limits: { max_concurrent: v } }),
   },
   {
+    id: "agents.max_per_project",
+    category: "agents",
+    label: "Agents per project",
+    description:
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
+    keywords: ["agents", "limit", "max_per_project", "project", "cap"],
+    scope: "user",
+    keys: ["agents_limits.max_per_project"],
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agents_limits?.max_per_project ?? 0,
+    write: (v, ctx) => ctx.post({ agents_limits: { max_per_project: v } }),
+  },
+  {
     // den#156: the Agents list's waits (user.yml agents_list.*).
     id: "agents.list_host_wait",
     category: "agents",
