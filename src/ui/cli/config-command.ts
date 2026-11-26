@@ -90,6 +90,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
+  "web.tools_probe_seconds": ["web_ready", "tools_probe_seconds"],
   // Issue 819: new-device requests and wrong codes.
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
