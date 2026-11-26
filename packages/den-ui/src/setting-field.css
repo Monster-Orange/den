@@ -19,7 +19,7 @@
   width: 100%;
   min-width: 0;
   padding: 6px 8px;
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
@@ -31,8 +31,8 @@
 }
 .den-setfield input:focus-visible,
 .den-setfield textarea:focus-visible {
-  outline: 2px solid var(--accent-fill);
-  outline-offset: 1px;
+  outline: 2px solid var(--focus-ring, var(--accent-fill));
+  outline-offset: var(--focus-offset, 1px);
 }
 .den-setfield [readonly] {
   color: var(--muted);

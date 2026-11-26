@@ -20,7 +20,8 @@ const read = (f: string) => fs.readFileSync(path.join(SRC, f), "utf-8");
 
 /** Each product name left once the element's tag is taken out. */
 export function productNames(src: string): string[] {
-  const rest = src.replace(/den-busy/g, "");
+  // The element's tag, and the kit's one button's class (issue 673).
+  const rest = src.replace(/den-busy|den-btn/g, "");
   return [...rest.matchAll(/\b[dD]en(?:[A-Z_$][\w$]*)?\b/g)].map((m) => m[0]);
 }
 

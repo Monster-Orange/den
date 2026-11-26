@@ -18,6 +18,7 @@ export {
   allowOf,
   checkBaseUrl,
   connectGuarded,
+  type ConnectGuard,
   connectOptions,
   guardBrowser,
   guardContext,

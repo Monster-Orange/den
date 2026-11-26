@@ -86,8 +86,8 @@
   transform: translateX(16px);
 }
 .den-switch-input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 /* A phone's tap: 44px, centred on the track; the drawn size stays. */
 @media (pointer: coarse) {

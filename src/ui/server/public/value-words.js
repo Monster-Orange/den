@@ -94,10 +94,14 @@ export function healthReason(error, ms) {
   // the error people search for (ECONNREFUSED); es and ja get Den's words.
   if (!e || !globalThis.window?.denShell?.t) return null;
   if (inEnglish()) return null;
+  return reasonWords(e, ms);
+}
+
+function reasonWords(e, ms) {
   let m;
   if ((m = /^(.*) \(twice in a row\)$/.exec(e)))
     return t("val.h.twice", {
-      why: healthReason(m[1], ms) ?? m[1],
+      why: reasonWords(m[1], ms) ?? m[1],
     });
   if (/^container state unknown: /.test(e)) return t("val.h.dockerUnknown");
   if (e === "timeout" || /\bETIMEDOUT\b|\btimed out\b/i.test(e))
@@ -140,15 +144,31 @@ export function healthReason(error, ms) {
  * title's reason. `r` is one check's result from /api/health/stream.
  */
 export function healthCellWords(r) {
-  // English: the reason as sent, a timeout with how long it waited (0.4.17).
-  const known = inEnglish()
-    ? r.error === "timeout" && r.ms
-      ? t("env.timedOut", { s: Math.max(1, Math.round(r.ms / 1000)) })
-      : r.error || null
+  // A check that couldn't reach its target ("fetch failed") gets its own
+  // line in every language, English too: the raw words say neither what
+  // didn't answer nor what to try.
+  const raw = String(r.error ?? "").replace(/ \(twice in a row\)$/, "");
+  if (r.ok === false && !r.status && raw === "fetch failed") {
+    const target = r.url ?? r.check ?? r.label ?? "";
+    const why = t("env.fetchFailedWhy", { url: target });
+    return {
+      what: t("env.fetchFailed"),
+      why,
+      title: [r.label, why].filter(Boolean).join(" — "),
+    };
+  }
+  // English: Den's words, then the reason as sent (what people search for).
+  const sent = String(r.error ?? "").trim();
+  const en = inEnglish();
+  const known = en
+    ? sent && globalThis.window?.denShell?.t
+      ? reasonWords(sent, r.ms)
+      : null
     : healthReason(r.error, r.ms);
   // Den's own words when it knows the reason; else a plain "down" in the
   // cell and the reason as sent (a check's own output) in the title.
-  const why = known ?? (r.error ? String(r.error) : "");
+  const why =
+    known && en && known !== sent ? `${known} (${sent})` : (known ?? sent);
   const what = r.status
     ? String(r.status)
     : r.ok

@@ -1,0 +1,193 @@
+import * as fs from "fs";
+import * as path from "path";
+import { getEngineRoot } from "../paths.js";
+import { OWN_FOLDER, readAgentLaunch } from "./os-user-launch-files.js";
+import {
+  OS_LOGIN_OWED,
+  OWED_REFUSAL,
+  runtimeProblemsOrUnread,
+} from "./os-user.js";
+import type { SandboxWrap } from "./sandbox.js";
+import { readTokenLine } from "./session-token.js";
+import { TOKEN_FD, spawnWithTokenFd } from "./token-fd.js";
+
+const CMD = "`agents session`";
+
+const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const NONCE_RE = /^[0-9a-f]{32}$/;
+export const LOGIN_TMP_BASE = "t";
+
+export const EXIT_USAGE = 64;
+export const EXIT_REFUSED = 65;
+export const EXIT_FAILED = 70;
+
+export interface AgentSessionDeps {
+  home: string;
+  personUid: number;
+  ownUid: number;
+  readToken: (nonce: string) => Promise<string>;
+  makeTmp: () => string | undefined;
+  removeTmp: (dir: string) => void;
+  wrap: (argv: string[], o: { tmp?: string; ownDir: string }) => SandboxWrap;
+  run: (
+    argv: string[],
+    o: { cwd: string; env: Record<string, string>; secret?: string },
+  ) => Promise<number>;
+  err: (m: string) => void;
+  runtimeProblems: () => string[];
+  owed: () => readonly string[];
+}
+
+export async function runAgentSession(
+  args: string[],
+  d: AgentSessionDeps,
+): Promise<number> {
+  const [id, nonce] = args;
+  if (
+    args.length !== 2 ||
+    !id ||
+    !ID_RE.test(id) ||
+    !nonce ||
+    !NONCE_RE.test(nonce)
+  ) {
+    d.err(`${CMD}: give one agent id and Den's launch nonce`);
+    return EXIT_USAGE;
+  }
+  if (d.personUid === 0 || d.personUid === d.ownUid) {
+    d.err(
+      `${CMD}: the launch files' owner (uid ${d.personUid}) is this login or root: they must be the person's`,
+    );
+    return EXIT_REFUSED;
+  }
+  const owed = d.owed();
+  if (owed.length) {
+    d.err(
+      `${CMD}: ${OWED_REFUSAL} (still to come: ${owed.join("; ")}), so no agent starts`,
+    );
+    return EXIT_REFUSED;
+  }
+  const runtime = d.runtimeProblems();
+  if (runtime.length) {
+    d.err(
+      `${CMD}: this login could change Den's runtime (${runtime.join("; ")}), so no agent starts`,
+    );
+    return EXIT_REFUSED;
+  }
+  const agentsDir = path.join(path.dirname(d.home), "agents");
+  let spec;
+  try {
+    spec = readAgentLaunch(agentsDir, id, d.personUid);
+  } catch (e) {
+    d.err(String((e as Error).message));
+    return EXIT_REFUSED;
+  }
+  let token: string;
+  try {
+    token = await d.readToken(nonce);
+  } catch (e) {
+    d.err(String((e as Error).message));
+    return EXIT_REFUSED;
+  }
+  const tmp = d.makeTmp();
+  try {
+    const w = d.wrap(spec.argv, {
+      tmp,
+      ownDir: path.join(agentsDir, id, OWN_FOLDER),
+    });
+    if (!w.applied) {
+      d.err(
+        `${CMD}: the agent sandbox can't start (${w.reason ?? "no reason given"}), so the agent doesn't`,
+      );
+      return EXIT_REFUSED;
+    }
+    const env: Record<string, string> = {
+      ...spec.env,
+      ...w.env,
+      ...(tmp ? { TMPDIR: tmp } : {}),
+      ...(spec.tokenFdEnv ? { [spec.tokenFdEnv]: String(TOKEN_FD) } : {}),
+    };
+    if (
+      token &&
+      [...Object.values(env), ...w.argv].some((v) => v.includes(token))
+    ) {
+      d.err(`${CMD}: the token would be in the runtime's env or argv`);
+      return EXIT_REFUSED;
+    }
+    try {
+      return await d.run(w.argv, {
+        cwd: spec.cwd,
+        env,
+        ...(spec.tokenFdEnv ? { secret: token } : {}),
+      });
+    } catch (e) {
+      d.err(`${CMD}: the runtime didn't start: ${(e as Error).message}`);
+      return EXIT_FAILED;
+    }
+  } finally {
+    if (tmp) d.removeTmp(tmp);
+  }
+}
+
+function makeLoginTmp(home: string): string {
+  const base = path.join(home, LOGIN_TMP_BASE);
+  fs.mkdirSync(base, { recursive: true, mode: 0o700 });
+  return fs.mkdtempSync(path.join(base, "den-"));
+}
+
+function removeLoginTmp(home: string, dir: string): void {
+  const base = path.join(home, LOGIN_TMP_BASE);
+  if (
+    path.dirname(dir) !== base ||
+    !/^den-[A-Za-z0-9]{6}$/.test(path.basename(dir))
+  )
+    return;
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    return;
+  }
+}
+
+export function defaultAgentSessionDeps(
+  env: NodeJS.ProcessEnv = process.env,
+): AgentSessionDeps {
+  const home = env.HOME ?? "";
+  const agentsDir = path.join(path.dirname(home), "agents");
+  let personUid = -1;
+  try {
+    personUid = fs.statSync(agentsDir).uid;
+  } catch {
+    personUid = -1;
+  }
+  return {
+    home,
+    personUid,
+    ownUid: typeof process.getuid === "function" ? process.getuid() : -1,
+    readToken: (nonce) =>
+      readTokenLine(process.stdin, (t) => process.stdout.write(t), { nonce }),
+    makeTmp: () => makeLoginTmp(home),
+    removeTmp: (dir) => removeLoginTmp(home, dir),
+    wrap: (argv) => ({
+      applied: false,
+      argv,
+      env: {},
+      reason: "the agents' login has no sandbox policy yet",
+    }),
+    run: (argv, o) => spawnWithTokenFd(argv, o),
+    err: (m) => process.stderr.write(`✗ ${m}\n`),
+    owed: () => OS_LOGIN_OWED,
+    runtimeProblems: () =>
+      runtimeProblemsOrUnread(
+        {
+          bin: process.execPath,
+          script: process.argv[1] ?? "",
+          engineRoot: getEngineRoot(),
+        },
+        {
+          uid: typeof process.getuid === "function" ? process.getuid() : -2,
+          gids:
+            typeof process.getgroups === "function" ? process.getgroups() : [],
+        },
+      ),
+  };
+}

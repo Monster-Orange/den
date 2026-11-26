@@ -50,8 +50,10 @@ describe("readMcpConfig", () => {
         "    remote: true",
       ].join("\n"),
     );
-    expect(readMcpConfig()).toEqual({
-      actions: ["service_up", "run_tests"],
+    // Issue 1072: actions come from user.yml only; the org's are named.
+    expect(readMcpConfig(undefined, {})).toEqual({
+      actions: [],
+      notReadFromOrg: ["mcp.actions"],
       runTestsEnvs: ["local", "dev"],
       logsRemote: true,
       approvals: true,
@@ -59,8 +61,11 @@ describe("readMcpConfig", () => {
   });
 
   it("refuses an unknown action name loudly", () => {
-    mockOrgConfig("mcp:\n  actions: [service_up, deploy]\n");
-    expect(() => readMcpConfig()).toThrow(/unknown action "deploy"/);
+    expect(() =>
+      readMcpConfig({ environments: [] } as never, {
+        mcp: { actions: ["service_up", "deploy"] },
+      }),
+    ).toThrow(/unknown action "deploy"/);
   });
 
   it("refuses an unknown run_tests env", () => {

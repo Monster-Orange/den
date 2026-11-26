@@ -8,22 +8,27 @@
  *   remove <run> --project <p>                an imported run, gone
  *
  * The file is untrusted: verify/imports.ts checks it, with the size and
- * count caps in verify.import. A person's: an agent is refused. It writes the same records the page reads, so no
- * server is needed.
+ * count caps in verify.import. A person's: an agent is refused.
+ *
+ * Issue 1182: the change goes through the running server (POST
+ * /api/verify/import and /api/verify/remove, which refuse agents), audited
+ * as the person. With no server listening, the CLI writes the records
+ * itself (shared/verify/import-run.ts, the same checks).
  */
 import * as fs from "fs";
 import { isAgentEnv } from "./gate-command.js";
+import { readImportSettings } from "../../shared/verify/imports.js";
 import {
-  importRecord,
-  parseGateVerdict,
-  readImportSettings,
-} from "../../shared/verify/imports.js";
-import {
-  readRunRecord,
-  removeRunRecord,
-  writeRunRecord,
-} from "../../shared/verify/records.js";
+  importEnvRefusal,
+  importVerifyRun,
+  removeImportedVerifyRun,
+} from "../../shared/verify/import-run.js";
 import { product } from "../../shared/product.js";
+import {
+  personServerFor,
+  throughServer,
+  type PersonServer,
+} from "./person-server.js";
 
 export const VERIFY_HELP = {
   usage: "verify [import|remove]",
@@ -45,6 +50,29 @@ export interface VerifyCommandDeps {
   orgEnvironments?: () => string[];
   out?: (line: string) => void;
   err?: (line: string) => void;
+  /** Issue 1182: this install's server, with the person token (tests). */
+  server?: PersonServer;
+}
+
+/**
+ * Issue 1182: the change, sent to the running server. The server's
+ * summary, "refused" (shown), or null when none is listening.
+ */
+async function viaServer(
+  server: PersonServer,
+  p: string,
+  body: unknown,
+  err: (l: string) => void,
+): Promise<string | "refused" | null> {
+  try {
+    const j = await throughServer(server, "POST", p, body);
+    if (j === null) return null;
+    const summary = (j as { summary?: unknown }).summary;
+    return typeof summary === "string" ? summary : "";
+  } catch (e) {
+    err(`${(e as Error).message}; nothing was changed`);
+    return "refused";
+  }
 }
 
 /** `--name value` from args, and the args left. */
@@ -101,18 +129,26 @@ export async function cmdVerify(
   const stateDir =
     deps.stateDir ?? (await import("../../shared/paths.js")).getStateDir();
 
+  const server = deps.server ?? personServerFor(stateDir);
+
   if (sub === "remove") {
-    const rec = readRunRecord(stateDir, project, pos[0]);
-    if (!rec) {
-      err(`there is no run "${pos[0]}" in project ${project}`);
+    const via = await viaServer(
+      server,
+      "/api/verify/remove",
+      { project, run: pos[0] },
+      err,
+    );
+    if (via === "refused") return 1;
+    if (via !== null) {
+      if (via) out(via);
+      return 0;
+    }
+    const r = removeImportedVerifyRun({ stateDir, project, runId: pos[0] });
+    if (!r.ok) {
+      err(r.error);
       return 1;
     }
-    if (rec.source !== "import") {
-      err(`"${pos[0]}" is not an imported run: Den keeps its own runs`);
-      return 1;
-    }
-    removeRunRecord(stateDir, project, pos[0]);
-    out(`Removed ${pos[0]} (${rec.env}) from project ${project}.`);
+    out(r.summary);
     return 0;
   }
 
@@ -130,16 +166,9 @@ export async function cmdVerify(
   const org =
     deps.orgEnvironments?.() ??
     (await import("../../shared/den-config.js")).orgEnvironments();
-  if (org.includes(env)) {
-    err(
-      `"${env}" is one of Den's own environments: verify.environments can't name it. Give the imported environment its own name (like bed).`,
-    );
-    return 1;
-  }
-  if (!settings.environments.includes(env)) {
-    err(
-      `"${env}" is not an imported environment: add it to verify.environments in Den's config (now: ${settings.environments.join(", ") || "none"})`,
-    );
+  const badEnv = importEnvRefusal(env, settings, org);
+  if (badEnv) {
+    err(badEnv);
     return 1;
   }
   let text: string;
@@ -161,49 +190,30 @@ export async function cmdVerify(
     err(`can't read ${pos[0]}: ${(e as Error).message}`);
     return 1;
   }
-  const v = parseGateVerdict(text, settings);
-  if (!v.ok) {
-    err(`nothing kept: ${v.error}`);
-    return 1;
-  }
-  // An import replaces only its own tag's earlier import on this environment.
-  const was = readRunRecord(stateDir, project, v.verdict.tag);
-  if (was && was.source !== "import") {
-    err(
-      `nothing kept: "${v.verdict.tag}" is already one of Den's runs in project ${project}`,
-    );
-    return 1;
-  }
-  if (was && was.env !== env) {
-    err(
-      `nothing kept: "${v.verdict.tag}" is already imported to ${was.env}. Remove it there first (${cli} verify remove ${v.verdict.tag} --project ${project}).`,
-    );
-    return 1;
-  }
-  const rec = importRecord(project, env, v.verdict);
-  writeRunRecord(stateDir, rec);
-  const n = {
-    passed: 0,
-    failed: 0,
-    error: 0,
-    "needs-person": 0,
-    "cant-run": 0,
-  };
-  let total = 0;
-  for (const m of rec.modules)
-    for (const c of m.clauses ?? []) {
-      n[c.result]++;
-      total++;
-    }
-  const parts = [
-    n.passed && `${n.passed} passed`,
-    n.failed && `${n.failed} failed`,
-    n.error && `${n.error} errored`,
-    n["needs-person"] && `${n["needs-person"]} need a person`,
-    n["cant-run"] && `${n["cant-run"]} couldn't run`,
-  ].filter(Boolean);
-  out(
-    `${rec.runId} on ${env}: ${rec.verdict} · ${rec.modules.length} checks, ${total} clauses (${parts.join(", ")})`,
+  const via = await viaServer(
+    server,
+    "/api/verify/import",
+    { project, env, text },
+    err,
   );
+  if (via === "refused") return 1;
+  if (via !== null) {
+    if (via) out(via);
+    return 0;
+  }
+  const r = importVerifyRun({
+    stateDir,
+    project,
+    env,
+    text,
+    settings,
+    orgEnvs: org,
+    cli,
+  });
+  if (!r.ok) {
+    err(r.error);
+    return 1;
+  }
+  out(r.summary);
   return 0;
 }

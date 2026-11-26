@@ -22,7 +22,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { writeWebOwner } from "../../../src/shared/web-owner.js";
+import { writeWebOwner } from "../../../src/shared/web/web-owner.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn, signInPage } from "./helpers/signed-in.js";

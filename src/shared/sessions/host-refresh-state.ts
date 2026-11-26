@@ -16,6 +16,8 @@ import { writeFileAtomic } from "../atomic-write.js";
 
 export type HostRefreshPhase =
   | "waiting"
+  /** Issue 1403: a routine restart found a turn running: the person's. */
+  | "held"
   | "restarted"
   | "failed"
   | "kept"
