@@ -88,6 +88,7 @@ import {
   type EdgeStripCountKind,
 } from "@kit/panel-fold.js";
 import { switchHtml, hydrateSwitch } from "@kit/switch.js";
+import { openPopover, placeBox, type Popover } from "@kit/popover.js";
 import {
   chosenCount,
   filterBarHtml,
@@ -344,6 +345,16 @@ const sw = hydrateSwitch(document.querySelector<HTMLElement>(".den-switch"), {
 sw.set(!sw.on());
 sw.setDisabled(false);
 sw.destroy();
+const pop: Popover = openPopover(document.body, {
+  content: "<p>Card</p>",
+  label: "Card",
+  placement: "below",
+  onClose: () => undefined,
+});
+pop.place();
+pop.close(false);
+const spot: { top: number; left: number; side: "below" | "above" } = placeBox({ top: 0, bottom: 10, left: 0 }, 100, 50, 390, 800);
+void spot;
 void (foldBtn + stripHtml + swHtml);
 
 // The filter bar: the host's facets, counts and choices; the kit's words.

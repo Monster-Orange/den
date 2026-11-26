@@ -165,35 +165,21 @@ export function cliAuthHeaders(
 }
 
 /**
- * The server's view of the secret: read once, re-read when the file changes
- * (SEC-1b's rotation), created at start.
+ * The server's view of the secret, created at start. Issue 1582: read on
+ * every use (32 bytes), so a rotation (SEC-1b) or any rewrite is seen at
+ * once. A file's inode and mtime don't prove it unchanged: rewritten
+ * within one time tick, it can keep both.
  */
 export class WebSecretStore {
-  private cached: { key: string; secret: Buffer } | null = null;
   constructor(private readonly stateDir: () => string = getStateDir) {}
 
   /** Create the secret if needed (at server start). */
   ensure(): void {
-    const secret = ensureWebSecret(this.stateDir());
-    this.cached = { key: this.key() ?? "", secret };
+    ensureWebSecret(this.stateDir());
   }
 
   /** The current secret, or null when it is missing. */
   current(): Buffer | null {
-    const key = this.key();
-    if (key === null) return null;
-    if (this.cached?.key === key) return this.cached.secret;
-    const secret = readWebSecret(this.stateDir());
-    this.cached = secret ? { key, secret } : null;
-    return secret;
-  }
-
-  private key(): string | null {
-    try {
-      const s = fs.statSync(webSecretPath(this.stateDir()));
-      return `${s.ino}:${s.size}:${s.mtimeMs}`;
-    } catch {
-      return null;
-    }
+    return readWebSecret(this.stateDir());
   }
 }

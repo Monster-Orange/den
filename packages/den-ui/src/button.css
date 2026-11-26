@@ -60,19 +60,19 @@
 /* Disabled keeps its edge; issue 1137: its label colour and opacity are
    tokens (each kind's own colour, 0.6, by default; sketch: --faint, 1). */
 .den-btn:disabled,
-a.den-btn[aria-disabled="true"] {
+a.den-btn[aria-disabled="true"]:not([aria-busy="true"]) {
   opacity: var(--btn-disabled-opacity, 0.6);
   cursor: default;
   color: var(--btn-disabled-text, var(--text));
 }
 .den-btn.primary:disabled,
-a.den-btn.primary[aria-disabled="true"] {
+a.den-btn.primary[aria-disabled="true"]:not([aria-busy="true"]) {
   color: var(--btn-disabled-text, var(--primary-text, var(--on-accent)));
 }
 .den-btn.danger:disabled,
 .den-btn.danger:disabled:hover,
-a.den-btn.danger[aria-disabled="true"],
-a.den-btn.danger[aria-disabled="true"]:hover {
+a.den-btn.danger[aria-disabled="true"]:not([aria-busy="true"]),
+a.den-btn.danger[aria-disabled="true"]:not([aria-busy="true"]):hover {
   color: var(--btn-disabled-text, var(--bad));
 }
 .den-btn:focus-visible {

@@ -88,7 +88,76 @@ function feedServer() {
 const words = (p, key, vars) =>
   p.evaluate(([k, v]) => window.denShell.t(k, v), [key, vars ?? {}]);
 
-const answering = async (ctx) => !!(await ctx.api("/api/server-info"));
+const answering = async (ctx) => {
+  try {
+    return !!(await ctx.api("/api/server-info"));
+  } catch {
+    return false;
+  }
+};
+
+const heldFile = (ctx) =>
+  path.join(
+    ctx.o?.denHome || path.join(ctx.o?.home || process.env.HOME, ".den-gate"),
+    "hub",
+    "deliveries-seen.json",
+  );
+
+function heldOf(ctx) {
+  if (!ctx.o?.bed) return null;
+  try {
+    const h = JSON.parse(fs.readFileSync(heldFile(ctx), "utf8"))?.held;
+    return {
+      queue: (h?.queue?.[ID] ?? []).map((x) => ({
+        id: x?.id ?? null,
+        held_reason: x?.held_reason ?? null,
+      })),
+      active: h?.active?.[ID] ? true : false,
+    };
+  } catch (e) {
+    return { error: String(e?.code ?? e?.message ?? e).slice(0, 80) };
+  }
+}
+
+async function sessionRow(ctx) {
+  try {
+    const d = await ctx.api("/api/sessions");
+    const s = (d?.sessions ?? []).find((x) => x.agent === ID);
+    return s
+      ? { state: s.state ?? null, attention: s.attention ?? null, id: s.id }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function bellFor(ctx) {
+  try {
+    const n = await ctx.api("/api/notifications");
+    return [n?.groups, n?.recent, n?.updates, n?.older]
+      .flatMap((x) => (Array.isArray(x) ? x : []))
+      .flatMap((g) => (Array.isArray(g?.items) ? g.items : [g]))
+      .filter((i) => JSON.stringify(i ?? {}).includes(ID))
+      .map((i) => JSON.stringify(i).slice(0, 300));
+  } catch (e) {
+    return String(e?.message ?? e).slice(0, 80);
+  }
+}
+
+async function snapshot(ctx, name) {
+  const v = {
+    at: Date.now(),
+    row: await sessionRow(ctx),
+    held: heldOf(ctx),
+    bell: await bellFor(ctx),
+  };
+  try {
+    fs.writeFileSync(ctx.evidence(`${name}.json`), JSON.stringify(v, null, 2));
+  } catch {
+    v.saved = false;
+  }
+  return v;
+}
 
 async function restartDen(ctx) {
   const down = (await ctx.cli(["web", "down", "--json"]))?.code ?? null;
@@ -119,21 +188,25 @@ async function feedOf(ctx, ws) {
 function pointers(ctx, since) {
   const rows = ctx.stubLog(ID, { since, k: "keys" });
   if (!Array.isArray(rows)) return null;
-  return rows
-    .map((x) => ({
-      text: String(x?.v?.text ?? ""),
-      enter: x?.v?.enter === true,
-    }))
-    .filter((x) => x.text.includes(`"${FEED}"`) || x.text.includes(BAIT));
+  const parts = rows
+    .map((x) => `${x?.v?.text ?? ""}${x?.v?.enter === true ? "\r" : ""}`)
+    .join("")
+    .split("\r");
+  const open = parts.pop();
+  return [
+    ...parts.map((text) => ({ text, enter: true })),
+    ...(open ? [{ text: open, enter: false }] : []),
+  ].filter((x) => x.text.includes(`"${FEED}"`) || x.text.includes(BAIT));
 }
 
 /** Waits for a pointer since `since`, the stub held at its prompt (idle). */
-async function pointerSince(ctx, since, ms) {
+async function pointerSince(ctx, since, ms, past = 0) {
   let seen = [];
+  await ctx.agent(ID).idlePrompt();
   const took = await ctx.until(async () => {
-    await ctx.agent(ID).idlePrompt();
-    seen = pointers(ctx, since) ?? [];
-    return seen.length > 0;
+    seen = pointers(ctx, since);
+    const s = seen ?? [];
+    return s.length > past && s.slice(past).every((x) => x.enter);
   }, ms);
   return { took, seen };
 }
@@ -265,18 +338,17 @@ export async function run(ctx, s) {
 
     // 2: one event, one pointer, typed at the prompt, never the app's text.
     const t1 = Date.now();
+    r.atStart = await snapshot(ctx, "before-pointer");
     r.sent1 = feed.send(e1, JSON.stringify({ text: BAIT }));
     r.first = await pointerSince(ctx, t1, 30000);
+    r.atPointer = await snapshot(ctx, "at-pointer");
 
     // 3: the same id again: nothing new.
     // Counted from t1 past the first pointer(s): a clock tick can't hide one or count one twice.
     const unread1 = (await feedOf(ctx, r.ws))?.unread ?? null;
-    const firstN = r.first.seen.length;
+    const firstN = r.first.seen?.length ?? 0;
     feed.send(e1, JSON.stringify({ text: BAIT }));
-    await ctx.sleep(5000);
-    await ctx.agent(ID).idlePrompt();
-    await ctx.sleep(3000);
-    const since1 = pointers(ctx, t1);
+    const since1 = (await pointerSince(ctx, t1, 8000, firstN)).seen;
     r.again = {
       pointers: since1 ? since1.slice(firstN) : null,
       unreadBefore: unread1,
@@ -301,10 +373,7 @@ export async function run(ctx, s) {
 
     // 5: Settings › Project's row.
     const pg = ctx.page;
-    await ctx.goto(
-      pg,
-      `/settings?project=${encodeURIComponent(r.ws)}&q=event_feeds`,
-    );
+    await ctx.goto(pg, `/settings?project=${encodeURIComponent(r.ws)}&q=feed`);
     const row = pg.locator(`[data-feed="${FEED}"]`);
     await row.waitFor({ timeout: 15000 }).catch(() => {});
     r.row = await row
@@ -318,6 +387,11 @@ export async function run(ctx, s) {
       ? await words(pg, `feed.st.${r.row.state}`)
       : null;
     await ctx.shot("feed-row");
+    r.atEnd = await snapshot(ctx, "at-end");
+    const heldSince = [r.atStart, r.atPointer, r.atEnd].find(
+      (x) => x?.held?.queue?.length,
+    )?.at;
+    r.heldMs = heldSince ? r.atEnd.at - heldSince : null;
   } finally {
     // Whatever happened above: the bed as it was (teardown does this when the run timed out).
     if (h.wrote !== null) r.restore = await restoreBed(ctx, h);
@@ -375,7 +449,7 @@ export function expect(cells) {
         first[0].enter === true &&
         first[0].text.includes(`"${FEED}"`) &&
         !first.some((x) => x.text.includes(BAIT)),
-      detail: `${first.length} line(s) typed after ${r.first?.took} ms: ${JSON.stringify(first).slice(0, 400)}${why}`,
+      detail: `${first.length} line(s) typed after ${r.first?.took} ms: ${JSON.stringify(first).slice(0, 400)}; before: ${JSON.stringify({ row: r.atStart?.row, held: r.atStart?.held })}; at pointer: ${JSON.stringify({ row: r.atPointer?.row, held: r.atPointer?.held, bell: r.atPointer?.bell })}; at end (held ${r.heldMs ?? "never"} ms): ${JSON.stringify({ held: r.atEnd?.held, bell: r.atEnd?.bell })}${why}`,
     },
     {
       clause: clauses[2],
