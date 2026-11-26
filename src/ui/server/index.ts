@@ -6298,7 +6298,9 @@ async function pinBellNotice(
   step: import("./pin-commit.js").PinStep,
 ): Promise<void> {
   try {
-    const { pinBellMessage } = await import("./pin-commit.js");
+    const { pinBellMessage, pinAgentLine } = await import("./pin-commit.js");
+    const line = pinAgentLine(step, product().title);
+    if (line) void tellHeldAsker(SERVER_AGENT_ID, line).catch(() => undefined);
     const m = pinBellMessage(step, product().title);
     if (!m) return;
     const store = notificationDeps().store;
