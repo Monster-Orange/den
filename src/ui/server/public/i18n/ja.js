@@ -1338,6 +1338,12 @@
     "set.server.server_log_max": "警告ログの最大サイズ",
     "set.server.server_log_max.d":
       "__DEN_TITLE__ がサービスとして動いている間、警告は状態フォルダーの logs/server.log にも書かれるので、再起動後も残ります。このサイズに達すると server.log.1 に移し（1 回だけ）、新しく書き始めます。__DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "遅いリクエストを記録するまでの時間",
+    "set.server.slow_request_ms.d":
+      "リクエストがこれより長くかかると、__DEN_TITLE__ のログにそのルート、依頼元、かかった時間を 1 行で書きます。アドレス、クエリ、ヘッダー、本文は書きません。__DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "停止を記録するまでの時間",
+    "set.server.event_loop_lag_ms.d":
+      "__DEN_TITLE__ が忙しく、これより長く他の処理を何も実行しないと、その時間をログに 1 行で書きます。__DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max":
       "報告のスクリーンショットの最大サイズ（保存）",
     "set.server.report_screenshot_max.d":
@@ -1786,6 +1792,9 @@
     "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
     "set.workspace.hub_delivery_loop.o.on": "オン",
     "set.workspace.hub_delivery_loop.o.off": "オフ",
+    "set.workspace.agents_max_per_project": "プロジェクトごとのエージェント数: このプロジェクト",
+    "set.workspace.agents_max_per_project.d":
+      "このプロジェクトのエージェントを同時に動かせる数です。空か 0 なら「プロジェクトごとのエージェント数」を使います。それより低い値だけ設定できます。これを超える起動は拒否され、どの上限で止まったかが表示されます。",
     "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
     "set.workspace.hub_delivery_loop_extra.d":
       "このプロジェクト独自のテキスト。エージェントの指示で、Den のループの後に追加されます。Den の文面は編集できません。空なら何も追加しません。",
@@ -2245,6 +2254,9 @@
     "ap.det.den_sandbox_on.off":
       "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
+    "ap.do.project_agent_cap": "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
+    "ap.det.project_agent_cap.now": "現在: {v}",
+    "ap.det.project_agent_cap.then": "変更後: {v}",
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
@@ -2522,6 +2534,21 @@
     "ap.hl.then": "変更後: {hub}",
     "ap.hl.filed":
       "エージェントの Hub での作業は、次の呼び出しからそこに記録されます。",
+    "ap.do.state_folder_own":
+      "このインストールに専用の状態フォルダーを用意する",
+    "ap.sf.new":
+      "共有フォルダーの隣に、このインストール用の新しい空の状態フォルダーを作ります。",
+    "ap.sf.empty":
+      "何もコピーも移動もしません。エージェント、サインイン、履歴はもう一方のコピーに残り、この Den には再度サインインします。",
+    "ap.sf.other": "もう一方のコピーは共有フォルダーをそのまま使い続けます。",
+    "ap.sf.restart":
+      "Den は専用フォルダーで再起動し、{hub} への接続を続けます。",
+    "ap.sf.restartNone": "Den は専用フォルダーで再起動します。",
+    "hub.sf.shared":
+      "このコンピューター上の別の Den のコピーがこのインストールの状態フォルダーを共有しており、別の Hub に接続しています。",
+    "hub.sf.offer": "このインストールに専用の状態フォルダーを用意する",
+    "hub.sf.allow":
+      "ダイアログで許可してください。Den は再起動し、接続を続けます。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":
@@ -3032,6 +3059,8 @@
       "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} が依頼を取り下げました: {what}。理由: {reason}",
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
     "bell.m.vschedPass": "{env} の予定実行: {n} 件のチェックが通りました。",
@@ -3055,6 +3084,8 @@
       "{name} の依頼は再起動で失われました: {what}。この依頼からは何も実行していません。エージェントにもう一度依頼するよう伝えました。",
     "bell.m.heldLostAsk":
       "依頼が再起動で失われました: {what}。この依頼からは何も実行していません。",
+    "bell.m.capHeld":
+      "{name} は起動しませんでした: {limit} のうち {n} のエージェントが動いています（{key}）。1 つ止めるか、{key} を上げてください。",
     "bell.m.restartsWaiting":
       "{n} 件のエージェントが再起動を待っています（数件ずつ再起動します）",
     "bell.m.heldLostAll":
@@ -3172,6 +3203,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})。ブランチは署名付きコミットを必須としていて、エージェントの署名鍵が未設定のためプッシュしていません (doctor に手順があります)",
     "bell.m.pinPushedBehind":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプッシュしました ({sha}) が、ローカルのコピーは遅れていて未保存の変更があるため、pull して固定バージョンを取り込んでください",
     "bell.m.pinPrAhead":

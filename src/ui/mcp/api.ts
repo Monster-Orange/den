@@ -197,6 +197,7 @@ const ACTION_ROUTES: Record<string, string> = {
 const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   // One held request's state (its own, the server checks). Never /decide.
   { re: /^\/api\/approvals\/[A-Za-z0-9_-]{16}$/, method: "GET" },
+  { re: /^\/api\/approvals\/[A-Za-z0-9_-]{16}\/withdraw$/, method: "POST" },
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/resume$/,
     method: "POST",
