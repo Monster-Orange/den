@@ -3948,6 +3948,8 @@
       "__DEN_TITLE__ couldn't switch to {to}: {why}. It stays on {from}; sign in again in Settings › Hub",
     "ap.hubSwitchSignin": "Opening {url}'s sign-in…",
     "bell.m.pick": "{n} projects need your pick",
+    "bell.m.hubMoved":
+      "Project {project} moved to {hub}. Switch this install to that Hub to keep it linked.",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
     "bell.pickBody.one":

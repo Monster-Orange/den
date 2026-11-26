@@ -320,6 +320,10 @@ export const AGENTS_HELP = {
     "    its own item in the install's secrets store; set-token reads it like",
     "    token set. Agents sign in with the first in the order. The token that",
     "    exists today is Claude account A. Changes are a person's only",
+    "{cli} `agents os-login` setup | remove | check",
+    "    agents run under a login of their own (macOS, Linux), so they can't read Den's state",
+    "    or your files. setup shows each step and runs it with sudo once you say",
+    "    yes; remove undoes it and checks nothing is left. A person's only",
     "{cli} agents handoff-check <id|file|-> [--json]",
     "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
@@ -3104,6 +3108,21 @@ export async function cmdAgents(
           return await tokenCmd(rest, d, deps);
         case "accounts":
           return await accountsCmd(rest, d, deps);
+        case "session": {
+          const { runAgentSession, defaultAgentSessionDeps } =
+            await import("../../shared/agents/os-user-session.js");
+          return await runAgentSession(rest, defaultAgentSessionDeps(d.env));
+        }
+        case "os-login": {
+          const { cmdOsUser, defaultOsUserDeps } =
+            await import("./os-user-command.js");
+          return await cmdOsUser(rest, {
+            ...defaultOsUserDeps(d.cli),
+            env: d.env,
+            out: d.out,
+            err: d.err,
+          });
+        }
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }

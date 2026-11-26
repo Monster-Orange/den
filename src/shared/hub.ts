@@ -1504,6 +1504,49 @@ export async function hubPutProjects(
   );
 }
 
+const HUB_PROJECT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const movedHub = (v: unknown): { hub: string } | null => {
+  const h = (v as { hub?: unknown } | null)?.hub;
+  return typeof h === "string" && !hubUrlProblem(h) ? { hub: h } : null;
+};
+
+export async function hubGetProject(
+  url: string,
+  token: string,
+  id: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{
+  id: string;
+  slug: string;
+  name: string;
+  movedFrom: { hub: string } | null;
+  movedTo: { hub: string } | null;
+} | null> {
+  if (!HUB_PROJECT_ID.test(id)) return null;
+  let b: Record<string, unknown>;
+  try {
+    b = await hubCall(
+      `${url}/api/projects/${encodeURIComponent(id)}`,
+      { headers: { ...bearer(token), Accept: "application/json" } },
+      { timeoutMs: 10_000, ...opts },
+    );
+  } catch (e) {
+    if (e instanceof HubCallError && e.status === 404) return null;
+    throw e;
+  }
+  const p = (b.project ?? null) as Record<string, unknown> | null;
+  if (!p || p.id !== id || typeof p.slug !== "string") return null;
+  return {
+    id,
+    slug: p.slug.slice(0, 200),
+    name: typeof p.name === "string" ? p.name.slice(0, 200) : p.slug,
+    movedFrom: movedHub(b.movedFrom),
+    movedTo: movedHub(b.movedTo),
+  };
+}
+
 /**
  * Issue 869: tell Hub this install's address after it changes: PUT
  * <url>/api/installs/self/den-url {url}. Hub answers {changed}.
