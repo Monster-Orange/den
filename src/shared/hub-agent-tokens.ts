@@ -1,10 +1,3 @@
-/**
- *
- *
- *
- *
- *
- */
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
@@ -36,8 +29,6 @@ export interface AgentHubToken {
   token: string;
   at: string;
   revokePending?: true;
-  /**
-   */
   recordId?: string;
 }
 
@@ -165,8 +156,6 @@ export function listAgentHubTokens(stateDir: string): AgentHubToken[] {
     .filter((t): t is AgentHubToken => t !== null);
 }
 
-/**
- */
 export function hubAgentName(id: string, name: string): string {
   const n = name.replace(/\s+/g, " ").trim().slice(0, 80).trimEnd();
   return n && /^[\x20-\x7e]+$/.test(n) ? n : id;
@@ -184,14 +173,8 @@ export interface HubAgentTokensDeps {
   revoke?: typeof hubRevokeAgentToken;
   onNotCovered?: (url: string) => void;
   log?: (line: string) => void;
-  /**
-   */
   unrevoked?: (u: { url: string; why: string; token: string }) => void;
-  /**
-   */
   agentExists?: (id: string) => boolean;
-  /**
-   */
   recordIdOf?: (id: string) => string | undefined;
 }
 
@@ -204,8 +187,6 @@ export class HubAgentTokens {
   private readonly inflight = new Map<string, Promise<string | null>>();
   private notOffered: { url: string; until: number } | null = null;
   private readonly failedUntil = new Map<string, number>();
-  /**
-   */
   private readonly notInstall = new Set<string>();
 
   constructor(private readonly deps: HubAgentTokensDeps) {}
@@ -252,8 +233,6 @@ export class HubAgentTokens {
     );
   }
 
-  /**
-   */
   private keepPending(
     url: string,
     agentId: string,
@@ -290,8 +269,6 @@ export class HubAgentTokens {
     );
   }
 
-  /**
-   */
   private orphaned(t: AgentHubToken): boolean {
     try {
       if (this.deps.agentExists && !this.deps.agentExists(t.agentId))
@@ -327,8 +304,6 @@ export class HubAgentTokens {
     return agentHubBound(this.deps.stateDir(), id);
   }
 
-  /**
-   */
   async tokenFor(
     hub: HubInstall,
     a: { id: string; name: string; workspace: string },
@@ -519,8 +494,6 @@ export class HubAgentTokens {
     }
   }
 
-  /**
-   */
   async unbind(
     hub: HubInstall | null,
     id: string,
@@ -553,8 +526,6 @@ export class HubAgentTokens {
     return { revoked: false, pending: true };
   }
 
-  /**
-   */
   async retryPending(
     hub: HubInstall,
   ): Promise<{ revoked: number; failed: number }> {
@@ -588,8 +559,6 @@ export class HubAgentTokens {
     return { revoked, failed };
   }
 
-  /**
-   */
   async unbindAll(
     hub: HubInstall,
     opts: { force?: boolean } = {},
@@ -638,8 +607,6 @@ function mintFailure(e: unknown): string {
     : `status ${status}, error ${e.code ?? "none"}`;
 }
 
-/**
- */
 export async function unbindAgentHubToken(
   stateDir: () => string,
   hub: () => Promise<HubInstall | null>,
@@ -653,8 +620,6 @@ export async function unbindAgentHubToken(
   }).unbind(h ? { url: h.url, token: h.token } : null, id);
 }
 
-/**
- */
 export function noteHubUnbindFailed(
   stateDir: string,
   id: string,
@@ -724,8 +689,6 @@ export function agentHubTokenSettings(): AgentHubTokenSettings {
 let serverOne: HubAgentTokens | null = null;
 let serverNotCovered: ((url: string) => void) | null = null;
 
-/**
- */
 export function serverHubAgentTokens(
   onNotCovered?: (url: string) => void,
 ): HubAgentTokens {
@@ -748,8 +711,6 @@ export function serverHubAgentTokens(
 
 let revokeTimer: NodeJS.Timeout | null = null;
 
-/**
- */
 export function startAgentTokenRevokeRetry(
   hub: () => Promise<HubInstall | null>,
   log: (line: string) => void = () => {},
