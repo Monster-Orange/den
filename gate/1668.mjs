@@ -9,10 +9,11 @@ export const PROBE_MS = 500;
 export const PROBE_AFTER_MS = 20;
 export const IN_FLIGHT_MIN = 3;
 export const IDLE_TRIES = 3;
+export const HELPERS_WAIT_MS = 60000;
 
 export const clauses = [
-  `with ${SEED_AGENTS} agents, each with helpers and ${SEED_MB} MB of transcript, the agents list (GET /api/sessions) answers within ${LIMIT_MS} ms (the median of ${TRIES} tries after a warm-up)`,
-  `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries, unless the list itself answers within ${PROBE_MS} ms, so nothing can wait behind it longer; its idle time is shown beside it)`,
+  `with ${SEED_AGENTS} agents, each with helpers and ${SEED_MB} MB of transcript, the agents list (GET /api/sessions) answers within ${LIMIT_MS} ms: the first list right after the seed (cold, its helpers not yet read), and the median of ${TRIES} tries once the list shows every seeded agent's helpers (within ${HELPERS_WAIT_MS / 1000} s)`,
+  `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries, unless the list itself answers within ${PROBE_MS} ms, so nothing can wait behind it longer; the same bar holds during the cold list; its idle time is shown beside it)`,
 ];
 export const SEED_WAY =
   "one real stub start makes a template agent; the gate process then writes the other agents' records, transcripts and helpers into that test Den's own state (the one home whose template record holds the token it just made), so seeding takes seconds and /api/sessions reads them as it reads any agent";
@@ -213,24 +214,6 @@ export async function run(ctx, s) {
   const d2 = D2S[0];
   const r = { seed: s.seed, seedMs: s.seedMs };
   if (s.seed?.status !== 0) return r;
-  const warm = await timedList(d2);
-  r.warmMs = warm.ms;
-  r.helperRows = helperRows(warm.body);
-  const seen = (
-    Array.isArray(warm.body?.sessions) ? warm.body.sessions : []
-  ).filter((x) => String(x?.agent ?? "").startsWith(PREFIX));
-  r.listed = seen.length;
-  r.listRows = Array.isArray(warm.body?.sessions)
-    ? warm.body.sessions.length
-    : null;
-  r.sample = seen[0]
-    ? {
-        keys: Object.keys(seen[0]).sort(),
-        helpers: seen[0].helpers ?? null,
-        state: seen[0].state ?? null,
-      }
-    : null;
-  r.seedDir = s.dir;
   const info = async () => {
     const pt = Date.now();
     const p = await d2
@@ -238,6 +221,42 @@ export async function run(ctx, s) {
       .catch(() => ({ status: null }));
     return { start: pt, ms: Date.now() - pt, status: p.status };
   };
+  const coldList = timedList(d2);
+  await ctx.sleep(PROBE_AFTER_MS);
+  const cp = await info();
+  const cold = await coldList;
+  r.coldMs = cold.ms;
+  r.coldStatus = cold.status;
+  r.coldProbe = { ms: cp.ms, status: cp.status, inFlight: cold.end > cp.start };
+  const look = (body) => {
+    const all = Array.isArray(body?.sessions) ? body.sessions : [];
+    const seen = all.filter((x) => String(x?.agent ?? "").startsWith(PREFIX));
+    return {
+      helperRows: helperRows(body),
+      listed: seen.length,
+      listRows: all.length,
+      sample: seen[0]
+        ? {
+            keys: Object.keys(seen[0]).sort(),
+            helpers: seen[0].helpers ?? null,
+            state: seen[0].state ?? null,
+          }
+        : null,
+    };
+  };
+  Object.assign(r, { coldHelperRows: look(cold.body).helperRows });
+  const t0 = Date.now();
+  let last = look(cold.body);
+  while (last.helperRows < SEED_AGENTS && Date.now() - t0 < HELPERS_WAIT_MS) {
+    await ctx.sleep(1000);
+    last = look((await timedList(d2)).body);
+  }
+  r.helpersMs = last.helperRows >= SEED_AGENTS ? Date.now() - t0 : null;
+  Object.assign(r, last);
+  r.seedDir = s.dir;
+  if (r.helpersMs === null) return r;
+  const warm = await timedList(d2);
+  r.warmMs = warm.ms;
   r.idle = [];
   for (let i = 0; i < IDLE_TRIES; i++) {
     await ctx.sleep(200);
@@ -300,7 +319,7 @@ export function expect(cells) {
     throw new Error(`1668 not measured: seed ${JSON.stringify(r.seed)}`);
   if (r.helperRows !== SEED_AGENTS)
     throw new Error(
-      `1668 not measured: the list showed helpers on ${r.helperRows} of ${SEED_AGENTS} seeded agents (it listed ${r.listed ?? "?"} of them, ${r.listRows ?? "?"} rows in all)`,
+      `1668 not measured: the list showed helpers on ${r.helperRows} of ${SEED_AGENTS} seeded agents within ${HELPERS_WAIT_MS / 1000} s of the seed (it listed ${r.listed ?? "?"} of them, ${r.listRows ?? "?"} rows in all)`,
     );
   const seedLine = `seeded ${SEED_AGENTS} agents in ${r.seedMs} ms, rows with helpers ${r.helperRows}; ${SEED_WAY}`;
   const few = (r.inFlight ?? 0) < IN_FLIGHT_MIN;
@@ -314,16 +333,22 @@ export function expect(cells) {
   return [
     row(
       clauses[0],
-      allOk(r.tries) && r.medianMs !== null && r.medianMs <= LIMIT_MS,
-      `${seedLine}; warm-up ${r.warmMs} ms; tries ${JSON.stringify((r.tries ?? []).map((t) => t.ms))} ms, median ${r.medianMs} (limit ${LIMIT_MS})`,
+      r.coldStatus === 200 &&
+        r.coldMs <= LIMIT_MS &&
+        allOk(r.tries) &&
+        r.medianMs !== null &&
+        r.medianMs <= LIMIT_MS,
+      `${seedLine}; cold list ${r.coldMs} ms (helpers on ${r.coldHelperRows ?? "?"} of ${SEED_AGENTS}); helpers on all after ${r.helpersMs} ms; warm-up ${r.warmMs} ms; tries ${JSON.stringify((r.tries ?? []).map((t) => t.ms))} ms, median ${r.medianMs} (limit ${LIMIT_MS})`,
     ),
     row(
       clauses[1],
-      allOk(r.probes) &&
+      r.coldProbe?.status === 200 &&
+        r.coldProbe.ms <= PROBE_MS &&
+        allOk(r.probes) &&
         (bounded
           ? r.probes.every((p) => p.ms <= PROBE_MS)
           : r.maxProbeMs <= PROBE_MS),
-      `${seedLine}; server-info idle ${r.idleMs} ms (median of ${IDLE_TRIES}); during each list ${JSON.stringify((r.probes ?? []).map((p) => (p.inFlight ? p.ms : `${p.ms} (list done)`)))} ms, ${bounded ? `in flight on ${r.inFlight} of ${TRIES}, but the list answered in ${r.medianMs} ms (median), within ${PROBE_MS}, so nothing could wait behind it longer; max ${Math.max(...r.probes.map((p) => p.ms))}` : `max in flight ${r.maxProbeMs} over ${r.inFlight} of ${TRIES}`} (limit ${PROBE_MS})`,
+      `${seedLine}; server-info idle ${r.idleMs} ms (median of ${IDLE_TRIES}); during the cold list ${r.coldProbe?.ms ?? "?"} ms${r.coldProbe?.inFlight ? "" : " (list done)"}; during each list ${JSON.stringify((r.probes ?? []).map((p) => (p.inFlight ? p.ms : `${p.ms} (list done)`)))} ms, ${bounded ? `in flight on ${r.inFlight} of ${TRIES}, but the list answered in ${r.medianMs} ms (median), within ${PROBE_MS}, so nothing could wait behind it longer; max ${Math.max(...r.probes.map((p) => p.ms))}` : `max in flight ${r.maxProbeMs} over ${r.inFlight} of ${TRIES}`} (limit ${PROBE_MS})`,
     ),
   ];
 }
