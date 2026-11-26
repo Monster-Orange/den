@@ -225,6 +225,24 @@ describe("a command that prints the environment runs, its secret-looking values 
     );
   });
 
+  it.each([
+    "xargs -J % env %",
+    "xargs -R 1 -I x env x",
+    "xargs -S 255 -I x env x",
+    "xargs -I x env x",
+    "xargs -i env",
+    "xargs -l env",
+    "xargs -e env",
+    "xargs -i env {}",
+    "xargs -i{} env {}",
+    "xargs --replace env {}",
+    "xargs --replace=R env R",
+    "xargs -l2 env",
+    "xargs -eEOF env",
+  ])("xargs options, BSD and GNU: `%s` is rewritten", (cmd) => {
+    expect(hook(cmd).rewritten).toContain("env-mask.mjs");
+  });
+
   it("env --split-string=printenv is rewritten (GNU env only runs it)", () => {
     expect(hook("env --split-string=printenv").rewritten).toContain(
       "env-mask.mjs",
@@ -243,6 +261,8 @@ describe("a command that prints the environment runs, its secret-looking values 
       "timeout 5 ls",
       "stdbuf -o0 ls",
       "xargs echo",
+      "xargs -I x echo x",
+      "xargs -i ls {}",
       "env ls",
       "env -S 'ls -l'",
     ])

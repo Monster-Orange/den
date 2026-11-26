@@ -108,31 +108,50 @@ const WRAPPER_VALUE_OPTS = {
   nice: new Set(["-n", "--adjustment"]),
   timeout: new Set(["-s", "--signal", "-k", "--kill-after"]),
   stdbuf: new Set(["-i", "-o", "-e", "--input", "--output", "--error"]),
-  xargs: new Set([
-    "-n",
-    "-I",
-    "-i",
-    "-L",
-    "-l",
-    "-P",
-    "-s",
-    "-d",
-    "-E",
-    "-e",
-    "-a",
-    "--max-args",
-    "--replace",
-    "--max-lines",
-    "--max-procs",
-    "--max-chars",
-    "--delimiter",
-    "--eof",
-    "--arg-file",
-  ]),
 };
+
+const XARGS_VALUE_OPTS = new Set([
+  "-n",
+  "-I",
+  "-J",
+  "-L",
+  "-P",
+  "-s",
+  "-d",
+  "-E",
+  "-a",
+  "-R",
+  "-S",
+  "--max-args",
+  "--max-procs",
+  "--max-chars",
+  "--delimiter",
+  "--arg-file",
+]);
+
+function unwrapXargs(w) {
+  let repl = null;
+  let j = 1;
+  while (j < w.length && w[j].startsWith("-") && w[j] !== "-") {
+    const a = w[j];
+    if (a === "--") {
+      j++;
+      break;
+    }
+    if (a === "-I" || a === "-J") repl = w[j + 1] ?? null;
+    else if (a === "-i" || a === "--replace") repl = "{}";
+    else if (/^-[iIJ]./.test(a)) repl = a.slice(2);
+    else if (a.startsWith("--replace=")) repl = a.slice("--replace=".length);
+    if (XARGS_VALUE_OPTS.has(a)) j++;
+    j++;
+  }
+  const inner = w.slice(j);
+  return repl === null ? inner : inner.filter((x) => x !== repl);
+}
 
 function unwrapWrapper(w) {
   const name = base(w[0] ?? "");
+  if (name === "xargs") return unwrapXargs(w);
   const opts = WRAPPER_VALUE_OPTS[name];
   if (!opts) return null;
   let j = 1;
