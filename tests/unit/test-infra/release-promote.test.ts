@@ -4,7 +4,7 @@
  * whether a commit may be promoted: it is the release's version commit,
  * whose first parent is the dev tag v<version>-dev.<n>, and it changes
  * only the version: Den's version in package.json and the lockfile, the
- * example's pin, and new CHANGELOG lines (its heading's date aside). The
+ * example's pin, and CHANGELOG.md as its fragments' assembly makes it. The
  * dev tag is signed by a key in the allowed-signers file, and its commit
  * has the bed's PASS: its newest commit status `release/bed` (the context
  * is a repo variable) is success, set by a tester the repo variable
@@ -161,6 +161,8 @@ const KIT_PKG = (version: string) =>
   JSON.stringify({ name: "@scope-x/kit", version }, null, 2) + "\n";
 const LOG = "# Changelog\n\n## [1.2.3] - unreleased\n\n- A change.\n";
 const LOG_DATED = LOG.replace("unreleased", "2026-01-02");
+const FRAGMENT = "changes/1703-more.md";
+const ASSEMBLED = `${LOG_DATED}\n### Fixed\n\n- One more line.\n`;
 
 function commit(
   version: string,
@@ -258,21 +260,17 @@ beforeAll(() => {
     "base",
   );
   // The candidate: a tag signed with the allowed key.
-  sha.dev = commit(`${V}-dev.1`, { "src/b.ts": "b\n" }, "the candidate");
+  sha.dev = commit(
+    `${V}-dev.1`,
+    { "src/b.ts": "b\n", [FRAGMENT]: "### Fixed\n\n- One more line.\n" },
+    "the candidate",
+  );
   signedTag(`v${V}-dev.1`, sha.dev, key);
   statuses(sha.dev, PASS);
   // The release's version commit on the release branch: versions only.
   git("checkout", "-q", "-b", "rel/1.2.3");
-  sha.release = commit(
-    V,
-    {
-      "CHANGELOG.md": LOG_DATED.replace(
-        "- A change.",
-        "- A change.\n- One more line.",
-      ),
-    },
-    "1.2.3",
-  );
+  fs.rmSync(path.join(work, FRAGMENT));
+  sha.release = commit(V, { "CHANGELOG.md": ASSEMBLED }, "1.2.3");
   // Version commits that change more than the version, on the same tag.
   const onDev = (name: string, f: () => string) => {
     git("checkout", "-q", "--detach", sha.dev);
@@ -299,6 +297,22 @@ beforeAll(() => {
       { "CHANGELOG.md": LOG_DATED.replace("- A change.\n", "") },
       "1.2.3 cuts a line",
     ),
+  );
+  onDev("logByHand", () => {
+    fs.rmSync(path.join(work, FRAGMENT));
+    return commit(
+      V,
+      {
+        "CHANGELOG.md": ASSEMBLED.replace(
+          "- One more line.",
+          "- One more line.\n- A line no fragment gave.",
+        ),
+      },
+      "1.2.3 adds a line by hand",
+    );
+  });
+  onDev("fragmentLeft", () =>
+    commit(V, { "CHANGELOG.md": ASSEMBLED }, "1.2.3 leaves its fragment"),
   );
   onDev("spaced", () =>
     commit(V, { "src/a b.ts": "x\n" }, "1.2.3 and a spaced file"),
@@ -380,6 +394,7 @@ describe("release-promote.sh (issue 922)", () => {
       .sort();
     expect(changed).toEqual([
       "CHANGELOG.md",
+      FRAGMENT,
       "examples/dist/package.json",
       "package-lock.json",
       "package.json",
@@ -535,6 +550,18 @@ describe("release-promote.sh (issue 922)", () => {
     const r = promote(sha.logCut);
     expect(r.code).toBe(1);
     expect(r.text).toMatch(/::error::.*CHANGELOG\.md/);
+  });
+
+  it("refuses a CHANGELOG line no fragment gave", () => {
+    const r = promote(sha.logByHand);
+    expect(r.code).toBe(1);
+    expect(r.text).toMatch(/::error::.*CHANGELOG\.md/);
+  });
+
+  it("refuses a version commit that leaves a fragment behind", () => {
+    const r = promote(sha.fragmentLeft);
+    expect(r.code).toBe(1);
+    expect(r.text).toContain(FRAGMENT);
   });
 
   it("refuses a file whose name has a space", () => {
