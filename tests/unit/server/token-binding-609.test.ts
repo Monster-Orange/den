@@ -14,7 +14,7 @@ import * as net from "net";
 import type { AddressInfo } from "net";
 import * as tb from "../../../src/ui/server/token-binding.js";
 import { loopbackPeerFind } from "../../../src/shared/peer-process.js";
-import { LookupTimeoutError } from "../../../src/ui/cli/proc-lookup.js";
+import { LookupTimeoutError } from "../../../src/shared/proc-lookup.js";
 
 const ROOT = 200;
 const AGENT = "den_at_TESTONLY_609";

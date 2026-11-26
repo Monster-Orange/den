@@ -21,6 +21,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
+import { readJson } from "./lib/read-json.mjs";
 export const issue = 456;
 export const clauses = [
   "with two copies on the PATH a new shell gets, Den uses the one that shell gets first, with no warning",
@@ -138,17 +139,10 @@ async function doctorWith(ctx, shell, id) {
     timeout: CLI_TIMEOUT_MS,
   });
   const ms = Date.now() - t0;
-  const out = String(d?.out ?? "");
-  let row = null;
-  let parsed = false;
-  try {
-    const j = JSON.parse(out.slice(out.indexOf("{")));
-    parsed = true;
-    row = listOf(j).find((r) => r.id === id) ?? null;
-  } catch {
-    row = null;
-  }
-  const text = `${out}\n${String(d?.err ?? "")}`;
+  const j = readJson(d, "agents doctor", { codes: [0, 1] });
+  const parsed = true;
+  const row = listOf(j).find((r) => r.id === id) ?? null;
+  const text = `${JSON.stringify(j)}\n${String(d?.err ?? "")}`;
   return {
     code: d?.code ?? null,
     ms,

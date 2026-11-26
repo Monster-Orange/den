@@ -515,7 +515,7 @@ export async function pingHttp(
         // Rewrite only the hostname so the port, path and query are preserved
         // (string-concatenating protocol+port dropped /healthz and emitted a
         // stray trailing colon for default-port URLs like http://shop-api/healthz).
-        parsed.hostname = "localhost";
+        parsed.hostname = "127.0.0.1";
         const fb = await pingOnce(
           parsed.toString(),
           LOCALHOST_FALLBACK_TIMEOUT_MS,
