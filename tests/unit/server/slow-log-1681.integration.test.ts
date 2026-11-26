@@ -51,7 +51,7 @@ describe("issue 1681: the server names a slow request and a blocked event loop",
     const lines = slowLines();
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(
-      /slow request: GET \/api\/_den\/… took (\d{3,}) ms \(unsigned\)$/,
+      /slow request: GET \/api\/_den\/slow took (\d{3,}) ms \(unsigned\)$/,
     );
     expect(Number(/took (\d+) ms/.exec(lines[0])![1])).toBeGreaterThanOrEqual(
       550,

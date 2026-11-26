@@ -132,6 +132,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R("/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
   R("/api/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
+  R("/api/_den/slow", "a test-only route (DEN_DEBUG_ROUTES): it waits"),
+  R("/api/_den/block", "a test-only route (DEN_DEBUG_ROUTES): it blocks"),
 
   // ── Read-only /api ──────────────────────────────────────────────────────
   ...[
