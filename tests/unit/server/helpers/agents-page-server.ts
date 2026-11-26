@@ -26,7 +26,7 @@ import * as os from "os";
 import * as path from "path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { SessionHost } from "../../../../src/shared/sessions/host.js";
-import type { PtyLoad } from "../../../../src/shared/sessions/pty.js";
+import { loadPty, type PtyLoad } from "../../../../src/shared/sessions/pty.js";
 import {
   writeRecord,
   type AgentRecord,
@@ -143,6 +143,7 @@ export async function startAgentsPageServer(
     testInstall?: boolean;
     /** Issue 1034: write the invented edge proof (helpers/edge-proof.ts). */
     edgeProof?: boolean;
+    realPty?: boolean;
   } = {},
 ): Promise<AgentsPageServer> {
   const tmp = fs.realpathSync(
@@ -324,7 +325,9 @@ export async function startAgentsPageServer(
     });
   }
   const { factory, made } = scriptedFactory();
-  const load: PtyLoad = { available: true, factory };
+  const load: PtyLoad = opts.realPty
+    ? loadPty()
+    : { available: true, factory };
   const host = new SessionHost({
     stateDir,
     pty: () => load,
