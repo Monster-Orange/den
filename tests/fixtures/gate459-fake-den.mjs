@@ -4,7 +4,7 @@
 // temp folder) and keeps each feed's server-sent events stream open over
 // real HTTP, as Den does: Last-Event-ID on a reconnect, the list form
 // (?after=<cursor>) before each open after a cursor exists, de-duplicated
-// by id, and a pointer typed at the stub's idle prompt. `den`:
+// by id, and a pointer typed once the turn is quiet (each typed idle prompt resets that). `den`:
 //   "good":       as Den does;
 //   "wrongAgent": the project's view lists the feed for another agent;
 //   "typesBait":  the pointer carries the app's own text;
@@ -135,6 +135,7 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
     downs: 0,
     ups: 0,
     gotos: [],
+    quiet: null,
   };
 
   function reader(cfg) {
@@ -232,6 +233,11 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
   });
 
   function idle() {
+    st.quiet = 0;
+  }
+
+  function look() {
+    if (st.quiet === null || ++st.quiet < 2) return;
     for (const f of st.feeds.values()) {
       if (!f.point) continue;
       f.point = false;
@@ -327,6 +333,7 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
       return { ok: false };
     },
     stubLog(_id, { since = null, k = null } = {}) {
+      look();
       const from = since === null ? -Infinity : since;
       return st.log.filter((x) => (!k || x.k === k) && Date.parse(x.t) >= from);
     },
