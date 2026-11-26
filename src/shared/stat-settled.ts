@@ -1,5 +1,5 @@
 /**
- * Issue 1592: when a file's stat may stand for its content.
+ * When a file's stat may stand for its content.
  *
  * A file system stamps mtimes and ctimes by a coarse clock: Linux by its
  * timer tick, some file systems by the second or two. A write just after
@@ -7,7 +7,7 @@
  * on them keeps a stale answer. As git treats a racily clean index entry:
  * an answer read from a file is kept only when the file last changed more
  * than MTIME_TICK_MS before the read. Any write after that read moves its
- * stamps, and the stat no longer matches.
+ * stamps, and the stat then differs from the one the answer was kept on.
  */
 import type * as fs from "fs";
 
