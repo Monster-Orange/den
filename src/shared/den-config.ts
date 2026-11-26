@@ -655,6 +655,7 @@ export interface UserConfig {
      * for one agent. Only here: agents can't write this file.
      */
     sandbox?: unknown;
+    os_login?: unknown;
     /**
      * agents.git.signing_key: per machine, so user.yml's wins over the
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
@@ -1207,6 +1208,24 @@ export function setUserSandboxOn(): void {
   } as UserConfig);
 }
 
+export function osUserSetting(userAgents: unknown): boolean {
+  if (!isMapping(userAgents)) return false;
+  const v = userAgents.os_login;
+  if (v === undefined || v === null || v === false || v === "off") return false;
+  if (v === true || v === "on") return true;
+  throw new Error(
+    `agents.os_login: must be on or off (got ${JSON.stringify(v)})`,
+  );
+}
+
+export function setUserOsUser(on: boolean): void {
+  const cfg = readUserConfig();
+  writeUserConfig({
+    ...cfg,
+    agents: { ...(cfg.agents ?? {}), os_login: on ? "on" : "off" },
+  } as UserConfig);
+}
+
 /**
  * Issue 1328: `agents.<id>.sandbox: on|off` in user.yml, for the held write
  * agent_sandbox_set. Only that key changes: comments, the order and every
@@ -1293,6 +1312,7 @@ export const USER_ONLY_WIDENING: readonly string[] = [
   "agents.sandbox",
   "agents.*.sandbox",
   "agents.sandbox_sockets",
+  "agents.os_login",
   "web.edge_unattested",
   "web.allow_plain_http_remote",
   "secrets.onepassword.token",
@@ -2236,6 +2256,7 @@ export const AGENTS_RESERVED_KEYS = [
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
   "sandbox",
   "sandbox_sockets",
+  "os_login",
 ];
 
 /**
@@ -2987,6 +3008,8 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   // read-only to agents; the org config may sit in a repo they edit).
   if (raw.sandbox !== undefined)
     throw new Error(SANDBOX_IN_USER_YML("agents.sandbox"));
+  if (raw.os_login !== undefined)
+    throw new Error(SANDBOX_IN_USER_YML("agents.os_login"));
   out.sandbox = true;
   // agents.git, unless it is an agent called git (a block with grants).
   const gitBlock = isGitSettings(raw.git) ? raw.git : undefined;

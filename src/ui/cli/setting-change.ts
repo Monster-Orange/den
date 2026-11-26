@@ -286,6 +286,7 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "install_mode",
       "agents.sandbox",
       "agents.sandbox_sockets",
+      "agents.os_login",
       "agents.*.sandbox",
       "agents.*.grants",
       "approvals",
