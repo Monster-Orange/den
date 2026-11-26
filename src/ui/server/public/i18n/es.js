@@ -1940,6 +1940,8 @@
     "ag.none": "Aún no hay agentes en este proyecto",
     "ag.personaOf": "persona {persona}",
     "ag.state.running": "en marcha",
+    "ag.activity.working": "trabajando",
+    "ag.activity.idle": "inactivo",
     "ag.state.stopping": "deteniéndose…",
     "ag.state.stopped": "detenido",
     "ag.state.ended": "terminado",
