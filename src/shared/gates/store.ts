@@ -115,6 +115,7 @@ import {
   type GateKind,
   type GateSettings,
   type MachineReading,
+  onOff,
 } from "./rules.js";
 
 /**
@@ -340,6 +341,16 @@ export function checkGatePatch(
         error: `gate_slots.${k} is not a setting (${[...Object.keys(GATE_LIMITS), ...Object.keys(GATE_TEXT)].join(", ")})`,
       };
     if (x === undefined) continue;
+    if (k === "route_agents" && x !== null) {
+      const b = onOff(x);
+      if (b === null)
+        return {
+          ok: false,
+          error: `gate_slots.${k} is on (1, true, "yes", "on") or off (0, false, "no", "off"), or null`,
+        };
+      patch[k] = b ? 1 : 0;
+      continue;
+    }
     if (
       x !== null &&
       (typeof x !== "number" ||
@@ -1265,10 +1276,7 @@ export class GateStore {
         browserBoxDefault:
           text("browser_box_default").trim() === "local" ? "local" : "any",
         browserHostOnly: text("browser_host_only"),
-        // Issue 1264: false is slice 1's form of off, as the hook reads it.
-        routeAgents:
-          v.route_agents !== false &&
-          num("route_agents", GATE_DEFAULTS.routeAgents ? 1 : 0) === 1,
+        routeAgents: onOff(v.route_agents) ?? GATE_DEFAULTS.routeAgents,
         routeCommands: (() => {
           const l = parseRouteCommands(text("route_commands"));
           return typeof l === "string" || !l.length

@@ -14,6 +14,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- The gate's `route_agents` setting reads one way everywhere. A hand-edited value that isn't clearly off, such as 0.5, no longer turns agents' routing off: anything but 0, `false`, "no" or "off" reads as on. Settings, the CLI and `gate_settings_set` also take `true`, "yes", "on", `false`, "no" and "off", and refuse any other value by name. The file still saves 0 or 1.
 - On a test install, a live check can now set one of the test's own agents to "ask" or "edits", or back to its project's mode, from the agent's row. Before, the request was refused, so the row's mode switch couldn't be checked there. Wider modes, agents the test didn't start and the server agent are still refused.
 - Den's address check, the edge's port check and the health fallback for a bare service name no longer dial `localhost`. Node tries `::1` first, so another program on `::1` at Den's port could answer for Den. They now dial where the server listens (127.0.0.1 unless `DEN_BIND_HOST` says otherwise). Den gives `http://localhost:<port>` only when localhost itself answers as this Den, and otherwise gives the address it proved (issue 1667).
 - After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.

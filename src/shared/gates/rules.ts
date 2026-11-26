@@ -970,3 +970,15 @@ export function mcpLapsed(
     now > expectedEnd(e) + s.mcpGraceMinutes * 60_000
   );
 }
+
+const ON_WORDS = new Set(["1", "yes", "on", "true"]);
+const OFF_WORDS = new Set(["0", "no", "off", "false"]);
+
+/** A clear on (true) or off (false), as gate-route.mjs onOff; null for anything else. */
+export function onOff(x: unknown): boolean | null {
+  if (typeof x === "boolean") return x;
+  if (typeof x === "number") return x === 1 ? true : x === 0 ? false : null;
+  if (typeof x !== "string") return null;
+  const t = x.trim().toLowerCase();
+  return ON_WORDS.has(t) ? true : OFF_WORDS.has(t) ? false : null;
+}

@@ -1896,7 +1896,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--browser-requires-container", "browser_requires_container"],
   ] as const) {
     const v = f[flag];
-    if (typeof v === "string") raw[key] = Number(v);
+    if (typeof v === "string")
+      raw[key] = key === "route_agents" ? v : Number(v);
   }
   // Issue 803: a line of text each; "" clears it.
   for (const [flag, key] of [
