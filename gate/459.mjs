@@ -144,8 +144,25 @@ async function sessionRow(ctx) {
   }
 }
 
+async function bellFor(ctx) {
+  try {
+    const n = await ctx.api("/api/notifications");
+    return [...(n?.groups ?? []), ...(n?.updates ?? [])]
+      .flatMap((g) => g?.items ?? [g])
+      .filter((i) => JSON.stringify(i ?? {}).includes(ID))
+      .map((i) => JSON.stringify(i).slice(0, 300));
+  } catch (e) {
+    return String(e?.message ?? e).slice(0, 80);
+  }
+}
+
 async function snapshot(ctx, name) {
-  const v = { at: Date.now(), row: await sessionRow(ctx), held: heldOf(ctx) };
+  const v = {
+    at: Date.now(),
+    row: await sessionRow(ctx),
+    held: heldOf(ctx),
+    bell: await bellFor(ctx),
+  };
   try {
     fs.writeFileSync(ctx.evidence(`${name}.json`), JSON.stringify(v, null, 2));
   } catch {
@@ -382,6 +399,11 @@ export async function run(ctx, s) {
       ? await words(pg, `feed.st.${r.row.state}`)
       : null;
     await ctx.shot("feed-row");
+    r.atEnd = await snapshot(ctx, "at-end");
+    const heldSince = [r.atStart, r.atPointer, r.atEnd].find(
+      (x) => x?.held?.queue?.length,
+    )?.at;
+    r.heldMs = heldSince ? r.atEnd.at - heldSince : null;
   } finally {
     // Whatever happened above: the bed as it was (teardown does this when the run timed out).
     if (h.wrote !== null) r.restore = await restoreBed(ctx, h);
@@ -439,7 +461,7 @@ export function expect(cells) {
         first[0].enter === true &&
         first[0].text.includes(`"${FEED}"`) &&
         !first.some((x) => x.text.includes(BAIT)),
-      detail: `${first.length} line(s) typed after ${r.first?.took} ms: ${JSON.stringify(first).slice(0, 400)}; held cleared at start ${JSON.stringify(r.restart?.cleared ?? null)}; before: ${JSON.stringify({ row: r.atStart?.row, held: r.atStart?.held })}; at pointer: ${JSON.stringify({ row: r.atPointer?.row, held: r.atPointer?.held })}${why}`,
+      detail: `${first.length} line(s) typed after ${r.first?.took} ms: ${JSON.stringify(first).slice(0, 400)}; held cleared at start ${JSON.stringify(r.restart?.cleared ?? null)}; before: ${JSON.stringify({ row: r.atStart?.row, held: r.atStart?.held })}; at pointer: ${JSON.stringify({ row: r.atPointer?.row, held: r.atPointer?.held, bell: r.atPointer?.bell })}; at end (held ${r.heldMs ?? "never"} ms): ${JSON.stringify({ held: r.atEnd?.held, bell: r.atEnd?.bell })}${why}`,
     },
     {
       clause: clauses[2],
