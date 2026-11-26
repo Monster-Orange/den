@@ -768,8 +768,6 @@ describe("ci.yml (issue 398)", () => {
   ) as { jobs: Record<string, Job> };
   const runs = (j: Job) => j.steps.map((s) => s.run ?? "").join("\n");
 
-  // The pr job (pull requests and the merge queue) fails on a
-  // map that is stale or not in the generator's form.
   it("the pr job runs affected-map.mjs --check", () => {
     expect(runs(ci.jobs.pr)).toMatch(/node scripts\/affected-map\.mjs --check/);
   });
@@ -971,12 +969,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
   });
 });
 
-/**
- * affected-map.mjs writes the map in prettier's form itself,
- * so every branch commits one form and a map merge never conflicts on
- * formatting alone; --check fails on any other form.
- */
-describe("the map's one form (issue 1561)", () => {
+describe("the map's one form: the generator writes prettier's form, --check fails on any other", () => {
   const raw = (m: unknown) => JSON.stringify(m, null, 2) + "\n";
   it("the generator's text passes prettier --check", async () => {
     const text = call<string>(MAP_GEN, "mapText", MAP);

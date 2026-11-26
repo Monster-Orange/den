@@ -440,11 +440,6 @@ export function buildRules(map = readMap()) {
   return rules.filter((r) => r.run.length);
 }
 
-/**
- * The map's text as committed, in prettier's form with the repo's own
- * config, so a branch that writes it and one that formats it
- * never differ (a map merge then conflicts only on what changed).
- */
 export async function mapText(map) {
   const prettier = await import("prettier");
   const config = (await prettier.resolveConfig(MAP)) ?? {};
@@ -454,7 +449,6 @@ export async function mapText(map) {
   });
 }
 
-/** Why `text` isn't the map in its one form, or null when it is. */
 export async function formIssue(text) {
   let map;
   try {
