@@ -47,7 +47,7 @@ const good = {
     limit: 8000,
     pty: ipad,
   },
-  drop: {
+  normal: {
     measured: true,
     took: true,
     tookMs: 70,
@@ -68,7 +68,7 @@ describe("gate/1724 rows", () => {
     const r = rows({
       ...good,
       "1001": { ...good["1001"], backMs: null, pty: desk },
-      drop: { ...good.drop, backMs: null, pty: desk },
+      normal: { ...good.normal, backMs: null, pty: desk },
     });
     expect(r.map((x) => x.ok)).toEqual([true, false, false, true]);
     expect(r[1].detail).toContain("still 178x41");
@@ -77,7 +77,7 @@ describe("gate/1724 rows", () => {
   it("back too late fails; the iPad taking it back over a Take over fails the last", () => {
     const r = rows({
       ...good,
-      drop: { ...good.drop, backMs: 36000 },
+      normal: { ...good.normal, backMs: 36000 },
       claimed: { ...good.claimed, kept: false, pty: ipad },
     });
     expect(r.map((x) => x.ok)).toEqual([true, true, false, false]);
@@ -108,7 +108,7 @@ describe("gate/1724 rows", () => {
     expect(() =>
       rows({
         ...good,
-        drop: {
+        normal: {
           measured: false,
           why: "the desktop page opened no terminal socket",
         },
@@ -124,6 +124,6 @@ describe("gate/1724 rows", () => {
     ) as { way: string; n: number };
     expect(g.n).toBe(4);
     expect(g.way).toContain("1001");
-    expect(g.way).toContain("same way as a drop");
+    expect(g.way).toContain("does not cover a dead connection with no close");
   });
 });
