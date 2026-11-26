@@ -92,6 +92,19 @@
         "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
         "note": "No CI run on this sha passed it (a red is never re-run). Each failed on jest's 10 s timeout in the same shard. On this sha and its parent, the whole file passed 15 of 15 on its own through this repo's gate."
       }
+    },
+    {
+      "file": "tests/unit/server/update-pill.browser.test.ts",
+      "test": "update pill (webkit) Not now hides it, and it stays hidden for that version",
+      "issue": 1833,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45876385372,
+        "failed_job": 140106374303,
+        "job": "pr-shards (24.13.0, 15)",
+        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
+        "note": "No CI run on this sha passed it (a red is never re-run). It failed in the same shard as the server-agent timeouts, its sign-in helper timing out (timeout: GET /api/session, tests/unit/server/helpers/signed-in.ts:107). Only the WebKit case failed."
+      }
     }
   ]
 }
