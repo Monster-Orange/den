@@ -2832,6 +2832,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (vm.lines.length) r.checks.push(vm.check);
       // Issue 1263: throwaway containers left over from gate runs.
       r.checks.push((await throwawayRows()).check);
+      const ra = await routeAgentsRows();
+      if (ra.check) r.checks.push(ra.check);
       // The shared GitHub watcher: calls left, reset, watches, interval.
       const gw = await githubWatchRow();
       if (gw.check) r.checks.push(gw.check);
@@ -3006,6 +3008,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of (await gateBoxRows()).lines) console.log(l);
   // Issue 1274: memory VMs promise, against the machine's RAM.
   for (const l of (await gateVmRows()).lines) console.log(l);
+  for (const l of (await routeAgentsRows()).lines) console.log(l);
   // Issue 1263: throwaway containers left over from gate runs.
   {
     const tw = await throwawayRows();
@@ -3206,6 +3209,16 @@ export async function cmdDoctor(args: string[]): Promise<number> {
  * Issue 1274: the VMs here and what they promise. DEN_GATE_VMS=0 skips the
  * reading (the test setup sets it: a test never reads this machine's VMs).
  */
+async function routeAgentsRows() {
+  try {
+    const { routeAgentsRow } = await import("./doctor-route-agents.js");
+    const { GateStore } = await import("../../shared/gates/store.js");
+    return routeAgentsRow(new GateStore(), product().cli);
+  } catch {
+    return { lines: [] as string[], check: null };
+  }
+}
+
 async function gateVmRows() {
   const none = {
     lines: [] as string[],
