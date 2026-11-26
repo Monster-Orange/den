@@ -1,22 +1,13 @@
 #!/usr/bin/env node
-/**
- * Live-check evidence for a pull request (issue 1652). Reads a release-bed
- * verdict.json (an evidence-only module run against a dev tag's install) and
- * prints a Markdown block to paste into the pull request.
- *
- *   node scripts/gate-evidence.mjs <verdict.json | -> [--base <ref>] [--repo <dir>]
- *
- * Exit 0: every clause passed or was not run. Exit 1: a clause is FAIL,
- * FAIL_TO_RUN or ERROR. Exit 2: refused (a module the pull request adds or
- * changes under gate/ is missing from the verdict, or the block names an org).
- * Notes keep no local paths or host names; evidence shows file names only.
- */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { orgPatterns } from "./org-names.js";
 
-const BAD = new Set(["FAIL", "FAIL_TO_RUN", "ERROR"]);
+const OK = new Set(["PASS", "NOT_RUN"]);
+const result = (c) =>
+  typeof c.verdict === "string" && c.verdict.trim() ? c.verdict : "NONE";
+const failing = (c) => !OK.has(result(c));
 
 export function changedModules(base, repo) {
   const out = execFileSync(
@@ -57,28 +48,29 @@ const secs = (ms) =>
 
 export function block(v) {
   const rows = [...(v.clauses ?? [])].sort(
-    (a, b) => Number(BAD.has(b.verdict)) - Number(BAD.has(a.verdict)),
+    (a, b) => Number(failing(b)) - Number(failing(a)),
   );
   const mods = [...new Set(rows.map((c) => String(c.issue)))];
-  const from = v.modulesFrom?.commit ?? v.modulesFrom?.from;
-  const bad = rows.filter((c) => BAD.has(c.verdict)).length;
+  const from = String(v.modulesFrom?.commit ?? v.modulesFrom?.from ?? "");
+  const overall = cell(v.overall ?? "NONE");
+  const bad = rows.filter(failing).length + (overall === "PASS" ? 0 : 1);
   const lines = [
     `### Live check evidence: ${v.tag ?? "unknown tag"}`,
     "",
     `- Checks from: ${from ? `\`${from.slice(0, 12)}\`` : "the tag itself"}` +
-      (v.sha ? ` · install built from \`${v.sha.slice(0, 12)}\`` : ""),
-    `- Run: ${v.startedPT ?? v.startedAt ?? "–"} · ${bad ? `${bad} failing` : "no failing"} clause(s) of ${rows.length}`,
+      (v.sha ? ` · install built from \`${String(v.sha).slice(0, 12)}\`` : ""),
+    `- Run: ${v.startedPT ?? v.startedAt ?? "–"} · overall **${overall}** · fail to run ${Number(v.failToRun) || 0} · ${rows.filter(failing).length} failing clause(s) of ${rows.length}`,
     `- Modules: ${mods.join(", ") || "none"}`,
     "",
     "| Module | Clause | Result | Time | Note | Evidence |",
     "| --- | --- | --- | --- | --- | --- |",
     ...rows.map(
       (c) =>
-        `| ${cell(c.issue)} | ${cell(c.clause, 200)} | **${cell(c.verdict)}** | ${secs(c.ms)} | ${cell(c.note)} | ${(c.evidence ?? []).map((e) => cell(basename(String(e)), 80)).join(", ")} |`,
+        `| ${cell(c.issue)} | ${cell(c.clause, 200)} | **${cell(result(c))}** | ${secs(c.ms)} | ${cell(c.note)} | ${(c.evidence ?? []).map((e) => cell(basename(String(e)), 80)).join(", ")} |`,
     ),
     "",
   ];
-  return { text: lines.join("\n"), mods, bad };
+  return { text: lines.join("\n"), rows, from, bad };
 }
 
 function main(argv) {
@@ -96,15 +88,47 @@ function main(argv) {
     return 2;
   }
   const v = JSON.parse(readFileSync(file === "-" ? 0 : file, "utf-8"));
-  const { text, mods, bad } = block(v);
-  const missing = changedModules(opt.base, opt.repo).filter(
-    (m) => !mods.includes(m),
-  );
-  if (missing.length) {
-    process.stderr.write(
-      `refused: this verdict has no run of the live check(s) this pull request adds or changes: ${missing.join(", ")}. Ask the bed for a run that names them.\n`,
-    );
+  const { text, rows, from, bad } = block(v);
+  const refuse = (why) => {
+    process.stderr.write(`refused: ${why}\n`);
     return 2;
+  };
+  const changed = changedModules(opt.base, opt.repo);
+  const ran = (m) => rows.filter((c) => String(c.issue) === m);
+  const missing = changed.filter((m) => !ran(m).length);
+  if (missing.length)
+    return refuse(
+      `this verdict has no run of the live check(s) this pull request adds or changes: ${missing.join(", ")}. Ask the bed for a run that names them.`,
+    );
+  const unproven = changed.filter(
+    (m) => !ran(m).some((c) => result(c) === "PASS"),
+  );
+  if (unproven.length)
+    return refuse(
+      `no PASS clause for the changed check(s) ${unproven.join(", ")}: a run where every clause was not run proves nothing.`,
+    );
+  if (!from && changed.length)
+    return refuse(
+      "the verdict has no modulesFrom commit, so its checks came from the tag, not this pull request's gate/.",
+    );
+  if (from) {
+    if (!/^[0-9a-f]{7,40}$/.test(from))
+      return refuse(
+        `modulesFrom commit "${cell(from, 60)}" is not a commit id.`,
+      );
+    const same = spawnSync(
+      "git",
+      ["diff", "--quiet", from, "HEAD", "--", "gate/"],
+      { cwd: opt.repo },
+    ).status;
+    if (same === 1)
+      return refuse(
+        `gate/ changed since ${from.slice(0, 12)}, the commit the run's checks came from. Ask for a run from this head.`,
+      );
+    if (same !== 0)
+      return refuse(
+        `modulesFrom commit ${from.slice(0, 12)} is not in this repo; fetch it first.`,
+      );
   }
   const hit = orgPatterns().find((re) => re.test(text));
   if (hit) {

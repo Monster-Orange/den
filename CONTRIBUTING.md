@@ -320,10 +320,12 @@ once against a built install of the current dev tag before it merges.
    ```
 
 It prints the dev tag, the commit the checks came from, and each clause
-(FAIL and ERROR first) with its time, note and evidence file names. It
-exits 1 when a clause is FAIL or ERROR (NOT_RUN rows are listed with their
-reason and don't fail it), and refuses (exit 2) a verdict that misses a
-check the pull request adds or changes.
+(failing ones first) with its time, note and evidence file names. It
+exits 1 unless the run's overall is PASS and every clause is PASS or
+NOT_RUN (NOT_RUN rows are listed with their reason). It refuses (exit 2) a
+verdict that misses a check the pull request adds or changes, has no PASS
+clause for one, or ran checks from a commit whose `gate/` differs from
+your head: after a new push to `gate/`, ask for a new run.
 
 ### Read-only checks
 

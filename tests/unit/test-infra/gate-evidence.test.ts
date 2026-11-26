@@ -38,17 +38,20 @@ mod(828);
 put("gate/README.md", "y\n");
 git("add", ".");
 git("commit", "-q", "-m", "pr");
+const PR_HEAD = git("rev-parse", "HEAD");
+const BASE_HEAD = git("rev-parse", "main");
 
 const DIR =
   "/Users/someone/Library/Logs/den-probe/auto/v0.4.90-dev.6-modules-1";
-function verdict(clauses: unknown[]) {
+function verdict(clauses: unknown[], extra: Record<string, unknown> = {}) {
   return {
     tag: "v0.4.90-dev.6",
     sha: "cc7fba2f64b6ca2a2a0e9029cf734e36ce6b3c8f",
     overall: "PASS",
     startedPT: "2026-11-25 20:17:15 PST",
-    modulesFrom: { commit: "bfb2a91170b44ffd81e26cbacfb352e464fb57de" },
+    modulesFrom: { commit: PR_HEAD },
     clauses,
+    ...extra,
   };
 }
 const row = (
@@ -93,7 +96,7 @@ describe("gate-evidence: a bed run's verdict as a pull request block (issue 1652
     expect(r.err).toBe("");
     expect(r.code).toBe(0);
     expect(r.out).toContain("v0.4.90-dev.6");
-    expect(r.out).toContain("bfb2a91170b4");
+    expect(r.out).toContain(PR_HEAD.slice(0, 12));
     expect(r.out).toMatch(/459.*clause of 459 PASS.*PASS/);
     expect(r.out).toContain("needs-attested-edge");
     expect(r.out).toContain("459-shot.png");
@@ -143,5 +146,63 @@ describe("gate-evidence: a bed run's verdict as a pull request block (issue 1652
     expect(r.status).toBe(2);
     expect(r.stdout).toBe("");
     expect(r.stderr).toMatch(/org name/i);
+  });
+
+  it("refuses a run whose checks came from an older head of gate/", () => {
+    const r = run(
+      verdict([row(459, "PASS"), row(828, "PASS")], {
+        modulesFrom: { commit: BASE_HEAD },
+      }),
+    );
+    expect(r.code).toBe(2);
+    expect(r.out).toBe("");
+    expect(r.err).toMatch(/gate\/ changed since/);
+  });
+
+  it("refuses a run with no modulesFrom when the pull request changes a check", () => {
+    const r = run(
+      verdict([row(459, "PASS"), row(828, "PASS")], { modulesFrom: undefined }),
+    );
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/modulesFrom/);
+  });
+
+  it("refuses a changed check whose clauses were all not run", () => {
+    const r = run(
+      verdict([row(459, "PASS"), row(828, "NOT_RUN", "skip: person")]),
+    );
+    expect(r.code).toBe(2);
+    expect(r.err).toMatch(/no PASS.*828/);
+  });
+
+  it("fails unless the run's overall is PASS, and shows overall and failToRun", () => {
+    const r = run(
+      verdict([row(459, "PASS"), row(828, "PASS")], {
+        overall: "FAIL_TO_RUN",
+        failToRun: 1,
+      }),
+    );
+    expect(r.code).toBe(1);
+    expect(r.out).toMatch(/overall \*\*FAIL_TO_RUN\*\*/);
+    expect(r.out).toMatch(/fail to run 1/);
+  });
+
+  it("counts a clause with no known verdict as failing", () => {
+    const v = verdict([row(459, "PASS"), row(828, "PASS"), row(828, "")]);
+    delete (v.clauses[2] as { verdict?: string }).verdict;
+    const r = run(v);
+    expect(r.code).toBe(1);
+    expect(r.out).not.toContain("****");
+    expect(r.out).toMatch(/\| 828 \|.*\*\*NONE\*\*/);
+  });
+
+  it("refuses a modulesFrom commit that is not a string, without crashing", () => {
+    const r = run(
+      verdict([row(459, "PASS"), row(828, "PASS")], {
+        modulesFrom: { commit: 12345 },
+      }),
+    );
+    expect(r.code).toBe(2);
+    expect(r.err).not.toMatch(/TypeError|at .*gate-evidence/);
   });
 });
