@@ -22,9 +22,11 @@ const importsOf = (file: string) =>
 
 function importsIn(src: string): string[] {
   return [
-    ...src.matchAll(/^\s*(?:import|export)\b[^;]*?\bfrom\s+"(\/[^"]+)"/gm),
-    ...src.matchAll(/^\s*import\s+"(\/[^"]+)"/gm),
-  ].map((m) => m[1]!);
+    ...src.matchAll(
+      /^\s*(?:import|export)\b[^;]*?\bfrom\s+"((?:\/|\.\/)[^"]+)"/gm,
+    ),
+    ...src.matchAll(/^\s*import\s+"((?:\/|\.\/)[^"]+)"/gm),
+  ].map((m) => (m[1]!.startsWith("./") ? m[1]!.slice(1) : m[1]!));
 }
 
 describe("every page module's URL imports are served", () => {
@@ -34,6 +36,14 @@ describe("every page module's URL imports are served", () => {
     expect(importsIn(agentsSource())).toEqual(
       expect.arrayContaining(["/agent-groups.js", "/kit/busy.js"]),
     );
+  });
+
+  it("reads a relative ./x.js import as the served /x.js", () => {
+    expect(
+      importsIn(
+        'import { a } from "./settings-common.js";\nimport "./settings-ui-hub.js";\nexport { b } from "/kit/busy.js";\n',
+      ),
+    ).toEqual(["/settings-common.js", "/kit/busy.js", "/settings-ui-hub.js"]);
   });
 
   it("each /x.js is in UI_MODULES; each /kit/x in KIT_FILES", () => {
