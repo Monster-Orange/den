@@ -1127,6 +1127,7 @@ export const BELL_FOLD_DAYS_DEFAULT = 7;
 export interface BellPrefs {
   off: BellSwitch[];
   foldDays: number;
+  finishedChosenOff?: true;
 }
 
 /**
@@ -1146,7 +1147,9 @@ export function bellPrefs(user: unknown): BellPrefs {
   const foldDays = (BELL_FOLD_DAYS as readonly unknown[]).includes(d)
     ? (d as number)
     : BELL_FOLD_DAYS_DEFAULT;
-  return { off, foldDays };
+  return kinds.finished === false
+    ? { off, foldDays, finishedChosenOff: true }
+    : { off, foldDays };
 }
 
 /**

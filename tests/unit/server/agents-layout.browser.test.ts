@@ -571,9 +571,8 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await termsUp(p, 2);
     expect(await shown(p)).toEqual([sid.reviewer, sid.builder]);
     await expectFits(p);
-    // The list's row says it waits with its dot as well as its badge.
     expect(
-      await p.locator(`.agr[data-id="${sid.builder}"] .den-dot.warn`).count(),
+      await p.locator(`button[data-id="${sid.builder}"] [data-mark=needs]`).count(),
     ).toBe(1);
 
     await p.keyboard.press("Control+Shift+Digit2");

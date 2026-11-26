@@ -17,6 +17,10 @@
  * decision, a mention) shows open and counts on the badge. The rest
  * (finished, answers, releases and checks) folds into one Updates row;
  * opening the agent clears its updates.
+ *
+ * The agents Done, not seen (GET /api/notifications `done`, this
+ * person's) have their own section under Needs you; a row opens the agent,
+ * and opening it is seen. The badge counts Needs you plus Done, not seen.
  */
 import { formatTime, formatTitle } from "/kit/time.js";
 // den-ui 0.7.0: the bell, its badge and its panel are the kit's; Den
@@ -234,6 +238,21 @@ function subjectHtml(scope, s, ui) {
     .join("");
 }
 
+function doneRowHtml(d, seen = false) {
+  const link = safeLink(d.link);
+  const text = tr("bell.doneRow", { name: d.name || d.agent });
+  const where = d.server ? tr("ag.tag.server") : d.project || d.workspace || "";
+  return (
+    `<div class="den-bell-row" data-kind="${seen ? "seen-done" : "done"}" data-agent="${esc(d.agent)}">` +
+    `<span class="den-dot ok" aria-hidden="true"></span>` +
+    (link
+      ? `<a href="${esc(link)}" data-bell="open-done">${esc(text)}<span class="den-bell-sub">${esc(seen ? tr("bell.seenSub", { where }) : where)}</span></a>`
+      : `<span class="den-bell-t">${esc(text)}</span>`) +
+    `<time datetime="${esc(d.at)}" title="${esc(formatTitle(d.at))}">${esc(bellAgo(d.at))}</time>` +
+    `</div>`
+  );
+}
+
 /**
  * Issue 746: the held writes waiting for the person's Allow (`waiting`
  * entries of kind "allow"), oldest first.
@@ -284,6 +303,10 @@ function allowRowHtml(w, open) {
     `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
     `</div>`
   );
+}
+
+export function bellCountOf(b) {
+  return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
 }
 
 /**
@@ -502,6 +525,8 @@ export function bellPanel(b, ui = {}) {
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
+  const done = Array.isArray(b?.done) ? b.done : [];
+  const seenDone = Array.isArray(b?.seenDone) ? b.seenDone : [];
   // Issue 1339: while its POST runs, the button stays, held with the
   // kit's dots (data-bell-held: paint holds it, issue 1054), and the other
   // one waits too.
@@ -532,7 +557,9 @@ export function bellPanel(b, ui = {}) {
     !overrunsOf(b).length &&
     !groups.length &&
     !older.count &&
-    !updates.count
+    !updates.count &&
+    !done.length &&
+    !seenDone.length
   )
     return {
       ...panel,
@@ -556,7 +583,11 @@ export function bellPanel(b, ui = {}) {
         allowsHtml(allows, u.reviews, u) +
         overrunsHtml(overrunsOf(b)) +
         groupsHtml(groups, u, true),
+      ...(done.length
+        ? { done: done.map((d) => doneRowHtml(d)).join("") }
+        : {}),
       earlier:
+        seenDone.map((d) => doneRowHtml(d, true)).join("") +
         updatesHtml +
         (older.count
           ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
@@ -911,7 +942,7 @@ export function initBell(doc = document) {
     drawn = n;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
-    bell.setCount((b?.unread ?? 0) + overrunsOf(b).length);
+    bell.setCount(bellCountOf(b) + overrunsOf(b).length);
     if (bell.isOpen()) paint();
   };
   pop.addEventListener("click", async (e) => {
@@ -921,21 +952,25 @@ export function initBell(doc = document) {
       // space between) opens it as its link does.
       const a = e.target
         .closest(".den-bell-row")
-        ?.querySelector('a[data-bell="open"]');
+        ?.querySelector('a[data-bell="open"], a[data-bell="open-done"]');
       if (a) a.click();
       return;
     }
     const what = el.dataset.bell;
     if (what === "settings") return;
-    if (what === "open") {
+    if (what === "open" || what === "open-done") {
       const id = el.closest("[data-id]")?.dataset.id;
-      // Marked read first; the link then opens the agent.
-      // busy-ok: marked read in the background as the link opens
-      if (id)
-        void fetch("/api/notifications/read", {
+      const agent = el.closest("[data-agent]")?.dataset.agent;
+      const [path, body] =
+        what === "open-done"
+          ? ["/api/notifications/looking", agent ? { agents: [agent] } : null]
+          : ["/api/notifications/read", id ? { id } : null];
+      // busy-ok: marked in the background as the link opens
+      if (body)
+        void fetch(path, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id }),
+          body: JSON.stringify(body),
           keepalive: true,
         }).catch(() => {});
       return;

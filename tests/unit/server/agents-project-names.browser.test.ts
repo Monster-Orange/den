@@ -108,7 +108,6 @@ describe("the Agents page names a project as Hub does", () => {
         sel,
         { timeout: 10_000 },
       );
-    await said(`#agl .wsg[data-ws="north"] .wsh`);
     await said(`${pane} .bar2 .where .wsn`);
     await said(`${pane} .bar2 .aglink .mono`);
     await said(`${pane} .agto`);

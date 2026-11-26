@@ -34,7 +34,7 @@
     <title>__DEN_TITLE__ · Agents</title>
     <style>
       /* The Agents tab (AG-4a-term, AG spec §5d): the prototype's
-         (den-shell.html) page header (.ph), list column (.agl, 300px) and
+         (den-shell.html) page header (.ph), list column (.agl, 300px; issue 773: 380px on Agents) and
          panes (.agp: 1, 2 side by side, 3-4 as 2x2), ported as they are;
          --r is --radius, --r-btn is --radius-button. */
       *,
@@ -624,6 +624,139 @@
       }
       .aghub .den-dot {
         vertical-align: middle;
+      }
+      /* Issue 773: the four states' marks; each has its own shape (a
+         filled dot with "!", one with a tick, one with a halo, a hollow
+         ring), so colour is never the only sign. */
+      .agm {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        flex: none;
+        display: inline-grid;
+        place-items: center;
+        font: 700 9px/1 var(--mono);
+        box-sizing: border-box;
+        margin: 0 2px;
+      }
+      .agm.need {
+        background: var(--warn);
+        color: var(--on-accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent);
+      }
+      .agm.done {
+        background: var(--ok);
+        color: var(--on-accent);
+      }
+      .agm.work {
+        background: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+      }
+      .agm.idle {
+        border: 1.5px solid var(--faint);
+        background: transparent;
+      }
+      /* Issue 773: the state's chip, at the row's right. */
+      .agr .cp {
+        font: 11.5px var(--mono);
+        border-radius: 999px;
+        padding: 0 8px;
+        border: 1px solid transparent;
+        white-space: nowrap;
+      }
+      .agr .cp.need {
+        color: var(--warn);
+        border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+        background: color-mix(in srgb, var(--warn) 9%, transparent);
+      }
+      .agr .cp.done {
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+        background: color-mix(in srgb, var(--ok) 9%, transparent);
+      }
+      .agr .cp.work {
+        color: var(--accent-text);
+      }
+      .agr .cp.idle {
+        color: var(--faint);
+      }
+      .agr[data-attn="idle"] .nm {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      /* Issue 168: the agent in front stays bold, idle or not. */
+      .agr[data-attn="idle"][aria-current="true"] .nm {
+        font-weight: 600;
+      }
+      /* Issue 773: the project tag (All projects) and "Server". */
+      .agr .ptag {
+        font: 11px var(--mono);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0 5px;
+        color: var(--muted);
+        margin-right: 6px;
+      }
+      .agr .ptag[data-pc] {
+        border-color: var(--pc);
+      }
+      /* Issue 773, mock v3: the Agents list is 380 px wide (Terminals
+         keeps 300), and each band's row has a hairline on top. */
+      body:has(#den-shell:not([data-page="terminal"])) .agx {
+        grid-template-columns: 380px minmax(0, 1fr);
+      }
+      .agband .cp .cpn,
+      .agchev {
+        display: none;
+      }
+      .agband .agr {
+        gap: 2px 10px;
+        padding: 9px 12px 9px 10px;
+        border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+      }
+      .agband .wsh .n {
+        font: 11px var(--mono);
+      }
+      /* Issue 773: the first list loading: three placeholder rows. */
+      .agskel .skel {
+        height: 44px;
+        margin: 8px 12px;
+        border-radius: 6px;
+        background: linear-gradient(
+          90deg,
+          var(--sunken),
+          var(--border),
+          var(--sunken)
+        );
+      }
+      /* Issue 773, phone: each card 64 px tall or more; the project tag
+         stays on the second line. */
+      @media (max-width: 720px) {
+        .agband .agr {
+          min-height: 64px;
+          position: relative;
+          padding: 10px 40px 10px 16px;
+        }
+        /* Mock v3's phone card: the chip says just "Needs you", line 2 is
+           the tag and the detail (no runtime, no Needs you time), a › at
+           the right. */
+        .agband .cp .cpw,
+        .agband .meta .mrt,
+        .agband .meta .mtm {
+          display: none;
+        }
+        .agband .cp .cpn {
+          display: inline;
+        }
+        .agband .agchev {
+          display: block;
+          position: absolute;
+          right: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--faint);
+          font-size: 18px;
+        }
       }
       .wbdg {
         font: 10.5px var(--mono);
@@ -1313,7 +1446,8 @@
            rows (--agl-floor, agents-page.js fitListFloor), never more than
            60% of the screen, as the list itself (max-height below): the
            pane keeps the rest, and past that the page scrolls. */
-        .agx {
+        .agx,
+        body:has(#den-shell:not([data-page="terminal"])) .agx {
           grid-template-columns: minmax(0, 1fr);
           grid-template-rows:
             minmax(min(var(--agl-floor, 6rem), 60vh), max-content)

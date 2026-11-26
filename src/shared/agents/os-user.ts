@@ -775,7 +775,7 @@ export function readOsUserFacts(
     if (pw && pw.length >= 7)
       user = {
         exists: true,
-        uid: Number(pw[2]),
+        uid: idNumber(pw[2]),
         shell: pw[6],
         home: pw[5],
         groups: groupsOf(n.user),
@@ -800,7 +800,7 @@ export function readOsUserFacts(
     if (u !== null)
       user = {
         exists: true,
-        uid: Number(field(u, "UniqueID")),
+        uid: idNumber(field(u, "UniqueID")),
         shell: field(u, "UserShell"),
         home: field(u, "NFSHomeDirectory"),
         groups: groupsOf(n.user),
@@ -864,6 +864,9 @@ export function readOsUserFacts(
   };
 }
 
+const idNumber = (v: string | undefined): number =>
+  v !== undefined && /^\d+$/.test(v.trim()) ? Number(v.trim()) : NaN;
+
 function runtimeFacts(
   r: { bin: string; script: string; engineRoot: string },
   user: OsUserFacts["user"],
@@ -871,10 +874,11 @@ function runtimeFacts(
   check: NonNullable<OsUserReadDeps["runtime"]>,
 ): string[] {
   if (!user.exists) return check(r, { uid: NO_LOGIN_YET, gids: [] });
+  if (!Number.isInteger(user.uid)) return [UID_UNREAD];
   const gids = (idG ?? "").trim().split(/\s+/).filter(Boolean).map(Number);
   if (!gids.length || gids.some((g) => !Number.isInteger(g)))
     return [GROUPS_UNREAD];
-  return check(r, { uid: user.uid ?? -1, gids });
+  return check(r, { uid: user.uid as number, gids });
 }
 
 function personHomeFacts(
@@ -933,6 +937,13 @@ export function machineReadDeps(): OsUserReadDeps {
 
 export const GROUPS_UNREAD = "can't read the agents' login's groups";
 export const NO_LOGIN_YET = -1;
+export const UID_UNREAD = "can't read the agents' login's uid";
+export const OWED_REFUSAL =
+  "the agents' own login isn't ready on this Den version yet";
+export const OS_LOGIN_OWED: readonly string[] = [
+  "macOS access lists (ACLs) on Den's runtime files and folders",
+  "service logs private to the person's login",
+];
 
 export function runtimeProblemsOrUnread(
   r: { bin: string; script: string; engineRoot: string },
@@ -1001,6 +1012,10 @@ export function runtimeWritableProblems(
     }
     if (!st.isSymbolicLink()) check(p, false);
     if (st.isSymbolicLink()) {
+      if (!seen.has(p) && stat(p).uid === agents.uid) {
+        seen.add(p);
+        problems.push(`${p} is the agents' login's`);
+      }
       let target: string;
       try {
         target = fs.realpathSync(p);

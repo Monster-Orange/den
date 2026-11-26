@@ -141,7 +141,7 @@ const colours = (p: Page) =>
       for (const [id, ws] of rows)
         out[ws] = {
           row: pc(`#agl .agr[data-id="${id}"]`),
-          group: pc(`#agl .wsg[data-ws="${ws}"]`),
+          group: pc(`#agl [data-id="${id}"] [data-ptag="project"]`),
         };
       return out;
     },

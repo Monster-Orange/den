@@ -16,6 +16,7 @@
  * The browser half is gate/750.mjs. Invented names only.
  */
 import { describe, expect, it } from "@jest/globals";
+import { byNeed } from "../../../src/ui/server/public/agent-bands.js";
 import {
   byGroupSections,
   groupsLineHtml,
@@ -108,12 +109,18 @@ const OK = {
   ],
 };
 
+const expectNoGroupButton = (h: string) => {
+  expect(h).toContain('data-by="need" aria-pressed="true"');
+  expect(h).toContain('data-by="project" aria-pressed="false"');
+  expect(h).not.toContain('data-by="group"');
+};
+
 describe("issue 750: without Hub's groups, one line and no group UI", () => {
-  it("hub.groups off, or a Hub with no groups: no line, no switch, no group view", () => {
+  it("hub.groups off, or a Hub with no groups: no line, no By group, no group view", () => {
     const off = { state: "off" };
     expect(groupsLineHtml(off, t)).toBe("");
     expect(groupsOffered(off)).toBe(false);
-    expect(viewSwitchHtml(off, "group", t)).toBe("");
+    expectNoGroupButton(viewSwitchHtml(off, "group", t));
   });
 
   it("no Hub connected: Groups come with Den Hub, with Connect Den Hub", () => {
@@ -123,7 +130,7 @@ describe("issue 750: without Hub's groups, one line and no group UI", () => {
     expect(h).toContain("ag.grp.noHub");
     expect(h).toContain('href="/settings#agents.hub"');
     expect(h).toContain("ag.grp.connect");
-    expect(viewSwitchHtml(read, "group", t)).toBe("");
+    expectNoGroupButton(viewSwitchHtml(read, "group", t));
   });
 
   it("GR-T19: 403 groups_not_in_plan: not in the plan, with Open Hub", () => {
@@ -132,14 +139,14 @@ describe("issue 750: without Hub's groups, one line and no group UI", () => {
     expect(h).toContain(`href="${HUB}" target="_blank"`);
     expect(h).toContain("ag.grp.openHub");
     expect(h).not.toContain("ag.grp.noHub");
-    expect(viewSwitchHtml({ state: "unavailable" }, "group", t)).toBe("");
+    expectNoGroupButton(viewSwitchHtml({ state: "unavailable" }, "group", t));
   });
 
   it("GR-T19: any other 403: a guest, with no button", () => {
     const h = groupsLineHtml({ state: "refused" }, t);
     expect(h).toContain("ag.grp.guest");
     expect(h).not.toMatch(/<a |<button/);
-    expect(viewSwitchHtml({ state: "refused" }, "group", t)).toBe("");
+    expectNoGroupButton(viewSwitchHtml({ state: "refused" }, "group", t));
   });
 
   it("no answer or a 5xx: Can't reach Den Hub, with Try again", () => {
@@ -153,13 +160,14 @@ describe("issue 750: without Hub's groups, one line and no group UI", () => {
 
   it("not read yet: nothing at all", () => {
     expect(groupsLineHtml(null, t)).toBe("");
-    expect(viewSwitchHtml(null, "group", t)).toBe("");
+    expectNoGroupButton(viewSwitchHtml(null, "group", t));
   });
 
   it("Hub's groups: no line, and the switch", () => {
     expect(groupsLineHtml(OK, t)).toBe("");
     expect(groupsOffered(OK)).toBe(true);
     const s = viewSwitchHtml(OK, "group", t);
+    expect(s).toContain('data-by="need" aria-pressed="false"');
     expect(s).toContain('data-by="project" aria-pressed="false"');
     expect(s).toContain('data-by="group" aria-pressed="true"');
     expect(s).toContain("ag.by.project");
@@ -229,5 +237,66 @@ describe("issue 750 (GR-T12): By group", () => {
     expect(h).toContain(`href="${HUB}/groups" target="_blank"`);
     expect(h).toContain("ag.grp.openGroups");
     expect(h).toContain("<row s-planner>");
+  });
+});
+
+describe("By need, By project, By group (issues 773 and 750)", () => {
+  const rows = [
+    row("idle-b", { attn: "idle" }),
+    row("working-a", { attn: "working" }),
+    row("needs-c", { waiting: true, waitingWhy: "allow" }),
+    row("done-d", { attn: "done" }),
+  ];
+  const ids = (xs: { id?: unknown }[]) => xs.map((r) => r.id);
+
+  it("the switch: By need, By project, By group, in that order", () => {
+    for (const by of ["need", "project", "group"]) {
+      const s = viewSwitchHtml(OK, by, t);
+      expect([...s.matchAll(/data-by="(\w+)"/g)].map((m) => m[1])).toEqual([
+        "need",
+        "project",
+        "group",
+      ]);
+      expect(s).toContain(`data-by="${by}" aria-pressed="true"`);
+      expect(s).toContain("ag.by.need");
+    }
+  });
+
+  it("without Hub's groups, a By group choice shows By need pressed", () => {
+    expectNoGroupButton(viewSwitchHtml({ state: "off" }, "group", t));
+    expect(viewSwitchHtml({ state: "off" }, "project", t)).toContain(
+      'data-by="project" aria-pressed="true"',
+    );
+  });
+
+  it("byNeed: one list in the bands' order (needs you, done, working, idle)", () => {
+    expect(ids(byNeed(rows))).toEqual([
+      "s-needs-c",
+      "s-done-d",
+      "s-working-a",
+      "s-idle-b",
+    ]);
+  });
+
+  it("By group sorts each group's agents, and Not in a group, by need", () => {
+    const groups = [
+      {
+        slug: "team",
+        name: "Team",
+        members: ["idle-b", "needs-c"].map((agentId) => ({
+          kind: "agent",
+          agentId,
+          here: true,
+        })),
+      },
+    ];
+    const h = groupsViewHtml(rows, groups, {
+      t,
+      rowHtml: (r: { id: string }) => `<i data-row="${r.id}"></i>`,
+      groupsUrl: "",
+      order: (xs: never[]) => byNeed(xs),
+    });
+    const order = [...h.matchAll(/data-row="([^"]+)"/g)].map((m) => m[1]);
+    expect(order).toEqual(["s-needs-c", "s-idle-b", "s-done-d", "s-working-a"]);
   });
 });
