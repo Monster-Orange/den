@@ -166,6 +166,15 @@ describe("issue 988: every group the login is in, and every link under the engin
     const above = path.dirname(store);
     expect(run(e, fake({ [above]: { mode: 0o40777 } }))).toContain(above);
   });
+
+  it("a link under the engine to nothing is named: the login might make what it points at", () => {
+    const { e } = linked("dangling");
+    const open = path.join(tmp, "dangling", "open");
+    fs.mkdirSync(open);
+    const link = path.join(e, "node_modules", "gone");
+    fs.symlinkSync(path.join(open, "missing.js"), link);
+    expect(run(e, fake({}))).toContain(link);
+  });
 });
 
 describe("issue 988: nothing from the login's home or the caller's folder is loaded", () => {

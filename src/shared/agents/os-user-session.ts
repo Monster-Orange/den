@@ -171,7 +171,7 @@ export function defaultAgentSessionDeps(
           engineRoot: getEngineRoot(),
         },
         {
-          uid: typeof process.getuid === "function" ? process.getuid() : -1,
+          uid: typeof process.getuid === "function" ? process.getuid() : -2,
           gids:
             typeof process.getgroups === "function" ? process.getgroups() : [],
         },

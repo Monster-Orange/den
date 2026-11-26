@@ -853,22 +853,28 @@ export function readOsUserFacts(
     dir: d.stat(p.dir) !== null,
     ...(l.runtime.engineRoot && d.runtime
       ? {
-          runtime: d.runtime(
+          runtime: runtimeFacts(
             { ...l.runtime, engineRoot: l.runtime.engineRoot },
-            {
-              uid: user.uid ?? -1,
-              gids: user.exists
-                ? (ok("id", ["-G", n.user]) ?? "")
-                    .trim()
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .map(Number)
-                : [],
-            },
+            user,
+            ok("id", ["-G", n.user]),
+            d.runtime,
           ),
         }
       : {}),
   };
+}
+
+function runtimeFacts(
+  r: { bin: string; script: string; engineRoot: string },
+  user: OsUserFacts["user"],
+  idG: string | null,
+  check: NonNullable<OsUserReadDeps["runtime"]>,
+): string[] {
+  if (!user.exists) return check(r, { uid: NO_LOGIN_YET, gids: [] });
+  const gids = (idG ?? "").trim().split(/\s+/).filter(Boolean).map(Number);
+  if (!gids.length || gids.some((g) => !Number.isInteger(g)))
+    return [GROUPS_UNREAD];
+  return check(r, { uid: user.uid ?? -1, gids });
 }
 
 function personHomeFacts(
@@ -925,10 +931,15 @@ export function machineReadDeps(): OsUserReadDeps {
   };
 }
 
+export const GROUPS_UNREAD = "can't read the agents' login's groups";
+export const NO_LOGIN_YET = -1;
+
 export function runtimeProblemsOrUnread(
   r: { bin: string; script: string; engineRoot: string },
   agents: { uid: number; gids: number[] },
 ): string[] {
+  if (agents.uid !== NO_LOGIN_YET && !agents.gids.length)
+    return [GROUPS_UNREAD];
   try {
     return runtimeWritableProblems(r, agents);
   } catch (e) {
@@ -993,6 +1004,9 @@ export function runtimeWritableProblems(
       try {
         target = fs.realpathSync(p);
       } catch {
+        problems.push(
+          `${p} points at ${fs.readlinkSync(p)}, which isn't there: the agents' login might make it`,
+        );
         return;
       }
       above(target);

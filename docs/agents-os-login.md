@@ -58,8 +58,10 @@ The agents' login runs Den's runtime, so it must not be able to change any of
 it: node, Den's CLI, every file under Den's engine folder (and the target of
 every link there, such as a linked `node_modules`), and every folder above
 them. A place anyone can write, the login owns, or a group the login is in can
-write, fails doctor and stops setup before it asks. A folder above with the
-sticky bit, such as `/tmp`, is fine.
+write, fails doctor and stops setup before it asks. So does a link that points
+at nothing, since the login might make what it points at, and so do groups
+that can't be read. A folder above with the sticky bit, such as `/tmp`, is
+fine.
 
 Root writes the launcher and the rule from stdin, out of Den's memory, then
 reads them back: never from a file anyone else can write. Den's state folder
@@ -131,4 +133,6 @@ These hold before the server starts any agent as the agents' login:
    sandbox denies looking at other processes.
 3. The person's Den never trusts or follows a link in `own/`.
 4. Every launch checks that the agents' login can't write Den's runtime, or
-   any folder above it, before it starts.
+   any folder above it, before it starts. The check reads owners and mode bits
+   only: access control lists (ACLs) aren't checked yet, and that check lands
+   before `agents.os_login` is used to start any agent.
