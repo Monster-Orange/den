@@ -135,6 +135,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "a looser mode lets agents act without asking; a stricter one only narrows",
   },
+  project_agent_cap: {
+    personal: "keep",
+    risk: "widens",
+    why: "a higher cap lets more of a project's agents run at once; a lower one only narrows",
+  },
   agent_mode: {
     personal: "keep",
     risk: "widens",

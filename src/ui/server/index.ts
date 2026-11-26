@@ -124,6 +124,10 @@ import {
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { userConfigPath } from "../../shared/den-config.js";
+import {
+  ownProjectCap,
+  setProjectCap,
+} from "../../shared/agents/project-cap.js";
 import { readWebSecret } from "../../shared/web/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
@@ -5449,6 +5453,13 @@ function approvalDeps(): ApprovalDeps {
             ok: false,
             error: `gh pr close: ${(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" ")}`,
           };
+    },
+    projectCap: {
+      read: (project) => ({
+        own: ownProjectCap(project),
+        install: readAgentsConfig().maxPerProject,
+      }),
+      write: (project, max) => setProjectCap(project, max),
     },
     // Issue 160: an agent asks to change the approval policy (always asks).
     approvalPolicy: {

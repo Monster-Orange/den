@@ -1792,6 +1792,9 @@
     "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
     "set.workspace.hub_delivery_loop.o.on": "オン",
     "set.workspace.hub_delivery_loop.o.off": "オフ",
+    "set.workspace.agents_max_per_project": "プロジェクトごとのエージェント数: このプロジェクト",
+    "set.workspace.agents_max_per_project.d":
+      "このプロジェクトのエージェントを同時に動かせる数です。空か 0 なら「プロジェクトごとのエージェント数」を使います。それより低い値だけ設定できます。これを超える起動は拒否され、どの上限で止まったかが表示されます。",
     "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
     "set.workspace.hub_delivery_loop_extra.d":
       "このプロジェクト独自のテキスト。エージェントの指示で、Den のループの後に追加されます。Den の文面は編集できません。空なら何も追加しません。",
@@ -2251,6 +2254,9 @@
     "ap.det.den_sandbox_on.off":
       "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
+    "ap.do.project_agent_cap": "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
+    "ap.det.project_agent_cap.now": "現在: {v}",
+    "ap.det.project_agent_cap.then": "変更後: {v}",
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
@@ -3042,6 +3048,8 @@
       "{name} の依頼は再起動で失われました: {what}。この依頼からは何も実行していません。エージェントにもう一度依頼するよう伝えました。",
     "bell.m.heldLostAsk":
       "依頼が再起動で失われました: {what}。この依頼からは何も実行していません。",
+    "bell.m.capHeld":
+      "{name} は起動しませんでした: {limit} のうち {n} のエージェントが動いています（{key}）。1 つ止めるか、{key} を上げてください。",
     "bell.m.restartsWaiting":
       "{n} 件のエージェントが再起動を待っています（数件ずつ再起動します）",
     "bell.m.heldLostAll":

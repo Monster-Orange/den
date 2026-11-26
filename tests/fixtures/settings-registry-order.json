@@ -111,6 +111,7 @@
     ["workspace.hub", "workspace"],
     ["workspace.hub_delivery_loop", "workspace"],
     ["workspace.hub_delivery_loop_extra", "workspace"],
+    ["workspace.agents_max_per_project", "workspace"],
     ["workspace.agents_mode", "workspace"],
     ["workspace.approvals_policy", "workspace"],
     ["workspace.approvals_watch", "workspace"],

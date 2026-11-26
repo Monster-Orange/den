@@ -129,6 +129,7 @@ import {
   type ReviewLine,
 } from "../../shared/review-lines.js";
 import { stableNotOlder, UPDATE_SPEC_RE } from "./den-update.js";
+import { projectCapValueError } from "../../shared/agents/project-cap.js";
 import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 import {
   cloneTarget,
@@ -296,6 +297,10 @@ export interface HeldActionDeps {
    * Issue 160: the approval policy as set (`approvals:`), the install's or
    * a project's, and its write. read throws on a project Den doesn't have.
    */
+  projectCap?: {
+    read: (project: string) => { own: number | null; install: number };
+    write: (project: string, max: number | null) => void;
+  };
   approvalPolicy?: {
     read: (project?: string) => Record<string, unknown> | undefined;
     write: (
@@ -1002,6 +1007,66 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const projectAgentCap: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.projectCap)
+        return {
+          ok: false,
+          error: "this Den can't set a project's agent cap here",
+        };
+      const project = wsArg(a.project);
+      if (!project || !NAME_RE.test(project) || !d.workspaceExists(project))
+        return { ok: false, error: `there is no project "${project ?? ""}"` };
+      if (
+        who?.project &&
+        !isServerScope(who.project) &&
+        project !== who.project
+      )
+        return {
+          ok: false,
+          error: `a project's agent asks about its own project (${who.project}), not ${project}`,
+        };
+      const max = a.max === 0 ? null : a.max;
+      const { own, install } = d.projectCap.read(project);
+      const bad = projectCapValueError(project, max, install);
+      if (bad) return { ok: false, error: bad };
+      if ((max ?? null) === own)
+        return {
+          ok: false,
+          error: `project ${project}'s agent cap is already ${own ?? "the install's"}`,
+        };
+      const shown = (v: number | null) =>
+        v !== null
+          ? String(v)
+          : install > 0
+            ? `${install} (the install's)`
+            : "no limit";
+      const from = shown(own);
+      const to = shown((max as number | null) ?? null);
+      const room = (v: number | null) =>
+        v ?? (install > 0 ? install : Infinity);
+      const raises = room((max as number | null) ?? null) > room(own);
+      return {
+        ok: true,
+        args: { project, max: max ?? null },
+        summary: `set project ${project}'s agent cap: ${from} → ${to}`,
+        params: { project, from, to },
+        ...reviewLines([
+          line(`Project: ${project}`, "ap.pm.project", { project }),
+          line(`Now: ${from}`, "ap.det.project_agent_cap.now", { v: from }),
+          line(`Then: ${to}`, "ap.det.project_agent_cap.then", { v: to }),
+        ]),
+        ...(raises ? { personOnly: true } : {}),
+      };
+    },
+    async run(a) {
+      const project = str(a.project)!;
+      const max = typeof a.max === "number" ? a.max : null;
+      d.projectCap!.write(project, max);
+      return { ok: true, project, max };
+    },
+  };
+
   const approvalPolicy: HeldAction = {
     check(a, who): HeldCheck {
       if (!d.approvalPolicy)
@@ -1196,6 +1261,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     verify_run: verifyRun,
     agent_import: agentImport,
     approval_policy: approvalPolicy,
+    project_agent_cap: projectAgentCap,
     pr_close: prClose,
     report: d.report ?? {
       check: () => ({ ok: false, error: "this Den can't file reports here" }),

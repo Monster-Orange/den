@@ -2311,6 +2311,9 @@
     "set.workspace.hub_delivery_loop.o.install": "As everywhere",
     "set.workspace.hub_delivery_loop.o.on": "On",
     "set.workspace.hub_delivery_loop.o.off": "Off",
+    "set.workspace.agents_max_per_project": "Agents per project: this project",
+    "set.workspace.agents_max_per_project.d":
+      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
     "set.workspace.hub_delivery_loop_extra": "Added to the Hub delivery loop",
     "set.workspace.hub_delivery_loop_extra.d":
       "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
@@ -3254,6 +3257,9 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
+    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.det.project_agent_cap.now": "Now: {v}",
+    "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
     "ap.do.embed_key_create":
@@ -4038,6 +4044,8 @@
       "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
     "bell.m.heldLostAsk":
       "A request was lost at a restart: {what}. Nothing ran from it.",
+    "bell.m.capHeld":
+      "{name} didn't start: {n} of {limit} agents are running ({key}). Stop one, or raise {key}.",
     "bell.m.restartsWaiting": "{n} agents waiting to restart, a few at a time",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
