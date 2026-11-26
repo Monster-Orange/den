@@ -35,6 +35,7 @@ import {
   leftoverWords,
   startHoldWords,
 } from "../../../src/ui/server/public/gate-chip.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -264,7 +265,7 @@ describe("the Gate page's words", () => {
         expect(src).toContain(`"set.server.${k}.d":`);
       }
     }
-    const reg = read("settings-registry.js");
+    const reg = readSettingsSources();
     for (const k of [
       "max_start_load",
       "max_start_wait_minutes",
