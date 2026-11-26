@@ -103,9 +103,11 @@ export function baseConfig(root, base) {
   return cfg;
 }
 
+const MOVES = ["-M30%", "-C30%"];
+
 /** The lines of HEAD's files that `from` doesn't have: file -> Set of line numbers in HEAD. */
 function linesAddedSince(git, from) {
-  const diff = git("diff", "-U0", "--no-color", "--no-ext-diff", "--diff-filter=AMR", from, "HEAD");
+  const diff = git("diff", "-U0", "--no-color", "--no-ext-diff", ...MOVES, "--diff-filter=ACMR", from, "HEAD");
   const files = new Map();
   let cur = null;
   for (const l of diff.split("\n")) {
@@ -175,18 +177,24 @@ export function changedPairs(root, base, excluded = () => false) {
     try { src = execFileSync("git", ["-C", root, "show", `${rev}:${p}`], { encoding: "utf-8", maxBuffer: 256 << 20, stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; }
     return src.length > 2_000_000 || src.includes("\0") ? null : src;
   };
-  const parts = git("diff", "--name-status", "-z", "-M", "--no-ext-diff", from, "HEAD", "--").split("\0");
-  const out = [];
+  const parts = git("diff", "--name-status", "-z", ...MOVES, "--no-ext-diff", from, "HEAD", "--").split("\0");
+  const rows = [];
   for (let i = 0; i < parts.length - 1; ) {
     const st = parts[i++];
     const old = parts[i++];
-    const cur = /^[RC]/.test(st) ? parts[i++] : old;
+    rows.push({ st, old, cur: /^[RC]/.test(st) ? parts[i++] : old });
+  }
+  // Each base file counts once: a copy takes its old path's count, and the old path's own row then starts from 0.
+  const copied = new Set();
+  for (const r of rows) if (r.st[0] === "C" && !excluded(r.cur) && !copied.has(r.old)) { copied.add(r.old); r.takes = true; }
+  const out = [];
+  for (const { st, old, cur, takes } of rows) {
     if (excluded(cur) || excluded(old)) continue;
-    const baseSide = st[0] === "A" || st[0] === "C" ? null : show(from, old);
+    const fresh = st[0] === "A" || (st[0] === "C" ? !takes : copied.has(old));
+    const baseSide = fresh ? null : show(from, old);
     const headSide = st[0] === "D" ? null : show("HEAD", cur);
-    // A side that can't be read (binary, too big) skips the file: never counted as deleted, so it can't pay
-    // for comments added elsewhere.
-    if ((st[0] !== "A" && st[0] !== "C" && baseSide === null) || (st[0] !== "D" && headSide === null)) continue;
+    // A side that can't be read (binary, too big) skips the file, so it can't pay for comments added elsewhere.
+    if ((!fresh && baseSide === null) || (st[0] !== "D" && headSide === null)) continue;
     out.push({ path: cur, base: baseSide, head: headSide });
   }
   return { pairs: out, on: cfg.on ?? [] };
