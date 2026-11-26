@@ -20,6 +20,7 @@ export const HUB_COMMENTS_KEYS: Record<DeliveryTrouble, string> = {
   unreachable: "bell.m.hubCommentsUnreachable",
   closed: "bell.m.hubCommentsClosed",
   silent: "bell.m.hubCommentsSilent",
+  stale: "bell.m.hubCommentsStale",
 };
 
 /**

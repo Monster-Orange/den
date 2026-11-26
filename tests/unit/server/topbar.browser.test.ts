@@ -562,6 +562,10 @@ describe("the ⌘K palette (R17)", () => {
       "Logs of shop/db ACTION",
       // #80 (0.4.45): a fuzzy match, last ("Sh…o…p" in its label).
       "Show up to this many helpers under an agent SETTING",
+      // Issue 1166: fuzzy too ("s…h…o…p" in "minutes with no progress").
+      "GitHub watch: minutes with no progress SETTING",
+      // Issue 1194: fuzzy too ("s…h…o…p" in "most hours open").
+      "GitHub watch: most hours open SETTING",
       // Issue 403: fuzzy too ("S…h…o…p" in "Report screenshots, kept for").
       "Report screenshots, kept for SETTING",
       // Issue 403: and its size limit, looser still (…p in "kept").
@@ -570,6 +574,7 @@ describe("the ⌘K palette (R17)", () => {
       "Hold new unit test runs over this load per core SETTING",
       // Issue 1274: fuzzy too ("s…h…o…p" in "this much swap in use").
       "Hold new runs here over this much swap in use (GB) SETTING",
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes SETTING",
       // Issue 816: fuzzy too ("s…h…o…p" in "installs on this computer").
       "Test installs on this computer SETTING",
     ]);

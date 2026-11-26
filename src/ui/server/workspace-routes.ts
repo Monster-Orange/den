@@ -156,6 +156,7 @@ import {
 
 import { product } from "../../shared/product.js";
 import { patchProjectHubLoop, projectHubLoop } from "../../shared/hub-loop.js";
+import { isRepoName } from "../../shared/repo-name.js";
 
 /** Issue 158: a project's Hub delivery loop setting, as the API says it. */
 const hubLoopFields = (ws: unknown) => {
@@ -1123,8 +1124,7 @@ export async function handleWorkspaceRoutes(
           return send400(res, "invalid newBranch name");
         // ghSlug is interpolated into the git clone URL — reject anything that
         // isn't a strict owner/repo slug to block shell/argument injection.
-        const SAFE_SLUG_RE = /^[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/;
-        if (ghSlug && !SAFE_SLUG_RE.test(ghSlug))
+        if (ghSlug && !isRepoName(ghSlug))
           return send400(res, "invalid ghSlug");
         // subfolder is joined into the clone target path — reject traversal and
         // absolute paths so a clone can't escape the workspace directory.

@@ -34,7 +34,7 @@ import * as dns from "dns";
 import * as fs from "fs";
 import * as net from "net";
 import * as os from "os";
-import { uiLanguage, type UiLanguage } from "../../ui/server/ui-language.js";
+import { uiLanguage, type UiLanguage } from "../ui-language.js";
 import {
   readDenConfig,
   readInstallMode,

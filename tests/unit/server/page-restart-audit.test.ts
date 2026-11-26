@@ -16,6 +16,7 @@ import {
   PAGE_RESTART_FROM,
   recordPageRestart,
 } from "../../../src/ui/server/server-restart.js";
+import { readSettingsSources } from "./helpers/settings-sources.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -88,7 +89,7 @@ describe("a person's restart from the page (issue 227)", () => {
     expect(src("public/appearance.js")).toMatch(
       /restartDen\(\{ from: "menu" \}\)/,
     );
-    expect(src("public/settings-registry.js")).toMatch(
+    expect(readSettingsSources()).toMatch(
       /restartDen\(\{ from: "settings" \}\)/,
     );
   });

@@ -94,8 +94,16 @@ function scrollPlan(skip) {
     }
     return m;
   };
+  // What skip() leaves out, with everything inside it (issue 1499: the
+  // Report form is open while the page is taken; nothing in it is read or
+  // touched).
+  const skipped = [];
   for (const el of document.body ? document.body.querySelectorAll("*") : []) {
-    if (el === se || skip(el)) continue;
+    if (el === se || skipped.some((r) => r.contains(el))) continue;
+    if (skip(el)) {
+      skipped.push(el);
+      continue;
+    }
     if (getComputedStyle(el).position === "sticky") {
       // Where sticky put it, against where it would be without: read with
       // position static for one synchronous moment (nothing is painted).

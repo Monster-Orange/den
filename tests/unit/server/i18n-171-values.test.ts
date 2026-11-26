@@ -294,11 +294,95 @@ describe("issue 171 values in en", () => {
         healthReason: (e: string, ms?: number) => string | null;
       };
     expect(healthReason("connect ECONNREFUSED 127.0.0.1:9")).toBeNull();
-    expect(healthCellWords({ ok: false, error: "fetch failed" }).what).toBe(
-      "fetch failed",
-    );
     expect(
       healthCellWords({ ok: false, error: "timeout", ms: 5000 }).what,
     ).toBe("timed out after 5 s");
+  });
+});
+
+/**
+ * A check that couldn't reach its target ("fetch failed") has its own
+ * plain line: the cell says it didn't answer and what to try; its title
+ * names what didn't answer. In en, es and ja; never the raw words.
+ */
+describe("issue 188: Environments, a check that got no answer", () => {
+  const url = "https://web.acme.localhost/health";
+  it.each([
+    ["en", "No answer: is it running?", `${url} didn't answer.`],
+    ["es", "Sin respuesta: ¿está en marcha?", `${url} no respondió.`],
+    ["ja", "応答なし: 起動していますか?", `${url} が応答しませんでした。`],
+  ] as Array<[Parameters<typeof installShell>[0], string, string]>)(
+    "%s: its own line, never 'fetch failed'",
+    async (lang, cell, head) => {
+      installShell(lang);
+      const { healthCellWords } =
+        (await import("../../../src/ui/server/public/value-words.js")) as unknown as {
+          healthCellWords: (r: Vars) => { what: string; title: string };
+        };
+      const w = healthCellWords({
+        ok: false,
+        error: "fetch failed",
+        label: "web",
+        url,
+      });
+      expect(w.what).toBe(cell);
+      expect(w.title).toContain(head);
+      // What to try: that it runs, and that this computer can reach it.
+      expect(w.title.length).toBeGreaterThan(head.length + 20);
+      expect(`${w.what} ${w.title}`).not.toMatch(/fetch failed/i);
+      // "Twice in a row" keeps the same line.
+      expect(
+        healthCellWords({
+          ok: false,
+          error: "fetch failed (twice in a row)",
+          url,
+        }).what,
+      ).not.toMatch(/fetch failed/i);
+    },
+  );
+});
+
+describe("issue 171 values in en, after 188", () => {
+  it("a timeout still reads in words", async () => {
+    installShell("en");
+    const { healthCellWords } =
+      (await import("../../../src/ui/server/public/value-words.js")) as unknown as {
+        healthCellWords: (r: Vars) => { what: string; title: string };
+      };
+    expect(
+      healthCellWords({ ok: false, error: "timeout", ms: 5000 }).what,
+    ).toBe("timed out after 5 s");
+  });
+});
+
+describe("issue 1466: Environments, English health reasons in words", () => {
+  it.each([
+    "connect ECONNREFUSED 127.0.0.1:3000",
+    "getaddrinfo ENOTFOUND web.acme.localhost",
+    "spawn ./check.sh ENOENT",
+    "dns",
+    "exit 1",
+    "fallback got non-2xx",
+    "no answer within 5s",
+    "killed (SIGTERM)",
+    "read ECONNRESET",
+    "connect ECONNREFUSED 127.0.0.1:3000 (twice in a row)",
+  ])("%s: words in the cell, as sent in the title", async (error) => {
+    installShell("en");
+    const { healthCellWords } =
+      (await import("../../../src/ui/server/public/value-words.js")) as unknown as {
+        healthCellWords: (r: Vars) => { what: string; title: string };
+      };
+    const w = healthCellWords({
+      ok: false,
+      error,
+      label: "web",
+      url: "http://x",
+    });
+    expect(w.what).not.toBe(error);
+    expect(w.what).not.toContain(error);
+    expect(w.what).not.toMatch(/\bE[A-Z]{4,}\b/);
+    expect(w.what.length).toBeGreaterThan(0);
+    expect(w.title).toContain(error);
   });
 });
