@@ -1432,6 +1432,10 @@ export function setPrincipal(
 }
 
 /** Issue 621: the gate-only runner a request's token proves, if any. */
+export function storedPrincipal(req: http.IncomingMessage): Principal | null {
+  return PRINCIPALS.get(req) ?? null;
+}
+
 export function runnerPrincipalOf(
   req: http.IncomingMessage,
 ): RunnerPrincipal | null {

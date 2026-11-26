@@ -61,6 +61,14 @@ export interface HostRestartNeed {
   why: string;
 }
 
+const real = (file: string): string => {
+  try {
+    return fs.realpathSync(file);
+  } catch {
+    return file;
+  }
+};
+
 const short = (id: string | null | undefined): string =>
   id ? id.replace(/^sha256:/, "").slice(0, 12) : "unknown";
 
@@ -92,7 +100,7 @@ export function hostCheck(
     return mod(
       `the terminal host loaded ${h.pty.path}, and no terminal module is installed now`,
     );
-  if (h.pty.path !== inst.pty.path)
+  if (real(h.pty.path) !== real(inst.pty.path))
     return mod(
       `the terminal host loaded ${h.pty.path}, ${inst.pty.path} is installed`,
     );

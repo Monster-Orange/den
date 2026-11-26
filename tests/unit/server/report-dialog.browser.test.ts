@@ -9,8 +9,19 @@
  * Every /api/report call is answered by the test (never the real `gh`).
  * The demo distribution (helpers/agents-page-server.ts). Invented names.
  */
-import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
+import * as fs from "fs";
+import * as path from "path";
 import type { Browser, Locator, Page, Route } from "playwright";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
@@ -67,7 +78,6 @@ interface Fake {
   /** /api/report/github-send's answer, then the flow's polls. */
   app?: Record<string, unknown>;
   polls?: Record<string, unknown>[];
-  settings?: Record<string, unknown>;
   /** feedback.max_per_hour, as GET /api/report says it (default 5). */
   max?: number;
   /** Each send's X-Den-Request-Id. */
@@ -155,13 +165,6 @@ async function page(
       );
     return json(r, 404, { ok: false });
   });
-  if (fake.settings)
-    await p.route("**/api/settings", async (r) => {
-      if (r.request().method() !== "GET") return r.continue();
-      const res = await r.fetch();
-      const j = await res.json();
-      await r.fulfill({ response: res, json: { ...j, ...fake.settings } });
-    });
   await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   expect(await p.evaluate(() => document.documentElement.lang)).toBe(lang);
@@ -170,8 +173,8 @@ async function page(
 
 /**
  * Issue 1244: close a test's page only once its route handlers are done.
- * The settings route fetches the real answer; a close while that fetch ran
- * threw "Request context disposed" into the next test.
+ * A route handler still running at a close would throw "Request context
+ * disposed" into the next test.
  */
 async function closePage(p: Page): Promise<void> {
   await p.unrouteAll({ behavior: "wait" });
@@ -212,6 +215,12 @@ async function toReview(p: Page) {
 }
 
 describe("FB: Report an issue, the dialog", () => {
+  let restoreUserYml = (): void => {};
+  afterEach(() => {
+    restoreUserYml();
+    restoreUserYml = () => {};
+  });
+
   it("the top bar's Report button opens it; focus starts on Title", async () => {
     if (skip()) return;
     const p = await page(fresh());
@@ -641,15 +650,29 @@ describe("FB: Report an issue, the dialog", () => {
 
   it("feedback.enabled: false hides the top bar's Report and ⌘⇧F", async () => {
     if (skip()) return;
-    const f = fresh();
-    f.settings = { feedback_enabled: false };
-    const p = await page(f);
+    const userYml = path.join(s!.tmp, "dist", "config", "local", "user.yml");
+    const before = fs.readFileSync(userYml, "utf-8");
+    restoreUserYml = () => fs.writeFileSync(userYml, before);
+    const user = (parseYaml(before) ?? {}) as Record<string, unknown>;
+    fs.writeFileSync(
+      userYml,
+      stringifyYaml({
+        ...user,
+        feedback: { ...(user.feedback as object), enabled: false },
+      }),
+    );
+    const p = await page(fresh());
     await p
       .locator("#den-shell [data-den-report]")
       .waitFor({ state: "hidden" });
     await p.keyboard.press("ControlOrMeta+Shift+F");
     await p.waitForTimeout(300);
     expect(await dlg(p).count()).toBe(0);
+    await p.evaluate(() => void fetch("/api/settings").catch(() => {}));
+    await p.reload();
+    await p
+      .locator("#den-shell [data-den-report]")
+      .waitFor({ state: "hidden" });
     await closePage(p);
   });
 
