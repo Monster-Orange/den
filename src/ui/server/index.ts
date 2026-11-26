@@ -1536,7 +1536,7 @@ import {
   isSchedulePath,
   type ScheduleServerDeps,
 } from "./verify-schedule-routes.js";
-import { lookupTimeouts } from "../cli/proc-lookup.js";
+import { lookupTimeouts } from "../../shared/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import {
   serverLogMaxBytes,
@@ -6481,6 +6481,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       try {
         return {
           max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
+          max_per_project: readAgentsConfig(undefined, user).maxPerProject,
         };
       } catch {
         return null;

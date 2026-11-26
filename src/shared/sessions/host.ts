@@ -113,6 +113,7 @@ interface Session {
   size?: { cols: number; rows: number };
   /** The cap it counts against (start's `pool`), when one was named. */
   pool?: SessionPool;
+  project?: string;
   /** NT-1: reads its output for a bell. */
   bell: BellScanner;
 }
@@ -772,6 +773,22 @@ export class SessionHost {
       if (live >= req.limit)
         throw new Refusal("cap", capMessage(live, req.limit, pool));
     }
+    const project = typeof req.project === "string" ? req.project : undefined;
+    if (req.projectLimit !== undefined) {
+      if (!isInt(req.projectLimit, 0, 100_000))
+        throw new Refusal(
+          "bad-request",
+          "projectLimit must be a whole number, 0 or more (0: no limit)",
+        );
+      const mine = [...this.sessions.values()].filter(
+        (s) => !s.info.exited && s.pool === "agents" && s.project === project,
+      ).length;
+      if (project && req.projectLimit > 0 && mine >= req.projectLimit)
+        throw new Refusal(
+          "cap",
+          `${mine} agent${mine === 1 ? " is" : "s are"} running in project ${project} and its cap is ${req.projectLimit} (agents.max_per_project)`,
+        );
+    }
     const load = this.opts.pty();
     if (!load.available) throw new Refusal("unavailable", load.reason);
 
@@ -819,6 +836,7 @@ export class SessionHost {
       bell: new BellScanner(),
       size: { cols, rows },
       ...(pool !== undefined ? { pool: pool as SessionPool } : {}),
+      ...(project ? { project } : {}),
     };
     this.sessions.set(id, s);
     this.persist(s);

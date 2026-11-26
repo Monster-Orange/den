@@ -149,10 +149,10 @@ describe("pingHttp — localhost fallback for Docker hostnames", () => {
     const r = await pingHttp("http://tasks-runner:8080/healthz");
     expect(r.ok).toBe(true);
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    // Second call should target localhost with the same port AND the same
+    // Second call should target 127.0.0.1 with the same port AND the same
     // path/query (the fallback must ping the real endpoint, not the root).
     const secondUrl = mockFetch.mock.calls[1][0] as string;
-    expect(secondUrl).toBe("http://localhost:8080/healthz");
+    expect(secondUrl).toBe("http://127.0.0.1:8080/healthz");
   });
 
   it("does not retry when the hostname contains a dot (real DNS)", async () => {
