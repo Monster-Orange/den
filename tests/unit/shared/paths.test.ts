@@ -142,6 +142,23 @@ describe("getStateDir", () => {
   });
 });
 
+describe("issue 1632 part 4: getStateDir and a checkout's own state folder", () => {
+  it("the folder recorded in config/local/state-dir.json, under <PREFIX>_HOME", () => {
+    profile(tmpDir);
+    process.env.DEN_ROOT = tmpDir;
+    const own = path.join(tmpDir, "own-state");
+    fs.mkdirSync(path.join(tmpDir, "config", "local"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "config", "local", "state-dir.json"),
+      JSON.stringify({ dir: own }),
+    );
+    resetProfileCache();
+    expect(getStateDir()).toBe(own);
+    process.env.DEN_HOME = path.join(tmpDir, "state");
+    expect(getStateDir()).toBe(path.join(tmpDir, "state"));
+  });
+});
+
 describe("getInvokeCwd", () => {
   it("still reflects the caller's cwd (the one legitimate cwd consumer)", () => {
     const saved = process.env.DEN_INVOKE_CWD;

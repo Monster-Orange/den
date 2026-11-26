@@ -3505,6 +3505,20 @@
     "ap.hl.nowNone": "Now: not linked to a Hub project",
     "ap.hl.then": "Then: {hub}",
     "ap.hl.filed": "Its agents' Hub work is filed there from their next call.",
+    "ap.do.state_folder_own": "Give this install its own state folder",
+    "ap.sf.new":
+      "A new, empty state folder for this install, beside the shared one.",
+    "ap.sf.empty":
+      "Nothing is copied or moved: its agents, sign-ins and history stay with the other copy, and you sign in to this Den again.",
+    "ap.sf.other": "The other copy keeps the shared folder as it is.",
+    "ap.sf.restart":
+      "Den restarts on its own folder, then carries on with Connect to {hub}.",
+    "ap.sf.restartNone": "Den restarts on its own folder.",
+    "hub.sf.shared":
+      "Another copy of Den on this computer shares this install's state folder, and it is on another Hub.",
+    "hub.sf.offer": "Give this install its own state folder",
+    "hub.sf.allow":
+      "Allow it in the dialog. Den restarts, then carries on with Connect.",
     "ap.pm.now": "Now: {mode}",
     "ap.pm.then": "Then: {mode}",
     "ap.pm.thenNone":

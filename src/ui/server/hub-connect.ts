@@ -52,6 +52,7 @@ import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
 import { readWebAuthConfig } from "../../shared/web-session.js";
+import { stateDirShared } from "../../shared/state-folder.js";
 import {
   listOtherInstalls,
   registryDir,
@@ -141,6 +142,7 @@ export interface HubConnectDeps {
   writeUser: (u: Record<string, unknown>) => void;
   /** This install's label on Hub (1–40 characters). */
   installLabel: () => string;
+  stateShared?: () => { shared: boolean; boundOrigin: string | null };
   /**
    * This Den's https edge address, when it has one (Connect's den_url:
    * where Hub links back to it when the browser came over loopback).
@@ -298,8 +300,7 @@ export function defaultInstallLabel(
   host = os.hostname(),
   o: { machineName?: string | null; stateDir?: string; others?: number } = {},
 ): string {
-  const machine =
-    o.machineName?.trim() || host.split(".")[0] || "this machine";
+  const machine = o.machineName?.trim() || host.split(".")[0] || "this machine";
   const id =
     o.others && o.stateDir
       ? createHash("sha256")
@@ -320,8 +321,10 @@ export function defaultInstallLabel(
 function installLabelHere(): string {
   let machineName: string | undefined;
   try {
-    machineName = readWebAuthConfig(getDistRoot(), product().configFile)
-      .machineName;
+    machineName = readWebAuthConfig(
+      getDistRoot(),
+      product().configFile,
+    ).machineName;
   } catch {
     machineName = undefined;
   }
@@ -460,7 +463,9 @@ function isOwnFile(cfg: HubConfig, file = hubTokenFile()): boolean {
   const p = path.resolve(cfg.tokenSource.path);
   if (path.dirname(p) !== path.dirname(path.resolve(file))) return false;
   const name = path.basename(p);
-  return name === "token" || (name.startsWith("token-") && SLOT.test(name.slice(6)));
+  return (
+    name === "token" || (name.startsWith("token-") && SLOT.test(name.slice(6)))
+  );
 }
 
 /**
@@ -510,9 +515,10 @@ async function defaultForget(cfg: HubConfig): Promise<void> {
     const ref = cfg.tokenRef;
     const store = getSecretsProvider();
     const blank = () => store.set(ref, " ");
-    await (isSlotted(cfg) && store.delete
-      ? store.delete(ref, { wholeItem: true }).catch(blank)
-      : blank()
+    await (
+      isSlotted(cfg) && store.delete
+        ? store.delete(ref, { wholeItem: true }).catch(blank)
+        : blank()
     ).catch(() => undefined);
   }
 }
@@ -548,6 +554,10 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     readUser: () => readUserConfig() as Record<string, unknown>,
     writeUser: (u) => writeUserConfig(u as never),
     installLabel: installLabelHere,
+    stateShared: () => ({
+      shared: stateDirShared(getStateDir(), getDistRoot()),
+      boundOrigin: readHubBinding(getStateDir())?.origin ?? null,
+    }),
     // D80: the install's address, as Hub takes it (https, or a .localhost).
     denUrl: () => {
       const w = readWebUrl();
@@ -690,7 +700,9 @@ export class HubConnect {
     origin: string,
     url?: unknown,
     opts: { switch?: boolean } = {},
-  ): { ok: true; location: string } | { ok: false; error: string } {
+  ):
+    | { ok: true; location: string }
+    | { ok: false; error: string; code?: string; hub?: string } {
     const typed = typeof url === "string" ? url.trim().replace(/\/+$/, "") : "";
     let sw: { to: string } | null = null;
     try {
@@ -705,6 +717,20 @@ export class HubConnect {
       return { ok: false, error: bad.replace("hub.url", "Hub's address") };
     const badOrigin = callbackOriginProblem(origin);
     if (badOrigin) return { ok: false, error: badOrigin };
+    let st: ReturnType<NonNullable<HubConnectDeps["stateShared"]>> | null;
+    try {
+      st = this.deps.stateShared?.() ?? null;
+    } catch {
+      st = null;
+    }
+    if (st?.shared && st.boundOrigin && !sameHub(st.boundOrigin, hubUrl))
+      return {
+        ok: false,
+        code: "state_folder_shared",
+        hub: hubUrl,
+        error:
+          "Another copy of Den on this computer shares this install's state folder, and it is on another Hub. Give this install its own state folder first: Den asks you to Allow it, then carries on.",
+      };
     this.sweep();
     const state = newHubState();
     const { verifier, challenge } = newPkce();

@@ -243,6 +243,7 @@ export interface HeldActionDeps {
    */
   hubLink?: HeldAction;
   hubOrigin?: () => string | null;
+  stateFolderOwn?: HeldAction;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
   /** Issue 335: project_mcp_add's check and save (agent-ops.ts). */
@@ -359,6 +360,7 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "test_person_setup",
   "web_url_set",
   "gate_runner_entry_set",
+  "state_folder_own",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -1254,6 +1256,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         ok: false,
         error: "this Den can't set up test installs here",
       }),
+    },
+    state_folder_own: d.stateFolderOwn ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't give itself its own state folder here",
+      }),
+      run: async () => ({ ok: false }),
     },
     web_url_set: d.webUrlSet ?? {
       check: () => ({

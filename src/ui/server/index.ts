@@ -141,6 +141,17 @@ import { edgeProofChecker } from "../../shared/edge/proof.js";
 import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
 import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import {
+  claimStateDir,
+  giveOwnStateDir,
+  stateDirShared,
+  writeConnectNext,
+} from "../../shared/state-folder.js";
+import {
+  checkStateFolderOwn,
+  runStateFolderOwn,
+  type StateFolderOwnDeps,
+} from "./state-folder-held.js";
+import {
   rotateEdgeProofAtStart,
   syncEdgeProof,
 } from "../../shared/edge/runtime.js";
@@ -3882,6 +3893,20 @@ if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
   });
 } else writeTestResolveState(getStateDir(), null);
 
+function stateFolderOwnDeps(): StateFolderOwnDeps {
+  return {
+    shared: () => stateDirShared(getStateDir(), getDistRoot()),
+    give: () => giveOwnStateDir(getDistRoot(), getStateDir()),
+    carryOn: (dir, hub) => writeConnectNext(dir, hub),
+    restart: async (reason, asked) =>
+      (await approvalDeps().actions.den_restart.run({ reason }, asked)) as {
+        ok: boolean;
+        restarting?: boolean;
+        error?: string;
+      },
+  };
+}
+
 /** Issue 810: the fixture key this server sealed, or null. */
 function fixtureKeyNow(): Buffer | null {
   return verifiedFixtureKey(getStateDir(), webSecret.current());
@@ -3901,6 +3926,15 @@ try {
     );
 } catch (e) {
   serverLog(`  ⚠ install registry: ${(e as Error).message}`, "warn");
+}
+try {
+  if (claimStateDir(getStateDir(), getDistRoot()).shared)
+    serverLog(
+      `  ⚠ another copy of ${product().title} on this computer uses this state folder: Settings › Hub's Connect offers to give this one its own`,
+      "warn",
+    );
+} catch (e) {
+  serverLog(`  ⚠ state folder: ${(e as Error).message}`, "warn");
 }
 
 /**
@@ -5424,6 +5458,10 @@ function approvalDeps(): ApprovalDeps {
       },
       run: async (a, asked) =>
         runHubCreateHeld(await defaultHubCreateDeps(), a, asked, agentNameOf),
+    },
+    stateFolderOwn: {
+      check: (a) => checkStateFolderOwn(stateFolderOwnDeps(), a),
+      run: (a, asked) => runStateFolderOwn(stateFolderOwnDeps(), a, asked),
     },
     hubOrigin: () => {
       try {

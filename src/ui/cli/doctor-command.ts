@@ -69,6 +69,7 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import { stateDirShared } from "../../shared/state-folder.js";
 import {
   bothSpellings,
   readRulesCover,
@@ -1785,9 +1786,19 @@ export function sharedUserLines(
     unsandboxed?: () => { id: string; projects: string[] }[];
     /** A project's repo folders. */
     reposOf?: (project: string) => string[];
+    distRoot?: string;
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
+  let folderShared = false;
+  try {
+    folderShared = stateDirShared(stateDir, o.distRoot ?? getDistRoot());
+  } catch {
+    folderShared = false;
+  }
+  const folderDetail = folderShared
+    ? `another copy of ${title} on this computer uses this state folder too; Settings › Hub's Connect offers to give this one its own`
+    : "this install's state folder is its own";
   const reg = o.registry ?? registryDir();
   const home = o.home ?? process.env.HOME;
   const others = listOtherInstalls(reg, {
@@ -1888,6 +1899,7 @@ export function sharedUserLines(
       `  same login  ${mark(!others)}  ${shared}`,
       `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
+      `  state folder  ${mark(!folderShared)}  ${folderDetail}`,
       ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
     checks: [
@@ -1901,6 +1913,11 @@ export function sharedUserLines(
         id: "uncovered_files",
         status: looseWarn ? "warn" : "ok",
         detail: looseDetail,
+      },
+      {
+        id: "state_folder",
+        status: folderShared ? "warn" : "ok",
+        detail: folderDetail,
       },
       ...agentRows.map((r) => ({
         id: r.id,
