@@ -88,11 +88,13 @@ export function keepUnreadable(
   try {
     writeNotes(root, [...readKept(root), k].slice(-KEEP_NOTES));
   } catch {
+    /* the copy is kept; only the note is lost */
   }
   for (const fn of listeners) {
     try {
       fn(k);
     } catch {
+      /* a listener's trouble never stops a read */
     }
   }
   return k;
@@ -121,6 +123,7 @@ function prune(dir: string, base: string): void {
     try {
       fs.rmSync(path.join(dir, n), { force: true, recursive: true });
     } catch {
+      /* kept one more */
     }
 }
 

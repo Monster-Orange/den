@@ -33,6 +33,7 @@ export function startStateKeptBell(
         notes.map((k) => k.saved),
       );
     } catch {
+      /* the bell is best effort: the copy and doctor's row stay */
     }
   };
   tell(readKept(stateDir).filter((k) => !k.told));

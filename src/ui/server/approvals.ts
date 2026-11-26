@@ -630,6 +630,7 @@ export class ApprovalQueue {
       try {
         fs.renameSync(file, `${file}.corrupt-${this.now()}`);
       } catch {
+        /* kept where it is; the next write replaces it */
       }
     this.lostUnknown = { at: this.now(), why };
     this.tellLost(null, why);

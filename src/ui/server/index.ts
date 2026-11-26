@@ -11932,6 +11932,7 @@ const CRASH_GATE: Promise<void> = (() => {
 try {
   startStateKeptBell(getStateDir(), () => notificationDeps().store);
 } catch {
+  /* the bell is best effort: doctor's row still names them */
 }
 // AG-14: agents interrupted by a restart, and stopped ones to forget
 // (after the crash-loop wait: a start that waits resumes nothing yet).
