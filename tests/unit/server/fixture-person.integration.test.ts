@@ -37,8 +37,14 @@ import {
   readFixtureKey,
   setupFixturePerson,
 } from "../../../src/shared/fixture-person.js";
-import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
-import { clearWebOwner, writeWebOwner } from "../../../src/shared/web-owner.js";
+import {
+  personToken,
+  readWebSecret,
+} from "../../../src/shared/web/web-secret.js";
+import {
+  clearWebOwner,
+  writeWebOwner,
+} from "../../../src/shared/web/web-owner.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");

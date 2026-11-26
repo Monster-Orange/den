@@ -15,11 +15,11 @@ import {
   deliveryAlert,
   SeenDeliveries,
   type DeliveryHealth,
-} from "../../../src/shared/hub-delivery";
+} from "../../../src/shared/hub/hub-delivery";
 import {
   DeliveryLoop,
   type DeliveryHub,
-} from "../../../src/shared/hub-delivery-loop";
+} from "../../../src/shared/hub/hub-delivery-loop";
 import { readHubConfig } from "../../../src/shared/hub";
 import { hubDeliveryLines } from "../../../src/ui/cli/doctor-command";
 import {

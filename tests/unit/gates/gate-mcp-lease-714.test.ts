@@ -20,7 +20,7 @@ import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { callTool, type ToolContext } from "../../../src/ui/mcp/tools.js";
 import type { DenApi } from "../../../src/ui/mcp/api.js";
 import { GateNotices } from "../../../src/ui/server/gate-notices.js";
-import type { Delivery } from "../../../src/shared/hub-delivery.js";
+import type { Delivery } from "../../../src/shared/hub/hub-delivery.js";
 
 const tmps: string[] = [];
 afterEach(() => {
