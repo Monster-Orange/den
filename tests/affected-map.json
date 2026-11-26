@@ -1062,6 +1062,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1453,6 +1454,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1834,6 +1836,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1966,6 +1969,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -2286,6 +2290,7 @@
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/test-infra/brittle-weekly-841.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -2330,6 +2335,7 @@
         "tests/unit/test-infra/gate-1407-clauses.test.ts",
         "tests/unit/test-infra/gate-142-runner.test.ts",
         "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-143-runner.test.ts",
         "tests/unit/test-infra/gate-252-runner.test.ts",
         "tests/unit/test-infra/gate-380-runner.test.ts",
         "tests/unit/test-infra/gate-402-clauses.test.ts",
@@ -2354,6 +2360,7 @@
         "tests/unit/test-infra/gate-93-pointer.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
         "tests/unit/test-infra/gate-cli-json-840.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/test-infra/gate-expect-shape.test.ts",
         "tests/unit/test-infra/gate-fixture-project-1215.test.ts",
         "tests/unit/test-infra/gate-json-fail-840.test.ts",
@@ -2459,6 +2466,11 @@
       "when": ["scripts/flake-evidence.mjs"],
       "run": ["tests/unit/test-infra/quarantine.test.ts"],
       "why": "tests that run scripts/flake-evidence.mjs"
+    },
+    {
+      "when": ["scripts/gate-evidence.mjs"],
+      "run": ["tests/unit/test-infra/gate-evidence.test.ts"],
+      "why": "tests that run scripts/gate-evidence.mjs"
     },
     {
       "when": ["scripts/gate-shape.mjs"],
@@ -2603,6 +2615,11 @@
       "why": "tests that run scripts/state-writes-gate.mjs"
     },
     {
+      "when": ["scripts/test-health.mjs"],
+      "run": ["tests/unit/test-infra/test-health-846.test.ts"],
+      "why": "tests that run scripts/test-health.mjs"
+    },
+    {
       "when": ["scripts/typecheck-tests.mjs"],
       "run": ["tests/unit/test-infra/typecheck-tests.test.ts"],
       "why": "tests that run scripts/typecheck-tests.mjs"
@@ -2665,6 +2682,11 @@
         "tests/unit/test-infra/gate-142-stubs.test.ts"
       ],
       "why": "tests that load gate/142.mjs"
+    },
+    {
+      "when": ["gate/143.mjs"],
+      "run": ["tests/unit/test-infra/gate-143-runner.test.ts"],
+      "why": "tests that load gate/143.mjs"
     },
     {
       "when": ["gate/252.mjs"],
