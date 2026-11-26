@@ -5479,9 +5479,6 @@
   var page = host.dataset.page || "";
   // 0.4.45: the rail item lit; a page may light another of its own.
   // Issue 482: the Terminals page's id is its rail item's ("terminal").
-  // Issue 284: a page with no rail item of its own: its name (the header
-  // and the tab's title) and the rail item it lights. The older test
-  // kinds' page (/test-runs) is reached from Checks, so Checks is lit.
   var OFF_RAIL = {
     tests: { label: "n.tests", lit: "verify", href: "/test-runs" },
   };
@@ -6695,8 +6692,7 @@
         return s.openLogs > 0 ? { n: s.openLogs, what: "open" } : null;
       },
     },
-    // Issue 209: Verify's page ("Checks"). Issue 284: its one rail item;
-    // the older test kinds' page is off the rail (OFF_RAIL).
+    // Verify's page ("Checks"), the group's one rail item.
     {
       id: "verify",
       label: "n.verify",
@@ -10747,8 +10743,7 @@
     },
     /**
      * Every page the rail can lead to (issue 297): the NAV registry, hidden
-     * and conditional pages included, then Settings, then the pages off
-     * the rail (issue 284: reached from another page). { id, href } each.
+     * and conditional pages, Settings, and the off-rail pages. { id, href } each.
      */
     pages: function () {
       return NAV.map(function (n) {

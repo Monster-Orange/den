@@ -135,8 +135,6 @@ describe("the rail", () => {
         tag: null,
         items: ["local-dev", "graph", "agents", "terminal", "services", "logs"],
       },
-      // Issue 284: one Verify item, Checks. The older test kinds' page is
-      // reached from the Checks page, not from the rail.
       { heading: "Verify", tag: null, items: ["verify"] },
       { heading: "Ship", tag: null, items: ["environments", "release"] },
       "den-rail-grow",
@@ -164,7 +162,6 @@ describe("the rail", () => {
     );
     expect(await p.$$('#den-rail [data-nav="tests"]')).toHaveLength(0);
     expect(await p.textContent("#den-content h1")).toBe("Tests");
-    // The page is still in the registry's page list (the a11y sweep's).
     expect(
       await p.evaluate(() =>
         (
@@ -1100,7 +1097,7 @@ describe("Navigation prefs (R21)", () => {
       },
     });
     await p.waitForFunction(
-      () => !document.querySelector('.den-rail [data-nav="verify"]'),
+      () => !document.querySelector('#den-rail [data-nav="verify"]'),
     );
     expect(await rail(p)).toEqual([
       {

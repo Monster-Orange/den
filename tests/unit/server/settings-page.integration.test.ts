@@ -404,7 +404,6 @@ describe("the Settings page writes only what you change (R21)", () => {
     before = snapshot();
     posts.length = 0;
     const pages = p.locator('[data-setting="shell.pages"]');
-    // Issue 284: Tests is no longer a rail page, so this hides Logs.
     await pages.getByRole("button", { name: "Hide Logs" }).click();
     await pages.locator(".set-saved", { hasText: "✓ Saved" }).waitFor();
     expect(posts).toEqual([
