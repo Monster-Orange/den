@@ -291,8 +291,8 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
       return { code: 0, out: "", err: "" };
     },
     async api(p) {
-      if (!st.up) return null;
-      if (p === "/api/server-info") return { ok: true };
+      if (!st.up) throw new TypeError("fetch failed");
+      if (p === "/api/notifications") return { groups: [], updates: [] };
       if (p === "/api/sessions")
         return {
           sessions:

@@ -12,6 +12,7 @@ import { createRequire } from "module";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
+import { isAnswering } from "./lib/answering.mjs";
 
 export const issue = 459;
 export const clauses = [
@@ -88,13 +89,11 @@ function feedServer() {
 const words = (p, key, vars) =>
   p.evaluate(([k, v]) => window.denShell.t(k, v), [key, vars ?? {}]);
 
-const answering = async (ctx) => !!(await ctx.api("/api/server-info"));
-
 async function restartDen(ctx) {
   const down = (await ctx.cli(["web", "down", "--json"]))?.code ?? null;
-  await ctx.until(async () => !(await answering(ctx)), 15000);
+  await ctx.until(async () => !(await isAnswering(ctx)), 15000);
   const up = (await ctx.cli(["web", "up", "--no-open"]))?.code ?? null;
-  const ms = await ctx.until(() => answering(ctx), 60000);
+  const ms = await ctx.until(() => isAnswering(ctx), 60000);
   return { down, up, ms };
 }
 

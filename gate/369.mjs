@@ -2,6 +2,7 @@
 // when its agent is stopped or shows no dialog, and stays (a live wait again) when the agent still waits.
 // Three bed stub agents, gate-369-*, removed in teardown. The bed's own web server is taken down and
 // brought back once (the harness restarts it too); teardown brings it up if it isn't answering.
+import { isAnswering } from "./lib/answering.mjs";
 export const issue = 369;
 export const clauses = [
   "a row whose agent is stopped is withdrawn after a server restart",
@@ -28,13 +29,6 @@ async function bellFor(ctx, id) {
     .map((i) => i.text);
   return { live: (n.waiting || []).some((w) => w.agent === id), rows };
 }
-const answering = async (ctx) => {
-  try {
-    return Array.isArray((await ctx.api("/api/notifications")).groups);
-  } catch {
-    return false;
-  }
-};
 
 export async function setup(ctx) {
   const s = { start: {} };
@@ -63,11 +57,11 @@ export async function run(ctx, s) {
   ctx.agent(IDLE).print(PROMPT);
   await ctx.sleep(1000);
   r.down = ctx.cli(["web", "down", "--json"]).code;
-  r.downMs = await ctx.until(async () => !(await answering(ctx)), 20000);
+  r.downMs = await ctx.until(async () => !(await isAnswering(ctx)), 20000);
   // Stopped while no server was there to see it.
   r.stop = ctx.agent(STOPPED).stop().code;
   r.up = ctx.cli(["web", "up", "--no-open"]).code;
-  r.upMs = await ctx.until(() => answering(ctx), 60000);
+  r.upMs = await ctx.until(() => isAnswering(ctx), 60000);
   // At start, or on the attention check after it.
   r.settleMs = await ctx.until(async () => {
     const [a, b] = [await bellFor(ctx, STOPPED), await bellFor(ctx, IDLE)];
@@ -108,9 +102,9 @@ export function expect(r) {
 }
 
 export async function teardown(ctx) {
-  if (!(await answering(ctx))) {
+  if (!(await isAnswering(ctx))) {
     ctx.cli(["web", "up", "--no-open"]);
-    await ctx.until(() => answering(ctx), 60000);
+    await ctx.until(() => isAnswering(ctx), 60000);
   }
   for (const id of IDS) if (ctx.agent(id).state()) ctx.agent(id).remove();
 }

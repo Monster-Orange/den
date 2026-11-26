@@ -16,6 +16,7 @@
  */
 import { spawn } from "child_process";
 import * as os from "os";
+import { isAnswering } from "./lib/answering.mjs";
 
 export const issue = 609;
 export const clauses = [
@@ -34,18 +35,6 @@ const MARK_MS = 60000;
 const tool = (i) => `Gate609Tool${i}`;
 
 /** ctx.api's answer as JSON, whether it gives a Response or the body. */
-async function body(r) {
-  return r && typeof r.json === "function" ? r.json() : r;
-}
-const answering = async (ctx) => {
-  try {
-    return Array.isArray(
-      (await body(await ctx.api("/api/notifications"))).groups,
-    );
-  } catch {
-    return false;
-  }
-};
 
 /** Busy node processes, one per two CPUs (at least two), until stopped. */
 function startLoad() {
@@ -140,9 +129,9 @@ export async function run(ctx, s) {
 
   // Around a web restart: a mark sent as soon as the server answers again.
   r.down = (await ctx.cli(["web", "down", "--json"]))?.code ?? null;
-  r.downMs = await ctx.until(async () => !(await answering(ctx)), 30000);
+  r.downMs = await ctx.until(async () => !(await isAnswering(ctx)), 30000);
   r.up = (await ctx.cli(["web", "up", "--no-open"]))?.code ?? null;
-  r.upMs = await ctx.until(() => answering(ctx), 90000);
+  r.upMs = await ctx.until(() => isAnswering(ctx), 90000);
   r.restart = await mark(ctx, a, tool("R"));
 
   r.rows = tokenRows(ctx.readBed("audit.jsonl"), s.id, r.since);
@@ -152,9 +141,9 @@ export async function run(ctx, s) {
 
 export async function teardown(ctx, s) {
   stopLoad(s?.load);
-  if (!(await answering(ctx))) {
+  if (!(await isAnswering(ctx))) {
     await ctx.cli(["web", "up", "--no-open"]);
-    await ctx.until(() => answering(ctx), 90000);
+    await ctx.until(() => isAnswering(ctx), 90000);
   }
   try {
     const a = await ctx.agent(AGENT);
