@@ -1,5 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "../../..");
@@ -64,15 +66,14 @@ describe("gate/1668 rows", () => {
     expect(rows(slow).map((r) => r.ok)).toEqual([false, false]);
   });
 
-  it("a fast list that never read the seeded helpers fails: the seed proves nothing", () => {
-    expect(rows({ ...fast, helperRows: 0 }).map((r) => r.ok)).toEqual([
-      false,
-      false,
-    ]);
-    expect(rows({ ...fast, helperRows: limits.n - 3 })[0].ok).toBe(false);
-    expect(
-      rows({ ...fast, seed: { status: 2, said: "found 0 Den homes" } })[0].ok,
-    ).toBe(false);
+  it("a seed the list never showed is an ERROR (not measured), never a FAIL", () => {
+    expect(() => rows({ ...fast, helperRows: 0 })).toThrow(/1668 not measured/);
+    expect(() => rows({ ...fast, helperRows: limits.n - 3 })).toThrow(
+      /1668 not measured: the list showed helpers on/,
+    );
+    expect(() =>
+      rows({ ...fast, seed: { status: 1, said: "EACCES" } }),
+    ).toThrow(/1668 not measured: seed/);
   });
 
   it("a try that didn't answer 200 fails its row", () => {
@@ -81,19 +82,88 @@ describe("gate/1668 rows", () => {
     expect(rows({ ...fast, tries })[0].ok).toBe(false);
   });
 
-  it("no den2 fails both, naming why", () => {
-    const r = rows({ error: "the bed gives no ctx.den2" });
-    expect(r.map((x) => x.ok)).toEqual([false, false]);
-    expect(r[0].detail).toContain("no ctx.den2");
+  it("no den2 is an ERROR, naming why", () => {
+    expect(() => rows({ error: "the bed gives no ctx.den2" })).toThrow(
+      /1668 not measured: the bed gives no ctx.den2/,
+    );
   });
 
   it("each row says how the agents were seeded", () => {
-    expect(rows(fast)[0].detail).toContain("by writing their records");
+    expect(rows(fast)[0].detail).toContain("the gate process then writes");
   });
 
   it("the limits are named constants, the seed is above the old 64-transcript cache", () => {
     expect(limits.n).toBeGreaterThan(64);
     expect(limits.limit).toBeGreaterThan(0);
     expect(limits.probe).toBeGreaterThan(0);
+  });
+});
+
+describe("gate/1668 seed files", () => {
+  const seedJs = (dir: string, body: string) =>
+    run(`
+    import fs from "fs"; import path from "path"; import crypto from "crypto";
+    const { seedFiles: f, SEED_AGENTS } = await import("./gate/1668.mjs");
+    const D = ${JSON.stringify(dir)};
+    ${body}`);
+
+  function fakeDen(): string {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "g1668-"));
+    for (const [n, tok] of [
+      ["abc123", "t-mine"],
+      ["def456", "t-other"],
+    ]) {
+      fs.mkdirSync(path.join(d, "cwd", n, "h", "agents"), { recursive: true });
+      fs.writeFileSync(
+        path.join(d, "cwd", n, "h", "agents", "g1668-template.json"),
+        JSON.stringify({
+          id: "g1668-template",
+          resumeToken: tok,
+          sessionName: "p:g1668-template",
+          session: { id: "x" },
+        }),
+      );
+    }
+    fs.mkdirSync(path.join(d, "stub"));
+    return d;
+  }
+
+  it("finds only the home whose template holds the token, and none for another token", () => {
+    const d = fakeDen();
+    const got = JSON.parse(
+      seedJs(
+        d,
+        `console.log(JSON.stringify([f.findHome(fs, path, D + "/cwd", "t-mine"), f.findHome(fs, path, D + "/cwd", "t-none")]));`,
+      ),
+    );
+    expect(got[0].home).toBe(path.join(d, "cwd", "abc123", "h"));
+    expect(got[1].error).toMatch(/found 0 Den homes/);
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it("seeds every agent with a record, a transcript and a helper, and clean removes only those", () => {
+    const d = fakeDen();
+    const got = JSON.parse(
+      seedJs(
+        d,
+        `const s = { home: D + "/cwd/abc123/h", dir: D + "/stub", made: [] };
+        f.seed(fs, path, crypto, s.home, s.dir, s.made, 0.01);
+        const rec = JSON.parse(fs.readFileSync(s.made[0].record, "utf8"));
+        const after = { records: fs.readdirSync(s.home + "/agents").length, stub: fs.readdirSync(s.dir).length, name: rec.sessionName, session: "session" in rec };
+        s.made.push({ id: "g1668-a999", record: D + "/cwd/def456/h/agents/g1668-template.json", transcript: "/etc/x.jsonl" });
+        const n = f.clean(fs, path, s);
+        console.log(JSON.stringify({ n: SEED_AGENTS, after, cleaned: n, left: fs.readdirSync(s.home + "/agents"), stub: fs.readdirSync(s.dir).length, other: fs.existsSync(D + "/cwd/def456/h/agents/g1668-template.json") }));`,
+      ),
+    );
+    expect(got.after).toEqual({
+      records: got.n + 1,
+      stub: got.n * 2,
+      name: "p:g1668-a001",
+      session: false,
+    });
+    expect(got.left).toEqual(["g1668-template.json"]);
+    expect(got.stub).toBe(0);
+    expect(got.other).toBe(true);
+    fs.rmSync(d, { recursive: true, force: true });
   });
 });
