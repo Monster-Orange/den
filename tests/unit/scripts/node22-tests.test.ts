@@ -1,12 +1,12 @@
 /**
  * A pull request runs its version-sensitive tests on Node 22 too (the
  * `pr-node22` job, scripts/node22-tests.mjs). The pr job runs Node 24 (npm
- * 11) only (issue 998), so PR 1145's change to
- * tests/unit/scripts/org-names-not-packed.test.ts passed there and failed
- * only in v0.4.90-dev.1's release dry run, on Node 22: npm 10 printed
+ * 11) only, so a change to
+ * tests/unit/scripts/org-names-not-packed.test.ts can pass there and fail
+ * only in a release dry run, on Node 22: npm 10 prints
  * husky's prepare line before `npm pack --json`'s JSON.
  *
- *   - PR 1145's affected list picks that test for Node 22;
+ *   - a change to that test picks it for Node 22;
  *   - with ALL, every test over Den's scripts and every test that runs npm,
  *     never a browser test and never a test that runs neither;
  *   - a change that touches none of them picks nothing;
@@ -43,8 +43,8 @@ function pick(lines: string[]): string[] {
 }
 
 describe("the tests a pull request runs again on Node 22", () => {
-  it("PR 1145's change: its packed-files test runs on Node 22", () => {
-    // What scripts/affected-tests.mjs listed for PR 1145: the changed tests
+  it("a change to the packed-files test runs it on Node 22", () => {
+    // What scripts/affected-tests.mjs lists for that change: the changed tests
     // and the words gate's.
     expect(
       pick([
