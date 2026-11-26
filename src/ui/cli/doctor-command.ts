@@ -1793,6 +1793,7 @@ export function sharedUserLines(
      * from install_mode; a config that can't be read counts as strict.
      */
     trailReadable?: boolean;
+    installMode?: "personal" | "strict";
     /** Agents whose last start was outside the OS sandbox, and their projects. */
     unsandboxed?: () => { id: string; projects: string[] }[];
     /** A project's repo folders. */
@@ -1838,15 +1839,21 @@ export function sharedUserLines(
     : running
       ? `this install isn't in the install registry, though ${title} is running, so other installs' agents on this login aren't denied its files. Restart ${title} to add it`
       : `this install isn't in the install registry yet: ${title} adds it at its next start`;
-  const trailReadable =
-    o.trailReadable ??
+  const installMode =
+    o.installMode ??
     (() => {
       try {
-        return agentsMayReadTrail(readAgentsConfig(), stateDir);
+        return readAgentsConfig().mode;
       } catch {
-        return false;
+        return "strict" as const;
       }
     })();
+  const trailSetAside = agentsMayReadTrail({ mode: installMode }, stateDir);
+  const trailReadable = o.trailReadable ?? trailSetAside;
+  const trailDetail = trailSetAside
+    ? "agents can read the activity trail"
+    : `agents can't read the activity trail, because the older trail isn't set aside yet. Restart ${title}; if it fails again, ${title}'s log says why`;
+  const trailShown = installMode === "personal";
   const rules = bothSpellings(stateDir).flatMap((d) =>
     stateDirDenyRules(d, home, { trailReadable }),
   );
@@ -1920,6 +1927,9 @@ export function sharedUserLines(
       `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
       `  state folder  ${mark(!folderShared)}  ${folderDetail}`,
+      ...(trailShown
+        ? [`  activity trail  ${mark(trailSetAside)}  ${trailDetail}`]
+        : []),
       ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
     checks: [
@@ -1939,6 +1949,15 @@ export function sharedUserLines(
         status: folderShared ? "warn" : "ok",
         detail: folderDetail,
       },
+      ...(trailShown
+        ? [
+            {
+              id: "trail_set_aside",
+              status: trailSetAside ? ("ok" as const) : ("warn" as const),
+              detail: trailDetail,
+            },
+          ]
+        : []),
       ...agentRows.map((r) => ({
         id: r.id,
         status: "warn" as const,
