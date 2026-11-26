@@ -38,6 +38,26 @@ const EMPTIES = [
   "rm -rf node_modules/*",
   "git clean -fdx",
   "git clean -x -f",
+  "env npm ci",
+  "env FOO=1 npm ci",
+  "npx npm ci",
+  "npm exec -- npm ci",
+  "corepack npm ci",
+  "corepack pnpm install",
+  "nice npm ci",
+  "nice -n 5 npm ci",
+  "xargs npm ci",
+  "bash -c 'npm ci'",
+  'sh -c "npm install"',
+  "bash -lc 'cd . && npm ci'",
+  "npm --loglevel silent ci",
+  "npm --workspace x install",
+  "npm -w x ci",
+  "npm clean-install",
+  "npm install-clean",
+  "npm cit",
+  "npm it",
+  "find node_modules/ -delete",
 ];
 
 describe("issue 1747: nothing empties a node_modules reached through a link", () => {
@@ -46,7 +66,7 @@ describe("issue 1747: nothing empties a node_modules reached through a link", ()
     (command) => {
       const r = bash(command, linked);
       expect(r.code).toBe(2);
-      expect(r.stderr).toContain(shared);
+      expect(r.stderr).toContain("~/shared/node_modules");
       expect(r.stderr).toContain("`rm node_modules`");
     },
   );
@@ -72,12 +92,44 @@ describe("issue 1747: nothing empties a node_modules reached through a link", ()
   });
 
   it.each([
+    "npm ci --prefix $PWD",
+    'npm ci "$EXTRA"',
+    "npm ci $(echo)",
+    "rm -rf $PWD/node_modules/",
+    "npm ci `echo`",
+    'bash -c "$CMD"',
+  ])(
+    "`%s` can't be read, so it is refused where node_modules is a link",
+    (command) => {
+      const r = bash(command, linked);
+      expect(r.code).toBe(2);
+      expect(r.stderr).toContain("can't tell where it");
+    },
+  );
+
+  it("a cd before an unreadable install is followed", () => {
+    expect(bash(`cd ${linked} && npm ci $X`, real).code).toBe(2);
+    expect(bash(`cd ${real} && npm ci $X`, linked).code).toBe(0);
+  });
+
+  it("the home folder is shown as ~", () => {
+    const r = bash("npm ci", linked);
+    expect(r.stderr).toContain("~/linked/node_modules");
+    expect(r.stderr).not.toContain(`${root}/linked`);
+  });
+
+  it.each([
     "rm node_modules",
     "rm -rf node_modules",
     "rm node_modules && npm ci",
     "npm run build",
     "npm test",
     "git clean -fd",
+    "git clean -ndx",
+    "env FOO=1 npm test",
+    "bash -c 'npm run build'",
+    "npx jest",
+    "find node_modules -name x",
   ])("`%s` on a linked worktree is allowed", (command) => {
     expect(bash(command, linked)).toMatchObject({ code: 0, stderr: "" });
   });
