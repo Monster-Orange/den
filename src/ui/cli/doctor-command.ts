@@ -1924,6 +1924,16 @@ function unsandboxedAgents(
   }
 }
 
+function hubTokenFiles(stateDir: string): boolean {
+  try {
+    return fs
+      .readdirSync(path.join(stateDir, "hub"))
+      .some((n) => n === "token" || /^token-[0-9a-f]{10}$/.test(n));
+  } catch {
+    return false;
+  }
+}
+
 /** The state folder's credentials that exist, by what they are. */
 function stateCredentialsPresent(stateDir: string): string[] {
   const has = (rel: string) => fs.existsSync(path.join(stateDir, rel));
@@ -1931,7 +1941,7 @@ function stateCredentialsPresent(stateDir: string): string[] {
     ...(has("web.secret") ? ["web.secret"] : []),
     ...(has("web-sessions.json") ? ["the browser sign-ins"] : []),
     ...(has("actor-token") ? ["the agents' tokens"] : []),
-    ...(has(path.join("hub", "token")) ? ["the Hub token"] : []),
+    ...(hubTokenFiles(stateDir) ? ["the Hub token"] : []),
     ...(has("push-vapid.json") ? ["the push key"] : []),
     ...(has("fixture-person.key") ? ["the test person's key"] : []),
     ...(has(SESSION_SIGNING_DIR) ? ["the agents' signing key"] : []),

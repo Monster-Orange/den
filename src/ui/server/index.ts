@@ -5425,6 +5425,13 @@ function approvalDeps(): ApprovalDeps {
       run: async (a, asked) =>
         runHubCreateHeld(await defaultHubCreateDeps(), a, asked, agentNameOf),
     },
+    hubOrigin: () => {
+      try {
+        return readHubConfig()?.url ?? null;
+      } catch {
+        return null;
+      }
+    },
     // Issue 647: an agent asks to link a project to an existing Hub project.
     hubLink: {
       check: async (a, who) =>
