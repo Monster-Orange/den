@@ -128,6 +128,23 @@ describe("gate/732.mjs (issue 829)", () => {
     expect(rows[1].detail).toMatch(/null/);
   });
 
+  it("a first comment that couldn't be posted leaves clause 2 not run, and says why", () => {
+    const rows = judge({
+      ...good,
+      postThrew: "ctx.hub.doc: no slug (status 404): {}",
+      id1: undefined,
+      typed1Ms: undefined,
+      turnWrite: undefined,
+      turnStarted: undefined,
+    });
+    expect(rows[0].ok).toBe(false);
+    expect(rows[0].detail).toMatch(/no slug/);
+    expect(rows[1].ok).toBeNull();
+    expect(rows[1].skip).toBe("needs-hub-comment");
+    expect(rows[1].detail).toMatch(/no slug/);
+    expect(rows[1].detail).not.toMatch(/shell write/);
+  });
+
   it("a turn that started but a comment typed mid-turn still fails clause 2", () => {
     const rows = judge({ ...good, typedWhileBusy: true });
     expect(rows[1].ok).toBe(false);
