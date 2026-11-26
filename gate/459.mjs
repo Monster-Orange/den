@@ -188,12 +188,15 @@ async function feedOf(ctx, ws) {
 function pointers(ctx, since) {
   const rows = ctx.stubLog(ID, { since, k: "keys" });
   if (!Array.isArray(rows)) return null;
-  return rows
-    .map((x) => ({
-      text: String(x?.v?.text ?? ""),
-      enter: x?.v?.enter === true,
-    }))
-    .filter((x) => x.text.includes(`"${FEED}"`) || x.text.includes(BAIT));
+  const parts = rows
+    .map((x) => `${x?.v?.text ?? ""}${x?.v?.enter === true ? "\r" : ""}`)
+    .join("")
+    .split("\r");
+  const open = parts.pop();
+  return [
+    ...parts.map((text) => ({ text, enter: true })),
+    ...(open ? [{ text: open, enter: false }] : []),
+  ].filter((x) => x.text.includes(`"${FEED}"`) || x.text.includes(BAIT));
 }
 
 /** Waits for a pointer since `since`, the stub held at its prompt (idle). */
@@ -201,8 +204,9 @@ async function pointerSince(ctx, since, ms, past = 0) {
   let seen = [];
   await ctx.agent(ID).idlePrompt();
   const took = await ctx.until(async () => {
-    seen = pointers(ctx, since) ?? [];
-    return seen.length > past;
+    seen = pointers(ctx, since);
+    const s = seen ?? [];
+    return s.length > past && s.slice(past).every((x) => x.enter);
   }, ms);
   return { took, seen };
 }
@@ -342,11 +346,11 @@ export async function run(ctx, s) {
     // 3: the same id again: nothing new.
     // Counted from t1 past the first pointer(s): a clock tick can't hide one or count one twice.
     const unread1 = (await feedOf(ctx, r.ws))?.unread ?? null;
-    const firstN = r.first.seen.length;
+    const firstN = r.first.seen?.length ?? 0;
     feed.send(e1, JSON.stringify({ text: BAIT }));
     const since1 = (await pointerSince(ctx, t1, 8000, firstN)).seen;
     r.again = {
-      pointers: since1.slice(firstN),
+      pointers: since1 ? since1.slice(firstN) : null,
       unreadBefore: unread1,
       unreadAfter: (await feedOf(ctx, r.ws))?.unread ?? null,
     };
