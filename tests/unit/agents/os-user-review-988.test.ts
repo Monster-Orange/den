@@ -95,7 +95,7 @@ describe("issue 988 review, must 1: the person's home", () => {
       read: () => null,
       chain: () => [],
     });
-    expect(f.personHome?.mode! & 0o777).toBe(0o755);
+    expect((f.personHome?.mode ?? 0) & 0o777).toBe(0o755);
     const r = check({ ...good(l), personHome: f.personHome }, l);
     expect(r.status).toBe("fail");
     expect(r.detail).toContain(home);

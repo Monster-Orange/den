@@ -121,7 +121,9 @@ function removeLoginTmp(home: string, dir: string): void {
     return;
   try {
     fs.rmSync(dir, { recursive: true, force: true });
-  } catch {}
+  } catch {
+    return;
+  }
 }
 
 export function defaultAgentSessionDeps(
@@ -132,7 +134,9 @@ export function defaultAgentSessionDeps(
   let personUid = -1;
   try {
     personUid = fs.statSync(agentsDir).uid;
-  } catch {}
+  } catch {
+    personUid = -1;
+  }
   return {
     home,
     personUid,
