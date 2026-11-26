@@ -277,7 +277,7 @@ function permissionMode(input: LaunchInput): string {
  * them ("(choices: "acceptEdits", "auto", …)"); null when they can't be
  * read (no such line, a failed or slow run). Kept per binary (its real
  * path, inode, size, mtime and ctime), so an update is asked again: an
- * install can stamp every file with one fixed mtime, and (issue 1592) a
+ * install can stamp every file with one fixed mtime, and a
  * binary changed within a clock tick of the ask is asked again.
  */
 export function permissionModesOf(

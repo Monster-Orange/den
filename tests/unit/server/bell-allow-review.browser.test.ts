@@ -236,7 +236,7 @@ describe("the bell's Allow row: Review", () => {
 });
 
 /**
- * Issue 1332: a refresh that comes back without the focused row (a slow or
+ * A refresh that comes back without the focused row (a slow or
  * partial answer) drops the keyboard to the page. When the row is drawn
  * again, focus goes back to the same button; a person who moved on
  * elsewhere keeps where they went.
@@ -250,7 +250,10 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
       const drop = c.dropping;
       const res = await r.fetch();
       const b = (await res.json()) as { waiting?: unknown[] };
-      await r.fulfill({ response: res, json: drop ? { ...b, waiting: [] } : b });
+      await r.fulfill({
+        response: res,
+        json: drop ? { ...b, waiting: [] } : b,
+      });
     });
     return c;
   }
@@ -278,6 +281,28 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
     const p = await bellAt(1440);
     await row(p).locator('[data-bell="review"]').focus();
     const bringBack = await dropTheRow(p);
+    await bringBack();
+    await row(p).waitFor();
+    await p.waitForFunction(
+      () => (document.activeElement as HTMLElement)?.dataset?.bell === "review",
+      null,
+      { timeout: 5_000 },
+    );
+    expect(await focused(p)).toBe("review");
+    await p.context().close();
+  }, 60_000);
+
+  it("the window losing and getting focus back meanwhile isn't moving on: Review still gets the keyboard", async () => {
+    if (skip()) return;
+    const p = await bellAt(1440);
+    await row(p).locator('[data-bell="review"]').focus();
+    const bringBack = await dropTheRow(p);
+    await p.evaluate(() => {
+      document.body.dispatchEvent(
+        new FocusEvent("focusout", { bubbles: true }),
+      );
+      document.body.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    });
     await bringBack();
     await row(p).waitFor();
     await p.waitForFunction(
@@ -324,7 +349,7 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
       const sel = `[data-ap-row="${id}"]`;
       const gone = new Promise<void>((res) => {
         const mo = new MutationObserver(() => {
-          if (!document.querySelector(sel)) mo.disconnect(), res();
+          if (!document.querySelector(sel)) (mo.disconnect(), res());
         });
         mo.observe(document.body, { subtree: true, childList: true });
       });
