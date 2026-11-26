@@ -328,7 +328,14 @@ export function expect(res) {
       : `comment ${r.id1}: typed ${r.typed1Ms} ms (limit ${TYPED_MS}); Hub then ${JSON.stringify(r.delivery1)}`,
   };
   let row2;
-  if (r.transcript && r.turnStarted !== true)
+  if (r.postThrew && r.turnStarted !== true)
+    row2 = {
+      clause: clauses[1],
+      ok: null,
+      skip: "needs-hub-comment",
+      detail: `not run: the first comment could not be posted (${r.postThrew})`,
+    };
+  else if (r.transcript && r.turnStarted !== true)
     row2 = {
       clause: clauses[1],
       ok: null,
