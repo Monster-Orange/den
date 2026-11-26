@@ -58,6 +58,27 @@ export async function traceFocus(ctx: BrowserContext): Promise<void> {
       );
       return b.apply(this);
     };
+    const W = window.WebSocket;
+    const sock = (w: WebSocket) =>
+      new URL(w.url).pathname.split("/").slice(-2, -1)[0]?.slice(0, 6) ?? "?";
+    const send = W.prototype.send;
+    W.prototype.send = function (data: unknown) {
+      const s =
+        typeof data === "string" ? data.slice(0, 60) : `bin(${String((data as ArrayBuffer).byteLength ?? "?")})`;
+      log.push(`${at()} ws-send [${sock(this)}] rs=${this.readyState} ${s}`);
+      return send.call(this, data as string);
+    };
+    class Traced extends W {
+      constructor(u: string | URL, pr?: string | string[]) {
+        super(u, pr);
+        this.addEventListener("open", () => log.push(`${at()} ws-open [${sock(this)}]`));
+        this.addEventListener("close", (e) =>
+          log.push(`${at()} ws-close [${sock(this)}] ${e.code}`),
+        );
+        log.push(`${at()} ws-new [${sock(this)}] ${new URL(String(u)).search}`);
+      }
+    }
+    window.WebSocket = Traced as typeof WebSocket;
   });
 }
 

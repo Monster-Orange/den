@@ -11,7 +11,7 @@
 # otherwise GitHub-hosted. Issue 1492: the event check stays in the expression, so a
 # trigger added later can't bring someone else's code to the box.
 name: repeat
-run-name: "Evidence for issue 1832: the focus family (D58 tab, pane already open, the 1332 bell) traced, on the D40 fix (not a re-run of the carry)"
+run-name: "Evidence for issue 1832: the focus family, with socket sends and a late check of typed text, on the D40 fix (not a re-run of the carry)"
 
 on:
   workflow_dispatch:

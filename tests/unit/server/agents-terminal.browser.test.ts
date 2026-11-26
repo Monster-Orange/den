@@ -619,9 +619,20 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       );
       await p.keyboard.type(text);
       await new Promise((r) => setTimeout(r, 400));
-      return Object.keys(sid).filter((id) =>
+      const got = Object.keys(sid).filter((id) =>
         typed(id, from[id]).includes(text),
       );
+      if (got.length === 0) {
+        const t = Date.now();
+        await new Promise((r) => setTimeout(r, 3000));
+        const late = Object.keys(sid).map(
+          (id) => `${id}=${JSON.stringify(typed(id, from[id]))}`,
+        );
+        process.stdout.write(
+          `\nLATE-CHECK ${text} after ${Date.now() - t + 400}ms: ${late.join(" ")}\n`,
+        );
+      }
+      return got;
     }
 
     /**
