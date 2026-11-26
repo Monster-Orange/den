@@ -29,6 +29,7 @@ import {
   filedTextRefusal,
   filedTextWhere,
   needsFiledCheck,
+  ownNamePatterns,
   type FiledText,
 } from "../../shared/filed-text-check.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
@@ -65,6 +66,7 @@ export interface IssueWriteDeps {
   ) => Promise<{ code: number; stdout: string; stderr: string }>;
   /** This install's label (the footer's). */
   installLabel: () => string;
+  ownNames: () => string[];
   /**
    * Issue 1127: the listed names (shared/org-names.js orgPatterns; none:
    * nothing refused) and a repo's visibility no older than `maxAgeMs`
@@ -206,6 +208,11 @@ export async function runIssueWrite(
         issueNo,
       );
     }
+    if (needsFiledCheck(vis))
+      patterns = [
+        ...patterns,
+        ...ownNamePatterns([...d.ownNames(), me.name], op.repo),
+      ];
     if (patterns.length) {
       if (needsFiledCheck(vis)) {
         const hits = filedTextHits(texts, patterns, op.repo);

@@ -138,3 +138,37 @@ export function filedTextCheck(
   const hits = filedTextHits(texts, patterns, repo);
   return hits.length ? filedTextRefusal(hits) : null;
 }
+
+export function installOwnNames(o: {
+  label: string;
+  host: string;
+  projects: readonly string[];
+  git: { name?: string; email?: string };
+}): string[] {
+  return [
+    o.label,
+    o.host.split(".")[0],
+    ...o.projects,
+    o.git.name ?? "",
+    o.git.email ?? "",
+  ].filter(Boolean);
+}
+
+export function ownNamePatterns(
+  names: readonly string[],
+  repo: string,
+): RegExp[] {
+  const key = (x: string) => x.trim().toLowerCase();
+  const [owner = "", name = ""] = repo.split("/");
+  const skip = new Set([key(owner), key(name), key(repo)]);
+  const seen = new Set<string>();
+  const out: RegExp[] = [];
+  for (const n of names) {
+    const k = key(n);
+    if (k.length < 3 || skip.has(k) || seen.has(k)) continue;
+    seen.add(k);
+    const esc = n.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out.push(new RegExp(`(?<![A-Za-z0-9])${esc}(?![A-Za-z0-9])`, "i"));
+  }
+  return out;
+}

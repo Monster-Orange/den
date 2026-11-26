@@ -28,6 +28,10 @@ import {
 import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
 import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
 import { orgPatterns } from "../../../src/shared/org-names.js";
+import {
+  installOwnNames,
+  ownNamePatterns,
+} from "../../../src/shared/filed-text-check.js";
 import { settingKind } from "../../../src/ui/cli/setting-change.js";
 import {
   runIssueWrite,
@@ -54,6 +58,7 @@ function fakes(
     names?: string;
     visibility?: "public" | "private" | "internal" | null;
     publicRepos?: boolean;
+    own?: string[];
   } = {},
 ) {
   const calls: GhCall[] = [];
@@ -99,6 +104,7 @@ function fakes(
       );
     },
     installLabel: () => "den on box",
+    ownNames: () => opts.own ?? [],
     audit: (e) => audits.push(e),
   };
   return { deps, calls, audits, lookups };
@@ -624,6 +630,9 @@ describe("issue_write: agents.issue_writes_public", () => {
       expect(
         settingKind("agents.issue_writes_public", mode, false, true).widens,
       ).toBe(false);
+      expect(
+        settingKind("agents.issue_writes_public", mode, "off", true).widens,
+      ).toBe(false);
     });
 
   it("a repo whose visibility isn't known: its body is checked too", async () => {
@@ -635,6 +644,98 @@ describe("issue_write: agents.issue_writes_public", () => {
       body: "Zorblax again.",
     });
     expect(r.body.code).toBe("issue_write_words");
+  });
+});
+
+describe("issue_write: the install's own names stay out of public text", () => {
+  const OWN = ["den on mac-studio-7", "mac-studio-7", "north", "acme", "api"];
+  const send = (
+    visibility: "public" | "private" | "internal" | null,
+    body: string,
+    name?: string,
+  ) => {
+    const f = fakes({ visibility, own: OWN, ...(name ? { name } : {}) });
+    return runIssueWrite(f.deps, agent, {
+      action: "comment",
+      repo: "acme/api",
+      issue: 4,
+      body,
+    }).then((r) => ({ r, f }));
+  };
+
+  it("a public body naming the machine is refused with the names list empty", async () => {
+    const { r, f } = await send("public", "Seen on mac-studio-7 today.");
+    expect(r.body.code).toBe("issue_write_words");
+    expect(f.calls).toEqual([]);
+  });
+
+  it("the same body goes to a private repo", async () => {
+    expect(
+      (await send("private", "Seen on mac-studio-7 today.")).r.status,
+    ).toBe(200);
+  });
+
+  it("a repo whose visibility isn't known is checked too", async () => {
+    expect((await send(null, "Seen on mac-studio-7 today.")).r.body.code).toBe(
+      "issue_write_words",
+    );
+  });
+
+  it("the target repo's own owner and name pass; another project's name doesn't", async () => {
+    expect((await send("public", "The api from acme is down.")).r.status).toBe(
+      200,
+    );
+    expect((await send("public", "Same as in north.")).r.body.code).toBe(
+      "issue_write_words",
+    );
+  });
+
+  it("the writing agent's own name is checked", async () => {
+    expect(
+      (await send("public", "Night Planner saw it first.", "Night Planner")).r
+        .body.code,
+    ).toBe("issue_write_words");
+  });
+
+  it("a name matches as a whole word, any case, never inside another word", async () => {
+    expect((await send("public", "MAC-STUDIO-7 again.")).r.body.code).toBe(
+      "issue_write_words",
+    );
+    const box = fakes({ visibility: "public", own: ["box"] });
+    const r = await runIssueWrite(box.deps, agent, {
+      action: "comment",
+      repo: "acme/api",
+      issue: 4,
+      body: "Check your inbox.",
+    });
+    expect(r.status).toBe(200);
+  });
+
+  it("ownNamePatterns: names under 3 characters, and the repo's owner, name and slug, are skipped", () => {
+    const ps = ownNamePatterns(
+      ["ab", "acme", "API", "acme/api", "north", "north"],
+      "acme/api",
+    );
+    expect(ps).toHaveLength(1);
+    expect(ps[0].test("in North today")).toBe(true);
+  });
+
+  it("installOwnNames: the label, the short hostname, the projects and the git user", () => {
+    expect(
+      installOwnNames({
+        label: "den on mac-studio-7",
+        host: "mac-studio-7.local",
+        projects: ["north", "south"],
+        git: { name: "Pat Example", email: "pat@example.test" },
+      }),
+    ).toEqual([
+      "den on mac-studio-7",
+      "mac-studio-7",
+      "north",
+      "south",
+      "Pat Example",
+      "pat@example.test",
+    ]);
   });
 });
 

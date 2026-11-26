@@ -389,7 +389,11 @@ const WIDENS_AT: readonly [
   widens: (v: unknown, before?: unknown) => boolean,
   modes: readonly InstallMode[],
 ][] = [
-  ["agents.issue_writes_public", (v) => v !== false, ["personal", "strict"]],
+  [
+    "agents.issue_writes_public",
+    (v) => onOff(v) !== false,
+    ["personal", "strict"],
+  ],
   // Issue 1395 (Vision; Reviewer C): judged by old and new together, any
   // lowering of the container requirement widens on strict; with no old
   // value known, off (0) does.
