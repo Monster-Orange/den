@@ -203,9 +203,15 @@ jobs:
         run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the
       # rest, never beside the browser tests (tests/docker-suites.mjs).
-      - run: npm test -- --shard=${{ matrix.shard }}/8
+      - run: npm test -- --shard=${{ matrix.shard }}/8 --passWithNoTests
         env:
           DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: only
+      - if: ${{ !cancelled() }}
+        run: npm test -- --shard=${{ matrix.shard }}/8
+        env:
+          DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: skip
       - run: npm test -- --shard=${{ matrix.shard }}/8 --passWithNoTests
         env:
           DEN_TEST_DOCKER: only
@@ -463,7 +469,13 @@ jobs:
       - if: steps.select.outputs.shards == '[]'
         env:
           DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: only
           DEN455_SHOTS: ${{ runner.temp }}/den455-shots
+        run: mapfile -t files < affected.txt && npm test -- --passWithNoTests "${files[@]}"
+      - if: ${{ !cancelled() && steps.select.outputs.shards == '[]' }}
+        env:
+          DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: skip
         run: mapfile -t files < affected.txt && npm test -- --passWithNoTests "${files[@]}"
       # Issue 455: the address banner's and Edge card's screenshots (only
       # address-banner.browser.test.ts writes them, when DEN455_SHOTS is
@@ -549,7 +561,15 @@ jobs:
       # An empty shard.txt runs nothing: jest with no files would run them all.
       - env:
           DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: only
           DEN455_SHOTS: ${{ runner.temp }}/den455-shots
+        run: |
+          [ -s shard.txt ] || { echo "no files in this shard"; exit 0; }
+          mapfile -t files < shard.txt && npm test -- --passWithNoTests --json --outputFile="$RUNNER_TEMP/times-browser.json" "${files[@]}"
+      - if: ${{ !cancelled() }}
+        env:
+          DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: skip
         run: |
           [ -s shard.txt ] || { echo "no files in this shard"; exit 0; }
           mapfile -t files < shard.txt && npm test -- --passWithNoTests --json --outputFile="$RUNNER_TEMP/times-skip.json" "${files[@]}"
@@ -748,9 +768,15 @@ jobs:
       - name: Playwright's browsers and system packages
         timeout-minutes: 15
         run: bash scripts/ci-pw-install.sh
-      - run: npm test -- --shard=${{ matrix.shard }}/8
+      - run: npm test -- --shard=${{ matrix.shard }}/8 --passWithNoTests
         env:
           DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: only
+      - if: ${{ !cancelled() }}
+        run: npm test -- --shard=${{ matrix.shard }}/8
+        env:
+          DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: skip
       - run: npm test -- --shard=${{ matrix.shard }}/8 --passWithNoTests
         env:
           DEN_TEST_DOCKER: only

@@ -63,7 +63,7 @@ describe("test files that start Docker containers (issue 296)", () => {
       const runs = doc.jobs.tests.steps
         .filter((s) => s.run?.startsWith("npm test"))
         .map((s) => [s.env?.DEN_TEST_DOCKER ?? null]);
-      expect([f, runs]).toEqual([f, [["skip"], ["only"]]]);
+      expect([f, runs]).toEqual([f, [["skip"], ["skip"], ["only"]]]);
     }
   });
 

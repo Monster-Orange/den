@@ -143,9 +143,15 @@ jobs:
         run: bash scripts/ci-pw-install.sh
       # Issue 296: the files that start Docker containers run after the
       # rest, never beside the browser tests (tests/docker-suites.mjs).
-      - run: npm test -- --shard=${{ matrix.shard }}/8
+      - run: npm test -- --shard=${{ matrix.shard }}/8 --passWithNoTests
         env:
           DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: only
+      - if: ${{ !cancelled() }}
+        run: npm test -- --shard=${{ matrix.shard }}/8
+        env:
+          DEN_TEST_DOCKER: skip
+          DEN_TEST_BROWSER: skip
       - run: npm test -- --shard=${{ matrix.shard }}/8 --passWithNoTests
         env:
           DEN_TEST_DOCKER: only
