@@ -11,6 +11,7 @@ const FIXED = [
   "src/shared/gates/browser-container.ts",
   "src/shared/edge/bridge-listen.ts",
   "src/shared/health/rollup.ts",
+  "src/shared/peer-process.ts",
 ];
 
 function uiImports(file: string): string[] {
