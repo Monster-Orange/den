@@ -93,6 +93,8 @@ import {
 /** Issue 796: the audit client of an agent's read-only view. */
 export const AGENT_VIEW_CLIENT = "page view (read-only)";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
+import { isDockerBridgeAddress } from "../../shared/edge/docker-bridge.js";
+export { isDockerBridgeAddress };
 import {
   EMBED_KEY_ROUTES,
   RUNNER_ROUTES,
@@ -553,18 +555,6 @@ export function isLoopbackBind(host: string): boolean {
 }
 
 /**
- * A Docker bridge address (172.16.0.0/12): where a Linux host's containers
- * reach it as host.docker.internal (`host-gateway`, the edge's
- * extra_hosts). One address, never 0.0.0.0 or ::.
- */
-export function isDockerBridgeAddress(addr: string): boolean {
-  const a = addr.trim();
-  if (!net.isIPv4(a)) return false;
-  const [x, y] = a.split(".").map(Number);
-  return x === 172 && y >= 16 && y <= 31;
-}
-
-/**
  * §4: why a bind may not start, or null. A non-loopback bind needs
  * `web.allow_plain_http_remote: true`, edge or no edge: whatever is in
  * front, this server's own port still answers plain HTTP on that address,
@@ -711,7 +701,9 @@ export function checkRequest(
         status: 403,
         code: "agent_token_elsewhere",
         error:
-          "This agent token works only from its own agent's processes, and this call came from another process. Nothing ran.",
+          // Issue 1131: what to do. A busy machine can make Den miss the
+          // agent's own process; the token is never in this text.
+          `This agent token works only from its own agent's processes, and ${title} couldn't tell this call came from one of them. Nothing ran. If it came from this agent's own tools, try the call again (a busy machine can cause this); if it keeps happening, run \`${cli} doctor\` and restart the agent from Agents.`,
       };
     if (proved === "revoked")
       return {
@@ -946,6 +938,8 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/link",
   // D72: an agent never moves itself (or another) out of its scope.
   "/api/workspaces/:ws/agents/:id/move",
+  // Issue 1182: an agent's folder: it asks with the held write agent_folder.
+  "/api/workspaces/:ws/agents/:id/folder",
 ];
 
 /**
@@ -974,11 +968,19 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/verify/schedules/run",
   // Issue 964: taking an Allow back: a person's too.
   "/api/verify/schedules/revoke",
+  // Issue 1182: importing or removing an outside runner's run: a person's.
+  "/api/verify/import",
+  "/api/verify/remove",
   // Issue 52: the Coach's Run now is a person's (the handler checks too).
   "/api/coach/run",
-  // Issue 52: Dismiss a Coach finding, with the reason: a person's.
+  // Issue 52: Dismiss a Coach finding, and Undo it: a person's.
   "/api/coach/dismiss",
+  "/api/coach/undismiss",
+  // Issue 110: Apply a Coach finding's change (a held write): a person's.
+  "/api/coach/apply",
   "/api/settings",
+  // Issue 1371 Part 2: Undo of a setting an agent changed: the person's.
+  "/api/settings/undo",
   "/api/scope",
   "/api/web-url",
   // Issue 666: an alias made this install's address: the owner's.
@@ -991,6 +993,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/agents/accounts",
   "/api/agents/accounts/token",
   "/api/agents/accounts/order",
+  // Issue 1182: removing one, and its token.
+  "/api/agents/accounts/remove",
   "/api/release/config",
   "/api/release/deploy",
   "/api/personas",
@@ -1005,6 +1009,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces",
   "/api/workspaces/rename",
   "/api/workspaces/create",
+  // Issue 1182: a reset to the blueprint replaces a project's entries.
+  "/api/workspaces/seed",
   "/api/workspaces/settings",
   "/api/workspaces/services",
   "/api/workspaces/services/mode",
@@ -1025,6 +1031,10 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agent-modes",
   // Issue 352: change or remove a project's MCP server (project_mcp_* asks).
   "/api/workspaces/:ws/mcp-servers/:name",
+  // Issue 1480: add or remove a project's app event feed (writes only: an
+  // agent still reads the list; project_event_feed_* asks).
+  "/api/workspaces/:ws/event-feeds",
+  "/api/workspaces/:ws/event-feeds/:name",
   // Issue 103: a composer's Send types into an agent's session.
   "/api/workspaces/:ws/agents/:id/say",
   // Issue 96: the order a person sees their agents in is the person's.
@@ -1053,6 +1063,7 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/hub/disconnect",
   "/api/hub/sync",
   "/api/hub/link-suggestions",
+  "/api/hub/connect-review",
   "/api/hub/names-check",
   // Issue 144: ending a gate slot early is a person's.
   "/api/gate-slots/end",
@@ -1066,6 +1077,9 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/gate-slots/boxes",
   "/api/gate-slots/boxes/remove",
   "/api/gate-slots/boxes/enable",
+  // Issue 642: CI runner entries; an agent asks with gate_runner_entry_set.
+  "/api/gate-slots/runner-entries",
+  "/api/gate-slots/runner-entries/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
@@ -1377,6 +1391,29 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
  */
 export function notAPersonOf(req: http.IncomingMessage): boolean {
   return !!agentPrincipalOf(req) || !!auditActorOf(req);
+}
+
+/**
+ * Whether this request proved a person: the CLI's
+ * bearer, or a signed-in browser that is neither an agent's view nor the
+ * fixture person, with no agent's token or claim on it. A loopback caller
+ * that proved nothing is not one.
+ */
+export function provenPersonOf(req: http.IncomingMessage): boolean {
+  if (notAPersonOf(req)) return false;
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person") return true;
+  return p?.kind === "person-browser" && !p.view && !p.fixture;
+}
+
+/**
+ * Whether this request is a test bed's CLI on the test-person path (issue
+ * 636): a person token marked testPerson. A person-only write that widens
+ * what runs refuses it (issue 642 review).
+ */
+export function testPersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "person" && p.testPerson === true;
 }
 
 /**

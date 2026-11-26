@@ -65,6 +65,11 @@ export interface Notification {
    * no longer needs the person: the bell lists it with the updates.
    */
   settled?: Settled;
+  /**
+   * Issue 1371 Part 2: a setting an agent changed without asking: the held
+   * write to undo (POST /api/settings/undo, the person's only).
+   */
+  undo?: { approval: string };
 }
 
 /** Issue 1008: how a withdrawn question was settled. */
@@ -262,6 +267,344 @@ const plain = (v: string) =>
     .trim()
     .slice(0, MAX_TEXT);
 
+/** The file as it is on disk (empty when missing or unreadable). */
+function readStore(file: string): StoreFile {
+  try {
+    const v = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      items?: unknown;
+      mutes?: unknown;
+    };
+    const items = Array.isArray(v.items)
+      ? (v.items as Notification[]).filter(
+          (n) =>
+            n &&
+            typeof n.id === "string" &&
+            typeof n.subject === "string" &&
+            NOTIFICATION_KINDS.includes(n.kind),
+        )
+      : [];
+    const mutes = Array.isArray(v.mutes)
+      ? (v.mutes as Mute[]).filter(
+          (m) =>
+            m && typeof m.target === "string" && typeof m.until === "string",
+        )
+      : [];
+    return { items, mutes };
+  } catch {
+    return { items: [], mutes: [] };
+  }
+}
+
+function writeStore(file: string, f: StoreFile): void {
+  writeFileAtomic(file, `${JSON.stringify(f)}\n`, { mode: 0o600 });
+}
+
+/**
+ * Issue 1348: one change to the file. It is applied to the file as read
+ * under the lock, and may be applied again (to a later read), so whatever
+ * varies (an id, the time) is fixed before it is made. True: it changed.
+ */
+type StoreOp = (f: StoreFile) => boolean;
+
+/**
+ * Issue 1348: the lock's times, user.yml `notifications:`, in seconds.
+ * A write takes ms, so a lock with no pid (its holder died between taking
+ * it and saying who it is) is left after lock_no_pid_seconds; a live
+ * holder's only after lock_live_seconds (a process stalled in a swap storm
+ * still holds it); a gone holder's at once. lock_exit_wait_seconds: at
+ * exit only, how long waiting changes wait for the lock.
+ */
+export const NOTIFICATION_LOCK_DEFAULTS = {
+  lock_exit_wait_seconds: 2,
+  lock_no_pid_seconds: 10,
+  lock_live_seconds: 60,
+} as const;
+export const NOTIFICATION_LOCK_RANGES = {
+  lock_exit_wait_seconds: { min: 0, max: 60 },
+  lock_no_pid_seconds: { min: 1, max: 3600 },
+  lock_live_seconds: { min: 1, max: 86_400 },
+} as const;
+type LockKey = keyof typeof NOTIFICATION_LOCK_DEFAULTS;
+
+/**
+ * Issue 1348: the lock's times from a `notifications:` block, in ms. A
+ * value that isn't a number in its range keeps its default, and `errors`
+ * says which (doctor and the config check can show them).
+ */
+export function notificationLockSettings(block: unknown): {
+  exitWaitMs: number;
+  noPidMs: number;
+  liveMs: number;
+  errors: string[];
+} {
+  const b = (block && typeof block === "object" ? block : {}) as Record<
+    string,
+    unknown
+  >;
+  const errors: string[] = [];
+  const sec = (k: LockKey): number => {
+    const v = b[k];
+    const r = NOTIFICATION_LOCK_RANGES[k];
+    if (v === undefined || v === null) return NOTIFICATION_LOCK_DEFAULTS[k];
+    if (
+      typeof v !== "number" ||
+      !Number.isFinite(v) ||
+      v < r.min ||
+      v > r.max
+    ) {
+      errors.push(
+        `notifications.${k} must be a number of seconds from ${r.min} to ${r.max}, got ${JSON.stringify(v)}; using ${NOTIFICATION_LOCK_DEFAULTS[k]}`,
+      );
+      return NOTIFICATION_LOCK_DEFAULTS[k];
+    }
+    return v;
+  };
+  return {
+    exitWaitMs: sec("lock_exit_wait_seconds") * 1000,
+    noPidMs: sec("lock_no_pid_seconds") * 1000,
+    liveMs: sec("lock_live_seconds") * 1000,
+    errors,
+  };
+}
+
+/**
+ * Issue 1348: where this process reads its `notifications:` block. The
+ * server and the CLI set it when they start (useNotificationConfig);
+ * any other process keeps the defaults. The store doesn't read the config
+ * itself: that would make every writer need a distribution root.
+ */
+let readLockBlock: () => unknown = () => undefined;
+let lockTimes: ReturnType<typeof notificationLockSettings> | undefined;
+
+/** Issue 1348: how this process reads user.yml `notifications:`. */
+export function useNotificationConfig(read: () => unknown): void {
+  readLockBlock = read;
+  lockTimes = undefined;
+}
+
+/** Issue 1348: this process's lock times, read once. */
+function lockSettings(): ReturnType<typeof notificationLockSettings> {
+  if (lockTimes) return lockTimes;
+  let block: unknown;
+  try {
+    block = readLockBlock();
+  } catch {
+    block = undefined; // unreadable: the defaults
+  }
+  lockTimes = notificationLockSettings(block);
+  // Said once, in the log: a bad value keeps its default.
+  for (const e of lockTimes.errors) console.error(e);
+  return lockTimes;
+}
+/** Issue 1348: how often a change waiting for the lock tries again. */
+const STORE_LOCK_STEP_MS = 5;
+
+function aliveProcess(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/**
+ * Issue 1348: the store's cross-process lock, `<file>.lock`, tried once,
+ * never waited for. A leftover lock (see lock_live_seconds) is taken back:
+ * renamed aside first, and only if it is still the lock looked at (same
+ * inode, time and nonce), so two takers that both found it stale never both
+ * win. Exported for its tests.
+ */
+export function tryStoreLock(file: string): boolean {
+  const lock = `${file}.lock`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  try {
+    fs.mkdirSync(lock);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+    if (!takeBackStoreLock(lock)) return false;
+    try {
+      fs.mkdirSync(lock);
+    } catch {
+      return false;
+    }
+  }
+  try {
+    // The plain pid: an older Den reads this file as Number(text.trim()).
+    writeFileAtomic(path.join(lock, "pid"), String(process.pid));
+  } catch {
+    /* the lock holds without it; only its takeback needs it */
+  }
+  try {
+    // A nonce for this take, in its own file, so a lock taken
+    // over and made again in one clock tick (the same inode and time) is
+    // told apart.
+    writeFileAtomic(path.join(lock, "nonce"), crypto.randomUUID());
+  } catch {
+    /* as above */
+  }
+  return true;
+}
+
+/** A file in a lock folder, or null when it has none (yet). */
+function lockFile(lock: string, name: "pid" | "nonce"): string | null {
+  try {
+    return fs.readFileSync(path.join(lock, name), "utf-8");
+  } catch {
+    return null; // taken just now, or its holder died before saying who
+  }
+}
+
+/** What tells one take of a lock from another: pid and nonce. */
+function lockText(lock: string): string {
+  return JSON.stringify([lockFile(lock, "pid"), lockFile(lock, "nonce")]);
+}
+
+/**
+ * Moves a leftover lock out of the way; false: it isn't one.
+ * Exported for its tests, whose `afterSeen` runs between the look and the
+ * move (another taker's turn).
+ */
+export function takeBackStoreLock(
+  lock: string,
+  test?: { afterSeen?: () => void },
+): boolean {
+  let seen: fs.Stats;
+  try {
+    seen = fs.statSync(lock);
+  } catch {
+    return true; // gone meanwhile: free
+  }
+  const seenText = lockText(lock);
+  const pid = Number((JSON.parse(seenText)[0] ?? "").trim() || NaN);
+  const age = Date.now() - seen.mtimeMs;
+  const known = Number.isInteger(pid) && pid > 0;
+  const t = lockSettings();
+  const left = known ? !aliveProcess(pid) || age >= t.liveMs : age >= t.noPidMs;
+  if (!left) return false;
+  test?.afterSeen?.();
+  const aside = `${lock}.old-${process.pid}-${crypto.randomUUID()}`;
+  try {
+    fs.renameSync(lock, aside);
+  } catch {
+    return false; // another taker moved it first
+  }
+  try {
+    const moved = fs.statSync(aside);
+    // Its text too: one taken over and made again in one tick
+    // can keep the inode and time, never the nonce.
+    if (
+      moved.ino !== seen.ino ||
+      moved.mtimeMs !== seen.mtimeMs ||
+      lockText(aside) !== seenText
+    ) {
+      // Not the one looked at: a lock taken since. Put it back.
+      try {
+        fs.renameSync(aside, lock);
+      } catch {
+        /* a newer lock is there: this one's holder ended up beside it */
+      }
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  fs.rmSync(aside, { recursive: true, force: true });
+  return true;
+}
+
+function unlockStore(file: string): void {
+  fs.rmSync(`${file}.lock`, { recursive: true, force: true });
+}
+
+/**
+ * Issue 1348: changes made while another process held the lock, by file,
+ * in order. This process's reads see them at once; a timer saves them
+ * once the lock is free (the server's thread never waits for it).
+ */
+const PENDING = new Map<
+  string,
+  { ops: StoreOp[]; timer?: NodeJS.Timeout; waiters: (() => void)[] }
+>();
+
+/**
+ * Issue 1348: the process is ending (a normal exit, and the server's
+ * SIGTERM and restart, which end in process.exit): its waiting changes are
+ * saved now. The thread serves nothing any more, so this one waits for the
+ * lock, at most lock_exit_wait_seconds (a gone or stale holder's lock is taken
+ * back sooner).
+ */
+function savePendingAtExit(): void {
+  const until = Date.now() + lockSettings().exitWaitMs;
+  const nap = new Int32Array(new SharedArrayBuffer(4));
+  for (const file of [...PENDING.keys()]) {
+    const p = PENDING.get(file)!;
+    if (p.timer) clearTimeout(p.timer);
+    savePending(file, false);
+    while (PENDING.has(file) && Date.now() < until) {
+      Atomics.wait(nap, 0, 0, STORE_LOCK_STEP_MS);
+      savePending(file, false);
+    }
+  }
+}
+let exitHooked = false;
+
+function savePending(file: string, retry = true): void {
+  const p = PENDING.get(file);
+  if (!p) return;
+  p.timer = undefined;
+  let locked = false;
+  try {
+    locked = tryStoreLock(file);
+  } catch {
+    locked = false;
+  }
+  if (!locked) {
+    if (retry)
+      p.timer = setTimeout(() => savePending(file), STORE_LOCK_STEP_MS);
+    return;
+  }
+  try {
+    // Issue 1348: onto the file as it is now, so another process's change
+    // made meanwhile stays.
+    const f = readStore(file);
+    let changed = false;
+    for (const op of p.ops) changed = op(f) || changed;
+    if (changed) writeStore(file, f);
+  } catch (e) {
+    // Unwritable: as a direct write's failure, the changes are not kept.
+    // The caller was answered already, so the log says so (no content).
+    console.error(
+      `notifications: ${p.ops.length} waiting change(s) not saved (${(e as NodeJS.ErrnoException).code ?? "error"})`,
+    );
+  } finally {
+    unlockStore(file);
+    PENDING.delete(file);
+    for (const w of p.waiters) w();
+  }
+}
+
+/** Whether `subject` (or its scope) is muted at `t` in `mutes`. */
+function mutedIn(
+  mutes: readonly Mute[],
+  subject: string,
+  scope: string,
+  t: string,
+): boolean {
+  return mutes.some(
+    (m) => (m.target === subject || m.target === scope) && m.until > t,
+  );
+}
+
+/**
+ * Issue 1348: resolves once this process's changes to `stateDir`'s store,
+ * made while the lock was busy, are saved (at once when there are none).
+ */
+export function notificationsSaved(stateDir: string): Promise<void> {
+  const p = PENDING.get(path.join(stateDir, NOTIFICATIONS_FILE));
+  return p ? new Promise((r) => p.waiters.push(r)) : Promise.resolve();
+}
+
 export class NotificationStore {
   private readonly file: string;
 
@@ -272,36 +615,46 @@ export class NotificationStore {
     this.file = path.join(stateDir, NOTIFICATIONS_FILE);
   }
 
+  /** The file, with this process's changes still waiting for the lock. */
   private read(): StoreFile {
-    try {
-      const v = JSON.parse(fs.readFileSync(this.file, "utf-8")) as {
-        items?: unknown;
-        mutes?: unknown;
-      };
-      const items = Array.isArray(v.items)
-        ? (v.items as Notification[]).filter(
-            (n) =>
-              n &&
-              typeof n.id === "string" &&
-              typeof n.subject === "string" &&
-              NOTIFICATION_KINDS.includes(n.kind),
-          )
-        : [];
-      const mutes = Array.isArray(v.mutes)
-        ? (v.mutes as Mute[]).filter(
-            (m) =>
-              m && typeof m.target === "string" && typeof m.until === "string",
-          )
-        : [];
-      return { items, mutes };
-    } catch {
-      return { items: [], mutes: [] };
-    }
+    const f = readStore(this.file);
+    for (const op of PENDING.get(this.file)?.ops ?? []) op(f);
+    return f;
   }
 
   private write(f: StoreFile): void {
-    fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    writeFileAtomic(this.file, `${JSON.stringify(f)}\n`, { mode: 0o600 });
+    writeStore(this.file, f);
+  }
+
+  /**
+   * Issue 1348: one change, under the store's lock: read, change, write.
+   * With the lock busy (another process writing, for ms), it is applied to
+   * what this process sees now and saved once the lock is free: no wait on
+   * the thread, and no other process's write lost. Returns `op`'s result.
+   */
+  private change<T>(op: (f: StoreFile) => { out: T; changed: boolean }): T {
+    if (!PENDING.has(this.file) && tryStoreLock(this.file)) {
+      try {
+        const f = readStore(this.file);
+        const r = op(f);
+        if (r.changed) this.write(f);
+        return r.out;
+      } finally {
+        unlockStore(this.file);
+      }
+    }
+    const r = op(this.read());
+    if (r.changed) {
+      const p = PENDING.get(this.file) ?? { ops: [], waiters: [] };
+      PENDING.set(this.file, p);
+      p.ops.push((f) => op(f).changed);
+      if (!exitHooked) {
+        exitHooked = true;
+        process.on("exit", savePendingAtExit);
+      }
+      p.timer ??= setTimeout(() => savePending(this.file), STORE_LOCK_STEP_MS);
+    }
+    return r.out;
   }
 
   /** Newest first. */
@@ -315,10 +668,7 @@ export class NotificationStore {
 
   /** Whether `subject` (or its scope) is muted now. */
   muted(subject: string, scope: string): boolean {
-    const t = this.now().toISOString();
-    return this.read().mutes.some(
-      (m) => (m.target === subject || m.target === scope) && m.until > t,
-    );
+    return mutedIn(this.read().mutes, subject, scope, this.now().toISOString());
   }
 
   /**
@@ -333,43 +683,48 @@ export class NotificationStore {
     text: string;
     msg?: NoteMsg;
     link?: string;
+    undo?: { approval: string };
   }): Notification | null {
     if (this.muted(n.subject, n.scope)) return null;
-    const f = this.read();
     const at = this.now().toISOString();
     const text = plain(n.text);
     const msg = cleanMsg(n.msg);
-    const same = f.items.find(
-      (x) => !x.read && x.subject === n.subject && x.kind === n.kind,
-    );
-    let out: Notification;
-    if (same) {
-      same.text = text;
-      if (msg) same.msg = msg;
-      else delete same.msg;
-      same.at = at;
-      if (n.link) same.link = n.link;
-      out = same;
-    } else {
-      out = {
-        id: crypto.randomUUID(),
-        source: n.source ?? "den",
-        kind: n.kind,
-        subject: n.subject,
-        scope: n.scope,
-        text,
-        ...(msg ? { msg } : {}),
-        ...(n.link ? { link: n.link } : {}),
-        at,
-        read: false,
-      };
-      f.items.push(out);
-    }
-    f.items.sort((a, b) => a.at.localeCompare(b.at));
-    if (f.items.length > MAX_NOTIFICATIONS)
-      f.items = f.items.slice(-MAX_NOTIFICATIONS);
-    this.write(f);
-    return { ...out };
+    // Issue 1348: fixed before the change, which may be applied again.
+    const id = crypto.randomUUID();
+    return this.change((f) => {
+      const same = f.items.find(
+        (x) => !x.read && x.subject === n.subject && x.kind === n.kind,
+      );
+      let out: Notification;
+      if (same) {
+        same.text = text;
+        if (msg) same.msg = msg;
+        else delete same.msg;
+        same.at = at;
+        if (n.link) same.link = n.link;
+        if (n.undo) same.undo = { approval: String(n.undo.approval) };
+        out = same;
+      } else {
+        out = {
+          id,
+          source: n.source ?? "den",
+          kind: n.kind,
+          subject: n.subject,
+          scope: n.scope,
+          text,
+          ...(msg ? { msg } : {}),
+          ...(n.link ? { link: n.link } : {}),
+          ...(n.undo ? { undo: { approval: String(n.undo.approval) } } : {}),
+          at,
+          read: false,
+        };
+        f.items.push(out);
+      }
+      f.items.sort((a, b) => a.at.localeCompare(b.at));
+      if (f.items.length > MAX_NOTIFICATIONS)
+        f.items = f.items.slice(-MAX_NOTIFICATIONS);
+      return { out: { ...out } as Notification | null, changed: true };
+    });
   }
 
   /**
@@ -379,118 +734,120 @@ export class NotificationStore {
    * one Hub no longer lists goes. Den's own items are left alone.
    */
   syncHub(notes: readonly HubNote[], owner: string | null): string[] {
-    const f = this.read();
-    const me = owner?.toLowerCase() ?? null;
-    const byId = new Map(
-      f.items.filter((x) => x.source === "hub").map((x) => [x.id, x]),
-    );
-    const listed = new Set<string>();
-    const push: string[] = [];
-    let changed = false;
-    for (const n of notes) {
-      const id = `hub:${n.id}`;
-      listed.add(id);
-      const hubRead = !!me && n.readBy.some((l) => l.toLowerCase() === me);
-      // Hub's own scope: "hub/<project>/<space>".
-      const scope = n.scope.startsWith("hub/")
-        ? n.scope
-        : `hub/${n.scope}`.replace(/\/$/, "");
-      const x = byId.get(id);
-      if (!x) {
-        if (this.muted(n.subject, scope)) continue;
-        f.items.push({
-          id,
-          source: "hub",
-          kind: n.kind,
-          subject: n.subject,
-          scope,
-          ...(n.scopeName ? { scopeName: n.scopeName } : {}),
-          text: plain(n.text),
-          ...(n.msg ? { msg: cleanMsg(n.msg) } : {}),
-          ...(n.link ? { link: n.link } : {}),
-          at: n.at,
-          read: hubRead,
-          hubRead,
-        });
-        changed = true;
-        continue;
+    const t = this.now().toISOString();
+    return this.change((f) => {
+      const me = owner?.toLowerCase() ?? null;
+      const byId = new Map(
+        f.items.filter((x) => x.source === "hub").map((x) => [x.id, x]),
+      );
+      const listed = new Set<string>();
+      const push: string[] = [];
+      let changed = false;
+      for (const n of notes) {
+        const id = `hub:${n.id}`;
+        listed.add(id);
+        const hubRead = !!me && n.readBy.some((l) => l.toLowerCase() === me);
+        // Hub's own scope: "hub/<project>/<space>".
+        const scope = n.scope.startsWith("hub/")
+          ? n.scope
+          : `hub/${n.scope}`.replace(/\/$/, "");
+        const x = byId.get(id);
+        if (!x) {
+          if (mutedIn(f.mutes, n.subject, scope, t)) continue;
+          f.items.push({
+            id,
+            source: "hub",
+            kind: n.kind,
+            subject: n.subject,
+            scope,
+            ...(n.scopeName ? { scopeName: n.scopeName } : {}),
+            text: plain(n.text),
+            ...(n.msg ? { msg: cleanMsg(n.msg) } : {}),
+            ...(n.link ? { link: n.link } : {}),
+            at: n.at,
+            read: hubRead,
+            hubRead,
+          });
+          changed = true;
+          continue;
+        }
+        const text = plain(n.text);
+        // Newer activity on Hub's item (another reply): it's news again.
+        const newer = n.at > x.at;
+        if (
+          x.text !== text ||
+          x.at !== n.at ||
+          x.link !== n.link ||
+          x.scope !== scope ||
+          x.scopeName !== n.scopeName
+        ) {
+          x.text = text;
+          x.at = n.at;
+          const msg = cleanMsg(n.msg);
+          if (msg) x.msg = msg;
+          else delete x.msg;
+          if (n.link) x.link = n.link;
+          else delete x.link;
+          // Hub filed it under its own project (Hub before that: the team's).
+          x.scope = scope;
+          if (n.scopeName) x.scopeName = n.scopeName;
+          else delete x.scopeName;
+          changed = true;
+        }
+        // Whose read is it? Unknown: reads stay where they were made.
+        if (!me) continue;
+        if (hubRead) {
+          if (!x.read || !x.hubRead) changed = true;
+          x.read = true;
+          x.hubRead = true;
+        } else if (newer && x.read) {
+          x.read = false;
+          x.hubRead = false;
+          changed = true;
+        } else if (x.read && !x.hubRead) {
+          // Read here, not yet there.
+          push.push(n.id);
+        }
+        // Read here and told to Hub: it stays read, even while Hub's list
+        // still lags behind.
       }
-      const text = plain(n.text);
-      // Newer activity on Hub's item (another reply): it's news again.
-      const newer = n.at > x.at;
-      if (
-        x.text !== text ||
-        x.at !== n.at ||
-        x.link !== n.link ||
-        x.scope !== scope ||
-        x.scopeName !== n.scopeName
-      ) {
-        x.text = text;
-        x.at = n.at;
-        const msg = cleanMsg(n.msg);
-        if (msg) x.msg = msg;
-        else delete x.msg;
-        if (n.link) x.link = n.link;
-        else delete x.link;
-        // Hub filed it under its own project (Hub before that: the team's).
-        x.scope = scope;
-        if (n.scopeName) x.scopeName = n.scopeName;
-        else delete x.scopeName;
-        changed = true;
+      const before = f.items.length;
+      f.items = f.items.filter((x) => x.source !== "hub" || listed.has(x.id));
+      if (f.items.length !== before) changed = true;
+      if (changed) {
+        f.items.sort((a, b) => a.at.localeCompare(b.at));
+        if (f.items.length > MAX_NOTIFICATIONS)
+          f.items = f.items.slice(-MAX_NOTIFICATIONS);
       }
-      // Whose read is it? Unknown: reads stay where they were made.
-      if (!me) continue;
-      if (hubRead) {
-        if (!x.read || !x.hubRead) changed = true;
-        x.read = true;
-        x.hubRead = true;
-      } else if (newer && x.read) {
-        x.read = false;
-        x.hubRead = false;
-        changed = true;
-      } else if (x.read && !x.hubRead) {
-        // Read here, not yet there.
-        push.push(n.id);
-      }
-      // Read here and told to Hub: it stays read, even while Hub's list
-      // still lags behind.
-    }
-    const before = f.items.length;
-    f.items = f.items.filter((x) => x.source !== "hub" || listed.has(x.id));
-    if (f.items.length !== before) changed = true;
-    if (changed) {
-      f.items.sort((a, b) => a.at.localeCompare(b.at));
-      if (f.items.length > MAX_NOTIFICATIONS)
-        f.items = f.items.slice(-MAX_NOTIFICATIONS);
-      this.write(f);
-    }
-    return push;
+      return { out: push, changed };
+    });
   }
 
   /** NT-6: Hub took Den's read for these (Hub's ids). */
   hubMarked(ids: readonly string[]): void {
     if (!ids.length) return;
     const want = new Set(ids.map((i) => `hub:${i}`));
-    const f = this.read();
-    let n = 0;
-    for (const x of f.items)
-      if (want.has(x.id) && !x.hubRead) {
-        x.hubRead = true;
-        n++;
-      }
-    if (n) this.write(f);
+    this.change((f) => {
+      let n = 0;
+      for (const x of f.items)
+        if (want.has(x.id) && !x.hubRead) {
+          x.hubRead = true;
+          n++;
+        }
+      return { out: undefined, changed: n > 0 };
+    });
   }
 
   /** The agent is busy again, or was answered: its waiting item goes. */
   withdraw(subject: string, kind: NotificationKind = "waiting"): boolean {
-    const f = this.read();
-    const before = f.items.length;
-    f.items = f.items.filter(
-      (x) => !(x.subject === subject && x.kind === kind && !x.read),
-    );
-    if (f.items.length === before) return false;
-    this.write(f);
-    return true;
+    return this.change((f) => {
+      const before = f.items.length;
+      f.items = f.items.filter(
+        (x) => !(x.subject === subject && x.kind === kind && !x.read),
+      );
+      const changed = f.items.length !== before;
+      return { out: changed, changed };
+    });
   }
 
   /**
@@ -503,32 +860,32 @@ export class NotificationStore {
     s: { reason: string; by: string },
     say: { text: string; msg: NoteMsg },
   ): Notification | null {
-    const f = this.read();
-    const x = f.items.find((n) => n.id === id);
-    if (!x || x.settled) return null;
     const at = this.now().toISOString();
-    x.settled = { reason: plain(s.reason), by: s.by, at };
-    x.read = true;
-    x.at = at;
-    x.text = plain(say.text);
-    const msg = cleanMsg(say.msg);
-    if (msg) x.msg = msg;
-    f.items.sort((a, b) => a.at.localeCompare(b.at));
-    this.write(f);
-    return { ...x };
+    return this.change((f) => {
+      const x = f.items.find((n) => n.id === id);
+      if (!x || x.settled) return { out: null, changed: false };
+      x.settled = { reason: plain(s.reason), by: s.by, at };
+      x.read = true;
+      x.at = at;
+      x.text = plain(say.text);
+      const msg = cleanMsg(say.msg);
+      if (msg) x.msg = msg;
+      f.items.sort((a, b) => a.at.localeCompare(b.at));
+      return { out: { ...x } as Notification | null, changed: true };
+    });
   }
 
   /** Issue 1008: an answer came after the question was settled. */
   settledLate(id: string, say: { text: string; msg: NoteMsg }): boolean {
-    const f = this.read();
-    const x = f.items.find((n) => n.id === id);
-    if (!x?.settled || x.settled.late) return false;
-    x.settled.late = true;
-    x.text = plain(say.text);
-    const msg = cleanMsg(say.msg);
-    if (msg) x.msg = msg;
-    this.write(f);
-    return true;
+    return this.change((f) => {
+      const x = f.items.find((n) => n.id === id);
+      if (!x?.settled || x.settled.late) return { out: false, changed: false };
+      x.settled.late = true;
+      x.text = plain(say.text);
+      const msg = cleanMsg(say.msg);
+      if (msg) x.msg = msg;
+      return { out: true, changed: true };
+    });
   }
 
   /**
@@ -536,55 +893,93 @@ export class NotificationStore {
    * updates; a newer update ask replaces the older ones). How many went.
    */
   remove(match: (n: Notification) => boolean): number {
-    const f = this.read();
-    const before = f.items.length;
-    f.items = f.items.filter((x) => !match(x));
-    const n = before - f.items.length;
-    if (n) this.write(f);
-    return n;
+    return this.change((f) => {
+      const before = f.items.length;
+      f.items = f.items.filter((x) => !match(x));
+      const n = before - f.items.length;
+      return { out: n, changed: n > 0 };
+    });
   }
 
   /** Mark read; how many changed. */
+  /**
+   * Issue 1371 Part 2: an Undo used (or no longer possible): the rows for
+   * that held write lose their Undo, and are read. How many changed.
+   */
+  dropUndo(approval: string): number {
+    return this.change((f) => {
+      let n = 0;
+      for (const x of f.items)
+        if (x.undo?.approval === approval) {
+          delete x.undo;
+          x.read = true;
+          n++;
+        }
+      return { out: n, changed: n > 0 };
+    });
+  }
+
   markRead(w: Which): number {
-    const f = this.read();
-    let n = 0;
-    for (const x of f.items)
-      if (!x.read && matches(x, w)) {
-        x.read = true;
-        n++;
-      }
-    if (n) this.write(f);
-    return n;
+    return this.change((f) => {
+      let n = 0;
+      for (const x of f.items)
+        if (!x.read && matches(x, w)) {
+          x.read = true;
+          n++;
+        }
+      return { out: n, changed: n > 0 };
+    });
+  }
+
+  /**
+   * Issue 1339: mark these ids read in one read and one write (Mark all
+   * read marked each entry with its own whole-file rewrite). Ids that
+   * aren't there are skipped; how many changed.
+   */
+  markReadMany(ids: Iterable<string>): number {
+    const want = new Set(ids);
+    if (!want.size) return 0;
+    return this.change((f) => {
+      let n = 0;
+      for (const x of f.items)
+        if (!x.read && want.has(x.id)) {
+          x.read = true;
+          n++;
+        }
+      return { out: n, changed: n > 0 };
+    });
   }
 
   /** Remove the read ones (of `w`, default all); how many went. */
   clearRead(w: Which = { all: true }): number {
-    const f = this.read();
-    const before = f.items.length;
-    f.items = f.items.filter((x) => !(x.read && matches(x, w)));
-    const n = before - f.items.length;
-    if (n) this.write(f);
-    return n;
+    return this.change((f) => {
+      const before = f.items.length;
+      f.items = f.items.filter((x) => !(x.read && matches(x, w)));
+      const n = before - f.items.length;
+      return { out: n, changed: n > 0 };
+    });
   }
 
   /** Mute an agent (`agent:<id>`) or a project (`workspace/<ws>`) for `minutes`. */
   mute(target: string, minutes: number): Mute {
-    const f = this.read();
     const until = new Date(
       this.now().getTime() + Math.max(1, minutes) * 60_000,
     ).toISOString();
     const t = this.now().toISOString();
-    f.mutes = f.mutes.filter((m) => m.target !== target && m.until > t);
     const m = { target, until };
-    f.mutes.push(m);
-    this.write(f);
+    this.change((f) => {
+      f.mutes = f.mutes.filter((x) => x.target !== target && x.until > t);
+      f.mutes.push({ ...m });
+      return { out: undefined, changed: true };
+    });
     return m;
   }
 
   unmute(target: string): void {
-    const f = this.read();
-    f.mutes = f.mutes.filter((m) => m.target !== target);
-    this.write(f);
+    this.change((f) => {
+      f.mutes = f.mutes.filter((m) => m.target !== target);
+      return { out: undefined, changed: true };
+    });
   }
 
   mutes(): Mute[] {

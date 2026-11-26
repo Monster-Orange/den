@@ -22,6 +22,8 @@ import * as path from "path";
 import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName } from "./transcript-follow.js";
 import { endingQuestion } from "./guardrails/attention-hook.js";
+import { TURN_READ_MAX_BYTES } from "./limit-defaults.js";
+import { MTIME_TICK_MS, statSettled } from "../stat-settled.js";
 
 /** One of a runtime's conversations, as Bring in lists it. */
 export interface RuntimeConversation {
@@ -239,7 +241,7 @@ export const TURN_QUIET_MS = 5_000;
  * D39: how far back from its end a transcript is read for its last turn
  * (agents.turn_read_max_mb). Past it: can't tell (null).
  */
-export const TURN_READ_MAX_BYTES = 8 * 1024 * 1024;
+export { TURN_READ_MAX_BYTES };
 
 /** A turn's verdict from the file: "quiet" is busy until it has been quiet. */
 type TurnVerdict = boolean | "quiet" | null;
@@ -254,11 +256,23 @@ interface TurnRead {
   at?: number;
 }
 
-/** The last verdicts, by file, while its size and mtime stay the same. */
+/**
+ * The last verdicts, by file, while its size and mtime stay the same.
+ * `readAt`: when it was read (the wall clock, ms).
+ */
 const turnCache = new Map<
   string,
-  { size: number; mtimeMs: number; bytes: number; max: number; r: TurnRead }
+  {
+    size: number;
+    mtimeMs: number;
+    readAt: number;
+    bytes: number;
+    max: number;
+    r: TurnRead;
+  }
 >();
+
+export { MTIME_TICK_MS };
 const TURN_CACHE_MAX = 256;
 
 /** Forget the cached verdicts (tests). */
@@ -279,7 +293,9 @@ export function resetTurnCache(): void {
  * D39: it reads back from the end, `bytes` at first and four times more
  * each try, until a turn's record shows; never the file's start (that is
  * the conversation's first turn). None in the last `maxBytes`: null, can't
- * tell. A verdict is kept while the file's size and mtime stay the same.
+ * tell. A verdict is kept while the file's size and mtime stay the same,
+ * and (issue 1592) only once its mtime is older than its read by more
+ * than MTIME_TICK_MS: a same-size write in the same tick is read again.
  *
  * Issue 607: `since` is when the agent's live session started (ms). A turn
  * whose last record was written before it is no running turn: the session
@@ -302,10 +318,13 @@ export function transcriptBusy(
     return false;
   }
   const hit = turnCache.get(file);
+  // The wall clock, never `now` (a caller's): mtimes are stamped by it.
+  const readAt = Date.now();
   const r =
     hit &&
     hit.size === st.size &&
     hit.mtimeMs === st.mtimeMs &&
+    statSettled(hit, hit.readAt) &&
     hit.bytes === bytes &&
     hit.max === maxBytes
       ? hit.r
@@ -321,6 +340,7 @@ export function transcriptBusy(
     turnCache.set(file, {
       size: st.size,
       mtimeMs: st.mtimeMs,
+      readAt,
       bytes,
       max: maxBytes,
       r,

@@ -77,3 +77,41 @@ export function patchHelpersShown(
   else delete user.agents;
   return { ok: true };
 }
+
+/**
+ * Issue 52: the Coach tab's "Show counts as", Total or Per day
+ * (`agents.coach_counts`, served as `coach_counts`), default total. Per day
+ * changes the counts only, never the percents or averages. A view
+ * preference only.
+ */
+export const COACH_COUNTS = ["total", "per_day"] as const;
+export type CoachCounts = (typeof COACH_COUNTS)[number];
+export const COACH_COUNTS_DEFAULT: CoachCounts = "total";
+
+const isCounts = (v: unknown): v is CoachCounts =>
+  typeof v === "string" && (COACH_COUNTS as readonly string[]).includes(v);
+
+/** The stored choice, or the default when unset or hand-broken. */
+export function coachCounts(user: UserConfig): CoachCounts {
+  const v = (user.agents as { coach_counts?: unknown } | undefined)
+    ?.coach_counts;
+  return isCounts(v) ? v : COACH_COUNTS_DEFAULT;
+}
+
+/** Apply a POSTed `coach_counts` to `user` (in place); null clears it. */
+export function patchCoachCounts(
+  user: UserConfig,
+  v: unknown,
+): { ok: true } | { ok: false; error: string } {
+  if (v !== null && !isCounts(v))
+    return {
+      ok: false,
+      error: `coach_counts must be one of ${COACH_COUNTS.map((c) => `"${c}"`).join(", ")}, or null`,
+    };
+  const agents = { ...(user.agents ?? {}) } as Record<string, unknown>;
+  if (v === null) delete agents.coach_counts;
+  else agents.coach_counts = v;
+  if (Object.keys(agents).length) user.agents = agents as UserConfig["agents"];
+  else delete user.agents;
+  return { ok: true };
+}

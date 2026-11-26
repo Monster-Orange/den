@@ -179,6 +179,27 @@ describe("session host", () => {
     expect(Date.parse((await c.list())[0].bellAt ?? "")).not.toBeNaN();
   });
 
+  it("issue 771: an OSC 7501 status in a session's output (split across chunks) stamps that session's status only; the bytes stream on untouched", async () => {
+    const dir = stateDir();
+    const { made } = await host(dir);
+    const c = await client(dir);
+    const a = await c.start(spec("acme-north:planner"));
+    const b = await c.start(spec("acme-north:coder"));
+    let seen = "";
+    const att = c.attach(a.ref.id, { onData: (d) => (seen += d.toString()) });
+    await att.ready;
+    made[0].emit("x\u001b]7501;sta");
+    await tick();
+    made[0].emit("te=blocked\u001b\\y");
+    await until(() => seen.endsWith("y"));
+    expect(seen).toBe("x\u001b]7501;state=blocked\u001b\\y");
+    const byId = new Map((await c.list()).map((s) => [s.ref.id, s]));
+    expect(byId.get(a.ref.id)?.status).toMatchObject({ state: "blocked" });
+    expect(Date.parse(byId.get(a.ref.id)?.status?.at ?? "")).not.toBeNaN();
+    expect(byId.get(a.ref.id)?.bellAt).toBeUndefined();
+    expect(byId.get(b.ref.id)?.status).toBeUndefined();
+  });
+
   it("issue 448: a person's input stamps inputAt; a terminal's reply to a query doesn't", async () => {
     const dir = stateDir();
     const { made } = await host(dir);

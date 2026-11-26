@@ -1,0 +1,387 @@
+/**
+ * Issue 1356: a test that writes a real install's config/local or state
+ * folder fails at the write, naming the path and the import order to fix.
+ *
+ * The guard is tried on a copy of fs with invented roots under the temp
+ * folder (home, the checkout, another checkout), so no real folder is
+ * touched. The last case checks setup.ts installed it on the real fs: a
+ * write to this checkout's own config/local throws.
+ */
+import { afterAll, describe, expect, it, jest } from "@jest/globals";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { pathToFileURL } from "url";
+import {
+  allowWrites,
+  armWriteGuard,
+  guardedWrites,
+  installWriteGuard,
+  linkedModulesEntry,
+  writeGuardRoots,
+  type WriteGuardRoots,
+} from "../../write-guard.js";
+
+const tmp = fs.realpathSync(
+  fs.mkdtempSync(path.join(os.tmpdir(), "den-1356-")),
+);
+afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
+
+/** Invented roots: tmp/home is "the home", tmp/scratch "the temp folder". */
+function rig() {
+  const home = path.join(tmp, `home-${Math.random().toString(36).slice(2)}`);
+  const checkout = path.join(home, "Projects", "den");
+  const other = path.join(home, "Projects", "den-other");
+  const scratch = path.join(home, "..", "scratch");
+  for (const d of [
+    path.join(checkout, "config", "local"),
+    path.join(other, "config", "local"),
+    path.join(home, ".den"),
+    scratch,
+  ])
+    fs.mkdirSync(d, { recursive: true });
+  const roots: WriteGuardRoots = { checkout, temp: [scratch] };
+  const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
+  const refused: string[] = [];
+  installWriteGuard(f, roots, (p) => void refused.push(p));
+  return { f, home, checkout, other, scratch, refused };
+}
+
+describe("the write guard (issue 1356)", () => {
+  it("refuses another checkout's config/local, naming the path and the import order", () => {
+    const r = rig();
+    const file = path.join(r.other, "config", "local", "user.yml");
+    expect(() => r.f.writeFileSync(file, "agents: {}\n")).toThrow(
+      /wrote outside its temp folders: .*den-other\/config\/local\/user\.yml/,
+    );
+    expect(() => r.f.writeFileSync(file, "x")).toThrow(
+      /Set DEN_ROOT \(or DEN_HOME\) first, then import the module dynamically/,
+    );
+    expect(fs.existsSync(file)).toBe(false);
+    expect(r.refused).toEqual([file, file]);
+  });
+
+  it("refuses the checkout's own config/local, the home's state folders and anything else under the home", () => {
+    const r = rig();
+    for (const p of [
+      path.join(r.checkout, "config", "local", "user.yml"),
+      path.join(r.home, ".den", "web.secret"),
+      path.join(
+        r.home,
+        "Library",
+        "Application Support",
+        "den",
+        "installs",
+        "x.json",
+      ),
+    ])
+      expect(() => r.f.writeFileSync(p, "x")).toThrow(
+        /outside its temp folders/,
+      );
+    expect(() => r.f.mkdirSync(path.join(r.home, ".den", "agents"))).toThrow(
+      /outside its temp folders/,
+    );
+    expect(() =>
+      r.f.rmSync(path.join(r.home, ".den"), { recursive: true }),
+    ).toThrow(/outside its temp folders/);
+    expect(fs.existsSync(path.join(r.home, ".den"))).toBe(true);
+  });
+
+  it("an atomic write's rename into a guarded folder is refused too, and the promise forms reject", async () => {
+    const r = rig();
+    const src = path.join(r.scratch, "u.yml.tmp");
+    fs.writeFileSync(src, "x");
+    expect(() =>
+      r.f.renameSync(src, path.join(r.other, "config", "local", "user.yml")),
+    ).toThrow(/outside its temp folders/);
+    await expect(
+      r.f.promises.writeFile(path.join(r.home, ".den", "x"), "x"),
+    ).rejects.toThrow(/outside its temp folders/);
+  });
+
+  it("lets through the temp folder and the checkout outside its config/local", async () => {
+    const r = rig();
+    r.f.writeFileSync(path.join(r.scratch, "a"), "x");
+    r.f.mkdirSync(path.join(r.checkout, "coverage"), { recursive: true });
+    r.f.writeFileSync(path.join(r.checkout, "coverage", "lcov.info"), "x");
+    await r.f.promises.writeFile(path.join(r.scratch, "b"), "x");
+    r.f.renameSync(path.join(r.scratch, "a"), path.join(r.scratch, "c"));
+    expect(r.refused).toEqual([]);
+  });
+
+  it("a config/local outside the home and the temp folders is refused too", () => {
+    const r = rig();
+    const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
+    installWriteGuard(f, { checkout: r.checkout, temp: [] }, () => {});
+    expect(() =>
+      f.writeFileSync(
+        path.join(r.scratch, "x", "config", "local", "user.yml"),
+        "x",
+      ),
+    ).toThrow(/outside its temp folders/);
+  });
+});
+
+describe("the write guard is an allow-list (issue 1356)", () => {
+  it("refuses a state folder outside the home: another user's, a shared folder, another volume", () => {
+    const r = rig();
+    for (const p of [
+      "/Users/Shared/x",
+      "/Users/someone-else/.den/web.secret",
+      "/Volumes/x/.den/state.json",
+      "/Library/LaunchDaemons/x.plist",
+      "/opt/den/state/x",
+    ])
+      expect(() => r.f.writeFileSync(p, "x")).toThrow(
+        /outside its temp folders/,
+      );
+    expect(r.refused).toHaveLength(5);
+  });
+
+  it("lets /dev/null through, and a root a suite names", () => {
+    const r = rig();
+    r.f.writeFileSync("/dev/null", "x");
+    const extra = path.join(tmp, "named-root");
+    fs.mkdirSync(extra, { recursive: true });
+    const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
+    const refused: string[] = [];
+    installWriteGuard(
+      f,
+      { checkout: r.checkout, temp: [], allow: [extra] },
+      (p) => void refused.push(p),
+    );
+    f.writeFileSync(path.join(extra, "a"), "x");
+    expect(() => f.writeFileSync(path.join(r.home, "a"), "x")).toThrow(
+      /outside its temp folders/,
+    );
+    expect(refused).toEqual([path.join(r.home, "a")]);
+    expect(r.refused).toEqual([]);
+  });
+
+  it("reads a file: URL as its path, escapes and all", () => {
+    const r = rig();
+    const p = path.join(r.other, "config", "local", "my file.yml");
+    expect(() => r.f.writeFileSync(pathToFileURL(p), "x")).toThrow(
+      /config\/local\/my file\.yml/,
+    );
+  });
+});
+
+describe("the roots a run names (issue 1356)", () => {
+  it("adds CI's own temp folder and jest's named cache folder, and nothing else from the env", () => {
+    const ci = path.join(tmp, "runner-temp");
+    const cache = path.join(tmp, "elsewhere", "jest-cache");
+    const roots = writeGuardRoots({
+      RUNNER_TEMP: ci,
+      DEN_FAST_JEST_CACHE: cache,
+      DEN_TEST_WRITE_ALLOW: "/opt",
+    });
+    expect(roots.temp).toEqual(expect.arrayContaining([ci, cache]));
+    expect(roots.temp).not.toContain("/opt");
+    const bare = writeGuardRoots({});
+    expect(bare.temp).not.toContain(ci);
+    expect(bare.temp).not.toContain(cache);
+  });
+});
+
+describe("a root set too wide (issue 1356)", () => {
+  it("drops /, the home folder and any folder above it", () => {
+    const home = fs.realpathSync(os.homedir());
+    const roots = writeGuardRoots({
+      TMPDIR: "/",
+      RUNNER_TEMP: path.dirname(home),
+      DEN_FAST_JEST_CACHE: home,
+    });
+    expect(roots.temp).not.toContain("/");
+    expect(roots.temp).not.toContain(home);
+    expect(roots.temp).not.toContain(path.dirname(home));
+    expect(roots.temp.length).toBeGreaterThan(0);
+  });
+});
+
+describe("a folder a suite names (issue 1356)", () => {
+  it("allowWrites lets writes into that folder only, until the next test file starts", () => {
+    const r = rig();
+    const shared = path.join(r.home, ".docker-share");
+    expect(() => r.f.mkdirSync(shared)).toThrow(/outside its temp folders/);
+    r.refused.splice(0);
+    let end: (() => void) | undefined;
+    armWriteGuard((fn) => void (end = fn), undefined, r.f);
+    allowWrites(shared, r.f);
+    r.f.mkdirSync(shared);
+    r.f.writeFileSync(path.join(shared, "a"), "x");
+    expect(() => r.f.writeFileSync(path.join(r.home, "b"), "x")).toThrow(
+      /outside its temp folders/,
+    );
+    guardedWrites(r.f).splice(0);
+    end!();
+    // The file's own afterAll may still clean it up after the guard's.
+    r.f.rmSync(path.join(shared, "a"));
+    // The next test file starts without it.
+    armWriteGuard(() => {}, undefined, r.f);
+    expect(() => r.f.writeFileSync(path.join(shared, "c"), "x")).toThrow(
+      /outside its temp folders/,
+    );
+  });
+
+  it("allowWrites never names a real state folder or a config/local, inside or around it", () => {
+    const r = rig();
+    const home = fs.realpathSync(os.homedir());
+    for (const d of [
+      path.join(home, ".den"),
+      path.join(home, ".den", "agents"),
+      path.join(home, "x", "config", "local"),
+      path.join(home, "x", "config", "local", "deeper"),
+    ])
+      expect(() => allowWrites(d, r.f)).toThrow(
+        /allowWrites: .* (real state|config\/local)/,
+      );
+    // A folder holding ~/.den: the home's own children are above it only
+    // when ~/.den is inside them; here, a made-up protected folder.
+    const holder = path.join(tmp, "holder");
+    expect(() =>
+      allowWrites(holder, r.f, [path.join(holder, "state")]),
+    ).toThrow(/allowWrites: .* real state/);
+  });
+
+  it("a config/local under a folder a suite named is still refused", () => {
+    const r = rig();
+    const shared = path.join(r.home, ".share");
+    allowWrites(shared, r.f);
+    r.f.mkdirSync(shared);
+    r.f.writeFileSync(path.join(shared, "ok"), "x");
+    expect(() =>
+      r.f.mkdirSync(path.join(shared, "config", "local"), { recursive: true }),
+    ).toThrow(/outside its temp folders/);
+  });
+
+  it("Playwright's own browser folder is a named root", () => {
+    const pw = path.join(tmp, "pw-browsers");
+    expect(writeGuardRoots({ PLAYWRIGHT_BROWSERS_PATH: pw }).temp).toContain(
+      pw,
+    );
+    const home = fs.realpathSync(os.homedir());
+    const dflt =
+      process.platform === "darwin"
+        ? path.join(home, "Library", "Caches", "ms-playwright")
+        : path.join(home, ".cache", "ms-playwright");
+    expect(writeGuardRoots({}).temp).toContain(dflt);
+  });
+});
+
+describe("one refusal list per worker (issue 1356)", () => {
+  it("a later test file's load of the guard sees a refusal made through the first load's wrappers", () => {
+    const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
+    const r = rig();
+    type M = typeof import("../../write-guard.js");
+    let first: M | undefined;
+    let second: M | undefined;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      first = require("../../write-guard") as M;
+    });
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      second = require("../../write-guard") as M;
+    });
+    expect(first).not.toBe(second);
+    const roots = { checkout: r.checkout, temp: [r.scratch] };
+    first!.installWriteGuard(f, roots);
+    second!.installWriteGuard(f, roots); // already guarded: a no-op
+    const start = second!.guardedWrites(f).length;
+    const file = path.join(r.home, ".den", "swallowed");
+    try {
+      f.writeFileSync(file, "x");
+    } catch {
+      /* a writer that swallows the error */
+    }
+    expect(second!.guardedWrites(f).slice(start)).toEqual([file]);
+    second!.guardedWrites(f).splice(start);
+  });
+});
+
+describe("setup.ts (issue 1356)", () => {
+  it("installs the guard on the real fs: a write to this checkout's config/local throws", () => {
+    const roots = writeGuardRoots();
+    const probe = path.join(
+      roots.checkout,
+      "config",
+      "local",
+      "zz-1356-probe.yml",
+    );
+    try {
+      expect(() => fs.writeFileSync(probe, "x")).toThrow(
+        /outside its temp folders/,
+      );
+    } finally {
+      // Red (no guard): the probe landed; take it away so nothing stays.
+      try {
+        fs.rmSync(probe, { force: true });
+      } catch {
+        /* the guard refuses the rm too, and then nothing was written */
+      }
+    }
+    // This test's own refusals don't fail the file.
+    guardedWrites().splice(0);
+  });
+
+  it("finds this checkout's Den root with no DEN_ROOT set, whatever node_modules links to (issue 1653)", async () => {
+    const roots = writeGuardRoots();
+    expect(process.env.DEN_ROOT).toBeUndefined();
+    expect(process.env.DEN_ENGINE_ROOT).toBeUndefined();
+    const paths = await import("../../../src/shared/paths.js");
+    paths.resetDistRootCache();
+    expect(paths.getDistRoot()).toBe(roots.checkout);
+    expect(paths.getEngineRoot()).toBe(roots.checkout);
+  });
+
+  it("from a linked worktree, still refuses a write to the linked checkout's config/local (issue 1653)", () => {
+    const roots = writeGuardRoots();
+    const shared = path.dirname(
+      fs.realpathSync(path.join(roots.checkout, "node_modules")),
+    );
+    if (shared === roots.checkout) return;
+    const probe = path.join(shared, "config", "local", "zz-1653-probe.yml");
+    try {
+      expect(() => fs.writeFileSync(probe, "x")).toThrow(
+        /outside its temp folders/,
+      );
+    } finally {
+      try {
+        fs.rmSync(probe, { force: true });
+      } catch {
+        /* refused too: nothing was written */
+      }
+    }
+    guardedWrites().splice(0);
+  });
+});
+
+describe("a worktree whose node_modules is a link (issue 1653)", () => {
+  it("names an entry inside the worktree, so Den's root walk starts there", () => {
+    const r = rig();
+    fs.mkdirSync(path.join(r.other, "node_modules"), { recursive: true });
+    fs.symlinkSync(
+      path.join(r.other, "node_modules"),
+      path.join(r.checkout, "node_modules"),
+    );
+    const entry = linkedModulesEntry(r.checkout);
+    expect(entry).toBe(path.join(r.checkout, "tests", "setup.ts"));
+    expect(linkedModulesEntry(r.other)).toBeNull();
+    expect(linkedModulesEntry(path.join(r.home, "none"))).toBeNull();
+  });
+
+  it("the guard there still refuses the linked checkout's config/local", () => {
+    const r = rig();
+    fs.mkdirSync(path.join(r.other, "node_modules"), { recursive: true });
+    fs.symlinkSync(
+      path.join(r.other, "node_modules"),
+      path.join(r.checkout, "node_modules"),
+    );
+    const file = path.join(r.other, "config", "local", "user.yml");
+    expect(() => r.f.writeFileSync(file, "x")).toThrow(
+      /outside its temp folders/,
+    );
+    expect(r.refused).toEqual([file]);
+  });
+});

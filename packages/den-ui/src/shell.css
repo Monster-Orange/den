@@ -41,8 +41,8 @@ body.den-has-shell > #den-content {
 }
 .den-top :focus-visible,
 .den-rail :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 .den-skip {
   position: fixed;
@@ -455,6 +455,10 @@ body.den-has-shell > #den-content {
   background: var(--surface);
   border-right: 1px var(--edge-style, solid) var(--border);
   overflow-y: auto;
+  /* Issue 1341: an entry scrolled into view (keyboard focus) stops above
+     the sticky foot, never under it (WCAG 2.4.11). shell-client sets the
+     foot's height. */
+  scroll-padding-bottom: var(--den-rail-foot-h, 0px);
   z-index: 15;
   color: var(--text);
 }
@@ -472,6 +476,76 @@ body.den-has-shell > #den-content {
 }
 .den-rail > .den-rail-group:first-child > .den-gh {
   padding-top: 2px;
+}
+/* Issue 1444: a section's entries; its heading folds them. The heading is
+   the toggle only once the kit's script made it one (a button), so with
+   no script every entry shows. */
+.den-gb {
+  display: contents;
+}
+button.den-gh {
+  appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  width: 100%;
+  text-align: start;
+  align-items: center;
+  cursor: pointer;
+}
+/* Margins, not gap, and corners only while focused: the heading at rest
+   keeps the signed-off nav's styles (nav-inventory). */
+button.den-gh > span:first-child {
+  margin-inline-end: auto;
+}
+button.den-gh > .den-bdg,
+button.den-gh > .den-gh-chev {
+  margin-inline-start: 6px;
+}
+button.den-gh:hover {
+  color: var(--muted);
+}
+button.den-gh:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+button.den-gh > .den-bdg {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.den-gh-chev {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.den-rail-group[data-folded] .den-gh-chev {
+  transform: rotate(-90deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-gh-chev {
+    transition: none;
+  }
+}
+/* Hidden only once hydrateRailFolds marked the rail (data-folds): a
+   script that failed to load or threw leaves every entry showing. */
+[data-folds] .den-rail-group[data-folded] > :not(.den-gh) {
+  display: none;
+}
+/* The heading is a tap's height from the first paint (it becomes the
+   toggle when the script runs), so hydrating moves nothing. */
+@media (scripting: enabled) and (max-width: 720px),
+  (scripting: enabled) and (pointer: coarse) {
+  .den-rail-group > .den-gh {
+    min-height: var(--tap);
+    align-items: center;
+  }
 }
 /* A group's "from" tag never makes its heading taller, on any font: its
    box (a 12px line and its border, 14px) is centred on the heading's line
@@ -586,6 +660,25 @@ body.den-has-shell > #den-content {
 .den-rail-grow {
   flex: 1;
 }
+/* Issue 1341: the foot stays in view when the groups are taller than the
+   rail. The rail scrolls; the foot is sticky at its bottom, over the
+   groups that scroll under it. The foot's background reaches over the
+   rail's 10 px bottom padding (a negative margin), so nothing shows
+   below it, and its entries sit where they did when the groups fit.
+   bottom is -10px because a sticky box's inset is measured from inside
+   its scroller's padding: 0 would lift the foot 10 px. The rail keeps
+   its padding, so its height is unchanged. */
+.den-rail-foot {
+  position: sticky;
+  bottom: -10px;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: -10px;
+  padding-bottom: 10px;
+  background: var(--surface);
+}
 .den-sr {
   position: absolute;
   width: 1px;
@@ -671,6 +764,13 @@ body.den-rail-collapsed .den-rail .den-ni-kind {
   }
   body.den-rail-collapsed .den-rail .den-ni-kind {
     display: inline;
+  }
+}
+/* Issue 1444: the rail as icons has no headings to open, so a folded
+   section's entries show there (the drawer below 720px folds them). */
+@media (min-width: 721px) {
+  body.den-rail-collapsed [data-folds] .den-rail-group[data-folded] > .den-gb {
+    display: contents;
   }
 }
 body.den-rail-collapsed .den-rail .den-lbl,
@@ -1025,6 +1125,12 @@ body.den-has-shell .den-upd {
   align-items: flex-start;
   padding: 6px 12px;
 }
+.den-bell-row:has(a[href]),
+.den-bell-row:has(a[href]) a[href] {
+  /* Issue 420: a row that opens on a click looks it, its link too (WebKit
+     gives a link cursor: auto of its own, so it doesn't inherit this). */
+  cursor: pointer;
+}
 .den-bell-row:hover {
   background: color-mix(in srgb, var(--text) 5%, transparent);
 }
@@ -1044,7 +1150,7 @@ body.den-has-shell .den-upd {
 }
 /* Issue 101: Needs you, then Earlier, each under a quiet heading. */
 .den-bell-sec + .den-bell-sec {
-  border-top: 1px var(--edge-style, solid) var(--border);
+  border-top: 1px solid var(--border); /* issue 1137: a row divider stays solid */
 }
 .den-bell-sech {
   margin: 0;
@@ -1177,8 +1283,8 @@ body.den-has-shell .den-upd {
   outline: none;
 }
 .den-pop :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 .den-pop .den-ml {
   font: 11px var(--mono);
