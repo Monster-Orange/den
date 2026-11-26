@@ -65,12 +65,23 @@ function deps(over: Partial<AgentSessionDeps> = {}) {
     },
     err: (m) => log.push(`err:${m}`),
     runtimeProblems: () => [],
+    owed: () => [],
     ...over,
   };
   return { d, log, started };
 }
 
 describe("issue 988: agents session", () => {
+  it("checks still owed on this Den version: refused before the token is read, and nothing starts", async () => {
+    const { d, log, started } = deps({ owed: () => ["the ACL check"] });
+    await expect(runAgentSession(["scout", N], d)).resolves.toBe(EXIT_REFUSED);
+    expect(started).toEqual([]);
+    expect(log.some((l) => l.startsWith("token:"))).toBe(false);
+    expect(log.join("\n")).toContain(
+      "the agents' own login isn't ready on this Den version yet",
+    );
+  });
+
   it("Den's runtime the login could change: refused before the token is read, and nothing starts", async () => {
     const { d, log, started } = deps({
       runtimeProblems: () => ["/opt/node is 0777: anyone can change it"],

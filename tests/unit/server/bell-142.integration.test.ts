@@ -112,14 +112,15 @@ describe("issue 142 on the real server", () => {
     expect((await call("GET", "/api/notifications")).json.unread).toBe(0);
   }, 60_000);
 
-  it("clause 2: a plain turn end, page just closed, goes to Updates (no badge)", async () => {
+  it("clause 2: a plain turn end, page just closed, shows once, in Done (no badge; issue 773)", async () => {
     await looking();
     expect((await turnEnd("Noted.")).status).toBe(200);
     const b = (await call("GET", "/api/notifications")).json;
     expect(b.unread).toBe(0);
     expect(b.waiting).toEqual([]);
-    expect(mine((b.updates as { groups: unknown }).groups)).toHaveLength(1);
-    expect(b.updates).toMatchObject({ count: 1, unread: 1 });
+    expect(b.done).toEqual([expect.objectContaining({ agent: "planner" })]);
+    expect(mine((b.updates as { groups: unknown }).groups)).toHaveLength(0);
+    expect(b.updates).toMatchObject({ count: 0, unread: 0 });
   }, 30_000);
 
   it("clause 3: opening the agent removes its Updates items, and the count drops", async () => {
