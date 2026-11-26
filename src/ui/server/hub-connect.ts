@@ -471,9 +471,10 @@ async function defaultForget(cfg: HubConfig): Promise<void> {
   // A slot is deleted; the old shared item is blanked (its token is revoked).
   if (cfg.tokenRef && isOwnStoreRef(cfg)) {
     const ref = cfg.tokenRef;
-    const blank = () => getSecretsProvider().set(ref, " ");
-    await (isSlotted(cfg)
-      ? getSecretsProvider().delete(ref, { wholeItem: true }).catch(blank)
+    const store = getSecretsProvider();
+    const blank = () => store.set(ref, " ");
+    await (isSlotted(cfg) && store.delete
+      ? store.delete(ref, { wholeItem: true }).catch(blank)
       : blank()
     ).catch(() => undefined);
   }

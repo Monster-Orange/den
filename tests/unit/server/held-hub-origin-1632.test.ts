@@ -17,14 +17,14 @@ function rig() {
   const actions = heldActions({
     hubOrigin: () => origin,
     hubLink: {
-      check: async (a) => ok(a),
+      check: async (a: Record<string, unknown>) => ok(a),
       run: async () => void ran.push("hub_link"),
     },
     hubCreate: {
-      check: (a) => ok(a),
+      check: (a: Record<string, unknown>) => ok(a),
       run: async () => void ran.push("hub_project_create"),
     },
-  } as Parameters<typeof heldActions>[0]);
+  } as unknown as Parameters<typeof heldActions>[0]);
   return {
     actions,
     ran,
