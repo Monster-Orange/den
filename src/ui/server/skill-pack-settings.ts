@@ -151,17 +151,3 @@ export function patchSkillPacksBody(
   Object.assign(user, next);
   return { ok: true };
 }
-
-export function skillPackAgents(body: unknown): string[] {
-  const edits = Array.isArray(body) ? body : [body];
-  const ids = new Set<string>();
-  for (const e of edits as unknown[]) {
-    const key = (e as { key?: unknown } | null)?.key;
-    const m =
-      typeof key === "string"
-        ? /^agents\.([A-Za-z0-9][A-Za-z0-9_-]{0,63})\.skill_packs$/.exec(key)
-        : null;
-    if (m) ids.add(m[1]!);
-  }
-  return [...ids];
-}

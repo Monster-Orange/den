@@ -2,7 +2,6 @@ import { describe, expect, it } from "@jest/globals";
 import type { DenConfig, UserConfig } from "../../../src/shared/den-config.js";
 import {
   patchSkillPacksBody,
-  skillPackAgents,
   skillPacksData,
 } from "../../../src/ui/server/skill-pack-settings.js";
 
@@ -108,20 +107,5 @@ describe("issue 1631: Settings' skill-pack POST takes a list", () => {
     );
     expect(p.skills.find((s) => s.name === "tdd")?.byDefault).toBe(true);
     expect(p.path).toBe("pstack");
-  });
-});
-
-describe("issue 1631: which agents a Settings change restarts", () => {
-  it("names each agent whose own skill_packs key changed, once", () => {
-    expect(
-      skillPackAgents([
-        { key: "agents.lane-1.skill_packs", value: "off" },
-        { key: "skill_packs.pstack.on", value: false },
-        { key: "agents.lane-1.skill_packs", value: "on" },
-      ]),
-    ).toEqual(["lane-1"]);
-    expect(skillPackAgents({ key: "skill_packs.on", value: false })).toEqual(
-      [],
-    );
   });
 });

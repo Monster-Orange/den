@@ -242,6 +242,7 @@ import {
   agentSkillPacks,
   readSkillPacksConfig,
 } from "../../shared/skill-packs/launch.js";
+import { SKILL_PACK_CACHE } from "../../shared/skill-packs/build.js";
 import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
@@ -8879,6 +8880,112 @@ export function modeCheck(
           .catch((e: unknown) =>
             opts.log?.(
               `agent ${m.id}: not restarted for its mode: ${(e as Error)?.message ?? e}`,
+            ),
+          )
+          .finally(() => running.delete(m.id));
+        running.set(m.id, p);
+      }
+      return began;
+    },
+    async pending() {
+      await Promise.all([...running.values()]);
+    },
+  };
+}
+
+export interface SkillPackRestarted {
+  agent: string;
+  project: string;
+}
+
+export function skillPackRestartDetail(e: SkillPackRestarted): string {
+  return `restarted ${e.agent} in ${e.project} at idle to take its skill packs, by Den itself`;
+}
+
+function launchedPackDirs(filesDir: string): string[] | null {
+  let deny: unknown;
+  try {
+    deny = (
+      JSON.parse(
+        fs.readFileSync(path.join(filesDir, "settings.json"), "utf-8"),
+      ) as {
+        permissions?: { deny?: unknown };
+      }
+    ).permissions?.deny;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(deny)) return [];
+  const out: string[] = [];
+  for (const r of deny) {
+    const m = typeof r === "string" ? /^Edit\(\/(\/.+)\/\*\*\)$/.exec(r) : null;
+    if (m && m[1]!.split(path.sep).includes(SKILL_PACK_CACHE))
+      out.push(path.resolve(m[1]!));
+  }
+  return out.sort();
+}
+
+export async function skillPackDrift(
+  d: AgentsResolved,
+): Promise<{ id: string; workspace: string }[]> {
+  const c = await d.connectExisting();
+  let live: { ref: { id: string }; exited?: unknown }[] = [];
+  try {
+    live = c ? (await c.list()).filter((x) => !x.exited) : [];
+  } finally {
+    c?.close();
+  }
+  if (!live.length) return [];
+  const find = personaLookup(d);
+  const cfg = agentsConfig(d);
+  const out: { id: string; workspace: string }[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (!live.some((x) => x.ref.id === rec.session.id)) continue;
+    const had = launchedPackDirs(agentFilesDir(d.stateDir(), rec.id));
+    const p = find(rec);
+    if (had === null || !p) continue;
+    let want: string[];
+    try {
+      want = (skillPacksFor(d, cfg, p, rec.id, rec.runtime).skillPacks ?? [])
+        .map((x) => path.resolve(x.dir))
+        .sort();
+    } catch {
+      continue;
+    }
+    if (want.join("\n") !== had.join("\n"))
+      out.push({ id: rec.id, workspace: rec.workspace });
+  }
+  return out;
+}
+
+export function skillPackCheck(
+  d: AgentsResolved,
+  opts: {
+    pollMs?: number;
+    log?: (line: string) => void;
+    onRestarted?: (e: SkillPackRestarted) => void;
+  } = {},
+): ModeCheck {
+  const running = new Map<string, Promise<void>>();
+  return {
+    async tick() {
+      const began: string[] = [];
+      for (const m of await skillPackDrift(d)) {
+        if (running.has(m.id)) continue;
+        began.push(m.id);
+        const p = restartAgent(d, m.id, m.workspace, "after-turn", {
+          pollMs: opts.pollMs,
+        })
+          .then((done) => {
+            if (done.already) return;
+            opts.log?.(
+              `agent ${m.id}: restarted after its turn for its skill packs`,
+            );
+            opts.onRestarted?.({ agent: m.id, project: m.workspace });
+          })
+          .catch((e: unknown) =>
+            opts.log?.(
+              `agent ${m.id}: not restarted for its skill packs: ${(e as Error)?.message ?? e}`,
             ),
           )
           .finally(() => running.delete(m.id));

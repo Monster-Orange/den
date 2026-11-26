@@ -11,11 +11,7 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
-import {
-  patchSkillPacksBody,
-  skillPackAgents,
-  skillPacksData,
-} from "./skill-pack-settings.js";
+import { patchSkillPacksBody, skillPacksData } from "./skill-pack-settings.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   COACH_ROUTES,
@@ -5757,29 +5753,6 @@ async function heldWriteLost(a: Approval | null, why: string): Promise<void> {
  * resolved agents config, the one user.yml key, the note in the state
  * folder, and Restart after its turn (the conversation kept).
  */
-function restartForSkillPacks(ids: string[]): void {
-  if (!ids.length) return;
-  let recs: ReturnType<typeof listAgentRecords> = [];
-  try {
-    recs = listAgentRecords(getStateDir());
-  } catch {
-    return;
-  }
-  for (const rec of recs)
-    if (ids.includes(rec.id) && !rec.stoppedAt)
-      void restartAgent(
-        agentWebDeps(),
-        rec.id,
-        rec.workspace,
-        "after-turn",
-      ).catch((e: unknown) =>
-        serverLog(
-          `  ⚠ skill packs: ${rec.id} didn't restart: ${(e as Error).message}. Restart it from the Agents page`,
-          "warn",
-        ),
-      );
-}
-
 function agentSandboxHeldOp() {
   const deps = (): SandboxSetDeps => ({
     record: (id, project) => agentRecord(agentWebDeps(), id, project),
@@ -11202,10 +11175,8 @@ async function handleRequest(
               ),
             );
         }
-        if (modesChanged)
+        if (modesChanged || body.skill_packs !== undefined)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
-        if (body.skill_packs !== undefined)
-          restartForSkillPacks(skillPackAgents(body.skill_packs));
         return sendJson(res, {
           ok: true,
           ...cliRowSettings(user),
