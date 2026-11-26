@@ -1317,6 +1317,7 @@ export const USER_ONLY_WIDENING: readonly string[] = [
   "agents.sandbox",
   "agents.*.sandbox",
   "agents.sandbox_sockets",
+  "agents.os_login",
   "web.edge_unattested",
   "web.allow_plain_http_remote",
   "secrets.onepassword.token",
@@ -2255,6 +2256,7 @@ export const AGENTS_RESERVED_KEYS = [
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
   "sandbox",
   "sandbox_sockets",
+  "os_login",
 ];
 
 /**
@@ -2964,6 +2966,8 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   // read-only to agents; the org config may sit in a repo they edit).
   if (raw.sandbox !== undefined)
     throw new Error(SANDBOX_IN_USER_YML("agents.sandbox"));
+  if (raw.os_login !== undefined)
+    throw new Error(SANDBOX_IN_USER_YML("agents.os_login"));
   out.sandbox = true;
   // agents.git, unless it is an agent called git (a block with grants).
   const gitBlock = isGitSettings(raw.git) ? raw.git : undefined;
