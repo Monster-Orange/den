@@ -364,6 +364,10 @@
       "src/shared/approval-policy.ts",
       "src/shared/settings-cli-rows.ts"
     ],
+    "tests/unit/server/server-agent-links-1811.browser.test.ts": [
+      "src/shared/agent-links.ts",
+      "src/ui/server/public/server-agent-page.js"
+    ],
     "tests/unit/server/bell-needs-you.browser.test.ts": [
       "src/ui/server/notification-routes.ts",
       "src/ui/server/notification-service.ts"
@@ -1144,6 +1148,7 @@
         "tests/unit/server/sec2a-github-steps.browser.test.ts",
         "tests/unit/server/sec2a-identity.browser.test.ts",
         "tests/unit/server/sec2a-signin.browser.test.ts",
+        "tests/unit/server/server-agent-links-1811.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/services-workspace-exec.browser.test.ts",
@@ -1230,6 +1235,7 @@
         "tests/unit/server/report-everywhere.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec2a-identity.browser.test.ts",
+        "tests/unit/server/server-agent-links-1811.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
@@ -1273,6 +1279,7 @@
         "tests/unit/server/runs-dock.browser.test.ts",
         "tests/unit/server/scope-retry-1051.browser.test.ts",
         "tests/unit/server/sec1b-signin.browser.test.ts",
+        "tests/unit/server/server-agent-links-1811.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/services-workspace-exec.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
@@ -1588,6 +1595,7 @@
         "tests/unit/server/sec2a-github-steps.browser.test.ts",
         "tests/unit/server/sec2a-identity.browser.test.ts",
         "tests/unit/server/sec2a-signin.browser.test.ts",
+        "tests/unit/server/server-agent-links-1811.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/services-workspace-exec.browser.test.ts",
@@ -1689,6 +1697,7 @@
         "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/sec1a-cross-origin.browser.test.ts",
         "tests/unit/server/sec2a-identity.browser.test.ts",
+        "tests/unit/server/server-agent-links-1811.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/settings-hub.browser.test.ts",
@@ -1951,6 +1960,7 @@
         "tests/unit/server/sec2a-github-steps.browser.test.ts",
         "tests/unit/server/sec2a-identity.browser.test.ts",
         "tests/unit/server/sec2a-signin.browser.test.ts",
+        "tests/unit/server/server-agent-links-1811.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/services-workspace-exec.browser.test.ts",
@@ -2140,6 +2150,7 @@
         "tests/unit/server/sec2a-identity.browser.test.ts",
         "tests/unit/server/sec2a-pair.browser.test.ts",
         "tests/unit/server/sec2a-signin.browser.test.ts",
+        "tests/unit/server/server-agent-links-1811.browser.test.ts",
         "tests/unit/server/server-agent.browser.test.ts",
         "tests/unit/server/service-panel.browser.test.ts",
         "tests/unit/server/services-workspace-exec.browser.test.ts",
@@ -5171,6 +5182,16 @@
       ],
       "run": [
         "tests/unit/server/self-update-setting.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agent-links.ts",
+        "src/ui/server/public/server-agent-page.js"
+      ],
+      "run": [
+        "tests/unit/server/server-agent-links-1811.browser.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
