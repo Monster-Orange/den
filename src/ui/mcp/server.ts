@@ -1,6 +1,6 @@
 /**
  * `<cli> mcp`: an MCP server over stdio, a thin client of the running web
- * server (http://localhost:<web.port>). Agents and the web UI share one
+ * server, dialed where it listens (web-dial.ts). Agents and the web UI share one
  * state and one set of guards; nothing is started implicitly.
  *
  * stdout carries the protocol only: diagnostics go to stderr.
@@ -50,7 +50,7 @@ import {
   ScopeUsageError,
   type McpScope,
 } from "./scope.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;

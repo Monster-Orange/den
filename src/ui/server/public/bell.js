@@ -17,6 +17,10 @@
  * decision, a mention) shows open and counts on the badge. The rest
  * (finished, answers, releases and checks) folds into one Updates row;
  * opening the agent clears its updates.
+ *
+ * The agents Done, not seen (GET /api/notifications `done`, this
+ * person's) have their own section under Needs you; a row opens the agent,
+ * and opening it is seen. The badge counts Needs you plus Done, not seen.
  */
 import { formatTime, formatTitle } from "/kit/time.js";
 // den-ui 0.7.0: the bell, its badge and its panel are the kit's; Den
@@ -234,6 +238,21 @@ function subjectHtml(scope, s, ui) {
     .join("");
 }
 
+function doneRowHtml(d, seen = false) {
+  const link = safeLink(d.link);
+  const text = tr("bell.doneRow", { name: d.name || d.agent });
+  const where = d.server ? tr("ag.tag.server") : d.project || d.workspace || "";
+  return (
+    `<div class="den-bell-row" data-kind="${seen ? "seen-done" : "done"}" data-agent="${esc(d.agent)}">` +
+    `<span class="den-dot ok" aria-hidden="true"></span>` +
+    (link
+      ? `<a href="${esc(link)}" data-bell="open-done">${esc(text)}<span class="den-bell-sub">${esc(seen ? tr("bell.seenSub", { where }) : where)}</span></a>`
+      : `<span class="den-bell-t">${esc(text)}</span>`) +
+    `<time datetime="${esc(d.at)}" title="${esc(formatTitle(d.at))}">${esc(bellAgo(d.at))}</time>` +
+    `</div>`
+  );
+}
+
 /**
  * Issue 746: the held writes waiting for the person's Allow (`waiting`
  * entries of kind "allow"), oldest first.
@@ -251,10 +270,14 @@ export function allowsOf(b) {
  * (shell.js's denApDetailLines). `open`: Review is open.
  */
 function allowRowHtml(w, open) {
+  if (w.coach && typeof w.coach === "object") return coachRowHtml(w);
   const what = allowWhat(w);
+  // The person asked, under an unverified agent claim.
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
-    : tr("bell.ap.rowAsk", { what });
+    : w.claimedAs
+      ? tr("bell.ap.rowClaimed", { name: w.claimedAs, what })
+      : tr("bell.ap.rowAsk", { what });
   const waits =
     typeof w.since === "string" && typeof w.expiresAt === "string"
       ? tr("bell.ap.waits", {
@@ -279,6 +302,39 @@ function allowRowHtml(w, open) {
     `<button type="button" class="den-btn primary" data-bell="allow" data-ap="${esc(w.id)}">${esc(tr("bell.ap.allow"))}</button>` +
     `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
     `</div>`
+  );
+}
+
+export function bellCountOf(b) {
+  return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
+}
+
+/**
+ * Issue 110 (mock v3, in Hub, Den project): a Coach Apply's held write is
+ * one card: who asks, the finding it came from, Change, Why, whether it is
+ * reversible, then the bell's own Allow and Deny. Every word is a key, its
+ * numbers the finding's (Den's, from the stored finding: never an agent's).
+ */
+function coachRowHtml(w) {
+  const c = w.coach;
+  const kind = String(c.kind ?? "");
+  const vars = { ...(c.vars ?? {}), persona: c.persona ?? "" };
+  const row = (label, text) =>
+    `<div class="den-bell-cr"><dt>${esc(tr(label))}</dt><dd>${esc(text)}</dd></div>`;
+  return (
+    `<div class="den-bell-row den-bell-allow den-bell-coach" data-kind="allow" data-bell-coach data-ap-row="${esc(w.id)}">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t"><b>${esc(tr("bell.coach.asks", { persona: vars.persona }))}</b>` +
+    `<span class="den-bell-sub">${esc(tr("bell.coach.from", { title: tr(`co.f.${kind}.t`, vars) }))}</span>` +
+    `<dl class="den-bell-cdl">` +
+    row("bell.coach.change", tr(`co.ap.change.${kind}`, vars)) +
+    row("bell.coach.why", tr(`co.f.${kind}.why`, vars)) +
+    row("bell.coach.rev", tr(`co.ap.rev.${kind}`, vars)) +
+    `</dl></span>` +
+    `<span class="den-bell-cb">` +
+    `<button type="button" class="den-btn primary" data-bell="allow" data-ap="${esc(w.id)}">${esc(tr("bell.ap.allow"))}</button>` +
+    `<button type="button" class="den-btn" data-bell="deny" data-ap="${esc(w.id)}">${esc(tr("bell.ap.deny"))}</button>` +
+    `</span></div>`
   );
 }
 
@@ -381,12 +437,12 @@ function groupsHtml(groups, ui, needs = false) {
     .map(
       (g) =>
         `<section data-scope="${esc(g.scope)}"><div class="den-bell-sc"><span>${scopeDot(g.scope)}${esc(scopeLabel(g.scope, groupName(g)))}</span>` +
-        // Issue 1339: while a Mark read runs, its button stays, busy in
-        // itself, and the others wait.
+        // Issue 1339: while a Mark read runs, its button stays, held with
+        // the kit's dots (data-bell-held, issue 1054), and the others wait.
         (!needs &&
         (ui?.busy === `scope:${g.scope}` ||
           g.subjects.some((s) => s.items.some((n) => !n.read)))
-          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}"${ui?.busy ? ' disabled aria-busy="true"' : ""}>${esc(tr(ui?.busy === `scope:${g.scope}` ? "bell.marking" : "bell.read"))}</button>`
+          ? `<button type="button" data-bell="scope" data-scope="${esc(g.scope)}"${ui?.busy === `scope:${g.scope}` ? " data-bell-held" : ui?.busy ? " disabled" : ""}>${esc(tr("bell.read"))}</button>`
           : "") +
         `</div>` +
         g.subjects.map((s) => subjectHtml(g.scope, s, ui)).join("") +
@@ -428,20 +484,21 @@ export function bellPanel(b, ui = {}) {
   const older = b?.older ?? { count: 0, groups: [] };
   const updates = b?.updates ?? { count: 0, unread: 0, groups: [] };
   const all = [...groups, ...(older.groups ?? []), ...(updates.groups ?? [])];
-  // Issue 1339: while its POST runs, the button stays, busy in itself
-  // (disabled, "Marking…"), and the other one waits too.
-  const busyAttr = u.busy ? ' disabled aria-busy="true"' : "";
+  const done = Array.isArray(b?.done) ? b.done : [];
+  const seenDone = Array.isArray(b?.seenDone) ? b.seenDone : [];
+  // Issue 1339: while its POST runs, the button stays, held with the
+  // kit's dots (data-bell-held: paint holds it, issue 1054), and the other
+  // one waits too.
+  const attr = (what) =>
+    u.busy === what ? " data-bell-held" : u.busy ? " disabled" : "";
   const actions =
-    (u.busy === "all"
-      ? `<button type="button" data-bell="all"${busyAttr}>${esc(tr("bell.marking"))}</button>`
-      : b?.unread || updates.unread
-        ? `<button type="button" data-bell="all"${busyAttr}>${esc(tr("bell.markAll"))}</button>`
-        : "") +
-    (u.busy === "clear"
-      ? `<button type="button" data-bell="clear"${busyAttr}>${esc(tr("bell.clearing"))}</button>`
-      : all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
-        ? `<button type="button" data-bell="clear"${busyAttr}>${esc(tr("bell.clearRead"))}</button>`
-        : "");
+    (u.busy === "all" || b?.unread || updates.unread
+      ? `<button type="button" data-bell="all"${attr("all")}>${esc(tr("bell.markAll"))}</button>`
+      : "") +
+    (u.busy === "clear" ||
+    all.some((g) => g.subjects.some((s) => s.items.some((n) => n.read)))
+      ? `<button type="button" data-bell="clear"${attr("clear")}>${esc(tr("bell.clearRead"))}</button>`
+      : "");
   const panel = {
     title: tr("bell.title"),
     titleId: "den-bell-h",
@@ -459,7 +516,9 @@ export function bellPanel(b, ui = {}) {
     !overrunsOf(b).length &&
     !groups.length &&
     !older.count &&
-    !updates.count
+    !updates.count &&
+    !done.length &&
+    !seenDone.length
   )
     return {
       ...panel,
@@ -483,7 +542,11 @@ export function bellPanel(b, ui = {}) {
         allowsHtml(allows, u.reviews) +
         overrunsHtml(overrunsOf(b)) +
         groupsHtml(groups, u, true),
+      ...(done.length
+        ? { done: done.map((d) => doneRowHtml(d)).join("") }
+        : {}),
       earlier:
+        seenDone.map((d) => doneRowHtml(d, true)).join("") +
         updatesHtml +
         (older.count
           ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
@@ -534,6 +597,8 @@ async function undoSetting(el) {
 
 async function post(path, body) {
   try {
+    // busy-ok: Mark read and Clear hold their button in paint()
+    // (data-bell-held); Stop's ask closes on Yes; Undo is a toast's.
     await window.denShell?.api?.("POST", path, body);
     return true;
   } catch (err) {
@@ -548,8 +613,9 @@ async function post(path, body) {
  */
 function scopeRead(b, scope) {
   let marked = 0;
-  const f = (n, g) => {
-    if (g.scope !== scope || n.read) return n;
+  const f = (n) => {
+    // The server's rule (notifications.ts, matches): the item's own scope.
+    if (n.scope !== scope || n.read) return n;
     marked++;
     return { ...n, read: true };
   };
@@ -705,6 +771,10 @@ export function initBell(doc = document) {
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
+  // The control a paint couldn't give the keyboard back to (its
+  // row wasn't drawn: a refresh that came back without it). The next paint
+  // that draws it again focuses it, unless the person moved on meanwhile.
+  let lost = "";
   const bell = hydrateBell(btn, {
     lang: () => window.denShell?.lang?.() ?? "en",
     // den#143: its Report footer drawn with it, so a repaint (every
@@ -716,6 +786,7 @@ export function initBell(doc = document) {
     onOpen: () => void refresh(),
     onClose: () => {
       ui.ask = null;
+      lost = "";
     },
     // Esc in the ⊘'s question cancels it; the panel stays.
     onEscape: () => {
@@ -728,6 +799,18 @@ export function initBell(doc = document) {
     },
   });
   const pop = bell.el;
+  // Issue 1054: the button held with the kit's dots, and how to let it go.
+  let heldBtn = null;
+  let letGo = null;
+  const loose = () => {
+    const a = doc.activeElement;
+    return !a || a === doc.body || a === doc.documentElement;
+  };
+  doc.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (t === doc.body || t === doc.documentElement) return;
+    if (lost && !pop.contains(t)) lost = "";
+  });
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -741,16 +824,42 @@ export function initBell(doc = document) {
             : "")
         : "";
     bell.paint();
-    if (keep) pop.querySelector(keep)?.focus?.();
+    // Issue 1054: the pressed button holds the kit's dots while its POST
+    // runs. A paint keeps it when the button is the same one (issue 1024
+    // patches in place), holds the new one when it isn't, and lets go of
+    // the old: none is left held once the answer is in.
+    const b = ui.busy ? pop.querySelector("[data-bell-held]") : null;
+    // Issue 1524: the patch takes the drawn attributes and children, so a
+    // repaint takes the hold off the same button too (aria-busy, disabled,
+    // the dots): it is let go and held again. Letting go first keeps the
+    // kit's order: its release runs before the new hold.
+    const dropped =
+      b && b === heldBtn && b.getAttribute("aria-busy") !== "true";
+    if (b !== heldBtn || dropped) {
+      letGo?.();
+      heldBtn = b;
+      letGo = b ? (window.denShell?.holdDots?.(b) ?? null) : null;
+    }
+    const want = keep || (lost && loose() ? lost : "");
+    if (!want) return;
+    const el = pop.querySelector(want);
+    if (el) {
+      el.focus?.();
+      lost = "";
+    } else if (loose()) lost = want;
   };
+  let asked = 0;
+  let drawn = 0;
   const refresh = async () => {
+    const n = ++asked;
     const b = await load();
-    // Issue 1339: a refresh while Mark all read or Clear read runs would
-    // put back what the person just saw go.
-    if (!b || ui.busy) return;
+    // None while Mark all or Clear read runs, and none older than the
+    // answer drawn last: answers can land out of order.
+    if (!b || ui.busy || n < drawn) return;
+    drawn = n;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
-    bell.setCount((b?.unread ?? 0) + overrunsOf(b).length);
+    bell.setCount(bellCountOf(b) + overrunsOf(b).length);
     if (bell.isOpen()) paint();
   };
   pop.addEventListener("click", async (e) => {
@@ -760,20 +869,25 @@ export function initBell(doc = document) {
       // space between) opens it as its link does.
       const a = e.target
         .closest(".den-bell-row")
-        ?.querySelector('a[data-bell="open"]');
+        ?.querySelector('a[data-bell="open"], a[data-bell="open-done"]');
       if (a) a.click();
       return;
     }
     const what = el.dataset.bell;
     if (what === "settings") return;
-    if (what === "open") {
+    if (what === "open" || what === "open-done") {
       const id = el.closest("[data-id]")?.dataset.id;
-      // Marked read first; the link then opens the agent.
-      if (id)
-        void fetch("/api/notifications/read", {
+      const agent = el.closest("[data-agent]")?.dataset.agent;
+      const [path, body] =
+        what === "open-done"
+          ? ["/api/notifications/looking", agent ? { agents: [agent] } : null]
+          : ["/api/notifications/read", id ? { id } : null];
+      // busy-ok: marked in the background as the link opens
+      if (body)
+        void fetch(path, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ id }),
+          body: JSON.stringify(body),
           keepalive: true,
         }).catch(() => {});
       return;

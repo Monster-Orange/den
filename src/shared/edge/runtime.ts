@@ -12,7 +12,7 @@ import { probeIdentity } from "../den-identity.js";
 import { getStateDir } from "../paths.js";
 import { portInUse as portInUseAnywhere } from "../port-pick.js";
 import { product } from "../product.js";
-import { localhostOrigin } from "../web-session.js";
+import { denWebBase } from "../web/web-dial.js";
 import {
   addressCheckSettings,
   cliLanguage,
@@ -505,7 +505,7 @@ export async function assertEdgePorts(
   const s = addressCheckSettings();
   const opts = { key, timeoutMs: s.timeoutMs, retries: s.retries };
   const lang = cliLanguage();
-  const own = await probe(localhostOrigin(webPort), opts);
+  const own = await probe(denWebBase(webPort), opts);
   if (!own.ok) {
     (c.log ?? ((l: string) => console.log(l)))(
       addressWord(lang, "doctor.unchecked", { title }),

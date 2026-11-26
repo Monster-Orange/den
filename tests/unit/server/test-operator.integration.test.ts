@@ -30,7 +30,7 @@ import {
 import {
   ensureWebSecret,
   readWebSecret,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import {
   creationRecordPath,
   verifiedCreationRecord,
@@ -571,6 +571,75 @@ describe("the test operator is refused everywhere else", () => {
       expect(r.json.code).not.toBe("fixture_scope");
       if (refused) expect(r.status).toBe(403);
       else expect(r.status).not.toBe(403);
+    },
+  );
+
+  it.each([
+    [
+      "edits, on one Den marked testBed",
+      "notes",
+      "mode252a",
+      true,
+      "edits",
+      200,
+    ],
+    [
+      "follow its project, on one Den marked testBed",
+      "notes",
+      "mode252b",
+      true,
+      null,
+      200,
+    ],
+    ["auto, on one Den marked testBed", "notes", "mode252c", true, "auto", 403],
+    ["all, on one Den marked testBed", "notes", "mode252d", true, "all", 403],
+    [
+      "edits, on an agent Den didn't mark",
+      "notes",
+      "mode252e",
+      false,
+      "edits",
+      403,
+    ],
+    [
+      "edits, on an agent that isn't there",
+      "notes",
+      "mode252f",
+      null,
+      "edits",
+      403,
+    ],
+    [
+      "edits, on the server agent",
+      "den-server",
+      "mode252g",
+      true,
+      "edits",
+      403,
+    ],
+  ])(
+    "marked later: the fixture person's mode %s",
+    async (_n, ws, id, marked, mode, status) => {
+      if (marked !== null)
+        writeRecord(later.stateDir, {
+          id,
+          workspace: ws,
+          persona: id,
+          runtime: "den-claude",
+          cwd: later.home,
+          session: { backend: "den-pty", id: `gone-${id}` },
+          sessionName: `den-${ws}:${id}`,
+          startedAt: "2026-11-06T09:30:00.000Z",
+          ...(marked ? { testBed: true as const } : {}),
+        });
+      const r = await asFixture(
+        later,
+        "POST",
+        `/api/workspaces/${ws}/agents/${id}/mode`,
+        { mode },
+      );
+      expect(r.json.code).not.toBe("fixture_scope");
+      expect(r.status).toBe(status);
     },
   );
 

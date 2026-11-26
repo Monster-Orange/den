@@ -19,7 +19,9 @@ const LINUX_MEMINFO = `MemTotal:       16314748 kB
 MemFree:         1203456 kB
 MemAvailable:    8000000 kB
 `;
-const NO_HOLD = 'Can\'t ls: "/home/ci/heavy.hold" not found\n';
+// Issue 1597: the check lists the hold file's folder, and a working
+// listing that doesn't name it prints no error.
+const NO_HOLD = "";
 
 /** Where each `-get` of the batch went, and the folder's mode then. */
 interface Seen {
@@ -93,7 +95,7 @@ describe("issue 1381: a Linux box's memory from a macOS gate host", () => {
     expect(r.freeMemMb).toBeCloseTo(8000000 / 1024);
     expect(seen.cmds).toEqual(["sftp"]);
     // The hold file is still looked for, in the same session.
-    expect(seen.stdin).toContain('-ls "heavy.hold"');
+    expect(seen.stdin).toContain('-ls -1 "."');
   });
 
   it("the file goes to a new private folder, which is gone afterwards", async () => {

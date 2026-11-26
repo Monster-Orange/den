@@ -1,3 +1,4 @@
+import { testInstallRestartEnv } from "../../shared/test-install-launch.js";
 import { browserOpenRefusal } from "../../shared/browser-open.js";
 import {
   ownerGithubLine,
@@ -8,11 +9,11 @@ import chalk from "chalk";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import { denWebBase, webProbeTarget } from "../../shared/web-dial.js";
+import { denWebBase, webProbeTarget } from "../../shared/web/web-dial.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
-import { LookupTimeoutError, lookup } from "./proc-lookup.js";
+import { LookupTimeoutError, lookup } from "../../shared/proc-lookup.js";
 import {
   readSecretsConfig,
   secretsProcessEnv,
@@ -33,7 +34,7 @@ import {
   personToken,
   readWebSecret,
   rotateWebSecret,
-} from "../../shared/web-secret.js";
+} from "../../shared/web/web-secret.js";
 import { newConfirmCode } from "../../shared/confirm-code.js";
 import {
   checkLoginCode,
@@ -47,7 +48,7 @@ import {
   SESSION_TOUCH_MS,
   sessionIdPrefix,
   WebSessionStore,
-} from "../../shared/web-session.js";
+} from "../../shared/web/web-session.js";
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
@@ -74,7 +75,7 @@ import {
   clearWebOwner,
   readWebOwner,
   writeWebOwner,
-} from "../../shared/web-owner.js";
+} from "../../shared/web/web-owner.js";
 import {
   ownServer,
   processCwd,
@@ -90,7 +91,7 @@ import {
   readWebUrl,
   requireWebUrl,
   type WebUrl,
-} from "../../shared/web-url.js";
+} from "../../shared/web/web-url.js";
 import { webServiceAction, type WebServiceDeps } from "./web-service.js";
 import {
   CLAIM_CODE_TTL_MS,
@@ -631,6 +632,13 @@ export function webServerEnv(
   return { ...base, PORT: String(port), ...secretsProcessEnv(cfg, base) };
 }
 
+export function webRestartEnv(
+  port: number,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...webServerEnv(port, base), ...testInstallRestartEnv() };
+}
+
 function startDenWebServer(options: WebCommandOptions): StartedServer {
   const root = getDistRoot();
   const entrypoint = resolveServerEntrypoint();
@@ -731,7 +739,7 @@ export function spawnDetachedWebRestart(port: number): number | undefined {
       {
         cwd: root,
         detached: true,
-        env: webServerEnv(port),
+        env: webRestartEnv(port),
         stdio: ["ignore", logFd, logFd],
       },
     );

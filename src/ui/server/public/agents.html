@@ -34,7 +34,7 @@
     <title>__DEN_TITLE__ · Agents</title>
     <style>
       /* The Agents tab (AG-4a-term, AG spec §5d): the prototype's
-         (den-shell.html) page header (.ph), list column (.agl, 300px) and
+         (den-shell.html) page header (.ph), list column (.agl, 300px; issue 773: 380px on Agents) and
          panes (.agp: 1, 2 side by side, 3-4 as 2x2), ported as they are;
          --r is --radius, --r-btn is --radius-button. */
       *,
@@ -96,6 +96,13 @@
         font-size: 13px;
         margin-top: 4px;
         overflow-wrap: anywhere;
+      }
+      /* Under 600px the page's address (/agents?open=…) goes: a phone
+         person gains nothing from it, and it took the list's room. */
+      @media (max-width: 599.98px) {
+        .ph .sub .ag-urlw {
+          display: none;
+        }
       }
       /* Issue 144: the machine's gate slot, and its queue. */
       .gate-chip {
@@ -606,6 +613,139 @@
       .aghub .den-dot {
         vertical-align: middle;
       }
+      /* Issue 773: the four states' marks; each has its own shape (a
+         filled dot with "!", one with a tick, one with a halo, a hollow
+         ring), so colour is never the only sign. */
+      .agm {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        flex: none;
+        display: inline-grid;
+        place-items: center;
+        font: 700 9px/1 var(--mono);
+        box-sizing: border-box;
+        margin: 0 2px;
+      }
+      .agm.need {
+        background: var(--warn);
+        color: var(--on-accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent);
+      }
+      .agm.done {
+        background: var(--ok);
+        color: var(--on-accent);
+      }
+      .agm.work {
+        background: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+      }
+      .agm.idle {
+        border: 1.5px solid var(--faint);
+        background: transparent;
+      }
+      /* Issue 773: the state's chip, at the row's right. */
+      .agr .cp {
+        font: 11.5px var(--mono);
+        border-radius: 999px;
+        padding: 0 8px;
+        border: 1px solid transparent;
+        white-space: nowrap;
+      }
+      .agr .cp.need {
+        color: var(--warn);
+        border-color: color-mix(in srgb, var(--warn) 50%, transparent);
+        background: color-mix(in srgb, var(--warn) 9%, transparent);
+      }
+      .agr .cp.done {
+        color: var(--ok);
+        border-color: color-mix(in srgb, var(--ok) 50%, transparent);
+        background: color-mix(in srgb, var(--ok) 9%, transparent);
+      }
+      .agr .cp.work {
+        color: var(--accent-text);
+      }
+      .agr .cp.idle {
+        color: var(--faint);
+      }
+      .agr[data-attn="idle"] .nm {
+        color: var(--muted);
+        font-weight: 400;
+      }
+      /* Issue 168: the agent in front stays bold, idle or not. */
+      .agr[data-attn="idle"][aria-current="true"] .nm {
+        font-weight: 600;
+      }
+      /* Issue 773: the project tag (All projects) and "Server". */
+      .agr .ptag {
+        font: 11px var(--mono);
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        padding: 0 5px;
+        color: var(--muted);
+        margin-right: 6px;
+      }
+      .agr .ptag[data-pc] {
+        border-color: var(--pc);
+      }
+      /* Issue 773, mock v3: the Agents list is 380 px wide (Terminals
+         keeps 300), and each band's row has a hairline on top. */
+      body:has(#den-shell:not([data-page="terminal"])) .agx {
+        grid-template-columns: 380px minmax(0, 1fr);
+      }
+      .agband .cp .cpn,
+      .agchev {
+        display: none;
+      }
+      .agband .agr {
+        gap: 2px 10px;
+        padding: 9px 12px 9px 10px;
+        border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+      }
+      .agband .wsh .n {
+        font: 11px var(--mono);
+      }
+      /* Issue 773: the first list loading: three placeholder rows. */
+      .agskel .skel {
+        height: 44px;
+        margin: 8px 12px;
+        border-radius: 6px;
+        background: linear-gradient(
+          90deg,
+          var(--sunken),
+          var(--border),
+          var(--sunken)
+        );
+      }
+      /* Issue 773, phone: each card 64 px tall or more; the project tag
+         stays on the second line. */
+      @media (max-width: 720px) {
+        .agband .agr {
+          min-height: 64px;
+          position: relative;
+          padding: 10px 40px 10px 16px;
+        }
+        /* Mock v3's phone card: the chip says just "Needs you", line 2 is
+           the tag and the detail (no runtime, no Needs you time), a › at
+           the right. */
+        .agband .cp .cpw,
+        .agband .meta .mrt,
+        .agband .meta .mtm {
+          display: none;
+        }
+        .agband .cp .cpn {
+          display: inline;
+        }
+        .agband .agchev {
+          display: block;
+          position: absolute;
+          right: 14px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--faint);
+          font-size: 18px;
+        }
+      }
       .wbdg {
         font: 10.5px var(--mono);
         color: var(--warn);
@@ -666,10 +806,14 @@
         overflow-x: auto;
         min-width: 0;
       }
+      /* A tab gives up width (its name shortens) before the strip scrolls:
+         the open tabs fit whole while each can keep 7rem; past that the
+         strip scrolls sideways. */
       .agtab-w {
         position: relative;
         display: inline-flex;
-        flex: none;
+        flex: 0 1 auto;
+        min-width: 7rem;
         max-width: 280px;
       }
       .agtab {
@@ -677,6 +821,8 @@
         align-items: center;
         gap: 6px;
         min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
         border: 1px solid transparent;
         border-bottom: 0;
         background: none;
@@ -704,7 +850,8 @@
       .agtab .tn {
         overflow: hidden;
         text-overflow: ellipsis;
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+        min-width: 0;
         max-width: 100%;
       }
       .agtab .tm {
@@ -712,7 +859,8 @@
         font-size: 11px;
         overflow: hidden;
         text-overflow: ellipsis;
-        flex: 0 1 auto;
+        /* Gives way long before the name does (0.4.44). */
+        flex: 0 1000 auto;
         min-width: 0;
       }
       .agtab-x {
@@ -1085,13 +1233,13 @@
         font-size: 12.5px;
         color: var(--muted);
       }
-      /* Issue 750: By project | By group, at the top of the list. */
+      /* Issue 750: By project | By group, at the top of the list: centred,
+         at the layout switch's size (.seg). */
       .agl .agby {
-        margin: 8px 12px 2px;
-        font-size: 12.5px;
-      }
-      .agl .agby button {
-        padding: 4px 10px;
+        display: flex;
+        width: fit-content;
+        max-width: calc(100% - 24px);
+        margin: 8px auto 2px;
       }
       @media (pointer: coarse) {
         .agl .agby button {
@@ -1203,6 +1351,15 @@
       .ag-dlg .ready .mono {
         font-family: var(--mono);
       }
+      /* A move in the list that Den refused, under the list. Its agent's
+         name and Den's reason (a path, say) can have nowhere to break:
+         they wrap, never widen the page. */
+      #ag-order-err {
+        margin: 6px 0 0;
+        font: 12.5px/1.45 var(--sans);
+        color: var(--bad);
+        overflow-wrap: anywhere;
+      }
       .ag-dlg .err {
         margin: 0;
         font: 12.5px/1.45 var(--sans);
@@ -1273,9 +1430,16 @@
            wide screen. The list keeps its rows (at least about two) while
            there is room; the panes take the rest, never less than their
            own minimum; past that the page scrolls. */
-        .agx {
+        /* The list's floor: its notes and view switch, then three whole
+           rows (--agl-floor, agents-page.js fitListFloor), never more than
+           60% of the screen, as the list itself (max-height below): the
+           pane keeps the rest, and past that the page scrolls. */
+        .agx,
+        body:has(#den-shell:not([data-page="terminal"])) .agx {
           grid-template-columns: minmax(0, 1fr);
-          grid-template-rows: minmax(6rem, max-content) minmax(min-content, 1fr);
+          grid-template-rows:
+            minmax(min(var(--agl-floor, 6rem), 60vh), max-content)
+            minmax(min-content, 1fr);
         }
         .ph .act {
           flex-wrap: wrap;
@@ -1313,7 +1477,7 @@
           contain: size;
         }
         .agl {
-          max-height: 50vh;
+          max-height: 60vh;
         }
       }
     </style>
@@ -1329,8 +1493,10 @@
         <div>
           <h1 id="ag-h">Agents</h1>
           <div class="sub" id="ag-sub">
-            <span id="ag-count"></span> ·
-            <span class="mono" id="ag-url">/agents</span>
+            <span id="ag-count"></span
+            ><span class="ag-urlw">
+              · <span class="mono" id="ag-url">/agents</span></span
+            >
             <button
               type="button"
               class="gate-chip"
@@ -1386,6 +1552,7 @@
         <div id="agr" class="agempty"></div>
       </div>
       <div class="ag-live" id="ag-order-live" aria-live="polite"></div>
+      <p class="err" id="ag-order-err" role="alert" hidden></p>
       <dialog class="ag-dlg pe-dlg" id="ag-dlg" aria-labelledby="ag-dlg-h">
         <form method="dialog" id="ag-form" novalidate>
           <h2 id="ag-dlg-h">Start an agent</h2>

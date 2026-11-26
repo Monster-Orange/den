@@ -123,7 +123,25 @@ inert, menuOpen })` binds the rail's keys (↑ ↓ Home End, Delete unpins),
   the collapse toggle and the ☰ drawer (a modal below 720px: the page
   inert, Escape or the scrim closes it), and returns `{ rove, paint(html,
 force), setCollapsed, unpin, openDrawer, closeDrawer, drawerOpen,
-syncPinToggles }`.
+syncPinToggles, folds }`.
+- Rail sections fold (0.15.0, issue 1444). `railHtml({ …, folded })`
+  draws each listed section (group id) `data-folded`, never the one
+  holding the current page; its entries sit in `div.den-gb#den-gb-<id>`
+  and its heading stays the plain `div.den-gh`, so with no script every
+  entry shows. `hydrateRailFolds(root, { store, lang, onChange })` (run
+  by `hydrateShell`; `folds: false` turns it off, `folds: store` gives
+  the store) makes each heading the toggle: the whole row a button with
+  `aria-expanded` and `aria-controls`, named "Hide {section}" / "Show
+  {section}" (en, es, ja), with the folded entries' summed count
+  (`.den-bdg`, `.bad` when one is) and a chevron turned -90° when folded.
+  A click, Enter or Space folds it. The store is `{ get(), set(ids) }`;
+  the default, `railFoldStore()`, keeps the ids in localStorage
+  (`den.rail.folded`) and reads any failure as all open. Clicks are taken
+  on the rail, so a repaint keeps them; call `apply()` after one.
+  Since 0.18.0, a folded section hides only once `hydrateRailFolds` has
+  marked its root `data-folds`: a script that failed to load or threw
+  leaves every entry showing. Past 99 the name is "Show {section}, 99+
+  inside" (`kit.rail.unfoldMany`).
 - `src/shell.css`, `src/whatsnew.css`, `src/report.css`: the look. Link
   them after `tokens.css`.
 - `src/version.js` (the chip's label and its unread dot), `src/whatsnew.js`
@@ -415,8 +433,21 @@ Every button the kit holds shows three pulsing dots in place of its
 label at once, until the server answers: busyAction's `opts.button`,
 `pending()`'s button, and a plain POST form's submitter. The button keeps
 its size (the label stays, hidden, and stays its accessible name), is
-disabled with `aria-busy="true"`, and keeps its own colours. The working
-pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
+`aria-disabled="true"` with `aria-busy="true"`, and keeps its own colours.
+It is never `disabled` (issue 1434): it keeps the keyboard's focus, and a
+click, Enter or Space on it while held does nothing. The kit stops the
+`click` at the window, in the capture phase, when busy.js loads: a capture
+listener on window added before that still runs first, and `pointerdown`,
+`mousedown` and `keydown` still reach the page. Act on `click`, not on
+those, or check `aria-busy` yourself.
+
+Issue 1054: for one request, that is all. No Working pop-up opens, and
+the dots stay until the answer. The Working pop-up is only for an
+action that names its steps: `steps: true` in `registerActions`,
+`opts.steps` on the call, or a run that calls `progress(text)`. Reconnect
+mode keeps it too. It opens after `dotsMs` (default 3000), with the dots
+behind it. With no answer by `NO_ANSWER_MS` (60 s), the no-answer pop-up
+opens (Check again). A failure opens the failure pop-up.
 
     import { pending, watchForms, configureBusy } from "@monster-orange/den-ui/busy";
 
@@ -432,7 +463,7 @@ pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
     // next page comes.
     watchForms();
 
-    // The wait before the pop-up (a setting; default 3000 ms).
+    // The wait before an action with steps shows its pop-up (default 3000 ms).
     configureBusy({ dotsMs: 3000 });
 
 - The button never shows an error itself. A failure before the pop-up
@@ -448,6 +479,8 @@ pop-up then opens only after `dotsMs` (default 3000), the dots behind it.
   `busyAction` (a stream's output, a form with its own error line) holds
   its button with the dots alone: `holdDots(button)`, then
   `holdDots(button, false)` to give the label back. No pop-up opens.
+  `heldCount()` says how many buttons are held now (a number only): a
+  page that lets each go on its answer leaves 0.
 - `opts.dots: false` on busyAction holds a button the old way (no dots,
   the pop-up at `OPEN_MS`).
 - The look is in `src/busy.css`, under "issue 699: the held button"
@@ -539,6 +572,41 @@ never converted to HTML and back).
 - Link `savestate.css` in the page's `<head>`. Without that, savestate.js
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
+
+## The popover
+
+- `src/popover.js`, `src/popover.css` (exports `./popover`,
+  `./popover.css`): a small non-modal box anchored to what opened it (a
+  button, a link, or a node in an SVG map), for a card or a short set of
+  actions. The host gives it its content and its name; the kit places it
+  and owns its keys and focus.
+
+      import { openPopover } from "@monster-orange/den-ui/popover";
+      // link popover.css after tokens.css
+      const pop = openPopover(node, {
+        content: cardEl,          // a Node, or HTML the host has escaped
+        label: "Item card",       // or labelledBy: an id inside it
+        onClose: () => {},
+      });
+      pop.close();                // focus goes back to the anchor
+
+- It is `role="dialog"` and never `aria-modal`, so there is no focus trap
+  (only the kit's modal dialogs trap focus). Focus moves to its first
+  control. Esc, a press outside it, or Tab out of it closes it. Esc and a
+  press on nothing put focus back on the anchor; a press on a control
+  leaves focus there. Tab past its last control goes on to what follows
+  the anchor, and Shift+Tab before its first goes back to the anchor.
+- A press on the open anchor closes it, and that press's click never
+  reaches the anchor, so a host that opens it on click doesn't open it
+  again, and a link anchor doesn't follow its `href`.
+- A button anchor (an HTML button, or anything with `role="button"`, an
+  SVG node too) says `aria-haspopup="dialog"`, and `aria-expanded` and
+  `aria-controls` while it is open. One is open at a time.
+- It sits below the anchor, or above it when there is no room, always 8px
+  inside the viewport, and moves with scroll and resize. Its look is the
+  menus' (`.den-pop`): `--raised`, `--border-strong`, `--shadow`, 10px
+  corners, in every theme. For a phone-width sheet, use the dialog
+  instead.
 
 ## The panel fold toggle, its edge strip and the switch
 
@@ -875,8 +943,13 @@ The top bar's search sits in the same place in every product (issue 303).
   which ends in "…".
 - **A gap after ⌕**: 8px between the search and the chips, and 8px more
   before the first chip.
-- **The search's words** are the kit's ("Search…", named "Search"; es,
-  ja): `searchHtml()` takes no placeholder or label.
+- **The search's words** are the kit's by default ("Search…", named
+  "Search"; es, ja). A host may set the placeholder with
+  `searchHtml({ placeholder })`: one word in the page's language, or words
+  per locale (`{ en, es, ja }`). The name (its aria-label) follows what it
+  shows (label in name): the kit's "Search", or the host's placeholder
+  without a trailing "…" ("Find work…" is named "Find work"). It takes no
+  label.
 - **Touch** (`pointer: coarse`): every control in the bar takes a 44×44px
   tap (an `::after` hit area, centred; the look is the same), and the
   key hints (⌘K, ⌘⇧F, any `.den-kbd`) hide.
@@ -934,8 +1007,9 @@ button)`. A crumb left out of the list draws nothing, and no separator
   opens on the field. Typing hides the links that don't hold the text, and
   "No match" shows when none do. ↓ goes to the links, Enter takes the first
   one shown, and Esc clears the text, then closes the menu.
-- **Search field**: `searchHtml({ id?, shortcut? })`, for the `start`
-  slot. It is the kit's placeholder ("Search…") with ⌘K inside the field. A
+- **Search field**: `searchHtml({ id?, shortcut?, placeholder? })`, for
+  the `start` slot. It is the kit's placeholder ("Search…"), or the
+  host's, with ⌘K inside the field. A
   click, Enter, ⌘K or Ctrl-K calls `onActivate(via)` (`"click"` or
   `"key"`) and fires `den-ui:search` on the field. The kit owns no
   palette.
@@ -1157,6 +1231,19 @@ spacing, motion or layers, so layouts stay the same.
   text, 3:1 for marks); status pills are checked on their own tint, and
   the remote colour on its 16% disc.
 - The fonts stay within 120 KB.
+
+## Report opens at once (0.17.0, issue 1499)
+
+`openReport()` shows the form as soon as it's picked, and no longer waits
+for the screenshot. The capture starts before the form is on the page, and
+leaves the form and everything inside it out. The first step says "Taking
+the screenshot…" (`kit.report.shotWait`), and the shot fills in when it's
+ready, without taking the focus or the words being typed. A shot that fails
+shows the no-screenshot words, as before.
+
+A report can go before the shot is there. It then goes without one, and
+Review says so (`kit.report.shotLate`). A shot only goes once the person has
+seen it on the first step, where they black out anything private.
 
 ## Licence
 

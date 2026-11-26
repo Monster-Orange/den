@@ -114,6 +114,15 @@ export function existingAgentSigningKey(
   return complete(dir) ? keyIn(dir) : undefined;
 }
 
+export function agentKeyInForce(
+  git: AgentGitBlock | undefined,
+  stateDir: string,
+): AgentSigning | undefined {
+  if (git?.off) return undefined;
+  if (git?.signingKey) return { signingKey: git.signingKey, source: "setting" };
+  return existingAgentSigningKey(stateDir);
+}
+
 export interface EnsureKeyDeps {
   /** Runs after the key is made, before it is moved into place (tests). */
   beforePlace?: () => void;

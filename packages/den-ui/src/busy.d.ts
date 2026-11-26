@@ -45,10 +45,14 @@ export interface BusyActionDef {
   autoClose?: boolean;
   inline?: boolean;
   mode?: "reconnect";
+  /** It names its steps (issue 1054): the Working pop-up after dotsMs. */
+  steps?: boolean;
   words: Words;
 }
 export interface BusyOptions<T = unknown> {
   button?: HTMLElement | null;
+  /** This call names its steps (issue 1054), as BusyActionDef.steps. */
+  steps?: boolean;
   vars?: Record<string, string | number>;
   success?: (data: T) => string;
   onDone?: (data: T) => void;
@@ -125,6 +129,13 @@ export declare function watchForms(root?: Document | HTMLElement): () => void;
  */
 export declare function holdDots(
   button: HTMLElement | null | undefined,
+  on?: boolean,
+): void;
+/** How many buttons the kit holds with dots now (a number, never them). */
+export declare function heldCount(): number;
+/** Issue 1054: a row that waits: the dots at its end, aria-busy. */
+export declare function holdRow(
+  row: HTMLElement | null | undefined,
   on?: boolean,
 ): void;
 /** Issue 699: each data-instant in the markup with no reason. */

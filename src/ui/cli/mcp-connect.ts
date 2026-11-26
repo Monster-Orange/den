@@ -38,7 +38,7 @@ import {
 } from "./server-identity.js";
 import { readDenConfig, readMcpConfig } from "../../shared/den-config.js";
 import { printJson } from "./json-out.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export const MCP_CONNECT_SUBCOMMANDS = [

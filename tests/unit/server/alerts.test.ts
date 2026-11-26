@@ -20,7 +20,7 @@ import {
 } from "../../../src/ui/server/alerts.js";
 import { AlertFeed, type Alert } from "../../../src/ui/server/alert-feed.js";
 import { Attention } from "../../../src/ui/server/attention.js";
-import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
+import { UI_LANGUAGES } from "../../../src/shared/ui-language.js";
 
 let dir = "";
 let clock = Date.parse("2026-11-17T12:00:00Z");

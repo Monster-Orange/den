@@ -24,7 +24,7 @@
  */
 import { createHash, randomBytes } from "crypto";
 import { FIXTURE_READ_DENY } from "./fixture-person.js";
-import { AGENT_VIEW_MINUTES, AGENT_VIEW_RANGE } from "./web-session.js";
+import { AGENT_VIEW_MINUTES, AGENT_VIEW_RANGE } from "./web/web-session.js";
 
 export { AGENT_VIEW_MINUTES, AGENT_VIEW_RANGE };
 

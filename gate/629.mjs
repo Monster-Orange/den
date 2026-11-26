@@ -27,7 +27,7 @@
 // (skip needs-fixture-say for each not run; the detail names the code.)
 //
 // Clauses 2 (a Hub comment) and 3 (the tools note): the bed has no Hub and
-// can't change a tool list, so both skip. With a Hub, clause 2's stub
+// can't change a tool list (needs-hub, needs-tool-list-change). With a Hub, clause 2's stub
 // answers its dialog as a real agent does: its screen clears, then its
 // PostToolUse hook (the waiting mark Den holds the comment on clears only
 // on a hook). Its name is new each run, so a comment an earlier run left
@@ -446,7 +446,7 @@ export function expect(r) {
     {
       clause: clauses[2],
       ok: null,
-      skip: "needs-hub",
+      skip: "needs-tool-list-change",
       detail:
         "the bed can't change an agent's tool list, so no tools note is sent",
     },
