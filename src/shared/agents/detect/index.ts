@@ -55,8 +55,6 @@ export interface TermStatus {
   at: string;
 }
 
-/**
- */
 export function fromTerm(state: StatusState): {
   status: AgentStatus;
   finished: boolean;

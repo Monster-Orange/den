@@ -47,6 +47,22 @@ describe("Attention.statuses (issue 771)", () => {
     },
   );
 
+  it("activityNow: working and idle as said, done as idle; blocked and error are the wait's, not an activity", async () => {
+    const { a } = mk();
+    await a.statuses([
+      st("ag-1", "working"),
+      st("ag-2", "idle"),
+      st("ag-3", "done"),
+      st("ag-4", "blocked"),
+      st("ag-5", "error"),
+    ]);
+    expect([...a.activityNow()].sort()).toEqual([
+      ["ag-1", "working"],
+      ["ag-2", "idle"],
+      ["ag-3", "idle"],
+    ]);
+  });
+
   it("termOf gives the state and its read time for agentStatus; another agent has none; gone clears it", async () => {
     const { a } = mk();
     await a.statuses([st("ag-1", "error", 999_000)]);
@@ -133,6 +149,21 @@ describe("Attention.statuses (issue 771)", () => {
     clock += 1000;
     await a.statuses([st("ag-1", "working")]);
     expect(a.waitingNow().get("ag-1")).toBe("permission");
+  });
+
+  it("a bell's waiting that a 7501 blocked holds is the output's to clear again once a 7501 says working", async () => {
+    const { a } = mk();
+    marks["ag-1"] = "m1";
+    await a.event("ag-1", "web", { event: "waiting", why: "input" });
+    clock += 1000;
+    await a.statuses([st("ag-1", "blocked")]);
+    clock += 1000;
+    await a.statuses([st("ag-1", "working")]);
+    expect(a.waitingNow().get("ag-1")).toBe("input");
+    clock += SETTLE_MS + 1000;
+    marks["ag-1"] = "m2";
+    await a.check();
+    expect(a.waitingNow().size).toBe(0);
   });
 
   it.each([

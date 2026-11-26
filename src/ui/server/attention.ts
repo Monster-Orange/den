@@ -39,7 +39,7 @@ import type {
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
 import { leadAskText } from "./lead-routing.js";
 import { STATUS_STATES, type StatusState } from "../../shared/sessions/bell.js";
-import type { TermStatus } from "../../shared/agents/detect/index.js";
+import { fromTerm, type TermStatus } from "../../shared/agents/detect/index.js";
 
 export interface StatusReport {
   agent: string;
@@ -295,6 +295,15 @@ export class Attention {
 
   statusNow(): Map<string, StatusState> {
     return new Map(this.status);
+  }
+
+  activityNow(): Map<string, "working" | "idle"> {
+    const out = new Map<string, "working" | "idle">();
+    for (const [agent, state] of this.status) {
+      const { status } = fromTerm(state);
+      if (status === "working" || status === "idle") out.set(agent, status);
+    }
+    return out;
   }
 
   termOf(agent: string): TermStatus | undefined {
@@ -879,7 +888,9 @@ export class Attention {
             status: true,
           });
       } else if (w && !w.fromStatus) {
-        // Anything printed can say a 7501: it never clears another's wait.
+        // Anything printed can say a 7501: it never clears another's wait,
+        // only lets go of its own hold on it.
+        w.byStatus = false;
         continue;
       } else if (r.state === "done") {
         await this.event(r.agent, r.workspace, { event: "finished" });

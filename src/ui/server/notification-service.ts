@@ -187,8 +187,6 @@ export function bellsOf(
     }));
 }
 
-/**
- */
 export function statusesOf(
   sessions: readonly SessionInfo[],
   records: readonly AgentRecord[],
@@ -431,6 +429,10 @@ export async function reconcileKeptWaits(): Promise<void> {
 /** NT-3b: the agents the hooks say wait for their person, and why. */
 export function attentionWaiting(): Map<string, string> {
   return attention ? attention.waitingNow() : new Map();
+}
+
+export function attentionActivity(): Map<string, "working" | "idle"> {
+  return attention ? attention.activityNow() : new Map();
 }
 
 /** Issue 327: what `agent` waits on and since when, or null. */

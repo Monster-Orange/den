@@ -1928,6 +1928,8 @@
     "ag.none": "Aún no hay agentes en este proyecto",
     "ag.personaOf": "persona {persona}",
     "ag.state.running": "en marcha",
+    "ag.activity.working": "trabajando",
+    "ag.activity.idle": "inactivo",
     "ag.state.stopping": "deteniéndose…",
     "ag.state.stopped": "detenido",
     "ag.state.ended": "terminado",
@@ -2526,7 +2528,8 @@
       "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
     "ap.det.setting_change.key": "Ajuste: {key}",
     "ap.det.setting_change.now": "Ahora: {value}",
-    "ap.det.setting_change.nowDefault": "Ahora: {value} (el valor predeterminado de Den)",
+    "ap.det.setting_change.nowDefault":
+      "Ahora: {value} (el valor predeterminado de Den)",
     "ap.det.setting_change.nowDen": "Ahora: {value} (de den.yml)",
     "ap.det.setting_change.new": "Nuevo: {value}",
     "ap.det.setting_change.why": "Por qué: {why}",
@@ -2712,24 +2715,32 @@
     "feed.url": "Dirección del flujo",
     "feed.bearer": "Bearer (un nombre de secrets.refs)",
     "feed.bearerNone": "ninguno",
-    "feed.noAgents": "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
+    "feed.noAgents":
+      "Este proyecto aún no tiene agentes. Inicia uno y luego añade su flujo.",
     "feed.addW": "Añadiendo el flujo…",
     "feed.addS": "Añadido.",
     "feed.addF": "No se pudo añadir el flujo.",
     "feed.remove": "Quitar",
     "feed.removeL": "Quitar el flujo {name}",
     "feed.rmT": "¿Quitar el flujo?",
-    "feed.rmAsk": "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
+    "feed.rmAsk":
+      "¿Quitar el flujo {name} del proyecto {project}? Den cierra su conexión y {agent} no recibe más líneas de él.",
     "feed.rmW": "Quitando el flujo…",
     "feed.rmS": "Quitado.",
     "feed.rmF": "No se pudo quitar el flujo.",
-    "ap.do.project_event_feed_add": "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
-    "ap.do.project_event_feed_remove": "Quitar el flujo de eventos {name} del proyecto {project}",
-    "ap.feed.warn": "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
+    "ap.do.project_event_feed_add":
+      "Añadir el flujo de eventos {name} ({url}) para {agent} en el proyecto {project}",
+    "ap.do.project_event_feed_remove":
+      "Quitar el flujo de eventos {name} del proyecto {project}",
+    "ap.feed.warn":
+      "Den abre {url} y escribe a {agent} una línea corta cuando hay eventos sin leer.",
     "ap.feed.feed": "Flujo: {name}, para {agent}",
-    "ap.feed.bearer": "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
-    "ap.feed.noBearer": "Sin bearer: el flujo se abre sin cabecera Authorization.",
-    "ap.feed.removeWarn": "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
+    "ap.feed.bearer":
+      "Bearer: se lee de secrets.refs.{ref} en cada conexión; nunca se muestra ni se escribe en los archivos del agente.",
+    "ap.feed.noBearer":
+      "Sin bearer: el flujo se abre sin cabecera Authorization.",
+    "ap.feed.removeWarn":
+      "Den cierra el flujo {name}; su agente no recibe más líneas de él.",
     "feed.problems":
       "Entradas de agents.event_feeds que no se pueden leer: {n}.",
     "feed.failed":
