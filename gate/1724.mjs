@@ -124,6 +124,30 @@ async function leave(d, code) {
   return true;
 }
 
+function refusedAttach(ctx, sid) {
+  let text = null;
+  try {
+    text = ctx.readBed("state:audit.jsonl");
+  } catch {
+    text = null;
+  }
+  const want = `/api/sessions/${String(sid).slice(0, 8)}`;
+  const hit = String(text ?? "")
+    .split("\n")
+    .map((l) => {
+      try {
+        return JSON.parse(l);
+      } catch {
+        return null;
+      }
+    })
+    .filter(
+      (j) => j?.outcome === "refused" && String(j.detail ?? "").includes(want),
+    )
+    .pop();
+  return hit ? `${hit.reason ?? "refused"} for ${hit.principal ?? "?"}` : null;
+}
+
 export async function setup(ctx) {
   const s = {};
   try {
@@ -256,6 +280,7 @@ export async function run(ctx, s) {
     r.pane = z !== null;
     r.ipad = z?.own ?? null;
     r.firstPty = z?.pty ?? null;
+    if (!r.firstPty) r.refused = refusedAttach(ctx, s.sid);
     if (!r.pane || r.sizedMs === null) return r;
     for (const how of ["idle", "1001", "normal", "claimed"]) {
       try {
@@ -342,6 +367,10 @@ export function expect(cells) {
   if (r.error) throw new Error(`1724 not measured: ${r.error}`);
   if (!r.pane)
     throw new Error("1724 not measured: the iPad page showed no terminal pane");
+  if (!r.firstPty)
+    throw new Error(
+      `1724 not measured: the iPad pane (${sz(r.ipad)}) never heard the terminal's size, so no case could run${r.refused ? `; Den refused its terminal attach (${r.refused}): a check's signed-in browser is the bed's fixture person` : ""}`,
+    );
   const first = row(
     clauses[0],
     r.sizedMs !== null && same(r.ipad, r.firstPty),

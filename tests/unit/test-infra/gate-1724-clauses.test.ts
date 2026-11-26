@@ -131,9 +131,32 @@ describe("gate/1724 rows", () => {
   });
 
   it("the iPad view not sizing first fails row 1 and skips the rest", () => {
-    const r = rows({ ...good, sizedMs: null, firstPty: null });
+    const r = rows({ ...good, sizedMs: null, firstPty: desk });
     expect(r.map((x) => x.ok)).toEqual([false, null, null, null, null]);
     expect(r[1].skip).toBe("needs-ipad-sized-first");
+  });
+
+  it("the terminal's size never heard (v0.4.90 on the bed: attach refused) is not measured, never a FAIL", () => {
+    let said = "";
+    try {
+      rows({ ...good, sizedMs: null, firstPty: null });
+    } catch (e) {
+      said = String((e as Error).message);
+    }
+    expect(said).toMatch(
+      /1724 not measured: the iPad pane \(101x72\) never heard the terminal's size, so no case could run/,
+    );
+    expect(said).not.toContain("Den refused");
+    expect(() =>
+      rows({
+        ...good,
+        sizedMs: null,
+        firstPty: null,
+        refused: "fixture_scope for fixture:person",
+      }),
+    ).toThrow(
+      /Den refused its terminal attach \(fixture_scope for fixture:person\): a check's signed-in browser is the bed's fixture person/,
+    );
   });
 
   it("anything not measured is an ERROR, never a FAIL", () => {
