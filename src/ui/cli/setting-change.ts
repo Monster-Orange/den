@@ -46,7 +46,7 @@ import {
   type SettingCategory,
 } from "../../shared/approval-policy.js";
 import { patchHubAllowTools, patchHubUrl } from "../../shared/hub.js";
-import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
+import { patchHubDeliveryLoop } from "../../shared/hub/hub-loop.js";
 import { patchAlerts } from "../../shared/alerts.js";
 import { checkIntent } from "../../shared/agents/permissions.js";
 import { parseMachineName } from "../../shared/cli-command.js";

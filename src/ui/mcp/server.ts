@@ -50,7 +50,7 @@ import {
   ScopeUsageError,
   type McpScope,
 } from "./scope.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;

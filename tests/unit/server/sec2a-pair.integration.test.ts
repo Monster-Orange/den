@@ -24,7 +24,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
 import * as path from "path";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
 import { cliPrefix } from "../../../src/shared/cli-command.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { inTerminal, linkIn } from "./helpers/in-terminal.js";

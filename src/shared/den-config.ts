@@ -732,7 +732,7 @@ export interface UserConfig {
     order?: unknown;
   };
   /**
-   * The web server's per-machine keys (src/shared/web-session.ts
+   * The web server's per-machine keys (src/shared/web/web-session.ts
    * readWebAuthConfig): allow_plain_http_remote, edge_unattested,
    * github_client_id, and (SEC-2a) machine_name, the name the signed-out
    * page gives this machine.
@@ -1558,7 +1558,7 @@ export function readDenConfig(): DenConfig {
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
       skill_packs: parsed?.skill_packs,
-      // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
+      // 0.4.45: the Hub editions under Connect (shared/hub/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
       // Issue 1391: the distribution's den.yml, else this file.

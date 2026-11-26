@@ -11,7 +11,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { HubProjectLink } from "./hub-project-link.js";
-import { writeFileAtomic } from "./atomic-write.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export interface HubNamesDeps {
   /** Every project linked to Hub, with its stored link. */
