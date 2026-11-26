@@ -346,14 +346,6 @@ export function launchRotation(
   return s;
 }
 
-/**
- * Issue 765: whether a hook input came from a helper (a background
- * subagent, a fork) rather than the agent's own session. A helper runs in
- * the agent's process with its session_id, and Claude Code adds
- * `agent_id` and `agent_type` to its hook input. Den never launches with
- * `--agent`, so `agent_type` alone marks a helper too. A helper's
- * compactions and merges are its own: they never count for the agent.
- */
 export function fromHelper(input: unknown): boolean {
   if (!input || typeof input !== "object") return false;
   const i = input as Record<string, unknown>;
@@ -378,7 +370,6 @@ export function noteCompaction(
     unknown
   >;
   const prev = readRotation(filesDir);
-  // Issue 765: a helper's compaction is its own.
   if (fromHelper(i)) return prev ?? { compactions: 0, after };
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;

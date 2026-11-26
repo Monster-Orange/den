@@ -152,11 +152,6 @@ const inboxFlags = (inbox: InboxHookArgs): string[] => [
   ...(inbox.call ? hookCallFlags(inbox.call) : []),
 ];
 
-/**
- * The tools the PreToolUse hook sees: the file-writing tools too, so a
- * helper never writes the agent's handoff.md (issue 765); with D47 rules,
- * the search tools as well.
- */
 export const PRETOOL_MATCHER = "Bash|Read|Write|Edit|MultiEdit|NotebookEdit";
 export const PRETOOL_MATCHER_API_ONLY =
   "Bash|Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob";
@@ -197,7 +192,6 @@ export function hookCommands(
         ...(apiOnly
           ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
           : []),
-        // Issue 765: a helper never writes the agent's own handoff.md.
         ...(rotation
           ? ["--handoff", path.join(rotation.files, "handoff.md")]
           : []),

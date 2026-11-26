@@ -128,8 +128,6 @@ async function mergeVerified(
 ): Promise<string | undefined> {
   if (!prState) return undefined;
   const seen = new Set<string>();
-  // Issue 765: a helper's (a subagent's) merge is its own: only the
-  // agent's own transcripts can make its pull request merged.
   for (const c of stats.filter((s) => !s.subagent).flatMap((s) => s.prMerges)) {
     const ref = c.ref || outcome.prOpened || "";
     const key = `${c.repo ?? ""} ${ref}`;

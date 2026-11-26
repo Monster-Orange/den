@@ -373,13 +373,6 @@ describe("rotationInstruction, one compaction (D28 nit)", () => {
   });
 });
 
-/**
- * Issue 765: a helper (a background subagent, a fork) runs in the agent's
- * process and conversation: its hook input has the agent's session_id
- * plus `agent_id` and `agent_type` (Claude Code's hooks reference). Its
- * compactions are its own: they never count toward the agent's limit, and
- * the rotation notice never goes to it.
- */
 describe("issue 765: a helper's compactions are its own", () => {
   const helper = (a: ReturnType<typeof agent>, event: string, extra = {}) =>
     a.sh(event, {
