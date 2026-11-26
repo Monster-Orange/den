@@ -2238,6 +2238,7 @@
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
         "tests/unit/server/agent-groups-view.test.ts",
+        "tests/unit/server/hub-change-leftovers-1632.test.ts",
         "tests/unit/server/hub-change.test.ts",
         "tests/unit/server/hub-connect-648.test.ts",
         "tests/unit/server/hub-connect-review.test.ts",
