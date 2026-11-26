@@ -452,17 +452,7 @@ import {
   type AccountSource,
   type PickDeps,
 } from "../../shared/agents/signin-accounts.js";
-
-function installTimeZone(): string | undefined {
-  try {
-    const z = readUserConfig().time_zone;
-    if (typeof z !== "string" || !z || z.length > 64) return undefined;
-    new Intl.DateTimeFormat("en", { timeZone: z });
-    return z;
-  } catch {
-    return undefined;
-  }
-}
+import { personTimeZone } from "../../shared/time-zone.js";
 
 export interface AgentsDeps extends SessionsDeps {
   /**
@@ -7357,7 +7347,7 @@ export async function resumeAgent(
                 firstPrompt: resumeHandoffPrompt(
                   handoff.text,
                   new Date(),
-                  installTimeZone(),
+                  personTimeZone(),
                 ),
               }
             : {}),
@@ -9125,7 +9115,7 @@ export async function relaunchAgent(
           compactions,
           manual ? [] : (before?.leftRunning ?? []),
           new Date(),
-          installTimeZone(),
+          personTimeZone(),
         ),
         rotations: [...(rec.rotations ?? []), entry],
         beforeLaunch: () => {
