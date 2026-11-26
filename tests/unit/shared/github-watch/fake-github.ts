@@ -21,6 +21,7 @@ export interface FakeRun {
   workflow_id?: number;
   event?: string;
   created_at?: string;
+  pull_requests?: { number: number }[];
 }
 
 export interface FakeJob {

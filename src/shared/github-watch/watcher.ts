@@ -247,6 +247,11 @@ const PR_EVENTS = new Set([
   "merge_group",
 ]);
 
+function forAnotherPr(r: Record<string, unknown>, pr: number): boolean {
+  const prs = Array.isArray(r.pull_requests) ? r.pull_requests : [];
+  return prs.length > 0 && !prs.some((p) => isObj(p) && asNum(p.number) === pr);
+}
+
 function runNewer(
   a: Record<string, unknown>,
   b: Record<string, unknown>,
@@ -1026,7 +1031,7 @@ export class GithubWatcher {
     const drop = new Set(w.dropSuites ?? []);
     for (const r of onHead) {
       const ev = asStr(r.event);
-      if (ev && !PR_EVENTS.has(ev)) {
+      if ((ev && !PR_EVENTS.has(ev)) || forAnotherPr(r, w.number)) {
         const sid = asNum(r.check_suite_id);
         if (sid !== undefined) drop.add(sid);
         continue;

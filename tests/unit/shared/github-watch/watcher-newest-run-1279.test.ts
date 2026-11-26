@@ -36,7 +36,12 @@ async function rounds(w: GithubWatcher, n: number) {
 function run(
   suite: number,
   wf: number,
-  o: { conclusion?: string | null; event?: string; created?: string } = {},
+  o: {
+    conclusion?: string | null;
+    event?: string;
+    created?: string;
+    prs?: number[];
+  } = {},
 ) {
   gh.run(A, {
     id: 900 + suite,
@@ -48,6 +53,7 @@ function run(
     workflow_id: wf,
     ...(o.event ? { event: o.event } : {}),
     ...(o.created ? { created_at: o.created } : {}),
+    ...(o.prs ? { pull_requests: o.prs.map((number) => ({ number })) } : {}),
   });
 }
 
@@ -154,6 +160,27 @@ describe("issue 1608: a PR watch counts only the PR's own runs", () => {
     check(21, "queue-tests", 2, "failure");
     const text = await result();
     expect(text).toContain("1 passed, 1 failed, 0 skipped.");
+  });
+
+  it("another PR's newer run on the same head never hides this PR's failure", async () => {
+    run(1, 79, {
+      conclusion: "failure",
+      created: "2030-01-01T11:00:00Z",
+      prs: [1],
+    });
+    check(11, "tests", 1, "failure", "2030-01-01T11:00:10Z");
+    run(2, 79, { created: "2030-01-01T11:05:00Z", prs: [2] });
+    check(21, "tests", 2, "success", "2030-01-01T11:05:10Z");
+    const text = await result();
+    expect(text).toContain("0 passed, 1 failed, 0 skipped.");
+    expect(text).toContain("Failed: tests");
+  });
+
+  it("a run with no pull request listed (a fork's, a merge queue's) still counts", async () => {
+    run(1, 80, { conclusion: "failure", prs: [] });
+    check(11, "tests", 1, "failure");
+    const text = await result();
+    expect(text).toContain("0 passed, 1 failed, 0 skipped.");
   });
 
   it("another app's checks (no workflow run at all) still count", async () => {
