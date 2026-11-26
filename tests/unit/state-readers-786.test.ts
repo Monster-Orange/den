@@ -21,7 +21,7 @@ import {
 import {
   HUB_NAMES_CHECK_FILE,
   readHubNamesCheck,
-} from "../../src/shared/hub-project-names.js";
+} from "../../src/shared/hub/hub-project-names.js";
 import {
   hostRefreshFile,
   readHostRefreshState,
@@ -32,7 +32,7 @@ import {
   updateCheckFile,
 } from "../../src/shared/update-check-state.js";
 import { readLatest } from "../../src/shared/verify/changes.js";
-import { readWebOwner, webOwnerPath } from "../../src/shared/web-owner.js";
+import { readWebOwner, webOwnerPath } from "../../src/shared/web/web-owner.js";
 import {
   readUpdateState,
   updateStateFile,
