@@ -17,7 +17,7 @@ import { AUDIT_HEADERS } from "../../../src/shared/agent-actor.js";
 import type {
   HubProjectLink,
   HubRename,
-} from "../../../src/shared/hub-project-link.js";
+} from "../../../src/shared/hub/hub-project-link.js";
 
 const STAR = { id: "proj_star1", slug: "north-star", name: "North Star" };
 const servers: http.Server[] = [];

@@ -21,12 +21,12 @@ import {
   safeNext,
   WebSessionStore,
   webSessionsPath,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 import {
   ensureWebSecret,
   readWebSecret,
   rotateWebSecret,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 
 const T0 = Date.UTC(2026, 10, 6, 9, 0, 0);
 const MIN = 60_000;
@@ -295,6 +295,7 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       // den#143: `web up`'s readiness waits.
       readyProbeSeconds: 10,
       startWaitSeconds: 120,
+      toolsProbeSeconds: 30,
       // Issue 819: the new-device limits' permissive defaults.
       pairRequestsPerMinute: 30,
       approveAttempts: 10,
@@ -306,6 +307,7 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       fixtureSessionMinutes: 60,
       agentView: true,
       agentViewMinutes: 10,
+      sessionsLockWaitMs: 2000,
     });
     expect(ignoredConfigWarning(cfg)).toBeNull();
   });

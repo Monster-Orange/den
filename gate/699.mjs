@@ -1,8 +1,8 @@
 // Live check for issue 699: a button the kit holds shows three pulsing
 // dots in place of its label at once (.bz-dots, disabled, aria-busy="true",
-// the same size, the label kept as its name), the working pop-up opens
-// only after about 3 s (the kit's dotsMs), and the label comes back on the
-// answer.
+// the same size, the label kept as its name), no pop-up opens for one
+// request until the kit's NO_ANSWER_MS opens the no-answer one, and the
+// label comes back on the answer.
 //
 // The button is Den's own Settings › Access "Start the edge" (busyAction
 // "edge-up", the kit's held button). Its requests are answered by this
@@ -14,13 +14,13 @@
 export const issue = 699;
 export const clauses = [
   "a slow button shows the three dots at once: .bz-dots, disabled, aria-busy=\"true\", the same size, its label kept as its name",
-  "the working pop-up appears after about 3 s, the dots still behind it",
+  "no pop-up opens; at NO_ANSWER_MS the no-answer pop-up opens, with the dots still behind it",
   "on the answer the label comes back and the button is free again",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
-export const timeoutMs = 120000;
+export const timeoutMs = 180000;
 
-/** The kit's default wait before the pop-up (busy.js DOTS_MS). */
+/** The kit's wait before a Working pop-up would open (busy.js DOTS_MS). */
 const DOTS_MS = 3000;
 
 export async function setup() {
@@ -73,7 +73,7 @@ export async function run(ctx) {
     // pop-up first showed.
     await p.evaluate(() => {
       const w = window;
-      w.g699 = { click: null, dots: null, popup: null };
+      w.g699 = { click: null, dots: null, popup: null, state: null };
       document.addEventListener(
         "click",
         (e) => {
@@ -86,13 +86,16 @@ export async function run(ctx) {
         const t = performance.now();
         if (w.g699.dots == null && document.querySelector("#set-edge-up .bz-dots"))
           w.g699.dots = t;
-        if (w.g699.popup == null && document.querySelector("dialog.bz-dlg[open]"))
+        const dlg = document.querySelector("dialog[open]");
+        if (w.g699.popup == null && dlg) {
           w.g699.popup = t;
+          w.g699.state = dlg.dataset.state ?? null;
+        }
       }).observe(document.body, {
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ["open"],
+        attributeFilter: ["open", "data-state"],
       });
     });
 
@@ -120,9 +123,13 @@ export async function run(ctx) {
       .catch(() => 0);
     await ctx.shotOf(p, `699-dots-${ctx.browser}`);
 
+    const noAnswerMs = await p.evaluate(
+      async () => (await import("/kit/busy.js")).NO_ANSWER_MS,
+    );
     const popupSeen = await p
-      .locator("dialog.bz-dlg[open]")
-      .waitFor({ timeout: DOTS_MS + 7000 })
+      .getByRole("dialog")
+      .and(p.locator('[data-state="noanswer"]'))
+      .waitFor({ timeout: noAnswerMs + 15000 })
       .then(() => true)
       .catch(() => false);
     const behind = await btn.evaluate((b) => ({
@@ -158,6 +165,8 @@ export async function run(ctx) {
       popupMs:
         t?.click != null && t?.popup != null ? Math.round(t.popup - t.click) : null,
       popupSeen,
+      popupState: t?.state ?? null,
+      noAnswerMs,
       behind,
       back,
       end,
@@ -198,9 +207,11 @@ export function expect(cells) {
   // A loaded runner fires the kit's timer late, never early.
   const popup = (r) =>
     r.popupSeen &&
+    r.popupState === "noanswer" &&
+    Number.isFinite(r.noAnswerMs) &&
     r.popupMs != null &&
-    r.popupMs >= DOTS_MS - 150 &&
-    r.popupMs <= DOTS_MS + 3000 &&
+    r.popupMs >= r.noAnswerMs - 150 &&
+    r.popupMs <= r.noAnswerMs + 10000 &&
     r.behind?.dots === 3 &&
     r.behind.busy === "true";
   const back = (r) =>
@@ -220,7 +231,7 @@ export function expect(cells) {
       ok: list.length > 0 && each((r) => popup(r)).every(Boolean),
       detail: each(
         (r, c) =>
-          `${who(r, c)}: pop-up ${r.popupSeen ? `${r.popupMs} ms after the click` : "never opened"}; behind it ${r.behind?.dots ?? 0} dots, aria-busy ${r.behind?.busy}`,
+          `${who(r, c)}: first pop-up ${r.popupMs != null ? `"${r.popupState}" ${r.popupMs} ms after the click` : "never opened"}, NO_ANSWER_MS ${r.noAnswerMs ?? "?"}; behind it ${r.behind?.dots ?? 0} dots, aria-busy ${r.behind?.busy}`,
       ).join(" | "),
       evidence: list.map(({ result, cell }) => `699-popup-${who(result ?? {}, cell ?? {})}`),
     },

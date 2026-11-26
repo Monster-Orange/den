@@ -28,6 +28,16 @@
 .den-btn:not([aria-busy="true"]):hover {
   border-color: var(--border-strong);
 }
+/* Issue 1137: one hover tint for every kind, laid over its own background
+   (none by default; the sketch theme sets it). A disabled button has none. */
+.den-btn:not([aria-busy="true"]):not(:disabled):not(
+    [aria-disabled="true"]
+  ):hover {
+  background-image: linear-gradient(
+    var(--hover-tint, transparent),
+    var(--hover-tint, transparent)
+  );
+}
 .den-btn.primary {
   background: var(--primary-bg, var(--accent-fill));
   border-color: var(--primary-border, var(--accent-fill));
@@ -39,19 +49,35 @@
 .den-btn.danger:not([aria-busy="true"]):hover {
   color: var(--bad);
   border-color: color-mix(in srgb, var(--bad) 45%, var(--border));
+  /* Issue 1137: its edge's width and style (sketch: a solid 2px edge). */
+  border-width: var(--danger-edge-width, 1px);
+  border-style: var(--danger-edge-style, var(--edge-style, solid));
 }
 .den-btn.sm {
   padding: 2px 9px;
   font-size: 12.5px;
 }
+/* Disabled keeps its edge; issue 1137: its label colour and opacity are
+   tokens (each kind's own colour, 0.6, by default; sketch: --faint, 1). */
 .den-btn:disabled,
-a.den-btn[aria-disabled="true"] {
-  opacity: 0.6;
+a.den-btn[aria-disabled="true"]:not([aria-busy="true"]) {
+  opacity: var(--btn-disabled-opacity, 0.6);
   cursor: default;
+  color: var(--btn-disabled-text, var(--text));
+}
+.den-btn.primary:disabled,
+a.den-btn.primary[aria-disabled="true"]:not([aria-busy="true"]) {
+  color: var(--btn-disabled-text, var(--primary-text, var(--on-accent)));
+}
+.den-btn.danger:disabled,
+.den-btn.danger:disabled:hover,
+a.den-btn.danger[aria-disabled="true"]:not([aria-busy="true"]),
+a.den-btn.danger[aria-disabled="true"]:not([aria-busy="true"]):hover {
+  color: var(--btn-disabled-text, var(--bad));
 }
 .den-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
 }
 /* A touch screen: a 44px tap, centred on the button; its look and box
    never change (as .den-hit). */

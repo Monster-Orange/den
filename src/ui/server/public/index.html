@@ -1577,6 +1577,13 @@
           syncAllCheckbox();
           updatePickerLabel();
           if (p === "performance") renderPerfOptionalFields();
+          // Issue 1343: the list can arrive after the picker opened (a slow
+          // load). Place it again for its new height, so it stays in the
+          // window instead of running past its bottom.
+          const dd = document.getElementById("module-picker-dropdown");
+          const btn = document.getElementById("module-picker-btn");
+          if (dd.classList.contains("open"))
+            window.denShell?.topLayer?.show(dd, btn, { gap: 4 });
         }
 
         function getSelectedModules() {

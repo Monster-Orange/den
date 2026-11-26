@@ -9,7 +9,12 @@ import type { UsageSource } from "../usage/sources.js";
 import { coachBreakdown, type CoachReport } from "./breakdown.js";
 import { coachFindings } from "./findings.js";
 import type { CoachSettings } from "./settings.js";
-import { writeCoachReport } from "./store.js";
+import {
+  judgeSpentSince,
+  recordJudgeSpend,
+  writeCoachReport,
+} from "./store.js";
+import { judgeReport, type ModelRun } from "./judge.js";
 
 export interface CoachRunOptions {
   stateDir: string;
@@ -19,6 +24,10 @@ export interface CoachRunOptions {
   source?: (runtime: string) => UsageSource | undefined;
   /** agents.rotate.after_compactions (default: the org config's, else 3). */
   rotateAfter?: () => number;
+  /** How many agents are read so far (the Coach tab's Running state). */
+  progress?: (done: number, total: number) => void;
+  /** Slice T-d's model call (default: the runtime's CLI). */
+  judgeRun?: ModelRun;
 }
 
 /** agents.rotate.after_compactions, as `usage` reads it; 3 on error. */
@@ -49,8 +58,14 @@ export async function runCoach(o: CoachRunOptions): Promise<CoachReport> {
     ...(o.source ? { source: o.source } : {}),
     after: (o.rotateAfter ?? rotateLimit)(),
     sentenceWords: o.settings.findings.sentence_words,
+    ...(o.progress ? { progress: o.progress } : {}),
   });
   report.findings = coachFindings(report, o.settings.findings);
+  const now = Date.parse(report.ranAt);
+  const judged = await judgeReport(report, o.settings.judge, o.judgeRun, {
+    spentToday: judgeSpentSince(o.stateDir, now - 86_400_000),
+  });
+  if (judged.tokens > 0) recordJudgeSpend(o.stateDir, now, judged.tokens);
   stripEvidence(report);
   writeCoachReport(o.stateDir, report, o.settings.keep_runs);
   return report;

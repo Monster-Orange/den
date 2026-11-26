@@ -18,7 +18,7 @@ import type * as http from "http";
 import type {
   HubProjectLink,
   HubRename,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import { WORKSPACE_NAME_MAX } from "../../shared/workspace-name.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import {
@@ -154,7 +154,7 @@ export async function hubRenameRoute(
 /** The deps on this install: its projects, its links, Hub with its token. */
 export async function defaultHubRenameDeps(): Promise<HubRenameRouteDeps> {
   const [link, w] = await Promise.all([
-    import("../../shared/hub-project-link.js"),
+    import("../../shared/hub/hub-project-link.js"),
     import("../../shared/environment-manager/workspaces.js"),
   ]);
   return {

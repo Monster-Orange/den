@@ -20,9 +20,9 @@ import {
   setWebOwnerName,
   syncWebOwnerName,
   writeWebOwner,
-} from "../../../src/shared/web-owner.js";
+} from "../../../src/shared/web/web-owner.js";
 import type { UserConfig } from "../../../src/shared/den-config.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
 import {
   PERSON_ONLY_SETTINGS,
   patchCliRows,
@@ -253,6 +253,81 @@ describe("issue 406: an owner linked before names were kept, from GitHub's publi
       await ownerNameFromGithub({ ...base, readOwner: () => null, fetch: f }),
     ).toBeNull();
     expect(calls).toHaveLength(0);
+  });
+
+  // Issue 1555: each way the name is not kept says why, so a start that
+  // keeps none can be told apart from one that was never asked.
+  it("each way nothing is kept says why, once; a name already known, or no owner yet, says nothing", async () => {
+    const dir = path.join(tmp, "state-public-why");
+    writeWebOwner({ id: 4242, login: "octo-lead" }, dir);
+    const base = {
+      api: API,
+      fake: true,
+      readOwner: () => readWebOwner(dir),
+      setOwnerName: () => {},
+    };
+    const why = async (over: Record<string, unknown>) => {
+      const said: string[] = [];
+      await ownerNameFromGithub({
+        ...base,
+        ...over,
+        onSkip: (w: string) => said.push(w),
+      });
+      return said;
+    };
+    expect(
+      await why({ fetch: fakeFetch(404, { message: "Not Found" }).f }),
+    ).toEqual(["GitHub answered 404"]);
+    expect(
+      await why({
+        fetch: fakeFetch(200, { id: 4242, login: "octo-lead", name: null }).f,
+      }),
+    ).toEqual(["GitHub's profile has no name"]);
+    expect(
+      await why({
+        fetch: fakeFetch(200, { id: 77, login: "octo-lead", name: "X Y" }).f,
+      }),
+    ).toEqual(["GitHub answered for someone else"]);
+    const boom = (async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+    expect(await why({ fetch: boom })).toEqual([
+      "GitHub didn't answer: offline",
+    ]);
+    const never = ((_u: string, init?: RequestInit) =>
+      new Promise((_ok, no) =>
+        init?.signal?.addEventListener("abort", () =>
+          no(new DOMException("timed out", "TimeoutError")),
+        ),
+      )) as unknown as typeof fetch;
+    expect(await why({ fetch: never, timeoutMs: 50 })).toEqual([
+      "GitHub didn't answer within 0.05 s",
+    ]);
+    expect(
+      await why({
+        fake: false,
+        env: { CI: "true" },
+        fetch: fakeFetch(200, {}).f,
+      }),
+    ).toEqual(["a test or CI run asks only a fake GitHub"]);
+    expect(
+      await why({
+        fetch: fakeFetch(200, { id: 4242, login: "octo-lead", name: "O L" }).f,
+        setOwnerName: () => {
+          throw new Error("disk full");
+        },
+      }),
+    ).toEqual(["the name couldn't be saved: disk full"]);
+    // Known already, or nobody linked yet: a usual start, nothing to say.
+    expect(
+      await why({ readOwner: () => null, fetch: fakeFetch(200, {}).f }),
+    ).toEqual([]);
+    expect(
+      await why({
+        readOwner: () => ({ ...readWebOwner(dir)!, name: "Odette Lead" }),
+        fetch: fakeFetch(200, {}).f,
+      }),
+    ).toEqual([]);
   });
 
   it("in a test run, never github.com: only a fake GitHub is asked", async () => {

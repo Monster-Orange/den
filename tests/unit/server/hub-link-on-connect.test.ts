@@ -1,16 +1,15 @@
 /**
- * 0.4.45 (projects follow Connect): connecting the install links every
- * project whose Hub project is clear, and asks a person only where it
- * isn't. Unclear: two Hub projects share its repos, or its repos and its
- * name point to different ones. Hub without the suggest route (older, or
- * not answering): nothing is linked, and Connect says Hub can't link
- * projects yet.
+ * Which Hub project fits a project, from Hub's suggestions (0.4.45), and
+ * why a match is unclear (issue 167). Clear: one by its repos, or, with
+ * none by repos, one by its name. Unclear: two Hub projects share its
+ * repos, or its repos and its name point to different ones. Since issue
+ * 646 Connect links nothing itself: Connect's review proposes the clear
+ * one (hub-connect-review.test.ts).
  */
 import { describe, expect, it } from "@jest/globals";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import {
   hubMatchOf,
-  linkClearProjects,
   type HubLinkAllDeps,
 } from "../../../src/ui/server/hub-link-all-routes.js";
 
@@ -21,33 +20,7 @@ const P = (id: string, why?: "repo" | "name") => ({
   ...(why ? { why } : {}),
 });
 
-describe("which Hub project fits", () => {
-  it("one by repos, or one by name: clear", () => {
-    expect(hubMatchOf([P("web", "repo")])).toEqual({
-      clear: P("web", "repo"),
-    });
-    expect(hubMatchOf([P("web", "repo"), P("web", "name")])).toMatchObject({
-      clear: { id: "web" },
-    });
-    expect(hubMatchOf([P("web", "name")])).toMatchObject({
-      clear: { id: "web" },
-    });
-  });
-
-  it("two by repos, or repos and name apart: unclear, with both", () => {
-    expect(hubMatchOf([P("a", "repo"), P("b", "repo")])).toEqual({
-      unclear: [P("a", "repo"), P("b", "repo")],
-    });
-    expect(hubMatchOf([P("a", "repo"), P("b", "name")])).toEqual({
-      unclear: [P("a", "repo"), P("b", "name")],
-    });
-  });
-
-  it("nothing suggested: none", () => {
-    expect(hubMatchOf([])).toEqual({ none: true });
-  });
-});
-
+/** The Unclear matches route's deps, over `sugg` (Hub's suggestions). */
 function deps(
   sugg: Record<string, ReturnType<typeof P>[] | null | "throw">,
   linked: Record<string, HubProjectLink> = {},
@@ -73,52 +46,30 @@ function deps(
   return { d, written, changed: () => changed };
 }
 
-describe("Connect links the clear ones", () => {
-  it("links each clear project, leaves the unclear and the linked; one sync", async () => {
-    const t = deps(
-      {
-        north: [P("north", "repo")],
-        south: [P("s1", "repo"), P("s2", "repo")],
-        east: [],
-        west: [P("other", "repo")],
-      },
-      { west: { id: "w", slug: "w", name: "W" } },
-    );
-    expect(await linkClearProjects(t.d)).toEqual({
-      linked: ["north"],
-      unclear: ["south"],
+describe("which Hub project fits", () => {
+  it("one by repos, or one by name: clear", () => {
+    expect(hubMatchOf([P("web", "repo")])).toEqual({
+      clear: P("web", "repo"),
     });
-    expect(t.written).toEqual({
-      north: { id: "north", slug: "north", name: "NORTH" },
+    expect(hubMatchOf([P("web", "repo"), P("web", "name")])).toMatchObject({
+      clear: { id: "web" },
     });
-    expect(t.changed()).toBe(1);
+    expect(hubMatchOf([P("web", "name")])).toMatchObject({
+      clear: { id: "web" },
+    });
   });
 
-  it("issue 649: never links the catch-all project `default`, even to a Hub project named default; never counts it as a pick", async () => {
-    const t = deps({
-      default: [P("default", "name")],
-      north: [P("north", "repo")],
+  it("two by repos, or repos and name apart: unclear, with both", () => {
+    expect(hubMatchOf([P("a", "repo"), P("b", "repo")])).toEqual({
+      unclear: [P("a", "repo"), P("b", "repo")],
     });
-    expect(await linkClearProjects(t.d)).toEqual({
-      linked: ["north"],
-      unclear: [],
+    expect(hubMatchOf([P("a", "repo"), P("b", "name")])).toEqual({
+      unclear: [P("a", "repo"), P("b", "name")],
     });
-    expect(t.written).toEqual({
-      north: { id: "north", slug: "north", name: "NORTH" },
-    });
-    const u = deps({ default: [P("a", "repo"), P("b", "name")] });
-    expect(await linkClearProjects(u.d)).toEqual({ linked: [], unclear: [] });
-    expect(u.written).toEqual({});
-    expect(u.changed()).toBe(0);
   });
 
-  it("Hub can't suggest (an older Hub, or it doesn't answer): links nothing", async () => {
-    for (const bad of ["throw", null] as const) {
-      const t = deps({ north: [P("north", "repo")], south: bad });
-      expect(await linkClearProjects(t.d)).toEqual({ cannot: true });
-      expect(t.written).toEqual({});
-      expect(t.changed()).toBe(0);
-    }
+  it("nothing suggested: none", () => {
+    expect(hubMatchOf([])).toEqual({ none: true });
   });
 });
 

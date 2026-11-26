@@ -60,10 +60,20 @@ Swapouts:                                     0.
 /** (free + inactive + speculative) pages × 16384 bytes, in MB. */
 const MAC_FREE_MB = ((3000 + 200000 + 10000) * 16384) / 1048576;
 
-const NO_HOLD = 'Can\'t ls: "/Users/ci/heavy.hold" not found\n';
+// Issue 1597: the check lists the hold file's folder ("." for the home).
+// No hold: that listing works and doesn't name it (sftp prints no error).
+const NO_HOLD = "";
+/** The hold file there: the listing names it. */
+const HOLD_THERE = "./heavy.hold\n";
 const NO_MEMINFO = 'File "/proc/meminfo" not found.\n';
 
-type Answer = { out?: string; err?: string; code?: number };
+type Answer = {
+  out?: string;
+  err?: string;
+  code?: number;
+  /** sftp's stdout (its listings); `out` is what its -get copies. */
+  listing?: string;
+};
 
 /** A process starter that answers each command from a script. */
 function scripted(answers: Record<string, Answer>) {
@@ -81,8 +91,13 @@ function scripted(answers: Record<string, Answer>) {
     k.stdin = {
       end: (s?: string) => {
         call.stdin = s ?? "";
+        // Issue 1381: sftp gets /proc/meminfo into a file, as a real sftp.
+        const dest = /^-get \/proc\/meminfo "([^"]+)"$/m.exec(call.stdin)?.[1];
+        if (cmd === "sftp" && a.out && dest) fs.writeFileSync(dest, a.out);
         setImmediate(() => {
-          if (a.out) stdout.emit("data", Buffer.from(a.out));
+          if (a.out && !(cmd === "sftp" && dest))
+            stdout.emit("data", Buffer.from(a.out));
+          if (a.listing) stdout.emit("data", Buffer.from(a.listing));
           if (a.err) stderr.emit("data", Buffer.from(a.err));
           k.emit("close", a.code ?? 0);
         });
@@ -175,7 +190,7 @@ describe("the box check over ssh", () => {
   });
 
   it("macOS: its hold file there is held, even though /proc/meminfo is missing; nothing more is run", async () => {
-    const f = scripted({ sftp: { err: NO_MEMINFO } });
+    const f = scripted({ sftp: { listing: HOLD_THERE, err: NO_MEMINFO } });
     const r = await sftpProbe(f.start as never)(BOX, 2000);
     expect(r.state).toBe("held");
     expect(f.calls.map((c) => c.cmd)).toEqual(["sftp"]);
