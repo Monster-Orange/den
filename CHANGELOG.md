@@ -8,6 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 - A restart from the update pill's Reload is named in the audit log as the update pill's, as Restart Den in the menu and in Settings already are. It used to say only "the page".
 - When the bell's Allow row leaves and comes back while you're on its Review button, the keyboard goes back to Review even if you switched to another window meanwhile. Coming back to the window isn't moving on.
+- An agent removed while Den is making its Hub token now gets 403 `agent_removed`, and nothing reaches Hub for it. Den checks the agent's record at the start of the call and again after the token, and refuses if it can't read it. (issue 1222)
 - When an update fails and putting the old version back fails too, the bell now says so on its own. It leads with what to do by hand: put the pin back on the old version in the distribution's folder and run npm install there. npm's reasons come last.
 - Doctor warns when the gate's `route_agents` setting holds a value that is neither on nor off. The warning names the value, what Den reads it as, and the forms the setting takes. How the value is read is unchanged.
 - `den agents os-login setup` makes a login of its own for your agents on macOS and Linux, so they can't read your home or Den's state. It shows each step and asks you at a terminal before anything runs with sudo; `remove` undoes it and `check` (also a doctor row) says how it stands. It's off by default, and not in use yet: agents still run as you until a later release starts them through it.
