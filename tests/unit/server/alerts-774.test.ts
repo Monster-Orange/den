@@ -12,7 +12,7 @@ import {
 } from "../../../src/ui/server/alerts.js";
 import { AlertFeed } from "../../../src/ui/server/alert-feed.js";
 import { Attention } from "../../../src/ui/server/attention.js";
-import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
+import { UI_LANGUAGES } from "../../../src/shared/ui-language.js";
 import {
   alertPlan,
   deliverAlert,
