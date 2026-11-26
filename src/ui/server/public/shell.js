@@ -2892,8 +2892,6 @@
     "ag.none": "No agents in this project yet",
     "ag.personaOf": "persona {persona}",
     "ag.state.running": "running",
-    "ag.activity.working": "working",
-    "ag.activity.idle": "idle",
     "ag.state.stopping": "stopping…",
     "ag.state.stopped": "stopped",
     "ag.state.ended": "ended",
@@ -3154,6 +3152,7 @@
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.by.label": "Show the list",
+    "ag.by.need": "By need",
     "ag.by.project": "By project",
     "ag.by.group": "By group",
     "ag.grp.noHub": "Groups come with Den Hub.",
@@ -3886,7 +3885,6 @@
     "ag.sub.agent": "{n} agent",
     "ag.sub.shells": "{n} shells",
     "ag.sub.shell": "{n} shell",
-    "ag.sub.waiting": "{w} waiting",
     "ag.all": "all projects",
     "ag.waiting": "waiting",
     "ag.waiting.approval": "needs your Allow",
@@ -3894,6 +3892,41 @@
     "ag.waiting.input": "waiting for you",
     "ag.waiting.asked": "asked you",
     "ag.waiting.trust": "Waiting: trust this folder?",
+    "ag.band.needs": "Needs you",
+    "ag.band.done": "Done, not seen",
+    "ag.band.working": "Working",
+    "ag.band.idle": "Idle",
+    "ag.chip.needs": "Needs you",
+    "ag.chip.needsWhy": "Needs you · {why}",
+    "ag.chip.done": "Done",
+    "ag.chip.working": "Working",
+    "ag.chip.idle": "Idle",
+    "ag.why.permission": "permission",
+    "ag.why.asked": "question",
+    "ag.why.approval": "Allow",
+    "ag.why.trust": "folder trust",
+    "ag.whyLong.permission": "asks for your permission",
+    "ag.whyLong.asked": "asked you a question",
+    "ag.whyLong.approval": "waits for your Allow",
+    "ag.whyLong.trust": "asks to trust its folder",
+    "ag.tag.server": "Server",
+    "ag.sub.needs": "{n} need you",
+    "ag.sub.needsOne": "{n} needs you",
+    "ag.sub.done": "{n} done, not seen",
+    "ag.sub.doneOne": "{n} done, not seen",
+    "ag.sub.working": "{n} working",
+    "ag.sub.idle": "{n} idle",
+    "ag.sub.idleOne": "{n} idle",
+    "ag.meta.finished": "finished {ago}",
+    "ag.whyLong.command": "asks to run a command",
+    "ag.whyLong.tool": "asks to use {tool}",
+    "ag.meta.seen": "seen just now",
+    "ag.list.failed": "The list could not load.",
+    "ag.list.retry": "Retry",
+    "ag.list.keepRunning": "Your agents keep running.",
+    "ag.list.loading": "Loading the agents",
+    "bell.doneRow": "{name} finished",
+    "bell.seenSub": "{where} · seen",
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",
@@ -4598,7 +4631,7 @@
     "ag.ord.upOne": "Move {id} up",
     "ag.ord.downOne": "Move {id} down",
     "ag.ord.reorder": "Reorder",
-    "ag.ord.reorderOne": "Reorder the agents of {ws}",
+    "ag.ord.reorderBand": "Reorder the {band} agents",
     "ag.ord.reorderStopped": "Reorder the stopped agents",
     "ag.ord.done": "Done",
     "ag.ord.grip": "Drag to move it in its project's order",
@@ -5691,6 +5724,7 @@
     down: 0,
     openLogs: 0,
     helpersRunning: 0,
+    agentsNeedYou: 0,
     // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
     hub: null,
     pins: [],
@@ -6544,8 +6578,9 @@
       order: 17,
       href: "/agents",
       keywords: ["sessions", "terminal"],
-      // D32: helpers the agents started that run now.
       badge: function (s) {
+        if (s.agentsNeedYou > 0)
+          return { n: s.agentsNeedYou, what: "waiting", warn: true };
         return s.helpersRunning > 0
           ? { n: s.helpersRunning, what: "running" }
           : null;
@@ -8916,7 +8951,7 @@
   function updReload() {
     import("/restart-den.js")
       .then(function (m) {
-        return m.restartDen({ confirm: false });
+        return m.restartDen({ confirm: false, from: "update-pill" });
       })
       .then(function (info) {
         if (info) location.reload();
@@ -9111,7 +9146,14 @@
   }
 
   // R26d: the server unreachable.
-  var server = { up: true, delay: 0, timer: null, tick: null, nextAt: 0 };
+  var server = {
+    up: true,
+    downs: 0,
+    delay: 0,
+    timer: null,
+    tick: null,
+    nextAt: 0,
+  };
   var baseFetch =
     typeof window.fetch === "function" ? window.fetch.bind(window) : null;
   // A same-origin refusal or error (4xx, 5xx) is read in full here and
@@ -9191,6 +9233,7 @@
   }
   function serverUnreachable() {
     if (!server.up) return;
+    server.downs++;
     serverState(false);
     server.delay = 1000;
     scheduleProbe();
@@ -9430,6 +9473,7 @@
   }
   if (rawFetch && !window.fetch.__denShell) {
     var wrapped = function (input, init) {
+      var sentDown = server.up ? -1 : server.downs;
       var p =
         CSRF_METHODS[methodOf(input, init)] && sameOrigin(input)
           ? csrfFetch(input, init)
@@ -9437,7 +9481,8 @@
       if (!p || typeof p.then !== "function") return p;
       return p.then(
         function (r) {
-          if (!server.up && sameOrigin(input)) serverBack();
+          if (!server.up && sentDown === server.downs && sameOrigin(input))
+            serverBack();
           if (r && r.status === 422 && !configBad && sameOrigin(input))
             r.clone()
               .json()
@@ -10218,6 +10263,8 @@
           function (b) {
             var n = b && typeof b.running === "number" ? b.running : 0;
             if (n !== state.helpersRunning) setState({ helpersRunning: n });
+            var w = b && typeof b.needs === "number" ? b.needs : 0;
+            if (w !== state.agentsNeedYou) setState({ agentsNeedYou: w });
           },
           function () {},
         )

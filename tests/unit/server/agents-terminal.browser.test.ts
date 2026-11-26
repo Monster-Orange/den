@@ -660,8 +660,12 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
                 else held.push({ k, f });
               });
             }
+            const was = Object.getOwnPropertyDescriptor(this, "readyState");
+            let written: number | undefined = was?.value;
             Object.defineProperty(this, "readyState", {
-              get: () => (go.has("open") ? super.readyState : W.CONNECTING),
+              get: () =>
+                go.has("open") ? (written ?? super.readyState) : W.CONNECTING,
+              set: (v: number) => (written = v),
             });
           }
         }
@@ -810,7 +814,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await p.context().close();
     }, 60_000);
 
-    for (const how of ["click", "Tab"] as const)
+    for (const how of ["click", "Shift+Tab"] as const)
       it(`a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (${how})`, async () => {
         if (skip()) return;
         const p = await page(`/agents?layout=focus`);
@@ -822,7 +826,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         // Elsewhere: the list's heading, not a row (a click that picks nothing).
         if (how === "click")
           await p.locator("#agl").click({ position: { x: 4, y: 2 } });
-        else await p.keyboard.press("Tab");
+        else await p.keyboard.press("Shift+Tab");
         await releaseIo(p);
         await new Promise((r) => setTimeout(r, 500));
         expect(

@@ -6,6 +6,7 @@ import {
 } from "../../../src/ui/cli/os-user-command.js";
 import {
   readOsUserFacts,
+  OS_LOGIN_OWED,
   type OsUserFacts,
   type OsUserLayout,
 } from "../../../src/shared/agents/os-user.js";
@@ -43,6 +44,7 @@ function rig(
     facts?: OsUserFacts;
     tamper?: { path: string; to: string };
     platform?: NodeJS.Platform;
+    owed?: string[];
   } = {},
 ) {
   const ran: string[] = [];
@@ -81,6 +83,7 @@ function rig(
       return { ok: true, stdout: "" };
     },
     facts: () => o.facts ?? NONE,
+    owed: () => o.owed ?? [],
     setOn: (on) => set.push(on),
     on: () => set.at(-1) ?? false,
     out: (l) => out.push(l),
@@ -116,6 +119,35 @@ describe("issue 988: agents os-login setup", () => {
       /^#!\/bin\/sh/,
     );
     expect(r.set).toEqual([true]);
+  });
+
+  it("checks still owed on this Den version: setup refuses before it asks, names them, and runs nothing", async () => {
+    const r = rig({ yes: true, owed: ["the ACL check"] });
+    expect(await cmdOsUser(["setup"], r.d)).toBe(1);
+    expect(r.ran).toEqual([]);
+    expect(r.asked).toEqual([]);
+    const said = r.err.join("\n");
+    expect(said).toContain(
+      "the agents' own login isn't ready on this Den version yet",
+    );
+    expect(said).toContain("the ACL check");
+    expect(r.set).toEqual([]);
+  });
+
+  it("this Den version still owes checks, so the real list isn't empty", () => {
+    expect(OS_LOGIN_OWED.length).toBeGreaterThan(0);
+  });
+
+  it("Den's runtime the login could change: setup refuses before it asks, and runs nothing", async () => {
+    const r = rig({
+      yes: true,
+      facts: { ...NONE, runtime: ["/opt/node is 0777: anyone can change it"] },
+    });
+    expect(await cmdOsUser(["setup"], r.d)).toBe(1);
+    expect(r.ran).toEqual([]);
+    expect(r.asked).toEqual([]);
+    expect(r.err.join("\n")).toContain("/opt/node is 0777");
+    expect(r.set).toEqual([]);
   });
 
   it("a failed step stops it, says which, and leaves agents.os_login as it was", async () => {

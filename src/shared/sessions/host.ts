@@ -933,6 +933,10 @@ export class SessionHost {
     }
   }
 
+  attachmentCount(id: string): number {
+    return this.sessions.get(id)?.attachments.size ?? 0;
+  }
+
   /** Stop serving: running sessions get SIGHUP, scrollback is flushed. */
   async close(): Promise<void> {
     if (this.closed) return;
