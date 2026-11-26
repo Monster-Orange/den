@@ -240,6 +240,102 @@ describe("queue-merge-tests: bisect on a real repo", () => {
     expect(g("worktree", "list").split("\n")).toHaveLength(1);
   });
 
+  const check = (plan: string, commits: string[], run = "node") => {
+    const f = path.join(
+      os.tmpdir(),
+      `queue-check-plan-${process.pid}-${Math.random().toString(36).slice(2)}`,
+    );
+    fs.writeFileSync(f, plan);
+    const r = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        "check",
+        "--plan",
+        f,
+        "--run",
+        run,
+        "--repo",
+        r2,
+        ...commits.flatMap((c) => ["--merged", c]),
+      ],
+      { encoding: "utf-8" },
+    );
+    fs.rmSync(f);
+    return r;
+  };
+
+  it("check: a red merged tree fails (exit 1) and names the merge that turned it red", () => {
+    const ok = put("y.mjs", "process.exit(0);\n");
+    const bad = put("y.mjs", "process.exit(1);\n");
+    const r = check("y.mjs  # names y.mjs\n", [ok, bad]);
+    expect(r.status).toBe(1);
+    expect(r.stdout.trim()).toBe(bad);
+    expect(r.stderr).toMatch(/red at/);
+    expect(g("worktree", "list").split("\n")).toHaveLength(1);
+  });
+
+  it("check: a green merged tree passes (exit 0)", () => {
+    const r = check("y.mjs\n", [put("y.mjs", "process.exit(0);\n")]);
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/green/);
+  });
+
+  it("check: an every-test plan is CI only (exit 4), and nothing runs", () => {
+    const r = check("ALL\n", [first], "node -e process.exit(9)");
+    expect(r.status).toBe(4);
+    expect(r.stderr).toMatch(/every test: CI only/);
+  });
+
+  it("check: browser files are left out of the run, and a list left empty runs nothing (exit 0)", () => {
+    const r = check(
+      "tests/a.browser.test.ts\n",
+      [first],
+      "node -e process.exit(9)",
+    );
+    expect(r.status).toBe(0);
+    expect(r.stderr).toMatch(/1 browser test left to CI/);
+    expect(r.stderr).toMatch(/no tests to run/);
+  });
+
+  it("--run keeps a quoted part after = as part of its word", () => {
+    expect(
+      call<string[]>(SCRIPT, "splitRun", [`cli --label='a b' -- jest`]),
+    ).toEqual(["cli", "--label=a b", "--", "jest"]);
+  });
+
+  it("check with no --run is refused, so jest never runs outside the caller's queue", () => {
+    const f = path.join(os.tmpdir(), `queue-check-norun-${process.pid}`);
+    fs.writeFileSync(f, "y.mjs\n");
+    const r = spawnSync(
+      process.execPath,
+      [SCRIPT, "check", "--plan", f, "--merged", first, "--repo", r2],
+      { encoding: "utf-8" },
+    );
+    fs.rmSync(f);
+    expect(r.status).toBe(2);
+    expect(r.stderr).not.toMatch(/tests on/);
+  });
+
+  it("--run keeps a quoted label as one word (the gate's --label)", () => {
+    expect(
+      call<string[]>(SCRIPT, "splitRun", [
+        `cli gate run --label 'lane1 qmerge merge-tests' --estimate 6m -- npx jest`,
+      ]),
+    ).toEqual([
+      "cli",
+      "gate",
+      "run",
+      "--label",
+      "lane1 qmerge merge-tests",
+      "--estimate",
+      "6m",
+      "--",
+      "npx",
+      "jest",
+    ]);
+  });
+
   it("an every-test plan is refused, not read as green", () => {
     const r = cli("ALL  # the queue changed package-lock.json\n", [
       first,
