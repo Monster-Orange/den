@@ -770,6 +770,10 @@ export async function readHubToken(
     Object.assign(cache, newHubTokenCache(), {
       key,
       gen: cache.gen + 1,
+      token: undefined,
+      forgotAt: undefined,
+      retryAt: undefined,
+      error: undefined,
       reading: undefined,
     });
   if (cache.token && !cache.stale) return cache.token;
