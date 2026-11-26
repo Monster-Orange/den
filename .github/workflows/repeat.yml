@@ -11,6 +11,7 @@
 # otherwise GitHub-hosted. Issue 1492: the event check stays in the expression, so a
 # trigger added later can't bring someone else's code to the box.
 name: repeat
+run-name: "Evidence for issue 1833: shard 15 in the split layout, quarantine off (not a re-run of the carry)"
 
 on:
   workflow_dispatch:
@@ -50,6 +51,7 @@ jobs:
         node: ${{ fromJSON(inputs.nodes == 'both' && '["22.13.0","24.13.0"]' || inputs.nodes == '22' && '["22.13.0"]' || '["24.13.0"]') }}
     env:
       DEN_TEST_WORKERS: "2"
+      DEN_TEST_DOCKER: skip
       # Inputs reach the shell through the environment, never pasted into
       # the script.
       FILES: ${{ inputs.files }}
@@ -108,11 +110,21 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           for i in $(seq 1 "$COUNT"); do
             start=$(date +%s)
-            if npx jest --forceExit $FILES > "run-$i.log" 2>&1; then r=pass
-            else r=FAIL; fails=$((fails + 1)); tail -n 60 "run-$i.log"; fi
+            b=0; o=0
+            DEN_TEST_BROWSER=only npx jest --forceExit --passWithNoTests $FILES > "run-$i-browser.log" 2>&1 || b=1
+            DEN_TEST_BROWSER=skip npx jest --forceExit $FILES > "run-$i-rest.log" 2>&1 || o=1
+            if [ "$b$o" = 00 ]; then r=pass
+            else r=FAIL; fails=$((fails + 1)); tail -n 60 "run-$i-browser.log" "run-$i-rest.log"; fi
             echo "| $i | $r | $(( $(date +%s) - start )) |" >> "$GITHUB_STEP_SUMMARY"
             echo "run $i: $r"
           done
           echo >> "$GITHUB_STEP_SUMMARY"
           echo "**$fails of $COUNT runs failed.**" >> "$GITHUB_STEP_SUMMARY"
           [ "$fails" -eq 0 ]
+      - name: The run logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: proof-1833-node${{ matrix.node }}
+          path: run-*.log
+          retention-days: 14
