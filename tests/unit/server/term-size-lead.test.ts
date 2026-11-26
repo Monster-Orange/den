@@ -1,23 +1,8 @@
-/**
- * Issue 791, clause 3: a second view of the same terminal (a peek over
- * the page, another browser) never fights the main pane over its size.
- * The last active viewer sets the size: the one the person typed in, or
- * the one that claimed it (Take over, the pane the person just opened);
- * a lone viewer leads. Another viewer's refit (its window resized, a font
- * that loaded late, a layout change) never resizes the PTY while it does
- * not lead; it is told the size in use and follows it. Typing alone never
- * resizes (a hidden page's keys, D54): a view's size comes with its own
- * resize.
- *
- * The rules without a server: src/ui/server/term-size-lead.ts, which the
- * io route (session-routes.ts) asks before each resize.
- */
 import { describe, expect, it } from "@jest/globals";
 import { SizeLead } from "../../../src/ui/server/term-size-lead.js";
 
 type Size = { cols: number; rows: number };
 
-/** A fake PTY behind one lead: every size it was given, in order. */
 function rig() {
   const lead = new SizeLead<string>();
   const pty: Size[] = [];
@@ -71,7 +56,6 @@ describe("issue 791: the last active viewer sets the size", () => {
     r.lead.attach("peek");
     r.typed("peek");
     expect(r.lead.leader()).toBe("peek");
-    // Typing alone resized nothing (a hidden page types, D54).
     expect(r.pty).toEqual([{ cols: 160, rows: 40 }]);
     r.resize("peek", { cols: 80, rows: 24 });
     r.resize("main", { cols: 170, rows: 40 });

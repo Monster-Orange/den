@@ -52,7 +52,6 @@ export const UI_MODULES: readonly string[] = [
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
   "/agent-order.js",
-  // Issue 773: the Agents list in four bands, sorted by who needs you.
   "/agent-bands.js",
   // Issue 750: the agents page's By group view.
   "/agent-groups.js",
@@ -81,6 +80,8 @@ export const UI_MODULES: readonly string[] = [
   "/view-scope.js",
   // ON-6: the server agent's page.
   "/server-agent-page.js",
+  // Issue 52: the Coach tab on the server agent's page.
+  "/coach-tab.js",
   // 0.4.18: the service panel (rail pins, Graph ⋯, Services names).
   "/svc-panel.js",
   // D30: the shared searchable picker (Settings › Agents › Rotation).
@@ -94,7 +95,6 @@ export const UI_MODULES: readonly string[] = [
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
-  // Issue 791: Peek, one agent's terminal over the page, from the bell.
   "/peek.js",
   "/peek.css",
   // Issue 448: which shell the rail's Terminal opens.
@@ -201,7 +201,6 @@ export const KIT_FILES: readonly string[] = [
   "group-header.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
-  // Issue 773: who needs the person, one sort rule for Den and Hub.
   "attention.js",
   // Issue 789: a preview in a sandboxed frame, and the script inside it.
   "preview.js",

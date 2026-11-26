@@ -31,7 +31,7 @@
  *                            # person (1..200; the oldest goes past it)
  */
 import type { UserConfig } from "./den-config.js";
-import type { UiLanguage } from "../ui/server/ui-language.js";
+import type { UiLanguage } from "./ui-language.js";
 
 /** What the agent waits on. */
 export type AlertWhy = "permission" | "asked" | "allow" | "finished";

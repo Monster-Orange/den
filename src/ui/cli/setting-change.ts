@@ -66,6 +66,7 @@ import {
 } from "../../shared/review-lines.js";
 import { configKeyNames, patchConfigKey } from "./config-command.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
+import { GATE_DEFAULTS } from "../../shared/gates/rules.js";
 
 export const SETTING_CHANGE_ACTION = "setting_change";
 /** The longest reason an ask may give (one line). */
@@ -124,6 +125,12 @@ export const NARROW_SETTINGS: readonly string[] = [
   "github.watch_max_interval_seconds",
   "github.api_budget_floor",
   "github.watches_max",
+  // Issue 1166: how long a watch waits on no progress (a timing knob).
+  "github.watch_stale_minutes",
+  // Issue 1194: the most hours one watch stays open (a timing knob).
+  "github.watch_max_open_hours",
+  // Issue 1214: how often a finished run is looked at for a re-run.
+  "github.rerun_look_minutes",
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
@@ -165,6 +172,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "sessions.pty_machine_warn_percent",
   "health_poll.visible_seconds",
   "health_poll.hidden_seconds",
+  "git_reads.at_once",
   "hub.groups_cache_seconds",
   // Vision's ruling (issue 1391): Settings' own fields, each named.
   "hub.delivery_loop",
@@ -225,6 +233,8 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "web.bridge_listen",
   "agents.issue_writes",
   "agents.issue_writes_per_hour",
+  // Issue 1127: a longer wait keeps a repo made public treated as private.
+  "agents.issue_writes_visibility_minutes",
   "agents.keep_running_after_logout",
   "services.restore_on_boot",
   "held_writes.wait_minutes",
@@ -359,6 +369,15 @@ export function matchesSetting(pattern: string, key: string): boolean {
 const level = (v: unknown): number | null =>
   typeof v === "boolean" ? (v ? 1 : 0) : typeof v === "number" ? v : null;
 
+/** A routing list (comma-separated text) as its programs; null when not text. */
+const programs = (v: unknown): string[] | null =>
+  typeof v === "string"
+    ? v
+        .split(",")
+        .map((x) => x.trim().replace(/\s+/g, " "))
+        .filter(Boolean)
+    : null;
+
 const WIDENS_AT: readonly [
   key: string,
   /** `before`: the value in effect now, when the caller knows it. */
@@ -381,6 +400,36 @@ const WIDENS_AT: readonly [
   // Issue 1391: to strict is routine; anything else (personal, or back to
   // the default) opens the install up: the person's Allow.
   ["install_mode", (v) => v !== "strict", ["personal", "strict"]],
+  // Issue 1264 (Reviewer A): the gate's routing is what keeps an agent's
+  // heavy runs in its queue. Off lets them skip it: the person's Allow, on
+  // both modes. With no old value known, off (0) does.
+  [
+    "gate.route_agents",
+    (v, before) => {
+      const to = level(v);
+      const from = level(before);
+      if (to === null) return true;
+      return from === null ? to === 0 : to < from;
+    },
+    ["personal", "strict"],
+  ],
+  // Issue 1264 (Reviewer A): a program in effect now and missing after
+  // runs outside the gate: widens. Adding one, or reordering, doesn't.
+  // With no old value known, judged against the default list.
+  [
+    "gate.route_commands",
+    (v, before) => {
+      const to = programs(v);
+      if (!to) return true;
+      const from =
+        before === undefined || before === null
+          ? [...GATE_DEFAULTS.routeCommands]
+          : programs(before);
+      if (!from) return true;
+      return from.some((p) => !to.includes(p));
+    },
+    ["personal", "strict"],
+  ],
 ];
 
 export function settingKind(
@@ -400,7 +449,9 @@ export function settingKind(
   // Fails closed: routine only when NARROW_SETTINGS names it (or, on a
   // personal install, ROUTINE_ON_PERSONAL). Agent powers always widen.
   // Issue 1395: the gate's settings are scheduling on this machine, never
-  // security: routine on both modes (its writer checks each value).
+  // security: routine on both modes (its writer checks each value). Given
+  // the value, WIDENS_AT judges the few that do widen (issue 1264's
+  // routing, 1395's container requirement on strict).
   const routine =
     (mode === "personal" && is(ROUTINE_ON_PERSONAL)) || is(["gate.**"])
       ? true

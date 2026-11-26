@@ -26,7 +26,7 @@ import { AlertHandoff } from "./alert-handoff.js";
 import { noteActivity } from "../../shared/agents/activity.js";
 import { AlertFeed } from "./alert-feed.js";
 import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
-import { uiLanguage } from "./ui-language.js";
+import { uiLanguage } from "../../shared/ui-language.js";
 import { timeZonePref } from "./time-zone-pref.js";
 import { product } from "../../shared/product.js";
 import { readWebUrl } from "../../shared/web-url.js";
@@ -355,8 +355,6 @@ export function notificationDeps(): {
     // Issue 101: a question goes to the project's lead, when it has one.
     leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
     tellLead,
-    // Issue 773: a turn's end is a new version of the agent's finished
-    // work: Done for each person until they open it.
     turnEnded: (id, at) =>
       seenMarks(getStateDir()).noteVersion(
         agentSubject(id),
@@ -400,17 +398,14 @@ export function notificationDeps(): {
       }
     },
     seen: seenMarks(getStateDir()),
-    // Issue 773: the bell's Done, not seen (not one waiting again).
     doneAgents: (person) =>
       doneAgents(
         listRecords(getStateDir()),
         person,
         agentStateDeps(),
         busyNow(attention!),
-        // Mock v3: each Done row names its project as the person sees it.
         doneProjectName(),
       ),
-    // Mock v3's Earlier: the seen ones, newest first.
     seenDone: (person) =>
       seenDoneAgents(
         listRecords(getStateDir()),
@@ -422,7 +417,6 @@ export function notificationDeps(): {
   };
 }
 
-/** The agents waiting on their person now (not an idle notice). */
 function busyNow(a: Attention): Set<string> {
   return new Set(
     [...a.waitingNow()]
@@ -431,16 +425,11 @@ function busyNow(a: Attention): Set<string> {
   );
 }
 
-/** The project names a Done row shows (one read of workspaces.yml). */
 function doneProjectName(): (ws: string) => string {
   const ws = readWorkspacesFile().workspaces ?? {};
   return (slug) => projectDisplayName(slug, ws[slug]);
 }
 
-/**
- * Issue 773: what each agent's state for a person is made of: the seen
- * marks, the agents in a turn, and since when each waits.
- */
 export function agentStateDeps(): AgentStateDeps {
   const a = notificationDeps().attention;
   return {

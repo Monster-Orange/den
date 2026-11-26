@@ -266,8 +266,13 @@ export function navItemHtml(n, navRole, lang) {
     : link;
 }
 
-/** A rail group: its heading (and "from <d>" tag) and its entries. */
-export function railGroupHtml(g, body, lang) {
+/**
+ * A rail group: its heading (and "from <d>" tag) and its entries, in
+ * div.den-gb. Issue 1444: `folded` marks it data-folded; the heading stays
+ * plain, and only hydrateRailFolds (shell-client.js) makes it the toggle,
+ * so a page with no script shows every entry.
+ */
+export function railGroupHtml(g, body, lang, folded) {
   const id = esc(g.id);
   const from = g.from;
   return (
@@ -275,6 +280,7 @@ export function railGroupHtml(g, body, lang) {
     id +
     '"' +
     (from ? ' aria-describedby="den-gd-' + id + '"' : "") +
+    (folded ? " data-folded" : "") +
     '><div class="den-gh" data-nav-role="group"><span id="den-gh-' +
     id +
     '">' +
@@ -295,8 +301,11 @@ export function railGroupHtml(g, body, lang) {
         esc(kitT(lang, "kit.from", { d: from })) +
         "</span>"
       : "") +
+    '<div class="den-gb" id="den-gb-' +
+    id +
+    '">' +
     body +
-    "</div>"
+    "</div></div>"
   );
 }
 
@@ -330,8 +339,10 @@ export function railHtml({
   account,
   lang,
   collapsed,
+  folded = [],
 } = {}) {
   let html = "";
+  const fold = new Set(Array.isArray(folded) ? folded : []);
   for (const g of groups) {
     const items = nav.filter((n) => n.group === g.id);
     if (!items.length) continue;
@@ -339,6 +350,7 @@ export function railHtml({
       g,
       items.map((n) => navItemHtml(n, "page", lang)).join(""),
       lang,
+      fold.has(g.id) && !items.some((n) => n.current),
     );
   }
   html += '<div class="den-rail-grow"></div>';
@@ -809,9 +821,9 @@ function bellRowHtml(it) {
  * `actions`: buttons beside the heading (Mark all read); `lead`: HTML
  * under the heading; `after`: HTML after the rows; `foot`: the footer (a
  * Report button). Every HTML part is the host's own.
- * Issue 101: `sections` { needs, done?, earlier? } in place of rows: the
+ * `sections` { needs, done?, earlier? } in place of rows: the
  * kit heads them "Needs you" (first, always; its own line when `needs` is
- * empty), "Done, not seen" (issue 773, when given) and "Earlier" (when
+ * empty), "Done, not seen" (when given) and "Earlier" (when
  * given), in its words; the host gives only each section's rows.
  */
 export function bellPanelHtml({
@@ -872,7 +884,6 @@ function bellSectionHtml(id, word, rows) {
   );
 }
 
-/** Issue 101: Needs you, then Done (issue 773), then Earlier. */
 function bellSectionsHtml(s, lang) {
   const needs = s.needs || "";
   return (
@@ -884,7 +895,6 @@ function bellSectionsHtml(s, lang) {
           esc(kitT(lang, "kit.bell.needsNone")) +
           "</p>",
     ) +
-    // Issue 773: the agents that finished since the person last looked.
     (s.done
       ? bellSectionHtml("done", kitT(lang, "kit.bell.done"), s.done)
       : "") +

@@ -1,9 +1,3 @@
-/**
- * Issue 773: the generic "seen" mark (src/shared/seen-mark.ts). A mark is
- * subject + version + person: this person has seen this version of this
- * subject. An agent's subject is "agent:<id>" and its version its last
- * finished turn; a Hub doc's would be "doc:<id>" and its version number.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -30,12 +24,10 @@ describe("issue 773: the seen mark", () => {
     );
     expect(m.isSeen({ subject: "doc:roadmap", person: "person:a" })).toBe(true);
     expect(m.seenVersion("doc:roadmap", "person:a")).toBe("3");
-    // A newer version is not seen yet.
     m.noteVersion("doc:roadmap", "4");
     expect(m.isSeen({ subject: "doc:roadmap", person: "person:a" })).toBe(
       false,
     );
-    // An older one asked by name still counts as seen (numbers order).
     expect(
       m.isSeen({ subject: "doc:roadmap", person: "person:a", version: "2" }),
     ).toBe(true);

@@ -1,11 +1,3 @@
-/**
- * Issue 791, the mock's "Seen" rule: opening a peek counts as looking. The
- * bell's one read call says so (`seen: true` with the agent's subject):
- * its items are read, and the person's seen mark (issue 773's: subject +
- * version + person) is recorded, so a Done agent becomes Idle for them.
- * A plain read (the row's Open in Agents link, Mark read) records no mark.
- * The route without a server: fake request and response, a temp store.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -47,7 +39,7 @@ function res() {
   return { r: r as unknown as http.ServerResponse, out };
 }
 
-function rig() {
+function rig(off: string[] = []) {
   const store = new NotificationStore(dir);
   store.add({
     kind: "waiting",
@@ -65,7 +57,7 @@ function rig() {
   const deps = {
     store,
     attention: {} as never,
-    // Issue 773's store: only markSeen is asked for here.
+    prefs: () => ({ off, foldDays: 7 }) as never,
     seen: {
       markSeen: (k: { subject: string; person: string }) => {
         seen.push(k.subject);
@@ -77,7 +69,7 @@ function rig() {
 }
 
 describe("issue 791: a peek is a look (the seen mark)", () => {
-  it("read with seen: every item of the agent's is read, and its seen mark is recorded", async () => {
+  it("read with seen: every item of the agent's the bell shows is read, and its seen mark is recorded", async () => {
     const { store, seen, deps } = rig();
     const { r, out } = res();
     await handleNotificationRoutes(
@@ -88,6 +80,24 @@ describe("issue 791: a peek is a look (the seen mark)", () => {
     );
     expect(out.status).toBe(200);
     expect(store.list().every((n) => n.read)).toBe(true);
+    expect(seen).toEqual(["agent:planner"]);
+  });
+
+  it("a kind the person turned off stays unread: a peek marks only what it showed", async () => {
+    const { store, seen, deps } = rig(["finished"]);
+    const { r, out } = res();
+    await handleNotificationRoutes(
+      req({ subject: "agent:planner", seen: true }),
+      r,
+      "/api/notifications/read",
+      deps,
+    );
+    expect(out.status).toBe(200);
+    expect(JSON.parse(out.body).changed).toBe(1);
+    const byKind = Object.fromEntries(
+      store.list().map((n) => [n.kind, n.read]),
+    );
+    expect(byKind).toEqual({ waiting: true, finished: false });
     expect(seen).toEqual(["agent:planner"]);
   });
 

@@ -1,12 +1,3 @@
-/**
- * Issue 791: Peek, one agent's live terminal in a panel over the page you
- * are on, from a bell row. The approved mock's rules table (in Hub, Den
- * project: "Peek: answer one agent without leaving your view (mock)",
- * version 2), one describe per rule, on the parts that need no browser
- * (public/peek.js and public/bell.js). The browser half (Esc, ×, the dim
- * area, focus back, nothing left open, the phone sheet, typing) is
- * peek.browser.test.ts. Invented names only.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 
 const g = globalThis as unknown as { window?: unknown };
@@ -281,7 +272,6 @@ describe("rule: The agent finishes or stops (the chip and a strip; Restart; the 
       act: "restart",
     });
     expect(stripHtml(v)).toMatch(/data-peek="restart"/);
-    // A plain shell has nothing to restart.
     const sh = peekView(
       row("sh", { kind: "session", agent: undefined, exited: true }),
       { conn: "live", projectName: "north" },
@@ -300,7 +290,6 @@ describe("rule: The agent finishes or stops (the chip and a strip; Restart; the 
       text: "[peek.noConnect:planner]",
       act: "retry",
     });
-    // An agent Den doesn't list (gone): the same, never a blank panel.
     const gone = peekView(null, {
       conn: "connecting",
       projectName: "north",

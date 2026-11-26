@@ -28,13 +28,10 @@
  *   - a text frame `{"type":"session",…}` first (what is attached), and
  *     `{"type":"exit","exitCode":n}` when the session ends;
  *   - `{"type":"size","cols":c,"rows":r}`: the PTY's size, on attach and
- *     each time any viewer (another browser, a CLI attach) resizes it.
- *     Issue 791: among browsers the last active viewer sets it (term-size-
- *     lead.ts): the one typed in, or that claimed it; another's resize is
- *     kept for later and answered with the size in use, `"lead":false`;
+ *     each time any viewer resizes it. The last active browser view sets it
+ *     (term-size-lead.ts); another's resize is answered with `"lead":false`;
  *   - in: binary frames are input; a text frame is JSON control:
- *     `{"type":"resize","cols":c,"rows":r[,"claim":true]}` (claim: Take
- *     over, a pane just opened) or `{"type":"input","data":s}`.
+ *     `{"type":"resize","cols":c,"rows":r[,"claim":true]}` or `{"type":"input","data":s}`.
  * Closing the socket detaches. Nothing here ever signals a session: leaving
  * the tab never kills it.
  *
@@ -132,6 +129,10 @@ import {
   placeInOrder,
 } from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import {
+  agentHubBound,
+  usesInstallToken,
+} from "../../shared/hub-agent-tokens.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
@@ -211,10 +212,6 @@ export interface SessionRouteDeps {
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
-  /**
-   * Issue 773: what each running agent's state for the person asking is
-   * made of (absent: no states; the page ranks every agent Idle).
-   */
   agentStates?: () => AgentStateDeps;
 }
 
@@ -357,10 +354,6 @@ const VIEWERS = new Map<
   Set<{ open: boolean; send(d: string): void }>
 >();
 
-/**
- * Issue 791: who sets each session's PTY size among its browsers: the
- * last active viewer (term-size-lead.ts). By session id, beside VIEWERS.
- */
 const LEADS = new Map<string, SizeLead<object>>();
 
 /**
@@ -401,10 +394,6 @@ function tellViewers(id: string): void {
 export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
-  /**
-   * Issue 773 + issue 96: an agent's place (0 first) in its project's saved
-   * order, when the person set one; the page keeps it inside each band.
-   */
   place?: number;
   /** `<dist>-<ws>:<name>`. */
   name: string;
@@ -440,11 +429,13 @@ export interface ListedSession {
   orphan?: boolean;
   persona?: string;
   runtime?: string;
-  /** Issue 773: the runtime's name for people ("Claude Code"). */
   runtimeLabel?: string;
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
+  /**
+   */
+  hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -532,13 +523,8 @@ export interface ListedSession {
     rangAt?: string;
     paused?: true;
   };
-  /**
-   * Issue 773: its state for the person asking (running agents only):
-   * needs, done (finished, not seen), working or idle; and since when.
-   */
   attn?: "needs" | "done" | "working" | "idle";
   attnSince?: string;
-  /** Issue 773: what it waits to do (Needs you: a permission's tool). */
   attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
@@ -729,7 +715,6 @@ export function listedSessions(
       ...(rec.outside ? { outside: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
-      // Issue 773: its name for people, for the row's second line.
       ...(getRuntime(rec.runtime)?.label
         ? { runtimeLabel: getRuntime(rec.runtime)?.label }
         : {}),
@@ -822,6 +807,9 @@ export function listedSessions(
         const failed = mcpLoadFailures(d.stateDir(), rec);
         return failed.length ? { mcpFailed: failed } : {};
       })(),
+      ...(typeof hubUrl === "string" && !usesInstallToken(rec)
+        ? { hubBound: agentHubBound(d.stateDir(), rec.id) }
+        : {}),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
         : {}),
@@ -868,8 +856,6 @@ export function listedSessions(
     });
   }
   const order = [...active];
-  // Issue 773: each agent's place in its project's saved order (read once
-  // per project), for the page's bands.
   const saved = new Map<string, readonly string[]>();
   const orderOf = (ws: string) => {
     if (!saved.has(ws)) saved.set(ws, agentOrderOf(ws));
@@ -963,7 +949,6 @@ export async function handleSessionList(
     wanted?.known ? wanted.workspace : undefined,
     sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
   );
-  // Issue 773: each running agent's state for this person.
   let states: AgentStateDeps | undefined;
   try {
     states = deps.agentStates?.();
@@ -1573,7 +1558,6 @@ export async function handleSessionUpgrade(
   const lead = LEADS.get(s.ref.id) ?? new SizeLead<object>();
   LEADS.set(s.ref.id, lead);
   lead.attach(ws);
-  // The PTY's size as last heard, to tell a view that doesn't lead.
   let ptySize: { cols: number; rows: number } | null = null;
   const resize = (z: { cols: number; rows: number } | null) => {
     if (z && !exited) client.resize(s.ref.id, z.cols, z.rows);
@@ -1618,8 +1602,6 @@ export async function handleSessionUpgrade(
   ws.on("message", (data: Buffer, binary: boolean) => {
     if (binary) {
       if (!exited && data.length) {
-        // Issue 791: the person typing here makes this view the active
-        // one (its size came with its own resize, if it said one).
         if (!terminalReportOnly(data)) lead.input(ws);
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
@@ -1648,9 +1630,6 @@ export async function handleSessionUpgrade(
       const ok = (n: unknown): n is number =>
         typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 1000;
       if (!exited && ok(msg.cols) && ok(msg.rows)) {
-        // Issue 791: the last active viewer sets the size. Another view's
-        // refit is kept for when it leads; it hears the size in use
-        // (`lead: false`) and draws at it.
         const z = lead.resize(
           ws,
           { cols: msg.cols, rows: msg.rows },
@@ -1695,7 +1674,6 @@ export async function handleSessionUpgrade(
     clearInterval(waitingTimer);
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
-    // Issue 791: the view that led went: the newest one left leads.
     lead.detach(ws);
     if (viewing?.size) tellViewers(s.ref.id);
     else {
@@ -1745,7 +1723,6 @@ async function helpersRunning(
     /* no host: nothing runs, so no helper runs */
   }
   let running = 0;
-  // Issue 773: the rail's Agents item counts the agents that need you.
   let needs = 0;
   for (const r of listedSessions(sessions, d)) {
     running += r.helpers?.running ?? 0;

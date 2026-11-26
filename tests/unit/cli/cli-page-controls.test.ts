@@ -11,6 +11,7 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import { AGENTS_ENTRY, agentsSource } from "../server/helpers/agents-source.js";
 
 const CLI = path.join(process.cwd(), "src", "ui", "cli");
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
@@ -149,6 +150,11 @@ const LISTING: Record<string, Entry> = {
   "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
   // Issue 625: the test boxes, set on the Settings page.
   "gate box": page("settings-registry.js", 'id: "server.gate_boxes"'),
+  // Issue 642: the CI runner entries, set on the Settings page.
+  "gate runner": page(
+    "settings-registry.js",
+    'id: "server.gate_runner_entries"',
+  ),
 
   "repo detect": R,
 
@@ -325,7 +331,12 @@ describe("MODE-5: every CLI command has its page control listed", () => {
       .filter(
         (e): e is [string, { page: string; marker: string }] => "page" in e[1],
       )
-      .filter(([, e]) => !read(PUBLIC, e.page).includes(e.marker))
+      .filter(
+        ([, e]) =>
+          !(
+            e.page === AGENTS_ENTRY ? agentsSource() : read(PUBLIC, e.page)
+          ).includes(e.marker),
+      )
       .map(([c, e]) => `${c}: ${e.page} has no ${e.marker}`);
     expect(missing).toEqual([]);
   });

@@ -1,9 +1,3 @@
-/**
- * Issue 773: the kit's one sort rule for who needs the person
- * (packages/den-ui/src/attention.js), shared by Den's Agents page and bell
- * and Hub's Now view. The rules table of the approved mock, one test per
- * row that the kit owns: Order, Counts, and the state of an agent.
- */
 import { describe, expect, it } from "@jest/globals";
 import {
   ATTENTION_STATES,
@@ -54,9 +48,7 @@ describe("issue 773: the attention table is data", () => {
     expect(t.done.bell).toBe(false);
     expect(t.done.rank).toBe(3);
     expect(t.needs).toEqual(ATTENTION_TABLE.needs);
-    // The default table is never changed by an override.
     expect(ATTENTION_TABLE.done.bell).toBe(true);
-    // Unknown states and fields are ignored.
     const u = attentionTable({ nope: { rank: 9 }, idle: { rank: "x" } });
     expect(u).toEqual(attentionTable());
   });
@@ -124,7 +116,6 @@ describe("issue 773: Order", () => {
     const reversed = sortByAttention([...items].reverse()).map((i) => i.id);
     expect(once).toEqual(["c", "a", "b"]);
     expect(reversed).toEqual(once);
-    // The input is left as it was.
     expect(items.map((i) => i.id)).toEqual(["b", "a", "c"]);
   });
 
@@ -148,7 +139,6 @@ describe("issue 773: Order", () => {
 describe("issue 773 + issue 96: the person's order inside a band", () => {
   it("a person's order (place) holds inside a band; the bands still set the order between bands", () => {
     const items = [
-      // The person put zeta before alpha in project north.
       { id: "a", name: "alpha", state: "idle", group: "north", place: 1 },
       { id: "z", name: "zeta", state: "idle", group: "north", place: 0 },
       {
@@ -201,8 +191,6 @@ describe("issue 773 + issue 96: the person's order inside a band", () => {
       { id: "e", name: "e", state: "idle", group: "south", place: 0 },
       { id: "a", name: "a", state: "idle", group: "north", place: 1 },
     ];
-    // Band order A to Z: a b c d e. North's placed rows (a, b) hold slots
-    // 1 and 2 and take the person's order b, a; c, d, e stay.
     expect(sortByAttention(items).map((i) => i.id)).toEqual([
       "b",
       "a",

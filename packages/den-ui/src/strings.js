@@ -45,6 +45,10 @@ export const en = {
   "kit.pages": "Pages",
   "kit.collapse": "Collapse",
   "kit.expand": "Expand",
+  "kit.rail.fold": "Hide {section}",
+  "kit.rail.unfold": "Show {section}",
+  "kit.rail.unfoldN": "Show {section}, {n} inside",
+  "kit.rail.unfoldMany": "Show {section}, 99+ inside",
   "kit.from": "from {d}",
   "kit.report.word": "Report",
   "kit.report.tip": "Report an issue (⌘⇧F)",
@@ -92,6 +96,15 @@ export const en = {
   "kit.report.shot": "Screenshot of this page",
   "kit.report.ncap":
     "This page couldn't be captured. You can send the report without a screenshot.",
+  "kit.report.shotWait": "Taking the screenshot…",
+  "kit.report.shotLateWait":
+    "If you send before it's ready, the report goes without it.",
+  "kit.report.shotLateIn":
+    "Not included: check it and hide anything private first.",
+  "kit.report.shotInclude": "Include it",
+  "kit.report.shotFailed":
+    "No screenshot: it couldn't be taken. You can send without it.",
+  "kit.report.backReview": "Back to Review and send",
   "kit.report.shotNote":
     "Includes the open dialog or drawer. Drag on it to black out anything private.",
   "kit.report.nos": "Don't include a screenshot",
@@ -108,6 +121,7 @@ export const en = {
   "kit.report.rmMask": "Remove",
   "kit.report.area": "{x}% from the left, {y}% from the top, {w}% × {h}%",
   "kit.report.revShot": "Screenshot after masking ({n} areas hidden)",
+  "kit.report.shotNotIn": "Screenshot, not included",
   "kit.report.revShot.one": "Screenshot after masking ({n} area hidden)",
   "kit.report.shareTo": "Your masked screenshot goes to {recipient}",
   "kit.report.shareNo": "Text only; the screenshot stays on your machine.",
@@ -192,6 +206,13 @@ export const en = {
   "kit.report.latB":
     "It is saved on this computer with your text, choices and screenshot. Find it under My reports, at the top of Report an issue or in the command palette.",
   "kit.report.failH": "Not sent",
+  "kit.report.words":
+    'The repository is public, and your text names something that stays out of public text ({where}). Nothing was sent. Write it with neutral words instead, such as "the person", "the project", "the company" or "an internal host", then send it again.',
+  "kit.report.wordsAt": '{field}, line {line}: "{phrase}"',
+  "kit.report.wordsList":
+    "This install's names list can't be read, so nothing was sent. Ask whoever runs Den to fix it.",
+  "kit.report.field.title": "title",
+  "kit.report.field.description": "description",
   "kit.report.retry": "Try again",
   "kit.report.keepH": "Keep what you wrote?",
   "kit.report.keep": "Keep it (Finish later)",
@@ -292,6 +313,10 @@ export const es = {
   "kit.pages": "Páginas",
   "kit.collapse": "Contraer",
   "kit.expand": "Expandir",
+  "kit.rail.fold": "Ocultar {section}",
+  "kit.rail.unfold": "Mostrar {section}",
+  "kit.rail.unfoldN": "Mostrar {section}, {n} dentro",
+  "kit.rail.unfoldMany": "Mostrar {section}, más de 99 dentro",
   "kit.from": "de {d}",
   "kit.report.word": "Informar",
   "kit.report.tip": "Informar de un problema (⌘⇧F)",
@@ -341,6 +366,15 @@ export const es = {
   "kit.report.shot": "Captura de esta página",
   "kit.report.ncap":
     "No se pudo capturar esta página. Puedes enviar el informe sin captura.",
+  "kit.report.shotWait": "Tomando la captura…",
+  "kit.report.shotLateWait":
+    "Si envías antes de que esté lista, el informe va sin ella.",
+  "kit.report.shotLateIn":
+    "No incluida: revísala y oculta antes lo que sea privado.",
+  "kit.report.shotInclude": "Incluirla",
+  "kit.report.shotFailed":
+    "Sin captura: no se pudo tomar. Puedes enviar sin ella.",
+  "kit.report.backReview": "Volver a Revisar y enviar",
   "kit.report.shotNote":
     "Incluye el diálogo o panel abierto. Arrastra sobre ella para tapar lo privado.",
   "kit.report.nos": "No incluir captura",
@@ -357,6 +391,7 @@ export const es = {
   "kit.report.rmMask": "Quitar",
   "kit.report.area": "{x}% desde la izquierda, {y}% desde arriba, {w}% × {h}%",
   "kit.report.revShot": "Captura tras ocultar ({n} zonas tapadas)",
+  "kit.report.shotNotIn": "Captura, no incluida",
   "kit.report.revShot.one": "Captura tras ocultar ({n} zona tapada)",
   "kit.report.shareTo": "Tu captura con las zonas tapadas va a {recipient}",
   "kit.report.shareNo": "Solo texto; la captura se queda en tu equipo.",
@@ -444,6 +479,13 @@ export const es = {
   "kit.report.latB":
     "Está guardado en este ordenador con tu texto, tus elecciones y la captura. Lo encontrarás en Mis informes, arriba en Informar de un problema o en la paleta de comandos.",
   "kit.report.failH": "No enviado",
+  "kit.report.words":
+    "El repositorio es público y tu texto nombra algo que no debe aparecer en texto público ({where}). No se envió nada. Escríbelo con palabras neutras, como «la persona», «el proyecto», «la empresa» o «un servidor interno», y vuelve a enviarlo.",
+  "kit.report.wordsAt": "{field}, línea {line}: «{phrase}»",
+  "kit.report.wordsList":
+    "No se puede leer la lista de nombres de esta instalación, así que no se envió nada. Pide a quien gestiona Den que la arregle.",
+  "kit.report.field.title": "título",
+  "kit.report.field.description": "descripción",
   "kit.report.retry": "Intentar de nuevo",
   "kit.report.keepH": "¿Conservar lo que escribiste?",
   "kit.report.keep": "Conservarlo (Terminar luego)",
@@ -536,6 +578,10 @@ export const ja = {
   "kit.pages": "ページ",
   "kit.collapse": "折りたたむ",
   "kit.expand": "展開する",
+  "kit.rail.fold": "{section}を隠す",
+  "kit.rail.unfold": "{section}を表示",
+  "kit.rail.unfoldN": "{section}を表示（{n}件）",
+  "kit.rail.unfoldMany": "{section}を表示（99件以上）",
   "kit.from": "{d} から",
   "kit.report.word": "報告",
   "kit.report.tip": "問題を報告 (⌘⇧F)",
@@ -582,6 +628,15 @@ export const ja = {
   "kit.report.shot": "このページのスクリーンショット",
   "kit.report.ncap":
     "このページは撮影できませんでした。スクリーンショットなしで送れます。",
+  "kit.report.shotWait": "スクリーンショットを撮っています…",
+  "kit.report.shotLateWait":
+    "準備ができる前に送信すると、スクリーンショットなしで送られます。",
+  "kit.report.shotLateIn":
+    "含まれていません：先に確認して、非公開の部分を隠してください。",
+  "kit.report.shotInclude": "含める",
+  "kit.report.shotFailed":
+    "スクリーンショットなし：撮影できませんでした。なしで送信できます。",
+  "kit.report.backReview": "「確認して送る」に戻る",
   "kit.report.shotNote":
     "開いているダイアログやドロワーも入ります。ドラッグして、見せたくない部分を黒く塗れます。",
   "kit.report.nos": "スクリーンショットを含めない",
@@ -597,6 +652,7 @@ export const ja = {
   "kit.report.rmMask": "削除",
   "kit.report.area": "左から {x}%、上から {y}%、{w}% × {h}%",
   "kit.report.revShot": "マスク後のスクリーンショット({n} か所を非表示)",
+  "kit.report.shotNotIn": "スクリーンショット（含まれていません）",
   "kit.report.shareTo": "マスクしたスクリーンショットは {recipient} に届きます",
   "kit.report.shareNo":
     "テキストのみです。スクリーンショットはこのコンピューターに残ります。",
@@ -688,6 +744,13 @@ export const ja = {
   "kit.report.latB":
     "テキスト、選択、スクリーンショットごと、このコンピューターに保存しました。「問題を報告」の上部かコマンドパレットの「自分の報告」にあります。",
   "kit.report.failH": "送れませんでした",
+  "kit.report.words":
+    "このリポジトリは公開されており、テキストに公開してはいけない名前が含まれています({where})。何も送っていません。「その人」「そのプロジェクト」「その会社」「社内のホスト」などの中立的な言葉で書き直してから、もう一度送ってください。",
+  "kit.report.wordsAt": "{field} {line} 行目:「{phrase}」",
+  "kit.report.wordsList":
+    "このインストールの名前リストを読めないため、何も送っていません。Den の管理者に修正を依頼してください。",
+  "kit.report.field.title": "タイトル",
+  "kit.report.field.description": "説明",
   "kit.report.retry": "もう一度試す",
   "kit.report.keepH": "書いた内容を残しますか。",
   "kit.report.keep": "残す(あとで仕上げる)",

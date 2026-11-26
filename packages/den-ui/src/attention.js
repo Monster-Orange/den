@@ -1,26 +1,3 @@
-/**
- * Issue 773: who needs the person, one rule for Den and Hub. Four states,
- * each a row of one table (data, so a person's own mapping can override it,
- * issue 780; the bell, alerts and sounds read the same table, issue 774):
- *
- *   needs    Needs you: stopped on a permission, a question or an Allow
- *   done     Done, not seen: finished after the person last looked
- *   working  in a turn
- *   idle     none of these
- *
- * `rank`: the higher first. `order` within a state: "oldest" (the longest
- * wait first, then the name) or "name" (A to Z). `rail`: counted on the
- * rail's item; `bell`: counted on the bell; `alert`: a new one alerts.
- *
- *   attentionTable(override?)    the table, with a person's override
- *   attentionState({needs, working, done})
- *   compareAttention(a, b, table?), sortByAttention(items, table?)
- *     items: { state, since?, name?, id?, group?, place? } (since: an ISO
- *     time; group and place: the person's own order, issue 96)
- *   inPersonOrder(sorted, table?) the person's order inside Working and Idle
- *   attentionCounts(items, table?)  { needs, done, working, idle, rail, bell }
- */
-
 export const ATTENTION_STATES = Object.freeze([
   "needs",
   "done",
@@ -67,7 +44,6 @@ const FIELDS = {
   alert: (v) => typeof v === "boolean",
 };
 
-/** The table, with `override`'s known states and valid fields over it. */
 export function attentionTable(override) {
   const out = {};
   for (const s of ATTENTION_STATES) {
@@ -81,7 +57,6 @@ export function attentionTable(override) {
   return out;
 }
 
-/** An agent's state: a need first, then a turn under way, then unseen work. */
 export function attentionState({ needs, working, done } = {}) {
   if (needs) return "needs";
   if (working) return "working";
@@ -103,11 +78,6 @@ const byId = (a, b) => {
   return x < y ? -1 : x > y ? 1 : 0;
 };
 
-/**
- * Needs you, then Done, then Working, then Idle; inside an "oldest" state
- * the longest wait first (a time not known last), then the name; inside a
- * "name" state A to Z; then the id, so the same input sorts the same.
- */
 export function compareAttention(a, b, table = ATTENTION_TABLE) {
   const ra = rowOf(table, a.state);
   const rb = rowOf(table, b.state);
@@ -120,10 +90,6 @@ export function compareAttention(a, b, table = ATTENTION_TABLE) {
   return byName(a, b) || byId(a, b);
 }
 
-/**
- * A sorted copy of `items`: compareAttention, then the person's own order
- * inside each band (inPersonOrder).
- */
 export function sortByAttention(items, table = ATTENTION_TABLE) {
   return inPersonOrder(
     [...(items ?? [])].sort((a, b) => compareAttention(a, b, table)),
@@ -134,15 +100,6 @@ export function sortByAttention(items, table = ATTENTION_TABLE) {
 const placed = (i) =>
   typeof i.place === "number" && Number.isFinite(i.place) && i.group != null;
 
-/**
- * Issue 96: the person's order holds inside a band. In each band of
- * `sorted` (by state), the slots held by one group's placed items (those
- * with a `place` in their `group`, a project) are filled by those items in
- * the person's order. Other groups' items, and unplaced ones, keep their
- * slots, and the bands keep their order. Issue 773: only in a "name"
- * band (Working, Idle); an "oldest" band (Needs you, Done) keeps the
- * longest wait first.
- */
 export function inPersonOrder(sorted, table = ATTENTION_TABLE) {
   const out = [...sorted];
   const slots = new Map();
@@ -162,7 +119,6 @@ export function inPersonOrder(sorted, table = ATTENTION_TABLE) {
   return out;
 }
 
-/** How many of each state, and the rail's and the bell's counts. */
 export function attentionCounts(items, table = ATTENTION_TABLE) {
   const out = { needs: 0, done: 0, working: 0, idle: 0, rail: 0, bell: 0 };
   for (const i of items ?? []) {

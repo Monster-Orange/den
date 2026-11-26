@@ -16,7 +16,7 @@ import {
   catalogPath,
   localizePage,
   uiLanguage,
-} from "../../../src/ui/server/ui-language.js";
+} from "../../../src/shared/ui-language.js";
 import { EN_FALLBACK as TOPBAR_EN } from "../../../src/ui/server/public/topbar.js";
 import { EN_FALLBACK as APPEARANCE_EN } from "../../../src/ui/server/public/appearance.js";
 import { EN_FALLBACK as PICKER_EN } from "../../../src/ui/server/public/workspace-picker.js";

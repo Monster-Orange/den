@@ -373,8 +373,6 @@ describe("tests that start Den as a process (issue 708)", () => {
     expect(Object.keys(s.files)).toContain(
       "tests/unit/server/hub-delivery.integration.test.ts",
     );
-    // Its subject only: not every test that starts Den (the map has about
-    // 200). Issue 773's states test is attention.ts's subject too: 15 now.
     const starters = Object.entries(s.files).filter(([, why]) =>
       why.some((w) => /starts Den/.test(w)),
     );
@@ -891,7 +889,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
   it("shell.js, ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
     for (const f of [
       "src/ui/server/public/shell.js",
-      "src/ui/server/ui-language.ts",
+      "src/shared/ui-language.ts",
       "src/ui/server/ui-assets.ts",
       "tests/unit/server/helpers/en-catalog.ts",
       "tests/unit/server/helpers/kit-shell.ts",

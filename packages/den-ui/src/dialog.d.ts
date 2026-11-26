@@ -75,10 +75,6 @@ export interface DialogSpec {
   report?: string;
   /** Shown with no script (the open attribute). */
   open?: boolean;
-  /**
-   * panel: on a phone (640 px or less), a full-screen sheet: no radius,
-   * nothing dimmed behind it (issue 791, Peek).
-   */
   sheet?: boolean;
   /** Extra classes on the <dialog> (the product's hooks). */
   className?: string;
@@ -152,3 +148,6 @@ export declare function focusBack(el: Element | null | undefined): boolean;
  * pop-up closes (in place of what opened it). Issue 793.
  */
 export declare function focusWhenFree(el: HTMLElement | null | undefined): void;
+
+/** Issue 1054: a held action's failure line: its message, else the kit's words. */
+export declare function failedLine(err: unknown): string;

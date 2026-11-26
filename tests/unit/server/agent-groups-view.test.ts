@@ -109,10 +109,6 @@ const OK = {
   ],
 };
 
-/**
- * Without Hub's groups: By need and By project only, By need pressed (the
- * person's By group waits for the groups).
- */
 const expectNoGroupButton = (h: string) => {
   expect(h).toContain('data-by="need" aria-pressed="true"');
   expect(h).toContain('data-by="project" aria-pressed="false"');
@@ -251,7 +247,7 @@ describe("By need, By project, By group (issues 773 and 750)", () => {
     row("needs-c", { waiting: true, waitingWhy: "allow" }),
     row("done-d", { attn: "done" }),
   ];
-  const ids = (xs: { id: string }[]) => xs.map((r) => r.id);
+  const ids = (xs: { id?: unknown }[]) => xs.map((r) => r.id);
 
   it("the switch: By need, By project, By group, in that order", () => {
     for (const by of ["need", "project", "group"]) {
@@ -297,6 +293,7 @@ describe("By need, By project, By group (issues 773 and 750)", () => {
     const h = groupsViewHtml(rows, groups, {
       t,
       rowHtml: (r: { id: string }) => `<i data-row="${r.id}"></i>`,
+      groupsUrl: "",
       order: (xs: never[]) => byNeed(xs),
     });
     const order = [...h.matchAll(/data-row="([^"]+)"/g)].map((m) => m[1]);

@@ -18,12 +18,6 @@
  *      44 px Up and Down on each stopped agent that can move; a stopped
  *      agent moves, and the order holds through a reload.
  *
- * Issue 773 (approved mock): running agents are in the four bands. The
- * bands set the order between bands; inside a band the person's order
- * holds: a drag by the grip, or Alt+arrow, moves a row among its
- * project's agents in its band, and a reload keeps it. The Stopped group
- * keeps the person's order (4).
- *
  * The demo distribution with a session host in this process and a
  * scripted PTY: nothing really runs. DEN_PW_WS connects to a running
  * Playwright server; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names
@@ -32,7 +26,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { allowWrites } from "../../write-guard.js";
 import type { Browser, Page } from "playwright";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
@@ -55,8 +48,6 @@ const browsers: Partial<Record<Engine, Browser>> = {};
 type Engine = "chromium" | "webkit";
 const ENGINES: Engine[] = ["chromium", "webkit"];
 beforeAll(async () => {
-  // Issue 1356: the screenshot's folder (a probe folder under the home).
-  if (!SHOT.startsWith(os.tmpdir())) allowWrites(path.dirname(SHOT));
   try {
     const pw = await import("playwright");
     for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
@@ -158,20 +149,18 @@ async function open(
 
 const row = (id: string) => `#agl button.agr[data-id="${id}"]`;
 
-/** North's running agents as the list shows them (the bands), by name. */
 async function order(p: Page): Promise<string[]> {
   const ids = await p.$$eval(
-    '#agl .agband button.agr[data-kind="agent"]',
+    '#agl div[data-band] button.agr[data-kind="agent"]',
     (bs) => bs.map((b) => (b as HTMLElement).dataset.id ?? ""),
   );
   const by = Object.fromEntries(Object.entries(sid).map(([k, v]) => [v, k]));
   return ids.map((x) => by[x] ?? x);
 }
 
-/** A mouse drag of row `from` by its grip onto `to`'s upper half. */
 async function mouseDrag(p: Page, from: string, to: string): Promise<void> {
   await p.hover(row(from));
-  const g = (await p.locator(`${row(from)} .agrip`).boundingBox())!;
+  const g = (await p.locator(`${row(from)} [data-grip]`).boundingBox())!;
   const t = (await p.locator(row(to)).boundingBox())!;
   await p.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
   await p.mouse.down();
@@ -180,7 +169,6 @@ async function mouseDrag(p: Page, from: string, to: string): Promise<void> {
   await p.mouse.up();
 }
 
-/** Waits until north's running agents show `want` (a poll may lag). */
 async function until(p: Page, want: string[]): Promise<void> {
   for (let i = 0; i < 60; i++) {
     if (JSON.stringify(await order(p)) === JSON.stringify(want)) return;
@@ -261,19 +249,15 @@ describe.each(ENGINES)(
       if (skip()) return;
       resetOrder();
       const p = await open(engine);
-      // No order saved: the Idle band's own order, A to Z.
       await until(p, ["ada", "bo", "cy"]);
-      // Every row of the band has its grip, with an accessible name.
-      expect(await p.locator("#agl .agband .agrip").count()).toBe(3);
+      expect(await p.locator("#agl div[data-band] [data-grip]").count()).toBe(3);
       expect(
-        await p.locator(`${row(sid.cy)} .agrip`).getAttribute("aria-label"),
+        await p.locator(`${row(sid.cy)} [data-grip]`).getAttribute("aria-label"),
       ).toBeTruthy();
-      // Dragged onto ada's upper half: cy goes before ada.
       await moved(p, () => mouseDrag(p, sid.cy, sid.ada));
       await until(p, ["cy", "ada", "bo"]);
       const north = userYml().agents?.order?.north ?? [];
       expect(north.indexOf("cy")).toBeLessThan(north.indexOf("ada"));
-      // Alt+↑ on bo: one up, focus stays on it.
       await p.locator(row(sid.bo)).focus();
       await moved(p, () => p.keyboard.press("Alt+ArrowUp"));
       await until(p, ["cy", "bo", "ada"]);
@@ -282,9 +266,8 @@ describe.each(ENGINES)(
           () => (document.activeElement as HTMLElement | null)?.dataset.id,
         ),
       ).toBe(sid.bo);
-      // The bands are still the bands: one, Idle.
       expect(
-        await p.$$eval("#agl .agband", (bs) =>
+        await p.$$eval("#agl div[data-band]", (bs) =>
           bs.map((b) => (b as HTMLElement).dataset.band),
         ),
       ).toEqual(["idle"]);
@@ -362,7 +345,6 @@ describe.each(ENGINES)(
       );
       // No working pop-up for a quick move.
       expect(await p.locator("den-busy[open]").count()).toBe(0);
-      // The first can't go up: no save is asked, nothing changes.
       let posts = 0;
       p.on("request", (r) => {
         if (r.method() === "POST" && /\/order$/.test(r.url())) posts++;
@@ -375,6 +357,65 @@ describe.each(ENGINES)(
       expect(posts).toBe(0);
       expect(await order(p)).toEqual(["ada", "cy", "bo"]);
       resetOrder();
+      await p.context().close();
+    }, 60_000);
+
+    it("issue 1054: a move's save holds its row (dots, aria-busy), no pop-up; a refusal puts it back and says why inline", async () => {
+      if (skip()) return;
+      resetOrder();
+      const p = await open(engine);
+      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
+      // The save is held here, then refused: no wait judged by the clock.
+      let release: () => void = () => {};
+      const go = new Promise<void>((r) => (release = r));
+      await p.route(
+        (u) =>
+          /\/api\/workspaces\/[^/]+\/agents\/[^/]+\/order$/.test(u.pathname),
+        async (r) => {
+          if (r.request().method() !== "POST") return r.fallback();
+          await go;
+          await r.fulfill({
+            status: 409,
+            contentType: "application/json",
+            // A made-up refusal, so the line is known to be the server's.
+            body: JSON.stringify({ error: "order-refused-1054" }),
+          });
+        },
+      );
+      await p.locator(row(sid.cy)).focus();
+      await p.keyboard.press("Alt+ArrowUp");
+      try {
+        await p.locator(`${row(sid.cy)}[aria-busy="true"]`).waitFor();
+        // The kit's dots at the row's end: three dots, hidden from a
+        // screen reader (aria-busy says it). aria-busy is set at once; the
+        // dots come when the kit's module has loaded.
+        await p.waitForFunction(
+          (sel) =>
+            document
+              .querySelector(sel)
+              ?.lastElementChild?.getAttribute("aria-hidden") === "true",
+          row(sid.cy),
+        );
+        expect(
+          await p.locator(row(sid.cy)).evaluate((el) => {
+            const d = el.lastElementChild;
+            return [
+              d?.getAttribute("aria-hidden"),
+              d?.querySelectorAll("i").length,
+            ];
+          }),
+        ).toEqual(["true", 3]);
+        expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+      } finally {
+        release();
+      }
+      const err = p.locator("#ag-order-err");
+      await err.waitFor({ state: "visible" });
+      expect(await err.getAttribute("role")).toBe("alert");
+      expect(await err.textContent()).toContain("order-refused-1054");
+      await until(p, ["ada", "bo", "cy"]);
+      expect(await p.locator(`${row(sid.cy)}[aria-busy]`).count()).toBe(0);
+      expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
       await p.context().close();
     }, 60_000);
 

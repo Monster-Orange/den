@@ -54,7 +54,6 @@ export interface NavItem {
    * A count. `what` (0.7.3): what it counts; the kit words it with the
    * name ("North · Den, 3 waiting"). Hosts pass data, never the words.
    */
-  /** warn (issue 773): the amber pill, e.g. the agents that need you. */
   badge?: {
     n: number | string;
     bad?: boolean;
@@ -110,6 +109,8 @@ export interface RailModel {
   account?: Account | null;
   lang?: string;
   collapsed?: boolean;
+  /** Issue 1444: the folded sections' ids; never the current page's. */
+  folded?: string[];
 }
 export interface ShellModel extends RailModel {
   product?: Product;
@@ -147,6 +148,8 @@ export declare function railGroupHtml(
   g: NavGroup,
   body: string,
   lang?: string,
+  /** Issue 1444: drawn data-folded (hydrateRailFolds hides its entries). */
+  folded?: boolean,
 ): string;
 export declare function railHtml(model?: RailModel): string;
 export declare function versionChipHtml(o?: {
