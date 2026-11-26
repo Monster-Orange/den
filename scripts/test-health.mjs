@@ -49,12 +49,20 @@ async function prRuns(api, repo, since, until) {
   return { runs, capped };
 }
 
-const jobsOf = async (api, repo, id, attempt) =>
-  (
-    await api(
-      `repos/${repo}/actions/runs/${id}/attempts/${attempt}/jobs?per_page=100`,
-    )
-  )?.jobs ?? [];
+async function jobsOf(api, repo, id, attempt) {
+  const jobs = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const got =
+      (
+        await api(
+          `repos/${repo}/actions/runs/${id}/attempts/${attempt}/jobs?per_page=100&page=${page}`,
+        )
+      )?.jobs ?? [];
+    jobs.push(...got);
+    if (got.length < 100) break;
+  }
+  return jobs;
+}
 
 function prTime(done) {
   const heads = new Map();
@@ -81,13 +89,15 @@ function firstRedOf(jobs) {
 function bedWall(dir, sinceMs, untilMs) {
   if (!dir) return null;
   const walls = [];
-  for (const name of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+  let unreadable = 0;
+  for (const name of fs.readdirSync(dir)) {
     const f = path.join(dir, name, "verdict.json");
     if (!fs.existsSync(f)) continue;
     let v;
     try {
       v = JSON.parse(fs.readFileSync(f, "utf-8"));
     } catch {
+      unreadable++;
       continue;
     }
     const at = ms(v.startedAt);
@@ -98,7 +108,18 @@ function bedWall(dir, sinceMs, untilMs) {
     runs: walls.length,
     ...spread(walls),
     longestMin: walls.length ? min(Math.max(...walls)) : null,
+    unreadable,
   };
+}
+
+export function bedFolderProblem(dir) {
+  try {
+    if (!fs.statSync(dir).isDirectory()) return `--bed ${dir} is not a folder`;
+    fs.readdirSync(dir);
+    return null;
+  } catch (e) {
+    return `--bed ${dir} can't be read (${e.code ?? e.message})`;
+  }
 }
 
 export async function health({
@@ -112,7 +133,9 @@ export async function health({
   const sinceDate = new Date(now.getTime() - days * 86_400_000);
   const since = day(sinceDate);
   const { runs, capped } = await prRuns(api, repo, since, day(now));
-  const done = runs.filter((r) => r.status === "completed");
+  const done = runs.filter(
+    (r) => r.status === "completed" && ms(r.created_at) >= sinceDate.getTime(),
+  );
 
   const reds = [];
   const flakyJobs = new Set();
@@ -183,7 +206,7 @@ export function markdown(h) {
           "Live-check bed wall time",
           m(b.p50Min),
           m(b.p90Min),
-          `${b.runs} bed runs, longest ${m(b.longestMin)}`,
+          `${b.runs} bed runs, longest ${m(b.longestMin)}${b.unreadable ? `, ${b.unreadable} verdict file${b.unreadable === 1 ? "" : "s"} unreadable` : ""}`,
         ]
       : [
           "Live-check bed wall time",
@@ -254,6 +277,11 @@ async function main(argv) {
     console.error(
       "test-health: needs GITHUB_TOKEN, with read access to the repo's Actions",
     );
+    return 2;
+  }
+  const bedProblem = opt.bed ? bedFolderProblem(opt.bed) : null;
+  if (bedProblem) {
+    console.error(`test-health: ${bedProblem}`);
     return 2;
   }
   if (!opt.repo || !/^[\w.-]+\/[\w.-]+$/.test(opt.repo)) {

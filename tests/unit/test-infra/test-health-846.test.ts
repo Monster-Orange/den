@@ -31,6 +31,7 @@ interface Health {
     p50Min: number | null;
     p90Min: number | null;
     longestMin: number | null;
+    unreadable: number;
   } | null;
   brittle: Record<string, number> | null;
 }
@@ -85,6 +86,12 @@ function fakeApi(): Record<string, unknown> {
       status: "in_progress",
       conclusion: null,
     }),
+    run({
+      id: 6,
+      head_sha: "e",
+      created_at: "2026-11-23T10:00:00Z",
+      updated_at: "2026-11-23T12:00:00Z",
+    }),
   ];
   const byDay: Record<string, unknown> = {};
   for (let d = 23; d <= 30; d++) {
@@ -97,9 +104,18 @@ function fakeApi(): Record<string, unknown> {
   }
   return {
     ...byDay,
-    [`repos/${REPO}/actions/runs/3/attempts/1/jobs?per_page=100`]: {
+    [`repos/${REPO}/actions/runs/3/attempts/1/jobs?per_page=100&page=1`]: {
+      jobs: Array.from({ length: 100 }, (_, i) =>
+        job(
+          `unit (${i})`,
+          "success",
+          "2026-11-25T10:01:00Z",
+          "2026-11-25T10:02:00Z",
+        ),
+      ),
+    },
+    [`repos/${REPO}/actions/runs/3/attempts/1/jobs?per_page=100&page=2`]: {
       jobs: [
-        job("fast", "success", "2026-11-25T10:01:00Z", "2026-11-25T10:02:00Z"),
         job(
           "pr-shards (1)",
           "failure",
@@ -114,7 +130,7 @@ function fakeApi(): Record<string, unknown> {
         ),
       ],
     },
-    [`repos/${REPO}/actions/runs/4/attempts/1/jobs?per_page=100`]: {
+    [`repos/${REPO}/actions/runs/4/attempts/1/jobs?per_page=100&page=1`]: {
       jobs: [
         job("fast", "success", "2026-11-26T10:01:00Z", "2026-11-26T10:02:00Z"),
         job(
@@ -125,7 +141,7 @@ function fakeApi(): Record<string, unknown> {
         ),
       ],
     },
-    [`repos/${REPO}/actions/runs/4/attempts/2/jobs?per_page=100`]: {
+    [`repos/${REPO}/actions/runs/4/attempts/2/jobs?per_page=100&page=1`]: {
       jobs: [
         job("fast", "success", "2026-11-26T10:40:00Z", "2026-11-26T10:41:00Z"),
         job(
@@ -152,6 +168,8 @@ function bedDir(): string {
   put("v1-dev.2", "2026-11-25T04:00:00Z", 30 * 60_000);
   put("old", "2026-11-10T04:00:00Z", 99 * 60_000);
   fs.mkdirSync(path.join(dir, "no-verdict"));
+  fs.mkdirSync(path.join(dir, "broken"));
+  fs.writeFileSync(path.join(dir, "broken", "verdict.json"), "{");
   return dir;
 }
 
@@ -205,11 +223,59 @@ describe("test health, measured weekly (issue 846)", () => {
   });
 
   it("live-check bed wall time from the bed's verdict files in the window", () => {
-    expect(h.bed).toEqual({ runs: 2, p50Min: 10, p90Min: 30, longestMin: 30 });
+    expect(h.bed).toEqual({
+      runs: 2,
+      p50Min: 10,
+      p90Min: 30,
+      longestMin: 30,
+      unreadable: 1,
+    });
   });
 
   it("the brittle-pattern ratchet's totals", () => {
     expect(h.brittle).toEqual({ sleeps: 3, positional: 4 });
+  });
+
+  it("a run created before the 7 days began is left out, though it's on the first date", () => {
+    expect(h.pr.heads).toBe(3);
+    expect(h.flakes.runs).toBe(4);
+  });
+
+  it("a red job past the first 100 of a run is still found", () => {
+    expect(h.firstRed.runs).toBe(2);
+  });
+
+  it("a bed folder's unreadable verdict files are counted in the notes", () => {
+    const js = `
+      const { markdown } = await import("./scripts/test-health.mjs");
+      console.log(markdown(${JSON.stringify(h)}));`;
+    const md = execFileSync(
+      process.execPath,
+      ["--input-type=module", "-e", js],
+      {
+        cwd: ROOT,
+        encoding: "utf-8",
+      },
+    );
+    expect(md).toMatch(
+      /2 bed runs, longest 30\.0 min, 1 verdict file unreadable/,
+    );
+  });
+
+  it("a --bed folder that isn't there stops the run before any read, naming it", () => {
+    const missing = path.join(os.tmpdir(), `den-health-none-${process.pid}`);
+    const r = spawnSync(
+      process.execPath,
+      [SCRIPT, "--repo", REPO, "--bed", missing],
+      {
+        cwd: ROOT,
+        encoding: "utf-8",
+        env: { PATH: process.env.PATH ?? "", GITHUB_TOKEN: "not-a-real-token" },
+      },
+    );
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/--bed/);
+    expect(r.stderr).toContain(missing);
   });
 
   it("with no bed folder, the bed row is absent, not zero", () => {
@@ -257,12 +323,24 @@ describe("test health, measured weekly (issue 846)", () => {
     ) as {
       on: { schedule: { cron: string }[] };
       permissions: Record<string, string>;
-      jobs: { report: { steps: { run?: string }[] } };
+      jobs: {
+        report: {
+          steps: {
+            uses?: string;
+            run?: string;
+            with?: Record<string, unknown>;
+          }[];
+        };
+      };
     };
     expect(wf.on.schedule[0]!.cron).toMatch(/^\S+ \S+ \* \* 1$/);
     expect(wf.permissions).toEqual({ actions: "read", contents: "read" });
     const runs = wf.jobs.report.steps.map((s) => s.run ?? "").join("\n");
     expect(runs).toMatch(/node scripts\/test-health\.mjs/);
     expect(runs).toMatch(/GITHUB_STEP_SUMMARY/);
+    const checkout = wf.jobs.report.steps.find((s) =>
+      s.uses?.startsWith("actions/checkout@"),
+    );
+    expect(checkout?.with?.["persist-credentials"]).toBe(false);
   });
 });
