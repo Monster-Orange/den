@@ -25,7 +25,6 @@ import { esc } from "./strings.js";
 
 let seq = 0;
 
-/** The bare switch input (see the top of this file). */
 export function switchInputHtml(o = {}) {
   const id = o.id ? String(o.id) : `den-sw-${++seq}`;
   const more = Object.entries(o.attrs ?? {})

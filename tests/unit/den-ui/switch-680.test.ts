@@ -81,13 +81,13 @@ describe("issue 680: Den draws its on/off settings with the kit's switch", () =>
     ["settings-registry.js", /attrs: \{ "data-keep-on": "" \}/],
     ["settings-registry.js", /switchInputHtml\(\{\s*id: "set-phone-push"/],
   ];
-  const ALLOWED_CHECKBOXES = [
-    /data-signout-rotate/, // Sign out: also rotate the key (an option)
-    /id="rot-a-never"/, // a rotation's "never" (an option in a form)
-    /data-pmcp-nobearer/, // a project MCP's "no token" (an option in a form)
-    /id="module-check-all"/, // Testing: the module checklist's "all"
-    /value="\$\{m\.name\}"/, // Testing: a module in the checklist
-  ];
+  const ALLOWED_CHECKBOXES: Record<string, RegExp> = {
+    "Sign out: also rotate the key (an option)": /data-signout-rotate/,
+    "a rotation's never (an option in a form)": /id="rot-a-never"/,
+    "a project MCP's no token (an option in a form)": /data-pmcp-nobearer/,
+    "Testing: the module checklist's all": /id="module-check-all"/,
+    "Testing: a module in the checklist": /value="\$\{m\.name\}"/,
+  };
   it("the named on/off settings are switches", () => {
     for (const [f, re] of MUST_BE_SWITCHES)
       expect([f, String(re), re.test(read(f))]).toEqual([f, String(re), true]);
@@ -98,7 +98,7 @@ describe("issue 680: Den draws its on/off settings with the kit's switch", () =>
         []) {
         const ok =
           /role="switch"/.test(tag) ||
-          ALLOWED_CHECKBOXES.some((re) => re.test(tag));
+          Object.values(ALLOWED_CHECKBOXES).some((re) => re.test(tag));
         expect([f, tag, ok]).toEqual([f, tag, true]);
       }
   });
