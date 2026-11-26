@@ -14,8 +14,6 @@
  *      /connect/token), stores the token and points hub.token at it, then
  *      answers a page that moves on to Settings by script, a same-site
  *      navigation that carries the cookie again.
- *   4. POST /api/hub/disconnect revokes the token on Hub, then removes it
- *      here and clears hub.token.
  *
  * Where the token goes (SEC-0: the install's, never Den's): the install's
  * own secrets store when it keeps secrets (1Password, Doppler: a new item
@@ -27,7 +25,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { readWebUrl } from "../../shared/web-url.js";
+import { readWebUrl } from "../../shared/web/web-url.js";
 import {
   hubExchange,
   HubCallError,
@@ -43,6 +41,11 @@ import {
   type HubTokenRotation,
 } from "../../shared/hub.js";
 import { recordAction } from "./audit.js";
+import {
+  AGENT_GRANT_NOTE_SUBJECT,
+  bestEffort,
+  clearAgentsNotCovered,
+} from "../../shared/hub-agent-grant.js";
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
@@ -51,7 +54,7 @@ import {
   hubOrigin,
   readHubBinding,
   recordUnrevoked,
-} from "../../shared/hub-binding.js";
+} from "../../shared/hub/hub-binding.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { emptyProjectTest } from "../../shared/empty-project.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -61,7 +64,7 @@ import {
   parseHubProjectLink,
   setHubProject,
   type HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import {
   parseGrantReview,
   reviewParam,
@@ -69,7 +72,7 @@ import {
   type GrantReview,
   type GrantSkip,
   type ReviewProject,
-} from "../../shared/hub-connect-review-grant.js";
+} from "../../shared/hub/hub-connect-review-grant.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { envKey, product } from "../../shared/product.js";
 import {
@@ -79,6 +82,13 @@ import {
   type SecretRef,
 } from "../../shared/secrets/index.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { isRepoName } from "../../shared/repo-name.js";
+import {
+  endHubSwitch,
+  hubSwitchDeps,
+  liveHubSwitch,
+  switchDays,
+} from "./hub-switch.js";
 
 /** How long a started connect waits for Hub to send the person back. */
 export const CONNECT_TTL_MS = 10 * 60_000;
@@ -97,7 +107,13 @@ interface Pending {
   review?:
     | { hash: string; keys: string[] }
     | { why: string; code: FallbackCode };
+  switching?: true;
 }
+
+const sameHub = (a: string, b: string): boolean => {
+  const x = hubOrigin(a);
+  return !!x && x === hubOrigin(b);
+};
 
 /** What hub.token becomes after a connect: a store ref, or a file source. */
 export type StoredToken =
@@ -119,6 +135,11 @@ export interface HubConnectDeps {
   writeUser: (u: Record<string, unknown>) => void;
   /** This install's label on Hub (1–40 characters). */
   installLabel: () => string;
+  relinkMoved?: (
+    hubUrl: string,
+    token: string,
+    company: string | undefined,
+  ) => Promise<unknown>;
   /**
    * This Den's https edge address, when it has one (Connect's den_url:
    * where Hub links back to it when the browser came over loopback).
@@ -137,11 +158,17 @@ export interface HubConnectDeps {
    * unlinks the projects, before the review offers them again).
    */
   rebind?: (url: string, company: string | undefined) => Promise<unknown>;
+  tellDenUrl?: (hubUrl: string, token: string) => Promise<unknown>;
   /**
    * Issue 726: a forced disconnect Hub couldn't hear: keep it on record
    * (doctor lists it; each start tries the revoke again).
    */
   unrevoked?: (u: { url: string; why: string; token: string }) => void;
+  unbindAgents?: (
+    hub: { url: string; token: string },
+    force: boolean,
+  ) => Promise<{ revoked: number; failed: number }>;
+  agentGrantSettled?: () => void;
   /**
    * Issue 646: this Den's projects' repos (owner/repo), sent to Hub's
    * Connect page so Hub ranks the person's companies by them.
@@ -162,11 +189,12 @@ export interface HubConnectDeps {
   linkOf?: (ws: string) => HubProjectLink | null;
   /** Issue 648: the origin hub/bound.json names now (after the rebind). */
   boundOrigin?: () => string | null;
+  hubSwitch?: () => { to: string; from: string } | null;
+  switched?: (r: { ok: boolean; why?: string }) => void;
 }
 
 /** Issue 646: at most this many repos go to Hub's Connect page. */
 export const CONNECT_REPOS_MAX = 50;
-const REPO_RE = /^[a-z0-9_.-]{1,100}\/[a-z0-9_.-]{1,100}$/;
 
 /**
  * Issue 646: every project's repos, lower case, once each, in project
@@ -182,7 +210,7 @@ export function connectRepos(
     if (isServer(ws)) continue;
     for (const r of reposOf(ws)) {
       const x = r.toLowerCase();
-      if (REPO_RE.test(x)) out.add(x);
+      if (isRepoName(x)) out.add(x);
     }
   }
   return [...out];
@@ -422,6 +450,37 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     readUser: () => readUserConfig() as Record<string, unknown>,
     writeUser: (u) => writeUserConfig(u as never),
     installLabel: () => defaultInstallLabel(),
+    relinkMoved: async (hubUrl, token, company) => {
+      const [m, hub, link, la, ns] = await Promise.all([
+        import("./hub-relink-after-move.js"),
+        import("../../shared/hub.js"),
+        import("../../shared/hub/hub-project-link.js"),
+        import("./hub-link-all-routes.js"),
+        import("./notification-service.js"),
+      ]);
+      const r = await m.relinkAfterMove(hubUrl, company, {
+        stateDir: getStateDir,
+        lookup: (id) => hub.hubGetProject(hubUrl, token, id),
+        linkOf: (ws) => link.hubProjectOf(ws),
+        link: (ws, l) =>
+          link.setHubProject(
+            ws,
+            l,
+            "Connect: a moved project, re-linked by its id",
+          ),
+        picked: (n) => la.pickDone(ns.notificationDeps().store, n),
+      });
+      if (r.relinked.length)
+        recordAction(null, {
+          verb: "hub-link",
+          detail:
+            `re-linked by id after a Hub move: ${r.relinked.join(", ")}${r.ask.length ? `; to pick: ${r.ask.join(", ")}` : ""}`.slice(
+              0,
+              400,
+            ),
+        });
+      return r;
+    },
     // D80: the install's address, as Hub takes it (https, or a .localhost).
     denUrl: () => {
       const w = readWebUrl();
@@ -433,13 +492,49 @@ export function defaultHubConnectDeps(): HubConnectDeps {
       const m = await import("./hub-change.js");
       return m.noteHub(await m.defaultHubChangeDeps(), { url, company });
     },
+    tellDenUrl: async (url, token) => {
+      const w = readWebUrl();
+      if (!w?.url) return;
+      const [{ tellHubDenUrl }, { hubPutDenUrl }] = await Promise.all([
+        import("../../shared/hub/hub-den-url.js"),
+        import("../../shared/hub.js"),
+      ]);
+      await tellHubDenUrl(w.url, {
+        hub: async () => ({ url, token }),
+        put: hubPutDenUrl,
+        stateDir: getStateDir(),
+      });
+    },
     unrevoked: (u) => void recordUnrevoked(getStateDir(), u),
+    agentGrantSettled: () => {
+      bestEffort(() => clearAgentsNotCovered(getStateDir()));
+      void import("./notification-service.js")
+        .then((m) =>
+          m
+            .notificationDeps()
+            .store.remove((n) => n.subject === AGENT_GRANT_NOTE_SUBJECT),
+        )
+        .catch(() => undefined);
+    },
+    unbindAgents: async (hub, force) =>
+      (await import("../../shared/hub-agent-tokens.js"))
+        .serverHubAgentTokens()
+        .unbindAll(hub, { force }),
     repos: defaultRepos,
     reviewProjects: defaultReviewProjects,
     linkProject: (ws, link, by) => setHubProject(ws, link, by),
     linkOf: (ws) =>
       parseHubProjectLink(readWorkspacesFile().workspaces[ws]?.hub_project),
     boundOrigin: () => readHubBinding(getStateDir())?.origin ?? null,
+    hubSwitch: () =>
+      liveHubSwitch({
+        stateDir: getStateDir(),
+        days: switchDays((readUserConfig() as Record<string, unknown>).hub),
+      }),
+    switched: (r) =>
+      void hubSwitchDeps()
+        .then((d) => endHubSwitch(d, r))
+        .catch(() => undefined),
   };
 }
 
@@ -527,9 +622,16 @@ export class HubConnect {
   start(
     origin: string,
     url?: unknown,
+    opts: { switch?: boolean } = {},
   ): { ok: true; location: string } | { ok: false; error: string } {
     const typed = typeof url === "string" ? url.trim().replace(/\/+$/, "") : "";
-    const hubUrl = typed || this.deps.config()?.url || "";
+    let sw: { to: string } | null = null;
+    try {
+      sw = opts.switch ? (this.deps.hubSwitch?.() ?? null) : null;
+    } catch {
+      sw = null;
+    }
+    const hubUrl = typed || sw?.to || this.deps.config()?.url || "";
     if (!hubUrl) return { ok: false, error: "type Hub's address first" };
     const bad = hubUrlProblem(hubUrl);
     if (bad)
@@ -565,6 +667,7 @@ export class HubConnect {
       redirectUri,
       at: this.deps.now(),
       ...(review ? { review } : {}),
+      ...(sw && sameHub(sw.to, hubUrl) ? { switching: true as const } : {}),
     });
     const q = new URLSearchParams({
       install: this.deps.installLabel(),
@@ -578,6 +681,7 @@ export class HubConnect {
     // reconnect sends it again.
     const denUrl = denUrlOrigin(this.deps.denUrl?.() ?? "");
     if (denUrl) q.set("den_url", denUrl);
+    q.set("agents", "yes");
     // Issue 646: the projects' repos, so Hub ranks the person's companies
     // (its own session; an older Hub ignores it). Never stops Connect.
     let repos: string[] = [];
@@ -601,7 +705,10 @@ export class HubConnect {
    * The result names what happened in words (never the token or the code).
    */
   async finish(q: URLSearchParams): Promise<ConnectResult> {
+    const switching = !!this.pending.get(q.get("state") ?? "")?.switching;
     const r = await this.finishOnce(q);
+    if (switching)
+      this.deps.switched?.(r.ok ? { ok: true } : { ok: false, why: r.message });
     // `message` is the plain English line for logs and older pages; the
     // page words `words` itself (issue 648, en/es/ja).
     const message = r.ok
@@ -694,8 +801,9 @@ export class HubConnect {
           : `Hub didn't give a token: ${(e as Error).message}`;
       return { ok: false, reason: "failed", message: m };
     }
-    const hubUrl =
-      grant.hubUrl && !hubUrlProblem(grant.hubUrl) ? grant.hubUrl : p.hubUrl;
+    const ownName = (u: string | undefined) =>
+      !!u && !hubUrlProblem(u) && (!p.switching || sameHub(u, p.hubUrl));
+    const hubUrl = ownName(grant.hubUrl) ? grant.hubUrl! : p.hubUrl;
     // Issue 726: connected before (to another Hub, or for another company
     // on this one): the old token is read now (the new one may take its
     // file or item) and revoked on its Hub after, so a token for a company
@@ -725,10 +833,10 @@ export class HubConnect {
     };
     hub.url = hubUrl;
     hub.token = stored.kind === "ref" ? stored.ref : stored.source;
-    if (grant.mcpUrl && !hubUrlProblem(grant.mcpUrl))
-      hub.mcp_url = grant.mcpUrl;
+    if (ownName(grant.mcpUrl)) hub.mcp_url = grant.mcpUrl;
     else delete hub.mcp_url;
     this.deps.writeUser({ ...user, hub });
+    this.deps.agentGrantSettled?.();
     // 0.4.47: the token Den keeps in memory is the old one: read anew.
     forgetHubToken(undefined, Date.now(), { now: true });
     if (leaving && oldToken)
@@ -751,6 +859,8 @@ export class HubConnect {
         () => true,
         () => false,
       );
+    if (this.deps.tellDenUrl)
+      void this.deps.tellDenUrl(hubUrl, grant.token).catch(() => undefined);
     // Issue 648: the links Hub's one approval made. Written only when the
     // rebind resolved and hub/bound.json names this Hub, each stamped with
     // it (else a new company's ids would count as the old Hub's). Only a
@@ -809,6 +919,10 @@ export class HubConnect {
         review = { ok: true, links, skipped };
       }
     }
+    if (rebound && this.deps.relinkMoved)
+      await this.deps
+        .relinkMoved(hubUrl, grant.token, company)
+        .catch(() => undefined);
     return {
       ok: true,
       ...(grant.company?.name ? { team: grant.company.name } : {}),
@@ -835,6 +949,20 @@ export class HubConnect {
     const token = await this.deps.readToken(cfg);
     let revoked = false;
     let note = "";
+    let agents = 0;
+    if (token && this.deps.unbindAgents) {
+      const a = await this.deps
+        .unbindAgents({ url: cfg.url, token }, force)
+        .catch(() => ({ revoked: 0, failed: 1 }));
+      if (a.failed && !force)
+        return {
+          ok: false,
+          error: `Hub couldn't revoke ${a.failed === 1 ? "1 agent's Hub token" : `${a.failed} agents' Hub tokens`}. Nothing was removed. Try again, or remove it here anyway.`,
+        };
+      if (a.failed)
+        note += ` Hub couldn't revoke ${a.failed === 1 ? "1 agent's token" : `${a.failed} agents' tokens`}: ${a.failed === 1 ? "it works" : "they work"} there until an admin revokes this install.`;
+      agents = a.revoked;
+    }
     if (token) {
       try {
         revoked = await this.deps.revoke(cfg.url, token);
@@ -870,10 +998,11 @@ export class HubConnect {
     if (Object.keys(hub).length) user.hub = hub;
     else delete user.hub;
     this.deps.writeUser(user);
+    this.deps.agentGrantSettled?.();
     return {
       ok: true,
       revoked,
-      message: `Disconnected.${revoked ? " Hub revoked this install's token." : ""}${note}`,
+      message: `Disconnected.${revoked ? ` Hub revoked this install's token${agents ? ` and ${agents === 1 ? "1 agent's token" : `${agents} agents' tokens`}` : ""}.` : ""}${note}`,
     };
   }
 }

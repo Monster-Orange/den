@@ -22,15 +22,10 @@ import {
 import { getDistRoot } from "../../shared/paths.js";
 
 import { product } from "../../shared/product.js";
+import { isRepoName } from "../../shared/repo-name.js";
 // Anchored to the den root, NOT process.cwd(): "this repo" identification
 // (basename + origin remote) must not depend on where the server was started.
 const ROOT = getDistRoot();
-
-/**
- * Strict owner/repo format: rejects shell metacharacters, and a `.` or
- * `..` segment (0.4.71), which would reach another GitHub API path.
- */
-const SLUG_RE = /^(?!\.{1,2}\/)[a-zA-Z0-9._-]+\/(?!\.{1,2}$)[a-zA-Z0-9._-]+$/;
 
 export interface GitHubRepo {
   name: string;
@@ -53,7 +48,9 @@ export class GitHubService {
    * Cached per slug for BRANCH_CACHE_TTL_MS.
    */
   listBranches(gh: string): string[] {
-    if (!gh || !SLUG_RE.test(gh)) return [];
+    // Strict owner/name: no shell metacharacters, and never a
+    // "." or ".." segment, which would reach another GitHub API path.
+    if (!isRepoName(gh)) return [];
 
     const cached = this.branchesCache.get(gh);
     if (cached && Date.now() - cached.fetchedAt < BRANCH_CACHE_TTL_MS) {

@@ -27,8 +27,8 @@ import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { rankFindings, readWebUrl } from "../../shared/web-url.js";
-import { loopbackRefusal } from "../../shared/web-url-check.js";
+import { rankFindings, readWebUrl } from "../../shared/web/web-url.js";
+import { loopbackRefusal } from "../../shared/web/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
 import {
@@ -51,6 +51,14 @@ import {
 } from "../../shared/shell-pins.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import {
+  projectRepoDirs,
+  projectRepoDirsOf,
+} from "../../shared/project-repo-dirs.js";
+import {
+  PLAYWRIGHT_AUTH_DIR,
+  REPO_SECRETS_FILE,
+} from "../../shared/credential-paths.js";
+import {
   checkAgentSigning,
   existingAgentSigningKey,
   resolveAgentSigning,
@@ -64,6 +72,7 @@ import { getDistRoot, getStateDir } from "../../shared/paths.js";
 import {
   bothSpellings,
   readRulesCover,
+  repoSecretDenyRules,
   stateDirDenyRules,
 } from "../../shared/agents/den-claude.js";
 import {
@@ -84,6 +93,7 @@ import {
   signinRequestCounts,
 } from "../../shared/signin-request-count.js";
 import {
+  SESSION_SIGNING_DIR,
   sandboxFor,
   sandboxHidesFile,
   sandboxSetting,
@@ -110,7 +120,7 @@ import {
   deliveryAlert,
   readDeliveryHealth,
   TROUBLE_TEXT,
-} from "../../shared/hub-delivery.js";
+} from "../../shared/hub/hub-delivery.js";
 import {
   lostFiles,
   lostMarkLines,
@@ -203,7 +213,7 @@ import {
   type WhereRow,
 } from "./doctor-where.js";
 import { hostLabel } from "./service-command.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export interface DoctorRow {
   kind: string;
@@ -581,6 +591,7 @@ export function strategyCheck(r: DoctorRow): OnboardCheck {
         ? "warn"
         : "ok",
     detail: `${sel} ${r.available ? "available" : r.idle ? "not in use yet, unavailable" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+    ...(r.notes?.length ? { notes: [...r.notes] } : {}),
   };
 }
 
@@ -865,12 +876,12 @@ function agoText(ms: number): string {
  * None when the server hasn't written it.
  */
 export function hubDeliveryLines(
-  h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
+  h: import("../../shared/hub/hub-delivery.js").DeliveryHealth | null,
   now: number,
   minutes: number,
   /** P0-D4: the delivery log's last 24 h (journalSummary), when there is one. */
   journal:
-    | import("../../shared/hub-delivery-journal.js").JournalSummary
+    | import("../../shared/hub/hub-delivery-journal.js").JournalSummary
     | null = null,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!h) return { lines: [], problem: false };
@@ -884,6 +895,16 @@ export function hubDeliveryLines(
       ? "no comment yet"
       : `last comment ${agoText(now - h.lastDeliveryAt)}`,
   ];
+  // The cursor's age, the last list read, and a stall.
+  if (h.cursorAt != null)
+    parts.push(`cursor moved ${agoText(now - h.cursorAt)}`);
+  if (h.lastPoll)
+    parts.push(
+      `last list read ${agoText(now - h.lastPoll.at)}: ${
+        h.lastPoll.ok ? `${h.lastPoll.count ?? 0} waiting` : h.lastPoll.error
+      }`,
+    );
+  if (h.stale) parts.push(`${h.stale.waiting} waiting in Hub`);
   if (journal) {
     const words: [keyof typeof journal.counts, string][] = [
       ["typed", "typed"],
@@ -947,7 +968,7 @@ async function hubDeliveryDoctor(): Promise<
     /* the Hub row says what's wrong with the hub block */
   }
   const { journalSummary } =
-    await import("../../shared/hub-delivery-journal.js");
+    await import("../../shared/hub/hub-delivery-journal.js");
   return hubDeliveryLines(
     readDeliveryHealth(
       path.join(getStateDir(), "hub", "deliveries-health.json"),
@@ -961,6 +982,34 @@ async function hubDeliveryDoctor(): Promise<
   );
 }
 
+export function hubAgentTokenLines(
+  problems: readonly import("../../shared/hub-agent-tokens.js").AgentTokenProblem[],
+): { lines: string[]; checks: OnboardCheck[] } {
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const p of problems) {
+    const when = Number.isFinite(Date.parse(p.at))
+      ? new Date(p.at).toLocaleString()
+      : p.at;
+    const reconnect =
+      p.code === "agents_not_covered" || p.code === "agents_manage_missing";
+    const fix = reconnect
+      ? "Settings › Hub: Reconnect"
+      : p.what === "mint"
+        ? "Den asks Hub again after hub.agent_token_retry_seconds; the agent uses the install's token meanwhile"
+        : undefined;
+    const detail = `agent ${p.agentId}: ${p.detail} (${when})`;
+    lines.push(`  hub agent  ✗  ${detail}${fix ? `. ${fix}` : ""}`);
+    checks.push({
+      id: `hub:agent-token:${p.agentId}`,
+      status: "fail",
+      detail,
+      ...(reconnect ? { ask: "Reconnect to Hub in Settings › Hub" } : {}),
+    });
+  }
+  return { lines, checks };
+}
+
 /**
  * H5: with Hub connected, each project's Hub project. Linked is ok; not
  * linked warns (Hub files that project's agents' work in Unfiled), with
@@ -971,6 +1020,28 @@ async function hubDeliveryDoctor(): Promise<
  * built-in `default`) is ✓ "nothing to link", never a warning: an agent
  * reading Doctor would ask the person for a link nobody needs.
  */
+async function hubAddressRows(
+  st: import("../../shared/hub.js").HubStatus,
+): Promise<{ lines: string[]; checks: OnboardCheck[] }> {
+  if (!st.configured || !st.connected) return { lines: [], checks: [] };
+  const [{ readDenUrlTell, denUrlTellRow }, { readWebUrl }] = await Promise.all(
+    [
+      import("../../shared/hub/hub-den-url.js"),
+      import("../../shared/web/web-url.js"),
+    ],
+  );
+  const row = denUrlTellRow(
+    readDenUrlTell(getStateDir()),
+    readWebUrl()?.url,
+    st.url,
+  );
+  if (!row) return { lines: [], checks: [] };
+  return {
+    lines: [`  hub address  ⚠  ${row.detail}`],
+    checks: [{ id: "hub:den-url", status: "warn", detail: row.detail }],
+  };
+}
+
 export function hubProjectLines(
   connected: boolean,
   projects: {
@@ -1114,7 +1185,7 @@ async function projectMcpDoctor(): Promise<{
  */
 export function hubGithubLines(
   cov:
-    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { orgs: import("../../shared/hub/hub-project-sync.js").OrgCoverage[] }
     | { error: string }
     | null,
 ): { lines: string[]; checks: OnboardCheck[] } {
@@ -1196,8 +1267,8 @@ async function projectsWithHubProject(): Promise<
   const { emptyProjectTest } = await import("../../shared/empty-project.js");
   const { listRecords } = await import("../../shared/agents/records.js");
   const { hubProjectOf, hubLinkElsewhere } =
-    await import("../../shared/hub-project-link.js");
-  const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
+    await import("../../shared/hub/hub-project-link.js");
+  const { lostHubLinks } = await import("../../shared/hub/hub-links-seen.js");
   try {
     const file = readWorkspacesFile();
     const all = file.workspaces;
@@ -1252,7 +1323,7 @@ export interface DoctorAddress {
  * one isn't checked yet. It is never offered to confirm.
  */
 export function addressLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   title: string,
   cli: string,
   checked: DoctorAddress | null = null,
@@ -1450,7 +1521,7 @@ function fixtureLineNow(): string | null {
  * one; this row says so (ℹ, ok) instead of a second ⚠ to ask about.
  */
 export function sessionHostLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   works: boolean,
   title: string,
   cli: string,
@@ -1566,7 +1637,7 @@ async function pushSubscriptionCount(): Promise<number | undefined> {
  * on. None: nothing is lost yet, so ℹ and ok. Unknown (left out): warn.
  */
 export function pushContactLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   title: string,
   cli: string,
   subscriptions?: number,
@@ -1714,6 +1785,10 @@ export function sharedUserLines(
      * from install_mode; a config that can't be read counts as strict.
      */
     trailReadable?: boolean;
+    /** Agents whose last start was outside the OS sandbox, and their projects. */
+    unsandboxed?: () => { id: string; projects: string[] }[];
+    /** A project's repo folders. */
+    reposOf?: (project: string) => string[];
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
@@ -1763,17 +1838,50 @@ export function sharedUserLines(
     : walked.deep
       ? `checked ${maxDepth} folders deep only`
       : "";
-  const looseWarn = loose.length > 0 || !!partial;
+  const outside = (o.unsandboxed ?? (() => unsandboxedAgents(stateDir)))();
+  const looseWarn = (loose.length > 0 || !!partial) && outside.length > 0;
   const SHOWN = 10;
-  const listed = loose.length
-    ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
-        .slice(0, SHOWN)
-        .join(
-          ", ",
-        )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
-    : partial
-      ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
-      : "agents' deny rules cover every 0600 file in the state folder";
+  const listed =
+    loose.length && !outside.length
+      ? `${loose.length} 0600 file${loose.length === 1 ? "" : "s"} in the state folder ha${loose.length === 1 ? "s" : "ve"} no Claude Read rule; the OS sandbox keeps every agent out of the state folder`
+      : loose.length
+        ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
+            .slice(0, SHOWN)
+            .join(
+              ", ",
+            )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
+        : partial
+          ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
+          : "agents' deny rules cover every 0600 file in the state folder";
+  const reposOf = o.reposOf ?? projectRepoDirsOf;
+  const readable = stateCredentialsPresent(stateDir);
+  const more = walked.files.filter(
+    (f) => f.split(path.sep)[0] !== SESSION_SIGNING_DIR,
+  ).length;
+  const agentRows = outside.map((a) => {
+    const repoFiles = [
+      ...new Set(
+        a.projects.flatMap((p) => reposOf(p).map((d) => path.resolve(d))),
+      ),
+    ].filter((d) => {
+      try {
+        return fs.lstatSync(path.join(d, REPO_SECRETS_FILE)).isFile();
+      } catch {
+        return false;
+      }
+    }).length;
+    const what = [
+      ...readable,
+      ...(repoFiles
+        ? [
+            `${repoFiles} project stack secrets file${repoFiles === 1 ? "" : "s"}`,
+          ]
+        : []),
+      ...(more ? [`and ${more} more 0600 file${more === 1 ? "" : "s"}`] : []),
+    ];
+    const detail = `${safeShownPath(a.id)} runs outside the OS sandbox (by its last start's record), so its shell can read ${what.length ? what.join(", ") : "the state folder"}. A person turns its sandbox on with agents.sandbox in user.yml`;
+    return { id: `agent_unsandboxed:${a.id}`, detail };
+  });
   const looseDetail = partial ? `${listed} (${partial})` : listed;
   const mark = (ok: boolean) => (ok ? "✓" : "⚠");
   return {
@@ -1784,6 +1892,7 @@ export function sharedUserLines(
       `  same login  ${mark(!others)}  ${shared}`,
       `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
+      ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
     checks: [
       { id: "shared_user", status: others ? "warn" : "ok", detail: shared },
@@ -1797,7 +1906,130 @@ export function sharedUserLines(
         status: looseWarn ? "warn" : "ok",
         detail: looseDetail,
       },
+      ...agentRows.map((r) => ({
+        id: r.id,
+        status: "warn" as const,
+        detail: r.detail,
+      })),
     ],
+  };
+}
+
+/** Agents whose last start was outside the OS sandbox, from their records. */
+function unsandboxedAgents(
+  stateDir: string,
+): { id: string; projects: string[] }[] {
+  try {
+    return listRecords(stateDir)
+      .filter((r) => r.sandbox?.applied !== true)
+      .map((r) => ({ id: r.id, projects: [r.workspace, ...(r.grants ?? [])] }));
+  } catch {
+    return [];
+  }
+}
+
+/** The state folder's credentials that exist, by what they are. */
+function stateCredentialsPresent(stateDir: string): string[] {
+  const has = (rel: string) => fs.existsSync(path.join(stateDir, rel));
+  return [
+    ...(has("web.secret") ? ["web.secret"] : []),
+    ...(has("web-sessions.json") ? ["the browser sign-ins"] : []),
+    ...(has("actor-token") ? ["the agents' tokens"] : []),
+    ...(has(path.join("hub", "token")) ? ["the Hub token"] : []),
+    ...(has("push-vapid.json") ? ["the push key"] : []),
+    ...(has("fixture-person.key") ? ["the test person's key"] : []),
+    ...(has(SESSION_SIGNING_DIR) ? ["the agents' signing key"] : []),
+  ];
+}
+
+/** Repos' stack secrets files and the cached sign-ins, by name only, and whether agents' rules deny them. */
+export function repoSecretLines(
+  o: {
+    repoDirs?: string[];
+    distRoot?: string;
+    home?: string;
+    /** The rules to check against (default: the ones agents start with). */
+    rules?: (repoDirs: string[], authDirs: string[]) => string[];
+    /** Agents whose last start was outside the OS sandbox, and their projects. */
+    unsandboxed?: () => { id: string; projects: string[] }[];
+    /** A project's repo folders. */
+    reposOf?: (project: string) => string[];
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const repoDirs = o.repoDirs ?? projectRepoDirs();
+  const authDir = path.join(o.distRoot ?? getDistRoot(), PLAYWRIGHT_AUTH_DIR);
+  const home = o.home ?? process.env.HOME;
+  const isFile = (f: string) => {
+    try {
+      return fs.lstatSync(f).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const secrets = [...new Set(repoDirs.map((d) => path.resolve(d)))]
+    .map((d) => path.join(d, REPO_SECRETS_FILE))
+    .filter(isFile);
+  const signIns = (() => {
+    try {
+      return fs
+        .readdirSync(authDir)
+        .map((n) => path.join(authDir, n))
+        .filter(isFile);
+    } catch {
+      return [];
+    }
+  })();
+  const rules = (
+    o.rules ??
+    ((r, a) =>
+      repoSecretDenyRules(
+        r.flatMap(bothSpellings),
+        a.flatMap(bothSpellings),
+        home,
+      ))
+  )(repoDirs, [authDir]);
+  const shown = (f: string) =>
+    safeShownPath(path.join(path.basename(path.dirname(f)), path.basename(f)));
+  const loose = [...secrets, ...signIns].filter(
+    (f) => !readRulesCover(rules, f),
+  );
+  const signInsShown = (n: number) =>
+    n ? [`${n} cached sign-in${n === 1 ? "" : "s"}`] : [];
+  const parts = [
+    ...(secrets.length ? [secrets.map(shown).join(", ")] : []),
+    ...signInsShown(signIns.length),
+  ];
+  const reposOf = o.reposOf ?? projectRepoDirsOf;
+  const exposed = (
+    o.unsandboxed ??
+    (() =>
+      listRecords(getStateDir())
+        .filter((r) => r.sandbox?.applied !== true)
+        .map((r) => ({
+          id: r.id,
+          projects: [r.workspace, ...(r.grants ?? [])],
+        })))
+  )()
+    .map((a) => {
+      const reach = new Set(
+        a.projects.flatMap((p) => reposOf(p).map((d) => path.resolve(d))),
+      );
+      const mine = secrets.filter((f) => reach.has(path.dirname(f)));
+      const what = [...mine.map(shown), ...signInsShown(signIns.length)];
+      return what.length ? `${a.id}: ${what.join(", ")}` : "";
+    })
+    .filter(Boolean);
+  const detail = !parts.length
+    ? "no stack secrets file in a project repo and no cached sign-ins"
+    : loose.length
+      ? `not covered by agents' rules: ${loose.map(shown).join(", ")}`
+      : exposed.length
+        ? `readable by agents whose sandbox is off (agents.sandbox): ${exposed.join("; ")}`
+        : `the OS sandbox keeps agents out of ${parts.join(" and ")}; agents' rules deny them too`;
+  const warn = loose.length > 0 || exposed.length > 0;
+  return {
+    lines: [`  repo secrets  ${warn ? "⚠" : "✓"}  ${detail}`],
+    checks: [{ id: "repo_secret_files", status: warn ? "warn" : "ok", detail }],
   };
 }
 
@@ -2426,7 +2658,31 @@ export function deprecatedKeys(
     ...userYmlOrgKeys(readUser),
     ...collapseDoneKey(),
     ...teamSelfUpdateKey(),
+    ...teamJudgeKey(),
   ];
+}
+
+/**
+ * Issue 52: agents.coach.judge.enabled is the person's, read only from
+ * config/local/user.yml. Judging sends samples, the person's prompts among
+ * them, to the model provider, so an agent working beside the
+ * distribution's config can't switch it on there. Set there, doctor says
+ * it does nothing and where it belongs.
+ */
+export function teamJudgeKey(
+  read: () => { agents?: unknown } = readDenConfig,
+): string[] {
+  try {
+    const coach = (read().agents as { coach?: unknown } | undefined)?.coach;
+    const judge = (coach as { judge?: unknown } | null | undefined)?.judge;
+    if (!judge || typeof judge !== "object" || !("enabled" in judge)) return [];
+    const file = product().configFile;
+    return [
+      `${file}: agents.coach.judge.enabled does nothing there: it is the person's, set in config/local/user.yml, so an agent working beside that file can't switch on sending samples to the model provider`,
+    ];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -2554,6 +2810,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const rr = await repoRootRows();
       r.checks.push(rr.check);
       if (rr.problem) r.ok = false;
+      {
+        const { osUserDoctorRow } = await import("./os-user-command.js");
+        const ou = osUserDoctorRow(product().cli);
+        if (ou) {
+          r.checks.push(ou.check);
+          if (ou.problem) r.ok = false;
+        }
+      }
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
       // Issue 1131: agents' refused calls in the last hour.
@@ -2568,6 +2832,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (vm.lines.length) r.checks.push(vm.check);
       // Issue 1263: throwaway containers left over from gate runs.
       r.checks.push((await throwawayRows()).check);
+      const ra = await routeAgentsRows();
+      if (ra.check) r.checks.push(ra.check);
       // The shared GitHub watcher: calls left, reset, watches, interval.
       const gw = await githubWatchRow();
       if (gw.check) r.checks.push(gw.check);
@@ -2580,7 +2846,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (st.configured) {
         const dl = await hubDeliveryDoctor();
         if (dl.check) r.checks.push(dl.check);
+        const { readAgentTokenProblems } =
+          await import("../../shared/hub-agent-tokens.js");
+        r.checks.push(
+          ...hubAgentTokenLines(readAgentTokenProblems(getStateDir())).checks,
+        );
       }
+      r.checks.push(...(await hubAddressRows(st)).checks);
       // Issue 726: state and tokens from an earlier Hub.
       r.checks.push(...(await previousHubRows()).checks);
       r.checks.push(
@@ -2591,7 +2863,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         ).checks,
       );
       if (st.configured && st.connected) {
-        const { githubCoverage } = await import("../../shared/hub-github.js");
+        const { githubCoverage } =
+          await import("../../shared/hub/hub-github.js");
         r.checks.push(...hubGithubLines(await githubCoverage()).checks);
       }
     }
@@ -2662,6 +2935,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...edgeRotationLines(readBrand().name).checks);
     // Issue 728: installs running as this login.
     r.checks.push(...sharedUserLines(readBrand().name).checks);
+    r.checks.push(...repoSecretLines().checks);
     {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
@@ -2723,6 +2997,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // Issue 583: a far too broad repo root, and why Validate refuses it.
   const roots = await repoRootRows();
   for (const l of roots.lines) console.log(l);
+  const { osUserDoctorRow } = await import("./os-user-command.js");
+  const osUser = osUserDoctorRow(product().cli);
+  if (osUser) console.log(osUser.line);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
   for (const l of (await tokenRefusalRow()).lines) console.log(l);
@@ -2731,6 +3008,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of (await gateBoxRows()).lines) console.log(l);
   // Issue 1274: memory VMs promise, against the machine's RAM.
   for (const l of (await gateVmRows()).lines) console.log(l);
+  for (const l of (await routeAgentsRows()).lines) console.log(l);
   // Issue 1263: throwaway containers left over from gate runs.
   {
     const tw = await throwawayRows();
@@ -2746,8 +3024,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const { hubStatus } = await import("../../shared/hub.js");
     const st = await hubStatus();
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
-    if (st.configured)
+    if (st.configured) {
       for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
+      const { readAgentTokenProblems } =
+        await import("../../shared/hub-agent-tokens.js");
+      for (const l of hubAgentTokenLines(readAgentTokenProblems(getStateDir()))
+        .lines)
+        console.log(l);
+    }
+    for (const l of (await hubAddressRows(st)).lines) console.log(l);
     // Issue 726: state and tokens from an earlier Hub.
     for (const l of (await previousHubRows()).lines) console.log(l);
     for (const l of hubProjectLines(
@@ -2757,7 +3042,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ).lines)
       console.log(l);
     if (st.configured && st.connected) {
-      const { githubCoverage } = await import("../../shared/hub-github.js");
+      const { githubCoverage } = await import("../../shared/hub/hub-github.js");
       for (const l of hubGithubLines(await githubCoverage()).lines)
         console.log(l);
     }
@@ -2852,6 +3137,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     console.log(l);
   for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
   for (const l of sharedUserLines(readBrand().name).lines) console.log(l);
+  for (const l of repoSecretLines().lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
   for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
@@ -2882,7 +3168,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       roots.problem ||
       cfg.problem ||
       sign.problem ||
-      addr.problem
+      addr.problem ||
+      !!osUser?.problem
       ? 1
       : 0;
   }
@@ -2910,6 +3197,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     hm.problem ||
     roots.problem ||
     cfg.problem ||
+    !!osUser?.problem ||
     found
     ? 1
     : 0;
@@ -2921,6 +3209,16 @@ export async function cmdDoctor(args: string[]): Promise<number> {
  * Issue 1274: the VMs here and what they promise. DEN_GATE_VMS=0 skips the
  * reading (the test setup sets it: a test never reads this machine's VMs).
  */
+async function routeAgentsRows() {
+  try {
+    const { routeAgentsRow } = await import("./doctor-route-agents.js");
+    const { GateStore } = await import("../../shared/gates/store.js");
+    return routeAgentsRow(new GateStore(), product().cli);
+  } catch {
+    return { lines: [] as string[], check: null };
+  }
+}
+
 async function gateVmRows() {
   const none = {
     lines: [] as string[],
@@ -2989,13 +3287,9 @@ async function tokenRefusalRow(): Promise<{
   lines: string[];
   check: OnboardCheck;
 }> {
-  const { tokenRefusalLines, readRefusalEntries } =
+  const { tokenRefusalLines, readRefusalTrail } =
     await import("./doctor-token-refusals.js");
-  const { AUDIT_FILE } = await import("../../shared/audit-file.js");
-  return tokenRefusalLines(
-    readBrand().name,
-    readRefusalEntries(path.join(getStateDir(), AUDIT_FILE)),
-  );
+  return tokenRefusalLines(readBrand().name, readRefusalTrail(getStateDir()));
 }
 
 /** Issue 701: doctor's held Hub comments, from Den's held file. */

@@ -16,7 +16,7 @@ import {
   verifyPersonToken,
   webSecretPath,
   WebSecretStore,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import { cmdWebToken } from "../../../src/ui/cli/web-command.js";
 
 const tmp = fs.realpathSync(
@@ -28,6 +28,8 @@ const fresh = () => path.join(tmp, `state-${n++}`);
 const hash = (s: string | Buffer) =>
   createHash("sha256").update(s).digest("hex");
 
+/** Issue 1582: a whole-second time both files are pinned to (utimes drops sub-ms). */
+const T = 1_700_000_000;
 describe("web.secret", () => {
   it("is 32 bytes, mode 0600, in a 0700 state dir it creates", () => {
     const dir = fresh();
@@ -89,6 +91,54 @@ describe("the person token", () => {
     expect(store.current()).toBeNull();
     ensureWebSecret(dir);
     expect(hash(store.current()!)).not.toBe(first);
+  });
+
+  it("issue 1582: a secret rewritten with the same inode, size and mtime is seen", () => {
+    const dir = fresh();
+    const store = new WebSecretStore(() => dir);
+    store.ensure();
+    const file = webSecretPath(dir);
+    fs.utimesSync(file, T, T);
+    const first = hash(store.current()!);
+    const before = fs.statSync(file);
+    // Rewritten in place (same inode, 32 bytes), its times put back: a
+    // stat can't tell it from the old file; only its content can.
+    fs.writeFileSync(file, Buffer.alloc(32, 7));
+    fs.utimesSync(file, T, T);
+    const after = fs.statSync(file);
+    expect([after.ino, after.size, after.mtimeMs]).toEqual([
+      before.ino,
+      before.size,
+      before.mtimeMs,
+    ]);
+    expect(hash(store.current()!)).not.toBe(first);
+    expect(hash(store.current()!)).toBe(hash(Buffer.alloc(32, 7)));
+  });
+
+  it("issue 1582: a missing secret leaves nothing cached", () => {
+    const dir = fresh();
+    const store = new WebSecretStore(() => dir);
+    store.ensure();
+    const file = webSecretPath(dir);
+    const aside = `${file}.aside`;
+    fs.utimesSync(file, T, T);
+    const before = fs.statSync(file);
+    expect(store.current()).not.toBeNull();
+    // Missing for a moment...
+    fs.renameSync(file, aside);
+    expect(store.current()).toBeNull();
+    // ...then back with other bytes, its inode (a rename keeps it), size
+    // and mtime the old file's.
+    fs.writeFileSync(aside, Buffer.alloc(32, 9));
+    fs.utimesSync(aside, T, T);
+    fs.renameSync(aside, file);
+    const after = fs.statSync(file);
+    expect([after.ino, after.size, after.mtimeMs]).toEqual([
+      before.ino,
+      before.size,
+      before.mtimeMs,
+    ]);
+    expect(hash(store.current()!)).toBe(hash(Buffer.alloc(32, 9)));
   });
 });
 

@@ -9,8 +9,8 @@
  * Fakes for Hub; invented names only.
  */
 import { describe, expect, it } from "@jest/globals";
-import type { HubCreate } from "../../../src/shared/hub-project-create.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubCreate } from "../../../src/shared/hub/hub-project-create.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import {
   applyReview,
   hubReviewRoute,

@@ -97,6 +97,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/project-colour-picker.js",
+    "/health-rollup.js",
     "/favicon.ico",
     // Issue 644: the kit's site files (its head snippet names them).
     "/favicon.svg",
@@ -239,6 +240,10 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/agents/stale",
     "D44: the running agents whose MCP servers are out of date (ids and projects)",
+  ),
+  R(
+    "/api/agents/restart-status",
+    "issue 1407: each agent of a restart for its tools, live (state, job command redacted, why one failed, redacted); a signed-in person's only",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
@@ -436,7 +441,17 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST"],
     "/api/coach/dismiss",
-    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
+    "issue 52: Dismiss a Coach finding, a person's (a reason kept when given)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/undismiss",
+    "issue 52: Undo a Coach finding's dismissal, a person's",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/apply",
+    "issue 110: Apply a Coach finding's change, a person's: it asks for a held write, which waits for a person's Allow",
   ),
   M(
     ["POST"],
@@ -843,6 +858,20 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/gate-slots/boxes/enable",
     "Issue 625: a person turns a test box on or off; off, it gets no slot and no contact",
+  ),
+  R(
+    "/api/gate-slots/runner-entries",
+    "Issue 642: the CI runner entries (a repo's jobs on a test box); a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries",
+    "Issue 642: a person adds or replaces a runner entry; an agent asks with gate_runner_entry_set",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries/remove",
+    "Issue 642: a person removes a runner entry",
   ),
   R(
     "/api/notifications",

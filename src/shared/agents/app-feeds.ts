@@ -24,7 +24,7 @@
  * app's text. The agent reads the events through the app_feed_read tool,
  * which serves only its own project's feeds that name it.
  */
-import { FEED_PREFIX, type Delivery } from "../hub-delivery.js";
+import { FEED_PREFIX, type Delivery } from "../hub/hub-delivery.js";
 import { projectMcpUrlProblem, SECRET_REF_NAME_RE } from "./project-mcp.js";
 
 export interface AppFeedConfig {
@@ -162,8 +162,10 @@ export function feedPointerText(
 export function feedPointerId(
   feed: { project: string; name: string },
   seq: number,
+  epoch?: string,
 ): string {
-  return `${FEED_PREFIX}${feed.project}/${feed.name}/${seq}`;
+  const at = epoch ? `${epoch}/${seq}` : `${seq}`;
+  return `${FEED_PREFIX}${feed.project}/${feed.name}/${at}`;
 }
 
 /** A pointer, as the delivery loop holds it for the feed's agent. */
@@ -172,9 +174,10 @@ export function feedPointerDelivery(
   seq: number,
   text: string,
   at: number,
+  epoch?: string,
 ): Delivery {
   return {
-    id: feedPointerId(feed, seq),
+    id: feedPointerId(feed, seq, epoch),
     kind: "message",
     agent: feed.agent,
     project: feed.project,

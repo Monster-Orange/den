@@ -21,11 +21,11 @@
  *        person's only: an agent's token or an MCP caller is refused.
  */
 import type * as http from "http";
-import type { HubCreate } from "../../shared/hub-project-create.js";
+import type { HubCreate } from "../../shared/hub/hub-project-create.js";
 import type {
   HubProjectChoice,
   HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { hubMatchOf } from "./hub-link-all-routes.js";
@@ -402,10 +402,10 @@ export async function defaultHubReviewDeps(
 ): Promise<HubReviewDeps> {
   const [la, link, w, name, binding, paths, hub, sync] = await Promise.all([
     import("./hub-link-all-routes.js"),
-    import("../../shared/hub-project-link.js"),
+    import("../../shared/hub/hub-project-link.js"),
     import("../../shared/environment-manager/workspaces.js"),
     import("../../shared/workspace-name.js"),
-    import("../../shared/hub-binding.js"),
+    import("../../shared/hub/hub-binding.js"),
     import("../../shared/paths.js"),
     import("../../shared/hub.js"),
     import("./hub-sync-service.js"),

@@ -10,11 +10,11 @@
  *    the settings.
  *  - Neither, edge not reachable beyond this machine: a warning.
  */
-import { readWebOwner } from "../../shared/web-owner.js";
+import { readWebOwner } from "../../shared/web/web-owner.js";
 import {
   readWebAuthConfig,
   type WebAuthConfig,
-} from "../../shared/web-session.js";
+} from "../../shared/web/web-session.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";

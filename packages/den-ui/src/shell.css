@@ -533,10 +533,10 @@ button.den-gh > .den-bdg {
     transition: none;
   }
 }
-@media (scripting: enabled) {
-  .den-rail-group[data-folded] > :not(.den-gh) {
-    display: none;
-  }
+/* Hidden only once hydrateRailFolds marked the rail (data-folds): a
+   script that failed to load or threw leaves every entry showing. */
+[data-folds] .den-rail-group[data-folded] > :not(.den-gh) {
+  display: none;
 }
 /* The heading is a tap's height from the first paint (it becomes the
    toggle when the script runs), so hydrating moves nothing. */
@@ -768,8 +768,8 @@ body.den-rail-collapsed .den-rail .den-ni-kind {
 }
 /* Issue 1444: the rail as icons has no headings to open, so a folded
    section's entries show there (the drawer below 720px folds them). */
-@media (scripting: enabled) and (min-width: 721px) {
-  body.den-rail-collapsed .den-rail-group[data-folded] > .den-gb {
+@media (min-width: 721px) {
+  body.den-rail-collapsed [data-folds] .den-rail-group[data-folded] > .den-gb {
     display: contents;
   }
 }

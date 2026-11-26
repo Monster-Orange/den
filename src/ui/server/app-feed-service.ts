@@ -18,7 +18,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import {
   feedPointerDelivery,
@@ -36,8 +36,12 @@ import {
   type FeedStore,
   type StoredEvent,
 } from "../../shared/app-feed-reader.js";
-import type { Delivery } from "../../shared/hub-delivery.js";
-import { feedAddressLocal } from "../../shared/agents/feed-address.js";
+import type { Delivery } from "../../shared/hub/hub-delivery.js";
+import {
+  checkedAddress,
+  type FeedLookup,
+} from "../../shared/agents/feed-address.js";
+import { pinnedFetch, type PinnedFetch } from "./feed-pinned-request.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 
 export interface AppFeedLimits {
@@ -72,10 +76,13 @@ export interface AppFeedServiceDeps {
   stateDir: string;
   fetch?: typeof fetch;
   /**
-   * Issue 1480: whether a url names this machine or a private network now
-   * (default: resolved by the system), for a public_only feed's connect.
+   * Issues 1480, 1491: resolves a public_only feed's name at each connect
+   * (default: the system's resolver). Every answer must be public, and the
+   * request is pinned to the first.
    */
-  addressLocal?: (url: string) => Promise<boolean>;
+  lookup?: FeedLookup;
+  /** Issue 1491: a public_only feed's request, pinned to its checked address. */
+  pinned?: PinnedFetch;
   log?: (line: string) => void;
   retryMs?: { first: number; max: number };
   now?: () => number;
@@ -105,6 +112,8 @@ export interface FeedRead {
   unread: number;
 }
 
+const LEGACY = "legacy";
+const EPOCH = /^(legacy|[0-9a-f]{8,32})$/;
 const FILE = /^(\d{1,15})-([0-9a-f]{16})-(\d{1,12}|x)\.json$/;
 const kh = (key: string) =>
   createHash("sha256").update(key).digest("hex").slice(0, 16);
@@ -112,14 +121,14 @@ const kh = (key: string) =>
 /**
  * A feed's events on disk: one file each, named by its sequence number,
  * its key's hash and its size, so opening the store reads no event. The
- * read mark and the last pointer's sequence go in a small meta file.
+ * read mark, the last pointer's sequence and the store's epoch go in meta.
  */
 export class FileFeedStore implements FeedStore {
   private readonly seqs: number[] = [];
   private readonly files = new Map<number, string>();
   private readonly keys = new Map<string, number>();
   private readonly sizes = new Map<number, number | null>();
-  private meta = { read: 0, pointed: 0 };
+  private meta = { read: 0, pointed: 0, epoch: "" };
 
   constructor(
     private readonly dir: string,
@@ -139,12 +148,23 @@ export class FileFeedStore implements FeedStore {
     try {
       const v = JSON.parse(
         fs.readFileSync(path.join(dir, "meta.json"), "utf8"),
-      ) as { read?: unknown; pointed?: unknown };
+      ) as { read?: unknown; pointed?: unknown; epoch?: unknown };
       if (typeof v.read === "number") this.meta.read = v.read;
       if (typeof v.pointed === "number") this.meta.pointed = v.pointed;
+      if (typeof v.epoch === "string" && EPOCH.test(v.epoch))
+        this.meta.epoch = v.epoch;
     } catch {
-      /* a new store */
+      this.meta.epoch = "";
     }
+    if (this.meta.epoch) return;
+    const old =
+      this.seqs.length > 0 || fs.existsSync(path.join(dir, "meta.json"));
+    this.meta.epoch = old ? LEGACY : randomBytes(8).toString("hex");
+    this.saveMeta();
+  }
+
+  epoch(): string {
+    return this.meta.epoch === LEGACY ? "" : this.meta.epoch;
   }
 
   private saveMeta(): void {
@@ -368,15 +388,17 @@ export class AppFeeds {
   ): Promise<{ res: Response; bearer: string | null }> {
     // Issue 1480: a feed checked public when it was added is resolved
     // again before each connect: one whose name now gives a private
-    // address is never opened (nor sent its bearer).
+    // address is never opened (nor sent its bearer). Issue 1491: the
+    // request then goes to exactly that checked address, so no second
+    // lookup (a DNS rebind) can send it somewhere else.
+    let pin: Awaited<ReturnType<typeof checkedAddress>> = null;
     if (feed.publicOnly) {
-      let local = true;
       try {
-        local = await (this.d.addressLocal ?? feedAddressLocal)(url);
+        pin = await checkedAddress(url, this.d.lookup);
       } catch {
-        local = true;
+        pin = null;
       }
-      if (local)
+      if (!pin)
         throw failure(
           undefined,
           "its address now names this machine or a private network, so Den won't open it: a person adds it again to allow that",
@@ -387,7 +409,14 @@ export class AppFeeds {
     let res: Response;
     try {
       // Never followed: a redirect would carry the bearer somewhere else.
-      res = await this.f(url, { headers, redirect: "error", signal });
+      res = pin
+        ? await (this.d.pinned ?? pinnedFetch)(url, {
+            headers,
+            address: pin.address,
+            family: pin.family,
+            ...(signal ? { signal } : {}),
+          })
+        : await this.f(url, { headers, redirect: "error", signal });
     } catch (e) {
       const c = (e as { cause?: { code?: unknown } })?.cause?.code;
       const timedOut = (e as { name?: string })?.name === "TimeoutError";
@@ -546,6 +575,7 @@ export class AppFeeds {
         seq,
         feedPointerText(where, u),
         this.now(),
+        store.epoch(),
       );
       if (this.d.seen(dv.id)) {
         store.setPointed(seq);

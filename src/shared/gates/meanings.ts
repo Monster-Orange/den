@@ -21,6 +21,7 @@ export type GateSettingKey =
   | "remote_max_asks"
   | "priority_max"
   | "priority_pass_limit_minutes"
+  | "release_pass_other_kind_minutes"
   | "priority_agents"
   | "priority_runners"
   | "claim_minutes"
@@ -35,7 +36,9 @@ export type GateSettingKey =
   | "class_map"
   | "class_windows"
   | "browser_box_default"
-  | "browser_host_only";
+  | "browser_host_only"
+  | "route_agents"
+  | "route_commands";
 
 export const GATE_MEANINGS: Record<
   UiLanguage,
@@ -67,6 +70,8 @@ export const GATE_MEANINGS: Record<
       "Release runs ahead of plain runs, per kind (default 1; 0 turns release priority off)",
     priority_pass_limit_minutes:
       "Minutes a waiting release run is protected from another release run (0: never)",
+    release_pass_other_kind_minutes:
+      "Minutes an earlier run of the other kind may be passed by a waiting release run (0: never)",
     priority_agents:
       "Who may ask for release priority (1: agents and people; 0: people only)",
     priority_runners:
@@ -95,6 +100,10 @@ export const GATE_MEANINGS: Record<
       "Where a browser run with no --box goes (any: the first free slot here or on a test box; local: here only)",
     browser_host_only:
       "Projects and label patterns whose browser runs stay on this machine",
+    route_agents:
+      "Agents' test, typecheck and browser runs go through the gate (1 yes, 0 no: they run as written and are counted)",
+    route_commands:
+      "The programs Den's agent hook sends through the gate, comma-separated",
   },
   es: {
     cpu_slots: "Ejecuciones de pruebas unitarias a la vez en esta máquina",
@@ -125,6 +134,8 @@ export const GATE_MEANINGS: Record<
       "Ejecuciones de versión por delante de las normales, por tipo (por defecto 1; 0 desactiva la prioridad de versión)",
     priority_pass_limit_minutes:
       "Minutos que una ejecución de versión en espera está protegida de otra (0: nunca)",
+    release_pass_other_kind_minutes:
+      "Minutos durante los que una ejecución de versión en espera puede pasar a una del otro tipo pedida antes (0: nunca)",
     priority_agents:
       "Quién puede pedir prioridad de versión (1: agentes y personas; 0: solo personas)",
     priority_runners:
@@ -154,6 +165,10 @@ export const GATE_MEANINGS: Record<
       "Adónde va una prueba de navegador sin --box (any: el primer turno libre aquí o en una máquina de pruebas; local: solo aquí)",
     browser_host_only:
       "Proyectos y patrones de etiqueta cuyas pruebas de navegador se quedan en esta máquina",
+    route_agents:
+      "Las pruebas, comprobaciones de tipos y pruebas de navegador de los agentes pasan por la cola (1 sí, 0 no: se ejecutan tal cual y se cuentan)",
+    route_commands:
+      "Los programas que el hook de agentes de Den manda a la cola, separados por comas",
   },
   ja: {
     cpu_slots: "このマシンで同時に動くユニットテストの数",
@@ -180,6 +195,8 @@ export const GATE_MEANINGS: Record<
       "種類ごとに通常の実行より先に進むリリース実行の数（既定 1、0 でリリース優先がオフ）",
     priority_pass_limit_minutes:
       "待っているリリース実行が別のリリース実行に追い越されない時間（分、0: なし）",
+    release_pass_other_kind_minutes:
+      "待機中のリリース実行が、先に頼まれた別の種類の実行を追い越せる時間（分、0: なし）",
     priority_agents:
       "リリース優先を頼めるのは誰か（1: エージェントと人、0: 人だけ）",
     priority_runners:
@@ -206,6 +223,10 @@ export const GATE_MEANINGS: Record<
       "--box のないブラウザテストの行き先（any: ここかテスト用マシンの先に空いた枠、local: ここだけ）",
     browser_host_only:
       "ブラウザテストをこのマシンに残すプロジェクトとラベルのパターン",
+    route_agents:
+      "エージェントのテスト、型チェック、ブラウザテストを順番待ちに通す（1 はい、0 いいえ: そのまま実行して数える）",
+    route_commands:
+      "Den のエージェント用フックが順番待ちに通すプログラム（カンマ区切り）",
   },
 };
 

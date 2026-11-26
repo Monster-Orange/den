@@ -53,6 +53,9 @@ function setup(principal: unknown) {
       maxIntervalSeconds: 300,
       budgetFloor: 500,
       watchesMax: 50,
+      staleMinutes: 60,
+      maxOpenHours: 24,
+      rerunLookMinutes: 5,
     }),
     relay: async () => true,
   });
