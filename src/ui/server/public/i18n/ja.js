@@ -3011,6 +3011,8 @@
       "ログアウトしていた間（{min} 分）に止まったエージェント: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
+    "bell.m.deliveryGone":
+      "未配信: {name} は削除されました。宛先のメッセージ {n} 件は保存されています。",
     "bell.m.notAtPrompt":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが入力プロンプトにいません",
     "bell.m.held.busy":
