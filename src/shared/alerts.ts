@@ -4,11 +4,8 @@
  * Allow), the person is told on the desktop (an open Den tab shows a
  * browser notification) and on a phone or a closed tab (Web Push).
  *
- * - A new need alerts. Issue 774: a finished turn alerts too, only when
- *   the person turned on "Also tell me when an agent finishes"
- *   (alerts.finished); an update or a release never does. Held writes
- *   alert only when the approval policy (issue 160) held them for the
- *   person. An agent (or project) the person muted never alerts.
+ * - A new need alerts; a finished turn only with alerts.finished on. A
+ *   held write only when the approval policy held it. A mute never alerts.
  * - The words are the bell's own and never the details: who, and what it
  *   waits on. Never the tool line, the question's text or the write's
  *   summary (any of them can hold a secret or a code).
@@ -19,16 +16,14 @@
  *     desktop: true          # an open tab shows them (default on)
  *     phone: true            # push to subscribed devices (default on)
  *     quiet: { from: "22:00", to: "07:00" }   # none by default
- *     finished: false        # issue 774: a finished turn alerts too
- *     sound: false           # issue 774: a short sound from an open tab
- *     tab_count: true        # issue 774: the count in the tab title and icon
+ *     finished: false        # a finished turn alerts too
+ *     sound: false           # a short sound from an open tab
+ *     tab_count: true        # the count in the tab title and icon
  *     push_timeout_seconds: 30     # how long one push may take (1..3600)
  *     push_ttl_seconds: 86400      # how long a push service keeps it
  *                                  # (0..2419200); both Settings rows (#367)
- *     tab_first_seconds: 3   # issue 774: an open tab's time to show an
- *                            # alert before the push to its device (1..10)
- *     max_streams: 20        # issue 774: open tabs' alert streams per
- *                            # person (1..200; the oldest goes past it)
+ *     tab_first_seconds: 3   # a tab's time before the push (1..10)
+ *     max_streams: 20        # open-tab streams a person keeps (1..200)
  */
 import type { UserConfig } from "./den-config.js";
 import type { UiLanguage } from "./ui-language.js";

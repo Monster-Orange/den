@@ -1,29 +1,9 @@
 /**
- * Issue 172: alerts outside the bell, from an open Den tab. The tab
- * reads GET /api/alerts every few seconds, even in the background, and
- * shows each new alert as a desktop notification when the tab isn't in
- * front. A click brings the tab up on the agent's page. The server
- * decides what alerts (a new need; issue 774: a finished turn, when the
- * person turned it on; never a muted agent, never in quiet hours), in
- * the bell's words; the page shows it as given: the words as the
- * heading, the project under them.
- *
- * Issue 774, browser side only:
- *   - a short sound with each alert, when the person turned sounds on
- *     (alert-sounds.js): one for "needs you", a softer one for
- *     "finished"; it plays even when the browser can't notify;
- *   - the count of agents that need the person, in the tab's title and
- *     on its icon (tab-count.js), when "Count in the tab" is on.
- *   alertPlan says what one alert does in this tab (the mock's table of
- *   when it stays quiet).
- *
- * No double alert: each alert is claimed once per browser (two tabs show
- * one notification and play one sound). The tab in front claims at once;
- * a tab behind waits a moment, so the one in front wins. The alert's id
+ * Alerts outside the bell, from an open Den tab: a notification when the
+ * tab isn't in front, a sound and the count in the tab. One per browser:
+ * the tab in front claims at once, a tab behind after a moment. The alert's id
  * is the notification's tag. A browser that gets push (a service worker
- * subscription) leaves the notification to the push; its tab still
- * plays the sound. Issue 774 row 7b: unless the tab shows: then the
- * server streams the alert to it first (alertStream) and the push waits.
+ * subscription) leaves the notification to the push unless the tab shows.
  */
 import { playAlertSound, primeAlertSounds } from "./alert-sounds.js";
 import { tabCount } from "./tab-count.js";

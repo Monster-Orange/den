@@ -145,9 +145,8 @@ export interface AttentionDeps {
   /**
    * Issue 172: an agent began to need its person (a permission prompt or
    * a question), and its person isn't looking at it: alert them outside
-   * the bell (alert-feed.ts). Once per wait, never for a repeat. Issue
-   * 774: a finished turn too ("finished"); the feed holds it back unless
-   * its person turned that alert on.
+   * the bell (alert-feed.ts). Once per wait, never for a repeat; a
+   * finished turn too, which the feed holds back unless it's on.
    */
   alert?: (n: {
     agent: string;

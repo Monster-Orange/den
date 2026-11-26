@@ -1,8 +1,7 @@
 /**
  * Issue 172: the server's one place an alert is decided (alerts.ts says
  * what one says). A new need comes in (Attention's wait, a held write);
- * the person's switches, mutes and quiet hours decide; then it goes two
- * ways (issue 774: a finished turn too, when the person turned it on):
+ * the person's switches, mutes and quiet hours decide; then it goes two ways:
  *
  *   - the feed: the last 50 alerts, numbered, that an open Den tab reads
  *     with GET /api/alerts?after=<seq> and shows as a browser
@@ -64,9 +63,8 @@ export class AlertFeed {
   }
 
   /**
-   * Agent `agent` in `workspace` began to need its person (or, issue
-   * 774, finished a turn). The alert, or null when the person's quiet
-   * hours, a mute, or a finished turn with that alert off hold it back.
+   * Agent `agent` in `workspace` began to need its person or finished a
+   * turn. The alert, or null when quiet hours, a mute or a switch hold it.
    */
   needs(n: { agent: string; workspace: string; why: AlertWhy }): Alert | null {
     let prefs: AlertPrefs;
@@ -125,8 +123,7 @@ export class AlertFeed {
   /**
    * What a tab reads: the alerts after `after` (none on its first read,
    * `after` null: it starts from now), the number to ask after next, and
-   * (issue 774) the person's switches the tab acts on. Desktop alerts and
-   * sounds both off: none, and the count still moves.
+   * the person's switches the tab acts on.
    */
   after(after: number | null): {
     seq: number;

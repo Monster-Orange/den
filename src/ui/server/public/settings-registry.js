@@ -8,7 +8,7 @@
  * A category: { id, label, order, description?, from? }.
  * A row: { id, category, label, description, keywords, scope, control,
  *   read(ctx), write?(value, ctx), keys?, shown?(ctx) }
- *   shown    issue 774: false hides the row in this browser (it has no use here)
+ *   shown    false hides the row in this browser (it has no use here)
  *   scope    "user" (config/local/user.yml), "workspace" (the workspace's
  *            entry in config/local/workspaces.yml) or "distribution" (the
  *            distribution's tracked config: read-only, so no write).
@@ -365,10 +365,7 @@ function bellRows() {
  * Issue 172: alerts outside the bell (alerts.js). Desktop alerts is on
  * when the person has it on (user.yml alerts.desktop, default on) and
  * this browser lets the page notify; turning it on asks the browser.
- * Issue 774: three rows after it (a finished turn, sounds, the count in
- * the tab). A browser that can't notify at all (an iPhone's Safari
- * outside a Home Screen app) shows fewer rows (`shown`): sounds and the
- * count still work there.
+ * Three rows follow it; a browser that can't notify keeps sounds and the count.
  */
 const notifyApi = () =>
   typeof window !== "undefined" && typeof window.Notification === "function"
