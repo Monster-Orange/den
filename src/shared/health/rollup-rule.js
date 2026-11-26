@@ -1,0 +1,140 @@
+/**
+ * One repo's health from its services' checks: the single rule the header
+ * row, its "+N" chip, the graph's repo cards and `<cli> status` all use, so
+ * they never disagree (0.3.0-dev.10).
+ *
+ * A signal is one service's check: `ok` true (up), false (down or failing)
+ * or null (not checked: no probe, not probed yet, or nothing to say). Only
+ * checked signals count, so a repo of 26 remote services with one probe is
+ * judged by that one probe.
+ *
+ *   down      the entry service (the repo's own health URL) is down
+ *   degraded  another checked service is down
+ *   ok        at least one signal is checked and none fails
+ *   unknown   nothing about the repo is checked (neutral, never green), or
+ *             a check hasn't answered yet (`awaiting`, 0.3.0-dev.17): until
+ *             every check has answered (a pending one has), one answered
+ *             down service never paints the repo down or degraded
+ *
+ * The entry service is the one marked `isEntrypoint` (the manifest's
+ * `entrypoint`), else the service named like the repo, else the only one.
+ *
+ * Plain ES module with no imports: the browser loads it as /health-rollup.js,
+ * and the server and CLI import it from TypeScript.
+ */
+
+/** Sort rank: problems first, then healthy, then unknown (nothing checked). */
+export const STATE_RANK = { down: 0, degraded: 1, ok: 2, unknown: 3 };
+
+/**
+ * @typedef {{ service: string, ok: boolean | null | undefined, isEntrypoint?: boolean, awaiting?: boolean, redirect?: boolean }} HealthSignal
+ * @typedef {"down" | "degraded" | "ok" | "unknown"} RepoState
+ * @typedef {{ state: RepoState, entry: string | null, down: string[], checked: number, unchecked: number, awaiting: number, redirected?: number }} RepoRollup
+ */
+
+/**
+ * The entry service among `signals`, or null.
+ * @param {string} repo
+ * @param {HealthSignal[]} signals
+ * @returns {HealthSignal | null}
+ */
+export function entrySignal(repo, signals) {
+  return (
+    signals.find((s) => s.isEntrypoint) ??
+    signals.find((s) => s.service === repo) ??
+    (signals.length === 1 ? signals[0] : null)
+  );
+}
+
+/**
+ * Roll one repo's signals up to its state.
+ * @param {string} repo
+ * @param {HealthSignal[]} signals
+ * @returns {RepoRollup}
+ */
+export function rollupRepo(repo, signals) {
+  // A check that hasn't answered yet (`awaiting`) holds the whole repo at
+  // unknown: with only some answers in, the one that did can't be judged
+  // (a lone down sidecar would even read as the entry service).
+  const awaiting = signals.filter((s) => s.awaiting).length;
+  const answered = signals.filter((s) => !s.awaiting);
+  const entry = entrySignal(repo, answered);
+  const checked = answered.filter((s) => s.ok === true || s.ok === false);
+  // A redirect (ok null, `redirect`) answered: not down, not up, and not
+  // "not checked" either; counted on its own.
+  const redirected = answered.filter(
+    (s) => s.redirect && s.ok !== true && s.ok !== false,
+  ).length;
+  const down = awaiting
+    ? []
+    : checked.filter((s) => s.ok === false).map((s) => s.service);
+  const state = awaiting
+    ? "unknown"
+    : entry && entry.ok === false
+      ? "down"
+      : down.length > 0
+        ? "degraded"
+        : checked.length > 0
+          ? "ok"
+          : "unknown";
+  return {
+    state,
+    entry: entry ? entry.service : null,
+    down,
+    checked: checked.length,
+    unchecked: answered.length - checked.length - redirected,
+    awaiting,
+    ...(redirected ? { redirected } : {}),
+  };
+}
+
+/**
+ * Every repo's rollup from flat per-service rows (as /api/health sends
+ * them), in first-seen order.
+ * @param {Array<HealthSignal & { repo: string }>} rows
+ * @returns {Map<string, RepoRollup>}
+ */
+export function rollupRows(rows) {
+  const by = new Map();
+  for (const r of rows || []) {
+    if (!by.has(r.repo)) by.set(r.repo, []);
+    by.get(r.repo).push(r);
+  }
+  return new Map([...by].map(([repo, s]) => [repo, rollupRepo(repo, s)]));
+}
+
+/**
+ * "down (web down)", "degraded (mailpit down)", "healthy",
+ * "healthy, 25 not checked", "healthy, 1 redirect", "unknown (not
+ * checked)", "unknown (1 redirect)".
+ * @param {RepoRollup} r
+ * @returns {string}
+ */
+export function describeRollup(r) {
+  const extra = [
+    r.redirected ? `${r.redirected} redirect` : "",
+    r.unchecked > 0 ? `${r.unchecked} not checked` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  if (r.awaiting) return "unknown (still checking)";
+  if (r.state === "unknown")
+    return r.redirected ? `unknown (${extra})` : "unknown (not checked)";
+  if (r.state === "ok") return extra ? `healthy, ${extra}` : "healthy";
+  return `${r.state} (${r.down.join(", ")} down)`;
+}
+
+/**
+ * Order repos: down, degraded, ok, then unknown; within a state
+ * the focused workspace's repos first, then by name.
+ * @param {{ state: RepoState, repo: string, focused?: boolean }} a
+ * @param {{ state: RepoState, repo: string, focused?: boolean }} b
+ * @returns {number}
+ */
+export function compareRepos(a, b) {
+  return (
+    (STATE_RANK[a.state] ?? 3) - (STATE_RANK[b.state] ?? 3) ||
+    Number(!!b.focused) - Number(!!a.focused) ||
+    String(a.repo).localeCompare(String(b.repo))
+  );
+}

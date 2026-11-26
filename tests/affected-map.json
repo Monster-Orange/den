@@ -724,6 +724,9 @@
       "src/ui/server/agent-routes.ts",
       "src/shared/agents/runtime-search.ts"
     ],
+    "tests/unit/server/start-prefill.browser.test.ts": [
+      "src/ui/server/public/agents-page.js"
+    ],
     "tests/unit/server/stop-ends-wait.integration.test.ts": [
       "src/ui/server/login-waits.ts",
       "src/ui/server/agent-routes.ts"
@@ -847,6 +850,13 @@
     "tests/unit/server/agents-tab-strip.browser.test.ts": [
       "src/ui/server/public/agents.html",
       "src/ui/server/public/agents-page.js"
+    ],
+    "tests/unit/server/agent-scope-server.integration.test.ts": [
+      "src/shared/agents/scope-rule.ts",
+      "src/ui/server/request-guard.ts",
+      "src/ui/server/session-routes.ts",
+      "src/ui/server/workspace-routes.ts",
+      "src/ui/server/agent-routes.ts"
     ]
   },
   "subjectless": [],
@@ -928,6 +938,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1058,6 +1069,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1420,6 +1432,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1448,6 +1461,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1550,6 +1564,7 @@
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1646,6 +1661,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1775,6 +1791,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1826,6 +1843,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1958,6 +1976,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -2104,6 +2123,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -2179,6 +2199,18 @@
       "importers": ["tests/unit/server/helpers/en-catalog.ts"],
       "mentions": true,
       "why": "the UI catalogs"
+    },
+    {
+      "when": [
+        "src/ui/server/public/settings-registry.js",
+        "src/ui/server/public/settings-common.js",
+        "src/ui/server/public/settings-ui-*.js",
+        "src/ui/server/public/settings-rows-*.js",
+        "tests/fixtures/settings-registry-order.json"
+      ],
+      "run": ["tests/unit/server/settings-registry-order.test.ts"],
+      "importers": ["tests/unit/server/helpers/settings-sources.ts"],
+      "why": "the Settings rows: their pin and the tests that read them"
     },
     {
       "when": ["src/ui/server/public/**"],
@@ -2277,6 +2309,7 @@
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/test-infra/brittle-weekly-841.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -2321,6 +2354,7 @@
         "tests/unit/test-infra/gate-1407-clauses.test.ts",
         "tests/unit/test-infra/gate-142-runner.test.ts",
         "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-143-runner.test.ts",
         "tests/unit/test-infra/gate-252-runner.test.ts",
         "tests/unit/test-infra/gate-380-runner.test.ts",
         "tests/unit/test-infra/gate-402-clauses.test.ts",
@@ -2344,8 +2378,11 @@
         "tests/unit/test-infra/gate-828.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
+        "tests/unit/test-infra/gate-cli-json-840.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/test-infra/gate-expect-shape.test.ts",
         "tests/unit/test-infra/gate-fixture-project-1215.test.ts",
+        "tests/unit/test-infra/gate-json-fail-840.test.ts",
         "tests/unit/test-infra/gate-readonly-modules.test.ts"
       ],
       "why": "the live checks' own tests (runners, shape, clauses)"
@@ -2354,7 +2391,8 @@
       "when": ["scripts/affected-tests.mjs"],
       "run": [
         "tests/unit/scripts/node22-tests.test.ts",
-        "tests/unit/test-infra/fast-checks.test.ts"
+        "tests/unit/test-infra/fast-checks.test.ts",
+        "tests/unit/test-infra/queue-merge-tests.test.ts"
       ],
       "why": "tests that run scripts/affected-tests.mjs"
     },
@@ -2450,6 +2488,11 @@
       "why": "tests that run scripts/flake-evidence.mjs"
     },
     {
+      "when": ["scripts/gate-evidence.mjs"],
+      "run": ["tests/unit/test-infra/gate-evidence.test.ts"],
+      "why": "tests that run scripts/gate-evidence.mjs"
+    },
+    {
       "when": ["scripts/gate-shape.mjs"],
       "run": ["tests/unit/test-infra/gate-checks.test.ts"],
       "why": "tests that run scripts/gate-shape.mjs"
@@ -2509,6 +2552,11 @@
       "when": ["scripts/pw-server.mjs"],
       "run": ["tests/unit/scripts/pw-server-635.test.ts"],
       "why": "tests that run scripts/pw-server.mjs"
+    },
+    {
+      "when": ["scripts/queue-merge-tests.mjs"],
+      "run": ["tests/unit/test-infra/queue-merge-tests.test.ts"],
+      "why": "tests that run scripts/queue-merge-tests.mjs"
     },
     {
       "when": ["scripts/release-ancestry.sh"],
@@ -2592,6 +2640,11 @@
       "why": "tests that run scripts/state-writes-gate.mjs"
     },
     {
+      "when": ["scripts/test-health.mjs"],
+      "run": ["tests/unit/test-infra/test-health-846.test.ts"],
+      "why": "tests that run scripts/test-health.mjs"
+    },
+    {
       "when": ["scripts/typecheck-tests.mjs"],
       "run": ["tests/unit/test-infra/typecheck-tests.test.ts"],
       "why": "tests that run scripts/typecheck-tests.mjs"
@@ -2654,6 +2707,11 @@
         "tests/unit/test-infra/gate-142-stubs.test.ts"
       ],
       "why": "tests that load gate/142.mjs"
+    },
+    {
+      "when": ["gate/143.mjs"],
+      "run": ["tests/unit/test-infra/gate-143-runner.test.ts"],
+      "why": "tests that load gate/143.mjs"
     },
     {
       "when": ["gate/252.mjs"],
@@ -3125,6 +3183,17 @@
         "src/shared/agents/runtime-search.ts"
       ],
       "run": ["tests/unit/server/agent-runtimes.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/agents/scope-rule.ts",
+        "src/ui/server/agent-routes.ts",
+        "src/ui/server/request-guard.ts",
+        "src/ui/server/session-routes.ts",
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": ["tests/unit/server/agent-scope-server.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -4366,6 +4435,11 @@
         "src/ui/server/agent-routes.ts"
       ],
       "run": ["tests/unit/server/start-dialog.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/agents-page.js"],
+      "run": ["tests/unit/server/start-prefill.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

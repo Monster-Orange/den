@@ -35,7 +35,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ROUTE_DEFAULT, heavyProgram, routeCommand } from "./gate-route.mjs";
+import {
+  ROUTE_DEFAULT,
+  heavyProgram,
+  onOff,
+  routeCommand,
+} from "./gate-route.mjs";
 import {
   PUBLIC_TEXT_FAILED,
   looksLikeGhWrite,
@@ -426,7 +431,7 @@ const word = (s) =>
 
 /**
  * Issue 1264: routing as the gate's settings.json says: `route_agents`
- * (0 or false turns it off) and `route_commands` (the programs: a line of
+ * (a clear off turns it off; anything else is on) and `route_commands` (the programs: a line of
  * text, comma-separated, as the gate stores it, or a list). No file, or
  * one Den can't read: on, with the default list.
  */
@@ -444,7 +449,7 @@ export function routeSettings(file) {
       .map((x) => x.trim())
       .filter(Boolean);
     return {
-      on: j.route_agents !== false && j.route_agents !== 0,
+      on: onOff(j.route_agents) ?? true,
       programs: programs && programs.length ? programs : ROUTE_DEFAULT,
     };
   } catch {
