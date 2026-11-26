@@ -2340,6 +2340,7 @@
         "tests/unit/test-infra/gate-629-runner.test.ts",
         "tests/unit/test-infra/gate-631-runner.test.ts",
         "tests/unit/test-infra/gate-701-659-runner.test.ts",
+        "tests/unit/test-infra/gate-732-829.test.ts",
         "tests/unit/test-infra/gate-746-teardown-1293.test.ts",
         "tests/unit/test-infra/gate-828.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
@@ -2757,6 +2758,11 @@
       "when": ["gate/701.mjs"],
       "run": ["tests/unit/test-infra/gate-701-659-runner.test.ts"],
       "why": "tests that load gate/701.mjs"
+    },
+    {
+      "when": ["gate/732.mjs"],
+      "run": ["tests/unit/test-infra/gate-732-829.test.ts"],
+      "why": "tests that load gate/732.mjs"
     },
     {
       "when": ["gate/746.mjs"],

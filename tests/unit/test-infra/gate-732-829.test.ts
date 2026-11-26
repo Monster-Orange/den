@@ -1,11 +1,3 @@
-/**
- * Issue 829: gate/732.mjs as fail-first proof, judged on made-up results
- * as the bed hands them back. Den not seeing a background job that is
- * really running under the stub fails; only a stub with no job (no /bg
- * verb) skips. A setup whose turn never started skips clause 2 as
- * needs-turn, with the shell write's status, never a Den failure. In a
- * child node: the gate file is ESM.
- */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as path from "path";
@@ -113,8 +105,6 @@ describe("gate/732.mjs (issue 829)", () => {
     expect(rows[1].ok).toBe(false);
     expect(rows[1].skip).toBeUndefined();
   });
-  // Reviewer B on PR 1540: pgrep looks machine-wide, so the check must
-  // look for this run's own job, and an unset STUB_HOME must not widen it.
   const looked = (out: string, name = "g732t1") =>
     call(`await (async () => {
       const sent = [];

@@ -9,28 +9,17 @@
 //
 // First, whether Den sees that job at all: a Restart after its turn, as
 // the Agents page asks it, must answer 409 job_running with the job's
-// minutes, and nothing restarts (clause 3). Before that probe, the check
-// looks inside the stub's session for the background shell itself (issue
-// 829): one running there that Den then didn't see fails every clause; none
-// (a bed whose stub has no /bg verb) skips them (needs-background-job).
-// The restart then goes ahead on this check's own stub, and teardown
-// removes it.
 //
 // Clause 1: with the job still running and the turn ended, a Hub comment
 // for it is typed in within seconds. Clause 2: a turn starts (a prompt
 // record appended to its transcript, as the runtime writes one); a second
 // comment waits, with Den's held reason "the agent is busy with a turn";
 // once the turn ends it is typed. A second Restart probe after clause 2
-// shows the job was still running through it. A turn the setup couldn't
-// start (the transcript write didn't succeed) skips clause 2 as needs-turn
-// with the write's status (issue 829): a setup that didn't happen is no
-// Den failure.
 //
 // Without a Hub on the bed, every clause skips (needs-hub). Names are new
 // each run.
 
 export const issue = 732;
-// Issue 829: the module's own fail-first fixes ride with it.
 export const items = [732, 829];
 export const clauses = [
   "an agent whose turn ended, with a background shell still running: a Hub comment for it is typed within seconds",
@@ -117,10 +106,6 @@ async function restartProbe(ctx, id) {
 
 const line = (o) => JSON.stringify(o).replace(/'/g, "");
 
-/**
- * Appends one record to the stub's transcript, from inside its session:
- * the shell's exit status (0 when written), or null when it didn't answer.
- */
 async function append(ctx, a, id, rec) {
   const file = ctx.transcriptPath(id);
   if (!file) return null;
@@ -128,20 +113,8 @@ async function append(ctx, a, id, rec) {
   return typeof r?.status === "number" ? r.status : null;
 }
 
-/**
- * This run's background job's name, new each run (as gate/1407.mjs names
- * its own), so two runs on one machine never see each other's job.
- */
 export const jobName = (now = Date.now()) => `g732${now.toString(36)}`;
 
-/**
- * Issue 829: whether this run's background shell (`name`, the stub's /bg)
- * is running inside its own session (under its $STUB_HOME), whatever Den
- * saw: true, false, or null when the session didn't answer or STUB_HOME
- * isn't set there. pgrep looks machine-wide, so an empty STUB_HOME must
- * never widen the pattern to every agent's background shell. The pattern's
- * `[0-9]+` keeps the shell running pgrep from matching itself.
- */
 export async function jobPresent(a, name) {
   try {
     const r = await a.sh(
@@ -213,8 +186,6 @@ export async function run(ctx, s) {
   await endTurn(ctx, a, s.id, "Started the watcher in the background.");
   await ctx.sleep(2000);
 
-  // Issue 829: whether the job really runs under the stub, looked at
-  // before any Restart probe (a restart Den lets through ends it).
   r.jobPresent = await jobPresent(a, r.job);
 
   // Clause 3, and whether Den sees the job at all.
