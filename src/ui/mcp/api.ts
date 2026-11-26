@@ -63,10 +63,10 @@ export class UnidentifiedWebServer extends Error {
         : id.why === "error"
           ? `/api/server-info failed with ${id.code ?? "an unknown error"}${after}`
           : id.why === "empty"
-            ? `an empty answer to /api/server-info${after}, as from a server still starting`
+            ? `an empty answer to /api/server-info${after}, as from a Den still starting`
             : "no answer to /api/server-info";
     super(
-      `the server on port ${port}: ${what}. It is not known to be this distribution's, ` +
+      `port ${port}: ${what}. What answers there is not known to be this distribution's, ` +
         `so nothing was read from it. The next call checks again.`,
     );
     this.name = "UnidentifiedWebServer";

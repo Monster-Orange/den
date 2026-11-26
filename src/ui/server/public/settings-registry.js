@@ -3454,9 +3454,9 @@ export const DEN_SETTINGS = [
   {
     id: "server.tools_probe",
     category: "server",
-    label: "Den tools' server check, in seconds",
+    label: "Den tools' check of this install, in seconds",
     description:
-      "How long an agent's Den tools wait for __DEN_TITLE__ to say it is this install's server before a call is refused. A busy server answers late; a late answer still counts. The next call checks again. __DEN_CLI__ config web.tools_probe_seconds=30",
+      "How long an agent's Den tools wait for __DEN_TITLE__ to say it is this install before a call is refused. A busy __DEN_TITLE__ answers late; a late answer still counts. The next call checks again. __DEN_CLI__ config web.tools_probe_seconds=30",
     keywords: [
       "agent",
       "tools",
