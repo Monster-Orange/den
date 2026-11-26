@@ -11,7 +11,9 @@ import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 
-function judge(result: unknown): { ok: unknown; skip?: string }[] {
+function judge(
+  result: unknown,
+): { ok: unknown; skip?: string; detail?: string }[] {
   const js = `
     const g = await import("./gate/609.mjs");
     const r = ${JSON.stringify(result)};
@@ -88,6 +90,15 @@ describe("gate/609.mjs", () => {
     expect(bare[1].ok).toBe(false);
   });
 
+  it("an audit the check couldn't read fails the load and reason clauses, saying so", () => {
+    for (const rows of [null, undefined]) {
+      const r = judge({ ...good, rows });
+      expect([r[0].ok, r[1].ok]).toEqual([false, false]);
+      expect(r[0].detail).toContain("audit.jsonl not read");
+      expect(r[1].detail).toContain("audit.jsonl not read");
+    }
+  });
+
   it("the web never came back, or its mark never showed: the restart clause fails", () => {
     expect(judge({ ...good, upMs: null })[2].ok).toBe(false);
     expect(judge({ ...good, restart: mark("R", null) })[2].ok).toBe(false);
@@ -140,5 +151,19 @@ describe("gate/609.mjs", () => {
     });
     expect(p.stderr).toBe("");
     expect(JSON.parse(p.stdout)).toHaveLength(1);
+  });
+
+  it("a bed with no audit at that name gives null, not no rows", () => {
+    const js = `
+      const g = await import("./gate/609.mjs");
+      const ctx = { readBed: (rel) => (rel === "audit.jsonl" ? "{}" : null) };
+      process.stdout.write(JSON.stringify(g.auditRows(ctx, "gate609-calls", 0)));
+    `;
+    const p = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    expect(p.stderr).toBe("");
+    expect(JSON.parse(p.stdout)).toBeNull();
   });
 });

@@ -146,12 +146,14 @@ export async function run(ctx, s) {
   r.restart = await mark(ctx, a, tool("R"));
 
   r.rows = auditRows(ctx, s.id, r.since);
-  ctx.log?.(`609: ${JSON.stringify({ ...r, rows: r.rows.length })}`);
+  ctx.log?.(`609: ${JSON.stringify({ ...r, rows: r.rows?.length ?? null })}`);
   return r;
 }
 
-export const auditRows = (ctx, id, since) =>
-  tokenRows(ctx.readBed("state:audit.jsonl"), id, since);
+export const auditRows = (ctx, id, since) => {
+  const text = ctx.readBed("state:audit.jsonl");
+  return text == null ? null : tokenRows(text, id, since);
+};
 
 export async function teardown(ctx, s) {
   stopLoad(s?.load);
@@ -182,7 +184,8 @@ export function expect(res) {
     return clauses.map((clause) => ({ clause, ok: false, detail: "no run" }));
   const marks = r.marks ?? [];
   const landed = marks.filter((m) => m.shown !== null && m.cleared !== null);
-  const rows = r.rows ?? [];
+  const read = Array.isArray(r.rows);
+  const rows = read ? r.rows : [];
   const refused = rows.filter((x) => x.outcome === "refused");
   const couldnt = rows.map(unplaced).filter(Boolean);
   const slowest = Math.max(0, ...marks.map((m) => m.ms ?? 0));
@@ -192,16 +195,19 @@ export function expect(res) {
       ok:
         marks.length === MARKS &&
         landed.length === MARKS &&
+        read &&
         couldnt.length === 0 &&
         refused.length === 0,
-      detail: `${landed.length}/${MARKS} marks shown and cleared (slowest ${slowest} ms) with ${r.burners} busy processes (load ${r.loadBefore?.toFixed?.(1)} → ${r.loadDuring?.toFixed?.(1)}); refusals ${refused.length}, "couldn't place" ${couldnt.length}`,
+      detail: `${read ? "" : "audit.jsonl not read; "}${landed.length}/${MARKS} marks shown and cleared (slowest ${slowest} ms) with ${r.burners} busy processes (load ${r.loadBefore?.toFixed?.(1)} → ${r.loadDuring?.toFixed?.(1)}); refusals ${refused.length}, "couldn't place" ${couldnt.length}`,
     },
     {
       clause: clauses[1],
-      ok: couldnt.every(named),
-      detail: couldnt.length
-        ? couldnt.join(" | ")
-        : "no caller went unplaced in this run, so there was no reason to name",
+      ok: read && couldnt.every(named),
+      detail: !read
+        ? "audit.jsonl not read, so its refusals are unknown"
+        : couldnt.length
+          ? couldnt.join(" | ")
+          : "no caller went unplaced in this run, so there was no reason to name",
     },
     {
       clause: clauses[2],
