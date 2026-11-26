@@ -16,6 +16,8 @@ import {
   testInstallRestartEnv,
 } from "../../shared/test-install-launch.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
+import { maskSecretLine } from "../../shared/secret-values.js";
+import { createLogRing } from "./log-ring.js";
 import {
   COACH_ROUTES,
   handleCoachRoute,
@@ -120,7 +122,7 @@ import {
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { userConfigPath } from "../../shared/den-config.js";
-import { readWebSecret } from "../../shared/web-secret.js";
+import { readWebSecret } from "../../shared/web/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
   installIdOf,
@@ -424,7 +426,11 @@ import {
 import {
   agentPrincipalOf,
   AGENT_VIEW_CLIENT,
+  agentFocusMoved,
+  agentFocusedReadRefusal,
+  agentFocusRefusal,
   agentRefusal,
+  agentRowFilter,
   auditActorOf,
   notAPersonOf,
   fixturePersonOf,
@@ -462,7 +468,7 @@ import {
   rotateWebSecret,
   verifyPersonToken,
   WebSecretStore,
-} from "../../shared/web-secret.js";
+} from "../../shared/web/web-secret.js";
 import {
   ACTOR_TOKEN_PREFIX,
   agentTokenLive,
@@ -488,7 +494,7 @@ import {
   type WebAuthConfig,
   SessionStoreUnreadable,
   SESSIONS_LOCK_WAIT_MS,
-} from "../../shared/web-session.js";
+} from "../../shared/web/web-session.js";
 import {
   checkFixtureCode,
   FIXTURE_LABEL,
@@ -568,16 +574,19 @@ import {
   readWebUrl,
   setWebUrl,
   type WebUrlChange,
-} from "../../shared/web-url.js";
+} from "../../shared/web/web-url.js";
 import { peopleWebUrl } from "../../shared/agent-links.js";
-import { tellHubDenUrl } from "../../shared/hub-den-url.js";
+import { tellHubDenUrl } from "../../shared/hub/hub-den-url.js";
 import { webUrlSetAction } from "./web-url-held.js";
 import {
   adoptAllowed,
   handleWebUrlRoutes,
   offeredAlias,
 } from "./web-url-routes.js";
-import { aliasCandidates, isLoopbackUrl } from "../../shared/web-url-check.js";
+import {
+  aliasCandidates,
+  isLoopbackUrl,
+} from "../../shared/web/web-url-check.js";
 import {
   handleAccountsRoute,
   handleKeepRunningRoutes,
@@ -671,7 +680,7 @@ import {
   GITHUB_SIGNIN_DOCS,
 } from "../../shared/github-app.js";
 import { githubDeviceClient } from "../../shared/github-device.js";
-import { readWebOwner } from "../../shared/web-owner.js";
+import { readWebOwner } from "../../shared/web/web-owner.js";
 import { FirstRun } from "./first-run.js";
 import { signinMethods } from "./signin-methods.js";
 import { ownerNameFromGithub } from "../../shared/owner-github.js";
@@ -732,7 +741,7 @@ import {
   readHubConfig,
   type HubConfig,
 } from "../../shared/hub.js";
-import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
+import { patchHubDeliveryLoop } from "../../shared/hub/hub-loop.js";
 import { serverHubAgentTokens } from "../../shared/hub-agent-tokens.js";
 import { syncAgentGrantNote } from "../../shared/hub-agent-grant.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
@@ -996,22 +1005,7 @@ const VERBOSE =
   process.argv.includes("--verbose") || process.env.DEN_LOG === "verbose";
 
 // ── In-memory log ring ────────────────────────────────────────────────────────
-// Every message written via serverLog() lands here in plain-text form (ANSI
-// stripped) and fans out to any subscribers — primarily the /api/server-log
-// SSE stream surfaced on the /logs page. Fixed-size ring so an idle server
-// doesn't grow without bound; restart drops history (not persisted to disk).
-
-interface LogEntry {
-  ts: string;
-  kind: string;
-  text: string;
-  /** Set when an agent (via `<cli> mcp`) asked for this action: its label. */
-  actor?: string;
-}
-
-const LOG_RING_MAX = 500;
-const logRing: LogEntry[] = [];
-const logSubscribers = new Set<(e: LogEntry) => void>();
+const LOG_RING = createLogRing(500);
 
 // ANSI SGR escape sequences — stripping these requires a control-character
 // literal (ESC = 0x1b), which triggers no-control-regex. Intentional.
@@ -1022,21 +1016,7 @@ function stripAnsi(s: string): string {
 }
 
 function pushLog(kind: string, text: string, actor?: string): void {
-  const entry: LogEntry = {
-    ts: new Date().toISOString(),
-    kind,
-    text: stripAnsi(text),
-    ...(actor ? { actor } : {}),
-  };
-  logRing.push(entry);
-  if (logRing.length > LOG_RING_MAX) logRing.shift();
-  for (const sub of logSubscribers) {
-    try {
-      sub(entry);
-    } catch {
-      /* subscriber broke — don't let it take the server down */
-    }
-  }
+  LOG_RING.push(kind, text, actor);
 }
 
 /**
@@ -1077,7 +1057,8 @@ const toWebLog = webLogWriter({
   path: () => webLogPath(getStateDir(), product().cli),
 });
 
-function serverLog(msg: string, kind: string = "info", actor?: string): void {
+function serverLog(line: string, kind: string = "info", actor?: string): void {
+  const msg = maskSecretLine(line);
   pushLog(kind, msg, actor);
   const onStdout = !SILENT && !outputLost();
   // Issue 1368: redacted, as every other log path is.
@@ -1312,11 +1293,31 @@ function pinProjects(): PinProjects {
 }
 
 /** Every workspace's checkouts (active or not), for repoAtPath. */
-function allWorkspaceCheckouts(): ResolvedService[] {
+function allWorkspaceCheckouts(
+  keep: (ws: string) => boolean = () => true,
+): ResolvedService[] {
   const catalog = readCatalog();
-  return Object.entries(readWorkspacesFile().workspaces).flatMap(
-    ([name, config]) => listWorkspaceServices(config, catalog, name),
-  );
+  return Object.entries(readWorkspacesFile().workspaces)
+    .filter(([name]) => keep(name))
+    .flatMap(([name, config]) => listWorkspaceServices(config, catalog, name));
+}
+
+function agentRepoRefusal(
+  req: http.IncomingMessage,
+  repos: readonly string[],
+): string | null {
+  const keep = agentRowFilter(req);
+  if (!keep) return null;
+  let mine: Set<string>;
+  try {
+    mine = new Set(allWorkspaceCheckouts(keep).map((c) => c.repoName));
+  } catch {
+    mine = new Set();
+  }
+  const other = repos.find((r) => !mine.has(r));
+  return other === undefined
+    ? null
+    : `${principalOf(req) ?? "this agent"} can read the repos of its own projects only, not "${other.replace(/[^\x20-\x7e]/g, "?").slice(0, 80)}".`;
 }
 
 /**
@@ -1699,7 +1700,7 @@ import {
   stdoutLine,
   webLogPath,
   webLogWriter,
-} from "../../shared/web-log-file.js";
+} from "../../shared/web/web-log-file.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
@@ -7794,6 +7795,18 @@ async function handleRequest(
   // current branch + short SHA. Lets the Tests UI show "you are testing
   // against X" so workspace vs registered-repo drift is visible.
   if (pathname === "/api/test-sources") {
+    const focusWhy = agentFocusedReadRefusal(
+      req,
+      pathname,
+      url.searchParams,
+      getActiveWorkspace()?.name,
+    );
+    if (focusWhy)
+      return sendJson(
+        res,
+        { ok: false, code: "agent_forbidden", error: focusWhy },
+        403,
+      );
     const pillar = url.searchParams.get("pillar");
     if (
       pillar !== "synthetic" &&
@@ -7834,14 +7847,9 @@ async function handleRequest(
         /* client disconnected mid-write; cleanup runs on `close` */
       }
     };
-    emit({ type: "history", entries: logRing.slice() });
-    const subscriber = (entry: LogEntry): void => {
-      emit({ type: "log", entry });
-    };
-    logSubscribers.add(subscriber);
-    req.on("close", () => {
-      logSubscribers.delete(subscriber);
-    });
+    emit({ type: "history", entries: LOG_RING.history() });
+    const stop = LOG_RING.subscribe((entry) => emit({ type: "log", entry }));
+    req.on("close", stop);
     return;
   }
 
@@ -8387,6 +8395,22 @@ async function handleRequest(
 
     if (!repoName || !svcName || !cmdName)
       return send400(res, "repo, service, and cmd are required");
+    const checkedFocus = url.searchParams.get("workspace")
+      ? undefined
+      : getActiveWorkspace()?.name;
+    if (!url.searchParams.get("workspace")) {
+      const why = agentFocusRefusal(
+        req,
+        checkedFocus,
+        "this runs a service of",
+      );
+      if (why)
+        return sendJson(
+          res,
+          { ok: false, code: "agent_forbidden", error: why },
+          403,
+        );
+    }
 
     // Open the SSE stream immediately so any resolution errors are visible
     // in the output pane rather than triggering onerror ("Connection closed").
@@ -8434,8 +8458,8 @@ async function handleRequest(
       | undefined;
 
     const resolved =
-      resolveService(`${repoName}/${svcName}`, wsParam ?? undefined) ??
-      resolveService(repoName, wsParam ?? undefined);
+      resolveService(`${repoName}/${svcName}`, wsParam ?? checkedFocus) ??
+      resolveService(repoName, wsParam ?? checkedFocus);
     if (resolved) {
       repoPath = resolved.repoPath;
       const manifest = readManifest(repoPath);
@@ -8689,6 +8713,15 @@ async function handleRequest(
 
     if (!repoName || !svcName)
       return send400(res, "repo and service are required");
+    {
+      const why = agentRepoRefusal(req, [repoName]);
+      if (why)
+        return sendJson(
+          res,
+          { ok: false, code: "agent_forbidden", error: why },
+          403,
+        );
+    }
 
     const repos = discoverRepos();
     const repo = repos.find((r) => r.repoName === repoName);
@@ -8934,6 +8967,15 @@ async function handleRequest(
     );
     if (!repoName || !svcName)
       return send400(res, "repo and service are required");
+    {
+      const why = agentRepoRefusal(req, [repoName]);
+      if (why)
+        return sendJson(
+          res,
+          { ok: false, code: "agent_forbidden", error: why },
+          403,
+        );
+    }
     if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
       return send400(res, "invalid repo/service name");
     try {
@@ -8995,6 +9037,18 @@ async function handleRequest(
       );
     if (q.trim().length < 2) return send400(res, "q must be at least 2 chars");
     if (targets.length === 0) return send400(res, "targets required");
+    {
+      const why = agentRepoRefusal(
+        req,
+        targets.map((t) => t.repo),
+      );
+      if (why)
+        return sendJson(
+          res,
+          { ok: false, code: "agent_forbidden", error: why },
+          403,
+        );
+    }
     const project = url.searchParams.get("workspace");
     void Promise.all(
       targets.map((t) => searchSystemHistory(t, q, env, project)),
@@ -9008,6 +9062,15 @@ async function handleRequest(
     const svcName = url.searchParams.get("service");
     if (!repoName || !svcName)
       return send400(res, "repo and service are required");
+    {
+      const why = agentRepoRefusal(req, [repoName]);
+      if (why)
+        return sendJson(
+          res,
+          { ok: false, code: "agent_forbidden", error: why },
+          403,
+        );
+    }
     // The same names the history and search routes take: they reach a
     // log path (a folder is made for it) and the tail's arguments.
     if (!isSafeServiceName(repoName) || !isSafeServiceName(svcName))
@@ -9223,6 +9286,14 @@ async function handleRequest(
   // ── API: run tests (SSE) ───────────────────────────────────────────────────
   if (pathname === "/api/run") {
     if (!readMethodOnly(req, res)) return;
+    const runFocus = getActiveWorkspace()?.name;
+    const runWhy = agentFocusRefusal(req, runFocus, "this tests");
+    if (runWhy)
+      return sendJson(
+        res,
+        { ok: false, code: "agent_forbidden", error: runWhy },
+        403,
+      );
     const pillar = url.searchParams.get("pillar") as Pillar | null;
     const modules = url.searchParams.getAll("module").filter(Boolean);
     const env = (url.searchParams.get("env") ?? "local") as Environment;
@@ -9288,6 +9359,13 @@ async function handleRequest(
       }
     }
 
+    const moved = agentFocusMoved(req, runFocus, getActiveWorkspace()?.name);
+    if (moved)
+      return sendJson(
+        res,
+        { ok: false, code: "focus_changed", error: moved },
+        409,
+      );
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -10185,7 +10263,9 @@ async function handleRequest(
       // read at that same path; a far too broad repo root is no root.
       let repoRoots: string[] = [];
       try {
-        repoRoots = allWorkspaceCheckouts().map((c) => c.repoPath);
+        repoRoots = allWorkspaceCheckouts(agentRowFilter(req) ?? undefined).map(
+          (c) => c.repoPath,
+        );
       } catch {
         repoRoots = [];
       }
@@ -12827,10 +12907,20 @@ function startUpdateCheck(): void {
             const r = (await a.run(ok.args, {
               id: "update-check",
               decidedBy: "auto:server_agent.self_update: auto",
-            })) as { ok?: boolean; error?: unknown };
+            })) as {
+              ok?: boolean;
+              error?: unknown;
+              rollbackFailed?: import("./den-update.js").RollbackFailed;
+            };
             return r.ok
               ? { ok: true }
-              : { ok: false, error: String(r.error ?? "not updated") };
+              : {
+                  ok: false,
+                  error: String(r.error ?? "not updated"),
+                  ...(r.rollbackFailed
+                    ? { rollbackFailed: r.rollbackFailed }
+                    : {}),
+                };
           } finally {
             updating = false;
             autoRestartHold = null;

@@ -16,7 +16,7 @@ import {
   isLoopbackName,
   type WebUrlRouteDeps,
 } from "../../../src/ui/server/web-url-routes.js";
-import type { WebUrl } from "../../../src/shared/web-url.js";
+import type { WebUrl } from "../../../src/shared/web/web-url.js";
 
 let saved: WebUrl | null = null;
 let server: http.Server;

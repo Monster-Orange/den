@@ -58,7 +58,7 @@ import type * as http from "http";
 import {
   APPROVE_KEY_HEADER,
   approveKeyMatches,
-} from "../../shared/web-session.js";
+} from "../../shared/web/web-session.js";
 import { CSRF_HEADER, type GuardResult } from "./request-guard.js";
 import { redactSecrets } from "../../shared/redact.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";

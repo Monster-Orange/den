@@ -25,7 +25,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { readWebUrl } from "../../shared/web-url.js";
+import { readWebUrl } from "../../shared/web/web-url.js";
 import {
   hubExchange,
   HubCallError,
@@ -54,7 +54,7 @@ import {
   hubOrigin,
   readHubBinding,
   recordUnrevoked,
-} from "../../shared/hub-binding.js";
+} from "../../shared/hub/hub-binding.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { emptyProjectTest } from "../../shared/empty-project.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -64,7 +64,7 @@ import {
   parseHubProjectLink,
   setHubProject,
   type HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import {
   parseGrantReview,
   reviewParam,
@@ -72,7 +72,7 @@ import {
   type GrantReview,
   type GrantSkip,
   type ReviewProject,
-} from "../../shared/hub-connect-review-grant.js";
+} from "../../shared/hub/hub-connect-review-grant.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import { envKey, product } from "../../shared/product.js";
 import {
@@ -135,6 +135,11 @@ export interface HubConnectDeps {
   writeUser: (u: Record<string, unknown>) => void;
   /** This install's label on Hub (1–40 characters). */
   installLabel: () => string;
+  relinkMoved?: (
+    hubUrl: string,
+    token: string,
+    company: string | undefined,
+  ) => Promise<unknown>;
   /**
    * This Den's https edge address, when it has one (Connect's den_url:
    * where Hub links back to it when the browser came over loopback).
@@ -445,6 +450,37 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     readUser: () => readUserConfig() as Record<string, unknown>,
     writeUser: (u) => writeUserConfig(u as never),
     installLabel: () => defaultInstallLabel(),
+    relinkMoved: async (hubUrl, token, company) => {
+      const [m, hub, link, la, ns] = await Promise.all([
+        import("./hub-relink-after-move.js"),
+        import("../../shared/hub.js"),
+        import("../../shared/hub/hub-project-link.js"),
+        import("./hub-link-all-routes.js"),
+        import("./notification-service.js"),
+      ]);
+      const r = await m.relinkAfterMove(hubUrl, company, {
+        stateDir: getStateDir,
+        lookup: (id) => hub.hubGetProject(hubUrl, token, id),
+        linkOf: (ws) => link.hubProjectOf(ws),
+        link: (ws, l) =>
+          link.setHubProject(
+            ws,
+            l,
+            "Connect: a moved project, re-linked by its id",
+          ),
+        picked: (n) => la.pickDone(ns.notificationDeps().store, n),
+      });
+      if (r.relinked.length)
+        recordAction(null, {
+          verb: "hub-link",
+          detail:
+            `re-linked by id after a Hub move: ${r.relinked.join(", ")}${r.ask.length ? `; to pick: ${r.ask.join(", ")}` : ""}`.slice(
+              0,
+              400,
+            ),
+        });
+      return r;
+    },
     // D80: the install's address, as Hub takes it (https, or a .localhost).
     denUrl: () => {
       const w = readWebUrl();
@@ -460,7 +496,7 @@ export function defaultHubConnectDeps(): HubConnectDeps {
       const w = readWebUrl();
       if (!w?.url) return;
       const [{ tellHubDenUrl }, { hubPutDenUrl }] = await Promise.all([
-        import("../../shared/hub-den-url.js"),
+        import("../../shared/hub/hub-den-url.js"),
         import("../../shared/hub.js"),
       ]);
       await tellHubDenUrl(w.url, {
@@ -883,6 +919,10 @@ export class HubConnect {
         review = { ok: true, links, skipped };
       }
     }
+    if (rebound && this.deps.relinkMoved)
+      await this.deps
+        .relinkMoved(hubUrl, grant.token, company)
+        .catch(() => undefined);
     return {
       ok: true,
       ...(grant.company?.name ? { team: grant.company.name } : {}),

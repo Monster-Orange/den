@@ -16,7 +16,7 @@
  */
 import type { NotificationStore } from "../../shared/notifications.js";
 import { ThrowawaySweeper, type Docker } from "../../shared/gates/ephemeral.js";
-import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
+import { embedDelivery, type Delivery } from "../../shared/hub/hub-delivery.js";
 import {
   gateLocked,
   type GateStore,
