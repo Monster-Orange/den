@@ -1,3 +1,5 @@
+import type { MovedProject } from "./hub-project-sync.js";
+
 export interface ArchivedLink {
   ws: string;
   id: string;
@@ -63,10 +65,7 @@ export async function relinkMoved(
   return out;
 }
 
-export function movedNote(m: {
-  workspace: string;
-  movedTo: { hub: string; hubName: string };
-}) {
+export function movedNote(m: MovedProject) {
   let host = m.movedTo.hub;
   try {
     host = new URL(m.movedTo.hub).host;
