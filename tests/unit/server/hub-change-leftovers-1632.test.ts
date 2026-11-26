@@ -93,6 +93,20 @@ describe("issue 1632 part 3: a Hub change leaves nothing of the old Hub", () => 
     expect(fs.existsSync(kept)).toBe(true);
   });
 
+  it("an agent-files entry that links elsewhere is left alone", async () => {
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "hub-outside-"));
+    try {
+      const f = path.join(outside, "hub-inbox.json");
+      fs.writeFileSync(f, "{}");
+      fs.mkdirSync(path.join(dir, "agent-files"), { recursive: true });
+      fs.symlinkSync(outside, path.join(dir, "agent-files", "a9"));
+      await noteHub(deps(), { url: NEW });
+      expect(fs.existsSync(f)).toBe(true);
+    } finally {
+      fs.rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it("the bell's 'agents without Hub' row goes: it counted against the old Hub", async () => {
     store.add({
       kind: "service",

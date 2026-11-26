@@ -65,15 +65,15 @@ export function forgetHubLeftovers(stateDir: string): void {
   for (const f of LEFTOVER_FILES)
     fs.rmSync(path.join(stateDir, f), { force: true });
   const agents = path.join(stateDir, "agent-files");
-  let ids: string[] = [];
+  let ids: fs.Dirent[] = [];
   try {
-    ids = fs.readdirSync(agents);
+    ids = fs.readdirSync(agents, { withFileTypes: true });
   } catch {
     ids = [];
   }
-  for (const id of ids)
+  for (const e of ids.filter((e) => e.isDirectory()))
     for (const f of AGENT_LEFTOVERS)
-      fs.rmSync(path.join(agents, id, f), { force: true });
+      fs.rmSync(path.join(agents, e.name, f), { force: true });
 }
 
 let heldCloser: ((from: string, to: string) => Promise<number>) | null = null;
