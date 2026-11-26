@@ -138,6 +138,82 @@ describe("a command that prints the environment runs, its secret-looking values 
     expect(out).not.toContain(SECRET);
   });
 
+  it.each(SHELLS)("%s: a masked printenv keeps its exit status", (shell) => {
+    const cases: [string, string][] = [
+      ["if printenv NOPE_NOT_SET; then echo yes; else echo no; fi", "no"],
+      [
+        "if printenv FAKE_TOKEN >/dev/null; then echo yes; else echo no; fi",
+        "yes",
+      ],
+      ["printenv NOPE_NOT_SET; echo rc=$?", "rc=1"],
+      ["printenv PLAIN_VAR; echo rc=$?", "rc=0"],
+      ["env -u X; echo rc=$?", "rc=0"],
+    ];
+    for (const [cmd, want] of cases) {
+      const h = hook(cmd);
+      expect([cmd, h.rewritten]).toEqual([
+        cmd,
+        expect.stringContaining("env-mask.mjs"),
+      ]);
+      const out = run(shell, h.rewritten!);
+      expect([cmd, out.trim().split("\n").pop()]).toEqual([cmd, want]);
+      expect(out).not.toContain(SECRET);
+    }
+  });
+
+  it.each(SHELLS)("%s: env <<< hi runs, masked", (shell) => {
+    const h = hook("env <<< hi");
+    expect(h.rewritten).toContain("env-mask.mjs");
+    const out = run(shell, h.rewritten!);
+    expect(out).not.toMatch(/syntax error|parse error/i);
+    expect(out).not.toContain(SECRET);
+    expect(out).toContain("hello-plain");
+  });
+
+  it.each(SHELLS)(
+    "%s: declare -p NAME and typeset -p NAME are masked",
+    (shell) => {
+      for (const cmd of ["declare -p FAKE_TOKEN", "typeset -p FAKE_TOKEN"]) {
+        const h = hook(cmd);
+        expect([cmd, h.rewritten]).toEqual([
+          cmd,
+          expect.stringContaining("env-mask.mjs"),
+        ]);
+        const out = run(shell, `export FAKE_TOKEN; ${h.rewritten!}`);
+        expect([cmd, out]).toEqual([cmd, expect.not.stringContaining(SECRET)]);
+        expect([cmd, out]).toEqual([
+          cmd,
+          expect.stringContaining("FAKE_TOKEN"),
+        ]);
+      }
+    },
+  );
+
+  it("a heavy run chained after a masked printenv is still seen by the gate", () => {
+    const gates = path.join(dir, "gates-974");
+    fs.rmSync(gates, { recursive: true, force: true });
+    const gate = [
+      ...args,
+      "--gate",
+      "/opt/den/bin/den",
+      "--gate-settings",
+      path.join(gates, "settings.json"),
+    ];
+    const h = hook("printenv HOME; npx jest a.test.ts", gate);
+    expect(h.rewritten).toContain("env-mask.mjs");
+    const rows = fs
+      .readFileSync(path.join(gates, "events.jsonl"), "utf-8")
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
+    expect(rows).toEqual([
+      expect.objectContaining({ event: "outside", label: "jest", kind: "cpu" }),
+    ]);
+    expect(hook("npx jest a.test.ts", gate).rewritten).toMatch(
+      /^\/opt\/den\/bin\/den gate run --kind cpu -- npx jest/,
+    );
+  });
+
   it("a command that prints no environment is left as it is", () => {
     for (const cmd of [
       "echo $HOME",

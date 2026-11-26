@@ -64,9 +64,18 @@ function arg(name, argv) {
   return i >= 0 && argv[i + 1] !== undefined ? argv[i + 1] : null;
 }
 
+const STATUS_TRAILER = /\x1eden-status:(\d+)$/;
+
+export function splitStatus(text) {
+  const m = STATUS_TRAILER.exec(text);
+  if (!m) return { text, status: 0 };
+  return { text: text.slice(0, m.index), status: Number(m[1]) & 255 };
+}
+
 async function main() {
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
+  const { text, status } = splitStatus(Buffer.concat(chunks).toString("utf-8"));
   let out;
   try {
     const argv = process.argv.slice(2);
@@ -76,11 +85,11 @@ async function main() {
       names === null ? null : names.split(","),
       values === null ? [] : values.split(","),
     );
-    out = maskEnvText(Buffer.concat(chunks).toString("utf-8"), m);
+    out = maskEnvText(text, m);
   } catch {
     out = "Den's env masker failed: the output was withheld.\n";
   }
-  process.stdout.write(out);
+  process.stdout.write(out, () => process.exit(status));
 }
 
 function isMain() {

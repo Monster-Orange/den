@@ -1,10 +1,12 @@
 import { afterAll, describe, expect, it } from "@jest/globals";
+import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
   DEFAULT_ENV_HOLD,
   ENV_HOLD_FILE,
+  PERSON_CREDENTIAL_NAMES,
 } from "../../../src/shared/agents/env-hold.js";
 import {
   loadPersonas,
@@ -134,12 +136,29 @@ describe("a launch with the hold", () => {
 });
 
 describe("an agent from before the hold", () => {
-  it("gets no env-hold.sh and no CLAUDE_ENV_FILE, and keeps the guard", () => {
+  it("gets an env-hold.sh that holds back only a person's credential, and keeps the guard", () => {
     const l = launch(planner, { ...hold, on: false, hold: [] });
-    expect(l.env).not.toHaveProperty("CLAUDE_ENV_FILE");
-    expect(Object.keys(l.files).some((f) => f.endsWith(ENV_HOLD_FILE))).toBe(
-      false,
-    );
+    const file = path.join(root, "files", "planner", ENV_HOLD_FILE);
+    expect(l.env.CLAUDE_ENV_FILE).toBe(file);
     expect(l.pretool.length).toBeGreaterThan(0);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, l.files[file]);
+    const person = PERSON_CREDENTIAL_NAMES[0];
+    for (const shell of ["/bin/bash", "/bin/zsh"].filter((x) =>
+      fs.existsSync(x),
+    )) {
+      const r = spawnSync(
+        shell,
+        [
+          "-c",
+          `export ${person}=den_pt_x GH_TOKEN=gh-kept; . ${file}; echo "\${${person}-gone} $GH_TOKEN"`,
+        ],
+        {
+          encoding: "utf-8",
+          env: { PATH: "/usr/bin:/bin", HOME: root, ZDOTDIR: root },
+        },
+      );
+      expect([shell, r.stdout.trim()]).toEqual([shell, "gone gh-kept"]);
+    }
   });
 });

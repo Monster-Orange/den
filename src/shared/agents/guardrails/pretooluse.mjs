@@ -116,7 +116,9 @@ function dumpsEnv(words) {
   if (cmd === "export") return operands(args).length === 0;
   if (cmd === "declare" || cmd === "typeset") {
     if (args.some((a) => /^-[a-zA-Z]*[fF]/.test(a))) return false;
-    return operands(args).length === 0;
+    const names = operands(args);
+    if (names.some((a) => a.includes("="))) return false;
+    return names.length === 0 || args.some((a) => /^-[a-zA-Z]*p/.test(a));
   }
   if (["sh", "bash", "zsh", "dash", "ksh"].includes(cmd)) {
     const c = args.indexOf("-c");
@@ -150,6 +152,8 @@ const GRAMMAR = new Set([
 
 const OUT_REDIRECT = /^(\d*|&)>>?&?$/;
 
+export const STATUS_MARK = "\\036den-status:";
+
 export function envMaskCommand(command, masker) {
   const src = String(command ?? "");
   let pipelines;
@@ -180,7 +184,7 @@ export function envMaskCommand(command, masker) {
       edits.push({
         from: st.spans[k][0],
         to: st.spans[st.spans.length - 1][1],
-        text: `{ ${run.join(" ")}; } | ${masker}${out.length ? ` ${out.join(" ")}` : ""}`,
+        text: `{ ${run.join(" ")}; printf '${STATUS_MARK}%d' "$?"; } | ${masker}${out.length ? ` ${out.join(" ")}` : ""}`,
       });
     }
   if (!edits.length) return null;
@@ -369,6 +373,13 @@ export function parseShell(src) {
       i++;
       continue;
     }
+    if (c === "<" && src[i + 1] === "<" && src[i + 2] === "<") {
+      endWord();
+      words.push("<<<");
+      spans.push([i, i + 3]);
+      i += 3;
+      continue;
+    }
     if (c === "<" && src[i + 1] === "<" && src[i + 2] !== "<") {
       endWord();
       let j = i + 2;
@@ -487,7 +498,7 @@ function stage(raw) {
       j++;
       continue;
     }
-    if (w === "<<") {
+    if (w === "<<" || w === "<<<") {
       j++;
       continue;
     }
@@ -753,35 +764,37 @@ async function main() {
   // Issue 1264: a heavy run goes through the gate. The whole input comes
   // back with the new command and no permission decision, so the agent's
   // own permission rules still decide the rewritten command.
+  let masked = null;
+  try {
+    if (!process.argv.includes("--no-env-guard"))
+      masked = envMaskRewrite(JSON.parse(text));
+  } catch {
+    masked = null;
+  }
   let decision = null;
   try {
-    if (!process.argv.includes("--no-env-guard")) {
-      const masked = envMaskRewrite(JSON.parse(text));
-      if (masked) decision = { input: masked };
+    if (!process.argv.includes("--no-guardrails")) {
+      const parsed = JSON.parse(text);
+      decision = gateDecision(
+        masked ? { ...parsed, tool_input: masked } : parsed,
+        arg("--gate"),
+        arg("--gate-settings"),
+      );
     }
   } catch {
     decision = null;
   }
-  try {
-    if (!decision && !process.argv.includes("--no-guardrails"))
-      decision = gateDecision(
-        JSON.parse(text),
-        arg("--gate"),
-        arg("--gate-settings"),
-      );
-  } catch {
-    decision = null;
-  }
-  if (decision?.input)
+  const updated = decision?.input ?? masked;
+  if (updated)
     process.stdout.write(
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
-          updatedInput: decision.input,
+          updatedInput: updated,
         },
       }),
     );
-  else if (decision?.outside)
+  if (decision?.outside)
     recordOutside(arg("--gate-settings"), decision.outside);
   process.exit(0);
 }

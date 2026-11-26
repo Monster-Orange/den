@@ -1105,7 +1105,7 @@ function envHold(input: LaunchInput): {
   env: Record<string, string>;
   files: Record<string, string>;
 } {
-  if (!input.envHold?.on) return { env: {}, files: {} };
+  if (!input.envHold) return { env: {}, files: {} };
   const file = path.join(input.filesDir, ENV_HOLD_FILE);
   const h = input.envHold;
   return {

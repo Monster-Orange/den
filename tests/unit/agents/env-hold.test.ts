@@ -381,7 +381,9 @@ describe("agents start", () => {
 
     expect(await agents(r, "resume", "planner")).toBe(0);
     const legacy = r.made[r.made.length - 1].opts.env;
-    expect(legacy).not.toHaveProperty("CLAUDE_ENV_FILE");
+    expect(fs.readFileSync(String(legacy?.CLAUDE_ENV_FILE), "utf-8")).toContain(
+      "The list is empty: only a person's credential is unset.",
+    );
     expect(readRecord(r.stateDir, "planner")?.envHold).toEqual({
       applied: false,
       legacy: true,
