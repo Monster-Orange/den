@@ -17,6 +17,7 @@ import { writeFileAtomic } from "../../shared/atomic-write.js";
 import { agentsResume, type UserConfig } from "../../shared/den-config.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
+import { readRecord } from "../../shared/agents/records.js";
 
 export const RESTARTS_SUBJECT = "record:agents-restart-queue";
 
@@ -89,6 +90,17 @@ export function capRefusal(e: unknown): string | null {
     : null;
 }
 
+export function stillWanted(
+  stateDir: string,
+  id: string,
+  heldAt: number,
+): boolean {
+  const rec = readRecord(stateDir, id);
+  if (!rec) return false;
+  const stopped = rec.stoppedAt ? Date.parse(rec.stoppedAt) : NaN;
+  return !(stopped >= heldAt);
+}
+
 let queue: RestartQueue | null = null;
 /** The log and the bell, as the latest caller gave them. */
 let logTo: ((line: string) => void) | undefined;
@@ -127,6 +139,7 @@ export function restartQueue(
       }),
     log: (line) => logTo?.(line),
     heldBy: capRefusal,
+    stillWanted: (id, heldAt) => stillWanted(getStateDir(), id, heldAt),
     changed: () => {
       const ids = agentsWaitingOf(q.waiting());
       const n = ids.length;

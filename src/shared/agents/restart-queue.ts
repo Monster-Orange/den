@@ -64,6 +64,7 @@ export interface RestartQueueDeps {
   /** How many wait now: called whenever that changes (doctor, the bell). */
   changed?(waiting: number): void;
   heldBy?(err: unknown): string | null;
+  stillWanted?(id: string, heldAt: number): boolean;
 }
 
 interface Entry extends RestartJob {
@@ -86,7 +87,10 @@ export class RestartQueue {
   private lastAt: number | null = null;
   /** How many started in the window that began at lastAt. */
   private inWindow = 0;
-  private readonly holding = new Map<string, { e: Entry; why: string }>();
+  private readonly holding = new Map<
+    string,
+    { e: Entry; why: string; at: number }
+  >();
   private retrying = false;
 
   constructor(private readonly d: RestartQueueDeps) {}
@@ -196,7 +200,7 @@ export class RestartQueue {
       );
       return;
     }
-    this.holding.set(e.id, { e, why });
+    this.holding.set(e.id, { e, why, at: (this.d.now ?? Date.now)() });
     this.retryLater();
   }
 
@@ -210,8 +214,9 @@ export class RestartQueue {
           await this.d.sleep(gap > 0 ? gap : 30_000);
           const due = [...this.holding.values()];
           this.holding.clear();
-          for (const { e } of due) {
+          for (const { e, at } of due) {
             if (this.pending.some((x) => x.id === e.id)) continue;
+            if (this.d.stillWanted && !this.d.stillWanted(e.id, at)) continue;
             const again: Entry = { ...e, seq: ++this.seq };
             again.promise = new Promise<unknown>((res, rej) => {
               again.resolve = res;

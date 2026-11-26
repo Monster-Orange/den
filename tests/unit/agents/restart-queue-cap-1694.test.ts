@@ -1,13 +1,16 @@
 import { describe, expect, it } from "@jest/globals";
 import { RestartQueue } from "../../../src/shared/agents/restart-queue.js";
-import { capRefusal } from "../../../src/ui/server/restart-queue-service.js";
+import {
+  capRefusal,
+  stillWanted,
+} from "../../../src/ui/server/restart-queue-service.js";
 import { AgentError } from "../../../src/ui/cli/agent-ops.js";
 
 class CapError extends Error {
   readonly code = "cap";
 }
 
-function world(o: { maxWaitMs?: number } = {}) {
+function world(o: { maxWaitMs?: number; stopped?: Set<string> } = {}) {
   const logs: string[] = [];
   const sleeps: Array<{ ms: number; go: () => void }> = [];
   let clock = 1_000_000;
@@ -24,6 +27,7 @@ function world(o: { maxWaitMs?: number } = {}) {
     load: () => 0,
     log: (l) => logs.push(l),
     sleep: (ms) => new Promise<void>((go) => sleeps.push({ ms, go })),
+    stillWanted: (id) => !o.stopped?.has(id),
     heldBy: (e) =>
       (e as { code?: string }).code === "cap" ? (e as Error).message : null,
   });
@@ -131,5 +135,45 @@ describe("issue 1694: a resume a cap refused waits in the restart queue", () => 
       capRefusal(new AgentError("no such folder", { status: 400 })),
     ).toBeNull();
     expect(capRefusal("cap")).toBeNull();
+  });
+
+  it("an agent the person stops while it waits is not started when a place frees", async () => {
+    const stopped = new Set<string>();
+    const w = world({ stopped });
+    await expect(w.capped("f")).rejects.toThrow(/max_concurrent/);
+    await w.flush();
+    stopped.add("f");
+    w.free();
+    w.tick(30_000);
+    await w.pass();
+    await w.pass();
+    expect(w.started).toEqual([]);
+    expect(w.q.held()).toEqual([]);
+  });
+
+  it("the server's queue wants an agent back only while its record is there and not stopped since its hold", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const path = await import("path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-1694-"));
+    fs.mkdirSync(path.join(dir, "agents"), { recursive: true });
+    const put = (id: string, stoppedAt?: string) =>
+      fs.writeFileSync(
+        path.join(dir, "agents", `${id}.json`),
+        JSON.stringify({
+          id,
+          workspace: "north",
+          ...(stoppedAt ? { stoppedAt } : {}),
+        }),
+      );
+    const heldAt = Date.parse("2026-11-20T10:00:00Z");
+    put("waits");
+    put("stopped-before", "2026-11-20T09:00:00Z");
+    put("stopped-after", "2026-11-20T10:05:00Z");
+    expect(stillWanted(dir, "waits", heldAt)).toBe(true);
+    expect(stillWanted(dir, "stopped-before", heldAt)).toBe(true);
+    expect(stillWanted(dir, "stopped-after", heldAt)).toBe(false);
+    expect(stillWanted(dir, "removed", heldAt)).toBe(false);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
