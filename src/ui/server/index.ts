@@ -6479,6 +6479,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       try {
         return {
           max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
+          max_per_project: readAgentsConfig(undefined, user).maxPerProject,
         };
       } catch {
         return null;

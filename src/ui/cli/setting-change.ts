@@ -134,6 +134,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
+  "agents.max_per_project",
   // Issue 1417: every agent limit has an agent ask path.
   "agents.token_peer_wait_ms",
   "agents.turn_read_max_mb",
@@ -1166,6 +1167,7 @@ function readDoc(file: string): yaml.Document {
  */
 export const CAP_KEYS = [
   "agents.max_concurrent",
+  "agents.max_per_project",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
   // Issue 1417 (Builder 2): every agent limit setting_change takes. Past
@@ -1201,6 +1203,7 @@ const SAFE_AT_ZERO: readonly string[] = ["agents.unasked_exit_window_minutes"];
 
 const ZERO_IS_UNLIMITED: readonly string[] = [
   "agents.max_concurrent",
+  "agents.max_per_project",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
   "agents.exited_shell_minutes",

@@ -239,6 +239,9 @@ export class HostClient extends EventEmitter {
        * or plain ones (sessions.max_concurrent). Without it, all of them.
        */
       pool?: SessionPool;
+      /** Issue 1634: the agent's project, and its cap (none: the machine's only). */
+      project?: string;
+      projectLimit?: number;
       /** `--keep-env` names, for the host's audit line (never values). */
       keptEnv?: { name: string; credentialShaped: boolean }[];
       /** Who asked, for that line. */
@@ -254,6 +257,10 @@ export class HostClient extends EventEmitter {
       spec,
       ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
       ...(opts.pool !== undefined ? { pool: opts.pool } : {}),
+      ...(opts.project !== undefined ? { project: opts.project } : {}),
+      ...(opts.projectLimit !== undefined
+        ? { projectLimit: opts.projectLimit }
+        : {}),
       ...(opts.keptEnv?.length || opts.refusedEnv?.length
         ? { actor: opts.actor ?? "unknown" }
         : {}),
