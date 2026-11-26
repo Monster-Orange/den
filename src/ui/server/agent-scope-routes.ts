@@ -22,7 +22,10 @@ const OPEN = (why: string) => e("unfiltered", why);
 
 export const AGENT_SCOPE_ROUTES: Readonly<Record<string, AgentScopeEntry>> = {
   "GET /api/workspaces": e("filtered", "its projects only (WORKSPACES_SHAPE)"),
-  "GET /api/sessions": e("filtered", "its projects' rows only; the ws filter is guarded"),
+  "GET /api/sessions": e(
+    "filtered",
+    "its projects' rows only; the ws filter is guarded",
+  ),
   "GET /api/agents/stale": e("filtered", "its projects' agents only"),
   "GET /api/notifications": e("filtered", "its projects' items and agents"),
 
