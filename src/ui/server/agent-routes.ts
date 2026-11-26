@@ -126,6 +126,7 @@ import {
 } from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import { FIXTURE_MODES } from "../../shared/fixture-person.js";
 import {
   readWorkspacesFile,
   conversationFolders,
@@ -1069,11 +1070,13 @@ export async function handleAgentRoutes(
     // agents are there. Never the server agent's.
     const opAct = operatorActOf(req);
     const fixtureRestart = verb === "restart" && !opAct && fixturePersonOf(req);
+    const fixtureMode = verb === "mode" && !opAct && fixturePersonOf(req);
     if (
       opAct === "agent-say" ||
       opAct === "agent-relaunch" ||
       opAct === "agent-restart" ||
-      fixtureRestart
+      fixtureRestart ||
+      fixtureMode
     ) {
       let marked = false;
       try {
@@ -1090,7 +1093,9 @@ export async function handleAgentRoutes(
             ? "only a person can send an agent a message"
             : opAct === "agent-relaunch"
               ? "only a person can relaunch an agent"
-              : "only a person can restart an agent",
+              : fixtureMode
+                ? "only a person can change an agent's mode"
+                : "only a person can restart an agent",
           { status: 403 },
         );
     }
@@ -1119,7 +1124,7 @@ export async function handleAgentRoutes(
       });
     // Issue 199: an agent's mode is what it may do without asking: a
     // person's (an agent asks through the held write agent_mode).
-    if (verb === "mode" && (agent || actor))
+    if (verb === "mode" && (agent || actor) && !fixtureMode)
       throw new AgentError(
         "only a person can change an agent's mode (an agent asks with agent_mode)",
         { status: 403 },
@@ -1313,6 +1318,15 @@ export async function handleAgentRoutes(
           throw new AgentError(`${k}: unknown field (mode takes mode)`, {
             usage: true,
           });
+      if (
+        fixtureMode &&
+        body.mode !== null &&
+        !FIXTURE_MODES.includes(String(body.mode))
+      )
+        throw new AgentError(
+          `only a person can choose ${String(body.mode)}: a live check may pick ${FIXTURE_MODES.join(" or ")}`,
+          { status: 403 },
+        );
       let intent: PermissionIntent | null = null;
       if (body.mode !== null) {
         if (typeof body.mode !== "string")
