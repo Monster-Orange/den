@@ -21,7 +21,6 @@ const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
  * agents-page.js, local-dev.html and services.html): a drag's save holds
  * its row, and Delete project holds its last dialog's button.
  * busy-button-sweep-1054.test.ts checks every write shows its wait.
- * Issue 1086 took one away: Remove all stopped no longer closes shells.
  */
 const LEFT: Record<string, number> = {
   "agent-helpers.js": 1,

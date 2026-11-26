@@ -123,7 +123,6 @@ describe("?ws= for a workspace that isn't active", () => {
     await p
       .locator('dialog[open][data-dk-kind="confirm"] [data-dk="ok"]')
       .click();
-    // Exactly the agents its confirm named (issue 1086, review).
     expect((await req).postDataJSON()).toEqual({
       workspaces: ["west"],
       agents: ["drifter"],

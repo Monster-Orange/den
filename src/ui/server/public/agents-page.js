@@ -58,9 +58,8 @@
  * "Interrupted: Den restarted", "Exited (code 1)") and its actions:
  * Resume (the same conversation; its pane opens), Start fresh, Remove (one
  * click, and Undo in the toast for 10 s). A runtime that can't resume
- * shows only Start fresh, saying so. Remove all stopped (N), on the
- * Stopped group's header, removes every stopped agent in view (issue
- * 1086). After a restart, one line says how many were interrupted,
+ * shows only Start fresh, saying so. Remove all stopped (N) removes every
+ * stopped agent in view. After a restart, one line says how many were interrupted,
  * with Resume all and Review.
  *
  * Layouts (AG-4b): Focus (the default: one pane; a click replaces it,
@@ -1626,10 +1625,6 @@ function stoppedGroupHtml(rows) {
   if (!rows.length) return "";
   // More than one workspace among them: each row names its own.
   const wsTag = new Set(rows.map((r) => r.workspace)).size > 1;
-  // Issue 1086: Remove all stopped (N), on this list's own header: stopped
-  // agents only (an exited shell is the Terminals page's), shown only when
-  // one is stopped. Beside the summary, never in it (a summary is itself a
-  // button): a row around the group holds it, on its own line just above.
   const agents = rows.filter(isStopped).length;
   const rmAll = agents
     ? `<button type="button" class="den-btn sm" data-act="remove-stopped" data-n="${agents}">${esc(t("ag.rmAll", { n: agents }))}</button>`
@@ -4448,13 +4443,7 @@ async function newTerminal(button) {
   });
 }
 
-/**
- * Issue 1086 (was Clear stopped, AG-14.1b): every stopped agent in view,
- * never a running one, never a shell. One confirm names the count; its
- * own Remove sends and holds the kit's busy state until the server answers
- * (issue 1054: no Working pop-up), and a refusal is said in it. Then a
- * toast says how many, with Undo, as a single Remove has.
- */
+/** Remove all stopped: every stopped agent in view, never a running one or a shell. */
 async function removeAllStopped(button) {
   const rows = visibleRows().filter(isStopped);
   const n = rows.length;
@@ -6359,7 +6348,6 @@ export async function mountAgentsPage(root) {
       // Issue 750: Hub didn't answer for its groups: ask again now.
       if (which === "groups-retry") return void loadGroups(true);
       if (which === "resume-all") return void resumeAll(act);
-      // Issue 1086: on the Stopped group's summary; it never toggles it.
       if (which === "remove-stopped") {
         e.preventDefault();
         return void removeAllStopped(act);

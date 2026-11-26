@@ -11,9 +11,7 @@
  *   - a runtime that can't resume offers Start fresh, and says why;
  *   - after a restart, one line: "N agents were interrupted when … restarted
  *     · Resume all · Review"; Review marks them, Resume all resumes each;
- *   - Remove all stopped (N), on the Stopped group's header (issue 1086):
- *     one confirm naming the count, its Remove busy until the server
- *     answers, every stopped agent in view gone, never a running one;
+ *   - Remove all stopped (N) removes every stopped agent in view, never a running one;
  *   - never the admin password, and no page errors.
  *
  * The demo distribution (acme; north, south) with a session host in this
@@ -229,9 +227,7 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
       "Stopped (3)",
     );
     expect(await group.getAttribute("open")).not.toBeNull();
-    // Issue 1086: Remove all stopped (N) is on the group's own header,
-    // the kit's small size, counting the stopped agents.
-    // Beside the summary, never in it (a summary is itself a button).
+    // Remove all stopped (N) shows on the Stopped group's header, counting them.
     const all = p.locator(
       '#agl [data-stopped-row] > [data-act="remove-stopped"]',
     );
@@ -241,11 +237,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
         (b) => b.classList.contains("den-btn") && b.classList.contains("sm"),
       ),
     ).toBe(true);
-    // Its count is the stopped agents in view (data-n, and in its words).
     const n0 = await all.getAttribute("data-n");
     expect(Number(n0)).toBeGreaterThan(0);
     expect(await all.textContent()).toContain(`(${n0})`);
-    // The page header's old Clear stopped is gone.
     expect(await p.locator("#ag-clear").count()).toBe(0);
     await p.context().close();
   }, 60_000);
@@ -1011,10 +1005,6 @@ describe("after a restart (AG-14.3)", () => {
 });
 
 describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () => {
-  // Review: never a button inside the summary (itself a button). The
-  // summary's name is Stopped (N) alone and it still opens and closes the
-  // group, by click and by Enter; the button, reached by Tab, opens its
-  // confirm with Enter and leaves the group as it was.
   it("beside the summary, not in it: the summary still toggles (click, Enter); Tab to the button and Enter asks, the group unchanged", async () => {
     if (skip()) return;
     const p = await open("north");
@@ -1025,7 +1015,6 @@ describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () =
     expect(
       await p.locator("#agl details[data-stopped] > summary button").count(),
     ).toBe(0);
-    // Its name: the count alone, no button's words in it.
     const n = await p
       .locator('#agl [data-stopped-row] > [data-act="remove-stopped"]')
       .getAttribute("data-n");
@@ -1033,7 +1022,6 @@ describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () =
     expect(
       ((await sum.textContent()) ?? "").match(/\(\d+\)/g) ?? [],
     ).toHaveLength(1);
-    // Its own line above the summary: it never covers the summary's click.
     const bb = await p
       .locator('#agl [data-stopped-row] > [data-act="remove-stopped"]')
       .boundingBox();
@@ -1046,9 +1034,6 @@ describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () =
     await sum.focus();
     await p.keyboard.press("Enter");
     expect(await isOpen()).toBe(was);
-    // Tab: the button comes just before the group in the page's order,
-    // so Shift+Tab from the summary reaches it; Enter asks, the group
-    // stays as it was.
     await sum.focus();
     await p.keyboard.press("Shift+Tab");
     expect(
@@ -1073,11 +1058,9 @@ describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () =
     );
     const n = Number(await all.getAttribute("data-n"));
     expect(n).toBeGreaterThan(0);
-    // The stopped agents in view, and no running one among what it counts.
     expect(
       await p.locator("#agl details[data-stopped] [data-agent]").count(),
     ).toBe(n);
-    // The answer is held, so the busy state is seen, never timed.
     let release: () => void = () => {};
     const go = new Promise<void>((r) => (release = r));
     await p.route(
@@ -1094,7 +1077,6 @@ describe("Remove all stopped (N) (issue 1086, was Clear stopped AG-14.1b)", () =
     await ask.waitFor();
     expect((await group.getAttribute("open")) !== null).toBe(wasOpen);
     const said = ((await ask.textContent()) ?? "").replace(/\s+/g, " ");
-    // The confirm and its Remove name the count.
     expect(said).toContain(String(n));
     const ok = ask.locator('[data-dk="ok"]');
     expect(await ok.textContent()).toContain(String(n));

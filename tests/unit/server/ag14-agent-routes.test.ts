@@ -177,9 +177,6 @@ describe("Remove and Undo", () => {
     expect(bad.status).toBe(404);
   });
 
-  // Issue 1086: the page sends the agents its confirm named, so one that
-  // stopped since it last looked is not removed with them; each is still
-  // checked as stopped, so a running one named stays.
   it("Remove all stopped with `agents`: only those named, and only if stopped", async () => {
     const a = await api();
     await started(a, "planner");

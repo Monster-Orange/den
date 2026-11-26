@@ -9241,9 +9241,7 @@ export async function removeAgent(
 
 /**
  * Remove every stopped, interrupted or exited agent of `workspaces`
- * (AG-14.1b Clear stopped); running ones stay. Issue 1086: `only`, the
- * agents a person's confirm named, limits it to those (each still checked
- * as stopped), so one that stopped since the page looked is not removed.
+ * (Remove all stopped); running ones stay, and `only` limits it to those.
  */
 export async function removeStopped(
   d: AgentsResolved,

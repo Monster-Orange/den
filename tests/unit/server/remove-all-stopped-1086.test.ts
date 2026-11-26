@@ -1,16 +1,3 @@
-/**
- * Issue 1086: "Remove all stopped (N)" on the stopped agents list's own
- * header (the Stopped group's summary), in place of the page header's
- * Clear stopped (AG-14.1b). It counts and removes stopped agents only,
- * never a running one and never a shell (exited shells are on Terminals).
- * One confirm names the count; its Remove sends and holds the kit's busy
- * state on itself until the server answers (issue 1054); then a toast
- * says how many, with Undo as a single Remove has. Shown only when one is
- * stopped. en, es and ja.
- *
- * The page's behaviour runs on CI (agents-ag14.browser.test.ts); this
- * reads the page script, so it fails where the code no longer says so.
- */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -19,7 +6,6 @@ const PUBLIC = path.join(process.cwd(), "src/ui/server/public");
 const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
 const PAGE = read("agents-page.js");
 
-/** A top-level function's text, from its declaration to the next. */
 function fn(src: string, start: string): string {
   const i = src.indexOf(start);
   expect(i).toBeGreaterThan(-1);
@@ -28,7 +14,6 @@ function fn(src: string, start: string): string {
   return src.slice(i, end < 0 ? undefined : i + 1 + end);
 }
 
-/** The catalog's text of `key` in a language's file. */
 function word(f: string, key: string): string | undefined {
   const m = read(f).match(
     new RegExp(`"${key.replace(/\./g, "\\.")}":\\s*"([^"]*)"`),
@@ -49,7 +34,6 @@ describe("issue 1086: Remove all stopped (N), on the stopped list's own header",
       /<button type="button" class="den-btn sm" data-act="remove-stopped" data-n="\$\{agents\}">/,
     );
     expect(g).toMatch(/t\("ag\.rmAll",\s*\{\s*n/);
-    // None stopped (only exited shells): no button.
     expect(g).toMatch(/agents\s*\?/);
   });
 
@@ -59,35 +43,24 @@ describe("issue 1086: Remove all stopped (N), on the stopped list's own header",
     expect(f).toMatch(/danger:\s*true/);
     expect(f).toMatch(/onAnswer:/);
     expect(f).toMatch(/"\/api\/agents\/clear-stopped"/);
-    // Exactly the agents the confirm named (Reviewer: one that stopped
-    // since the page looked is not removed with them).
     expect(f).toMatch(/\{\s*workspaces,\s*agents\s*\}/);
     expect(f).toMatch(/\.filter\(isStopped\)/);
-    // Never a shell, never the pop-up.
     expect(f).not.toMatch(/\/api\/sessions\//);
     expect(f).not.toMatch(/busyAction\(/);
-    // Its toast says how many; Undo, as a single Remove has.
     expect(f).toMatch(/removedToast\(/);
   });
 
-  // Review: a summary is itself a button; a button inside it is a button
-  // inside a button, and the D37 summary branch took its click. The button
-  // sits beside the summary, in a row around the group; the summary stays
-  // the group's first child, so it still opens and closes it.
   it("the button is never inside the summary; the summary says only Stopped (N) and is the group's first child", () => {
     const g = fn(PAGE, "function stoppedGroupHtml(");
     const sum = g.match(/<summary[^`]*?<\/summary>/)?.[0] ?? "";
     expect(sum).not.toBe("");
     expect(sum).not.toMatch(/rmAll|<button/);
     expect(g).toMatch(/data-stopped[^`]*`\s*\+\s*`<summary/);
-    // The row around the group holds the button, before the details.
     expect(g).toMatch(
       /<div class="agstw" data-stopped-row>`\s*\+\s*rmAll\s*\+/,
     );
   });
 
-  // Den Design: 44px on touch. The kit's tap target is the button's
-  // ::after, past its box; a clip on the button would cut it.
   it("the button is never clipped (the kit's 44px touch target stays whole)", () => {
     const css = read("agents.html");
     const r = css.match(/\.agl \.agstw > \.den-btn\s*\{([^}]*)\}/)?.[1] ?? "";
