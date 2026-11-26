@@ -292,6 +292,30 @@ export function attentionHooks(
  * tool and after a failed one (guardrails/sandbox-refusal.ts). It says
  * nothing outside the sandbox.
  */
+export function subagentHooks(
+  base: string,
+  call: HookCall = HOOK_CALL_DEFAULT,
+): Record<string, unknown[]> {
+  const c = scriptEntrypoint("src/shared/agents/guardrails/subagent-hook.ts");
+  return {
+    PreToolUse: [
+      {
+        matcher: "Agent|Task",
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: c.command,
+              args: [...c.args, "--den", base, ...hookCallFlags(call)],
+            }),
+            timeout: Math.max(10, hookCallBudgetSeconds(call)),
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export function sandboxRefusalHooks(): Record<string, unknown[]> {
   const entry = {
     hooks: [

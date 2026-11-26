@@ -27,10 +27,16 @@ export class SubagentGate {
     }
   }
 
-  count(now: number): number {
+  count(
+    now: number,
+    running: readonly {
+      agent: string;
+      startedAt?: number;
+    }[] = this.deps.running(),
+  ): number {
     this.live(now);
     const byAgent = new Map<string, number[]>();
-    for (const r of this.deps.running()) {
+    for (const r of running) {
       const list = byAgent.get(r.agent) ?? [];
       list.push(r.startedAt ?? 0);
       byAgent.set(r.agent, list);
@@ -50,7 +56,13 @@ export class SubagentGate {
     return total;
   }
 
-  decide(agent: string): SubagentDecision {
+  decide(
+    agent: string,
+    running: readonly {
+      agent: string;
+      startedAt?: number;
+    }[] = this.deps.running(),
+  ): SubagentDecision {
     const now = (this.deps.now ?? Date.now)();
     const ceiling = this.deps.loadCeiling();
     if (this.deps.respectLoadHold() && ceiling !== undefined) {
@@ -63,12 +75,12 @@ export class SubagentGate {
         };
     }
     const max = this.deps.maxSubagents();
-    const running = this.count(now);
-    if (running >= max)
+    const count = this.count(now, running);
+    if (count >= max)
       return {
         ok: false,
         reason: "max_subagents",
-        message: `Den's subagent limit is reached (${Math.min(running, max)} of ${max} running, agents.max_subagents); start fewer, or wait.`,
+        message: `Den's subagent limit is reached (${Math.min(count, max)} of ${max} running, agents.max_subagents); start fewer, or wait.`,
       };
     this.reserved.set(agent, [...(this.reserved.get(agent) ?? []), now]);
     return { ok: true };

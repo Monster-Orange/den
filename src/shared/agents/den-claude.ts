@@ -66,6 +66,7 @@ import { HUB_PROMPT_LINE } from "../hub.js";
 import {
   apiOnlyHooks,
   attentionHooks,
+  subagentHooks,
   widenHookTimeouts,
   GUARDRAILS_DIR,
   guardrailHooks,
@@ -873,6 +874,12 @@ function common(input: LaunchInput): {
         )
       : null,
   );
+  const allHooks = input.attention
+    ? mergeHooks(
+        hooks,
+        subagentHooks(input.attention.base, input.attention.call),
+      )
+    : hooks;
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the
   // default). Claude Code checks deny before allow: an install's deny wins.
@@ -895,7 +902,7 @@ function common(input: LaunchInput): {
   const settings =
     input.stateDir ||
     input.personConfigDir ||
-    hooks ||
+    allHooks ||
     allow.length ||
     noConnectors
       ? settingsPath(input)
@@ -993,7 +1000,7 @@ function common(input: LaunchInput): {
                       : []),
                   ],
                 },
-                ...(hooks ? { hooks } : {}),
+                ...(allHooks ? { hooks: allHooks } : {}),
                 ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
                 ...(strays
                   ? {

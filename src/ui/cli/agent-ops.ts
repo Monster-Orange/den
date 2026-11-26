@@ -2280,6 +2280,26 @@ export async function agentHelpers(
   };
 }
 
+export async function runningSubagents(
+  d: AgentsResolved,
+): Promise<{ agent: string; startedAt?: number }[]> {
+  const out: { agent: string; startedAt?: number }[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    const rt = getRuntime(rec.runtime);
+    if (!rt?.helpers) continue;
+    const state = await agentLive(d, rec);
+    if (!state.agentLive) continue;
+    for (const h of rt.helpers(rec, {
+      env: d.env,
+      settings: helperSettings(d),
+      ...state,
+    }))
+      if (h.status === "running" && !h.earlier)
+        out.push({ agent: rec.id, startedAt: h.startedAt });
+  }
+  return out;
+}
+
 /** D45: how many characters of a session's last line the details show. */
 const LAST_LINE_MAX = 300;
 

@@ -1584,6 +1584,8 @@ import {
   startLogoutWatch,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
+import { SUBAGENT_START_PATH, handleSubagentStart } from "./subagent-routes.js";
+import { SubagentGate } from "../../shared/agents/subagent-gate.js";
 import { hostRestartOp } from "./host-restart-held.js";
 import {
   agentInputState,
@@ -1621,6 +1623,7 @@ import {
   modeResolver,
   busyAgentHolds,
   runningAgentIds,
+  runningSubagents,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
@@ -1706,6 +1709,19 @@ function readWebPortSafe(): number {
 }
 const github = new GitHubService();
 const editors = new EditorManager();
+const subagentGate = new SubagentGate({
+  maxSubagents: () => {
+    const a = readAgentsConfig();
+    return a.maxSubagents ?? 2 * a.maxConcurrent;
+  },
+  respectLoadHold: () => readAgentsConfig().subagentsRespectLoadHold !== false,
+  loadCeiling: () => {
+    const c = agentsResume().loadCeiling;
+    return c > 0 ? c : undefined;
+  },
+  load1: () => os.loadavg()[0] ?? 0,
+  running: () => [],
+});
 
 // ── Health check ─────────────────────────────────────────────────────────────
 // pingHttp / pingShell are imported from shared health module above.
@@ -6977,6 +6993,17 @@ async function handleRequest(
   // Issue 459: an agent reads its own app feeds (app_feed_read).
   if (guard.ok && isAppFeedPath(pathname)) {
     await handleAppFeedRoutes(req, res, pathname, url);
+    return;
+  }
+  if (guard.ok && pathname === SUBAGENT_START_PATH) {
+    await handleSubagentStart(req, res, {
+      agentOf: (r) => {
+        const a = agentPrincipalOf(r);
+        return a ? a.actor.slice("agent:".length) : null;
+      },
+      gate: async (id) =>
+        subagentGate.decide(id, await runningSubagents(agentWebDeps())),
+    });
     return;
   }
   // Issue 796: an agent asks for a read-only view of these pages.
