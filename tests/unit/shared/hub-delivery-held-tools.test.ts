@@ -19,11 +19,11 @@ import {
   HUB_TOOLS_UNAVAILABLE,
   SeenDeliveries,
   toolsHeldAck,
-} from "../../../src/shared/hub-delivery";
+} from "../../../src/shared/hub/hub-delivery";
 import {
   DeliveryLoop,
   type DeliveryHub,
-} from "../../../src/shared/hub-delivery-loop";
+} from "../../../src/shared/hub/hub-delivery-loop";
 
 let dir = "";
 beforeEach(() => {
@@ -172,7 +172,7 @@ describe("issue 750: an agent whose Hub tools failed to load", () => {
     const s = setup({ ackHeld: true, tools: false });
     await s.loop.take(dv("d1"));
     await s.loop.takeLocal({
-      ...(await import("../../../src/shared/hub-delivery")).parseDelivery(
+      ...(await import("../../../src/shared/hub/hub-delivery")).parseDelivery(
         dv("x"),
       )!,
       id: `${EMBED_PREFIX}m1`,
@@ -189,7 +189,7 @@ describe("issue 750: an agent whose Hub tools failed to load", () => {
     const s = setup({ ackHeld: true, tools: false, draft: true });
     await s.loop.take(dv("d1"));
     await s.loop.takeLocal({
-      ...(await import("../../../src/shared/hub-delivery")).parseDelivery(
+      ...(await import("../../../src/shared/hub/hub-delivery")).parseDelivery(
         dv("x"),
       )!,
       id: `${EMBED_PREFIX}m1`,

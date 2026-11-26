@@ -15,7 +15,7 @@ import { ghGet } from "../../shared/github-watch/gh-http.js";
 import { githubWatchSettings } from "../../shared/github-watch/settings.js";
 import { watchStatusFile } from "../../shared/github-watch/status-line.js";
 import { GithubWatcher } from "../../shared/github-watch/watcher.js";
-import type { Delivery } from "../../shared/hub-delivery.js";
+import type { Delivery } from "../../shared/hub/hub-delivery.js";
 import { getStateDir } from "../../shared/paths.js";
 import { runGh } from "./report-routes.js";
 

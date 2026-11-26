@@ -8,7 +8,7 @@ import { afterAll, describe, expect, it } from "@jest/globals";
 import * as http from "http";
 import type { AddressInfo } from "net";
 import { HubCallError, hubGithubCoverage } from "../../../src/shared/hub.js";
-import { coverageError } from "../../../src/shared/hub-github.js";
+import { coverageError } from "../../../src/shared/hub/hub-github.js";
 
 const TOKEN = "hubi_example_token_0000";
 

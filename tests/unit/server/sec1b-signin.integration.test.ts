@@ -21,8 +21,8 @@ import * as path from "path";
 import {
   cliAuthHeaders,
   readWebSecret,
-} from "../../../src/shared/web-secret.js";
-import { mintLoginCode } from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-secret.js";
+import { mintLoginCode } from "../../../src/shared/web/web-session.js";
 import { mintClaimCode } from "../../../src/shared/claim-code.js";
 import {
   spawnServer,

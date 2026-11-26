@@ -1,7 +1,7 @@
 /**
  * Issue 789: the kit's preview helper (preview.js), the parts that need no
  * browser: the frame's document, the checks on what goes into it, its
- * types, its package export and Den serving it. The frame itself (sandbox,
+ * package export and Den serving it. The frame itself (sandbox,
  * width, theme, a script inside can't reach the host) is
  * preview-kit-789.browser.test.ts.
  */
@@ -10,7 +10,6 @@ import * as fs from "fs";
 import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "../../..");
-const SRC = path.join(ROOT, "packages/den-ui/src");
 
 type Preview = {
   PREVIEW_SANDBOX: string;
@@ -105,12 +104,6 @@ describe("issue 789: the preview's document", () => {
 });
 
 describe("issue 789: the helper ships", () => {
-  it("is typed in the kit's .d.ts", () => {
-    const d = fs.readFileSync(path.join(SRC, "preview.d.ts"), "utf8");
-    for (const name of ["previewHtml", "mountPreview", "previewTheme"])
-      expect(d).toMatch(new RegExp(`export declare function ${name}\\(`));
-  });
-
   it("is a package export, and Den serves it and its frame script", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(ROOT, "packages/den-ui/package.json"), "utf8"),

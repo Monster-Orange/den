@@ -9,7 +9,7 @@
  * front of a real agent (a scripted PTY), with its real actor token.
  * Invented names only.
  */
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { createHash } from "crypto";
 import * as fs from "fs";
