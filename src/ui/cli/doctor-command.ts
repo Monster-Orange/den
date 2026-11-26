@@ -591,6 +591,7 @@ export function strategyCheck(r: DoctorRow): OnboardCheck {
         ? "warn"
         : "ok",
     detail: `${sel} ${r.available ? "available" : r.idle ? "not in use yet, unavailable" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+    ...(r.notes?.length ? { notes: [...r.notes] } : {}),
   };
 }
 

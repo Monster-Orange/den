@@ -207,6 +207,12 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 - Between marked runs only: it never passes another marked run that has
   waited `priority_pass_limit_minutes`. The default, 0, means it never
   passes another marked run.
+- It also passes earlier waiting runs of the other kind that have waited
+  up to `release_pass_other_kind_minutes` (default 30): while it waits, a
+  cpu run asked before a browser release run doesn't start in a slot the
+  release run needs, and a browser run asked before a cpu release run
+  doesn't start either. It stops at the first one that has waited longer,
+  and at any marked run. At 0 it passes none of them.
 - `priority_agents` (default 1) lets agents ask for it. At 0, only a person
   may. The MCP tool `gate_slot_request` takes `priority: "release"` and a
   `reason` too.
@@ -216,8 +222,8 @@ issue the person reported. It goes to the front of its kind's waiting runs.
 - `gate status` (text and `--json`), and the queue on the Agents page, show
   the priority and its reason.
 
-Change the three settings in Settings › Server, or with
-`den gate settings --priority-max N --priority-pass-limit-minutes N --priority-agents 0|1`.
+Change the four settings in Settings › Server, or with
+`den gate settings --priority-max N --priority-pass-limit-minutes N --release-pass-other-kind-minutes N --priority-agents 0|1`.
 `--priority-max 0` turns release priority off for every repo on the machine,
 so it warns first and changes nothing (exit 1) unless you add `--yes`. A
 script that turns it off must pass `--yes`. While it is off, `gate status`
@@ -361,7 +367,8 @@ den gate settings --class-order "release, lane, other" \
 2. A release-priority run (a person's, an agent's or a CI runner's) goes
    first in its kind, past any class and any plain run, but never past
    another marked run waiting longer than `priority_pass_limit_minutes`
-   (at 0, never past one).
+   (at 0, never past one). It also goes ahead of earlier plain runs of the
+   other kind that have waited up to `release_pass_other_kind_minutes`.
 3. Then classes, highest first.
 4. Then yields: a run let ahead goes just ahead of the run that let it,
    never past a run that outranks it by 2 or 3.
