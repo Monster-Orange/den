@@ -30,6 +30,7 @@
     ["server.github_rerun_look", "server"],
     ["server.ready_probe", "server"],
     ["server.start_wait", "server"],
+    ["server.tools_probe", "server"],
     ["server.gate_cpu", "server"],
     ["server.gate_cpu_beside", "server"],
     ["server.gate_cpu_beside_release", "server"],
