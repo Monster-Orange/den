@@ -17,7 +17,7 @@
  * 1:1 (0.4.45, Projects follow Connect): a project already linked, or one
  * with an ask waiting, is refused before Hub is asked.
  */
-import type { HubCaller, HubPlanAsk, HubPlanOutcome } from "./hub.js";
+import type { HubCaller, HubPlanAsk, HubPlanOutcome } from "../hub.js";
 import type { HubProjectLink } from "./hub-project-link.js";
 
 /** What became of an ask, once Hub decided (none: still waiting). */
@@ -173,7 +173,7 @@ export async function askHubCreate(
       ? `Asked by the agent ${a.agent?.name ?? "Den"} in Den, for project "${a.ws}"`
       : `Asked in Den, Settings › Project › Hub project, for "${a.ws}"`;
   const plan: NonNullable<HubCreateDeps["plan"]> =
-    d.plan ?? (await import("./hub.js")).hubPlanCreate;
+    d.plan ?? (await import("../hub.js")).hubPlanCreate;
   let held: HubPlanAsk;
   try {
     held = await plan(at.url, at.token, {
@@ -234,7 +234,7 @@ export async function settleHubCreate(
   const at = await d.hub().catch(() => null);
   if (!at) return { state: "pending" };
   const read: NonNullable<HubCreateDeps["outcome"]> =
-    d.outcome ?? (await import("./hub.js")).hubPlanOutcome;
+    d.outcome ?? (await import("../hub.js")).hubPlanOutcome;
   let o: HubPlanOutcome;
   try {
     o = await read(at.url, at.token, ask.held);

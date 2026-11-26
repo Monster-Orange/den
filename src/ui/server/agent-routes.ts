@@ -286,11 +286,11 @@ export interface AgentRouteDeps {
   hubStatus?: () => Promise<import("../../shared/hub.js").HubStatus>;
   /** H5 (tests): Den Hub's GitHub coverage, and the project sync. */
   hubGithub?: () => Promise<
-    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { orgs: import("../../shared/hub/hub-project-sync.js").OrgCoverage[] }
     | { error: string }
     | null
   >;
-  projectSync?: import("../../shared/hub-project-sync.js").ProjectSync;
+  projectSync?: import("../../shared/hub/hub-project-sync.js").ProjectSync;
   /** 0.4.40 (tests): comment delivery, restarted on connect, stopped on disconnect. */
   hubDeliveries?: { restart(): void; stop(): void };
   /** HUB-1.7: Connect to Hub's state (tests: fake Hub calls and store). */
@@ -771,7 +771,7 @@ export async function handleAgentRoutes(
       ? null
       : (deps.hubConnect ?? defaultConnect)?.lastResult();
     // 0.4.45: the editions Settings names under Connect (den.yml).
-    const { hubEditions } = await import("../../shared/hub-editions.js");
+    const { hubEditions } = await import("../../shared/hub/hub-editions.js");
     const { readDenConfig } = await import("../../shared/den-config.js");
     let editions = null;
     try {
@@ -780,7 +780,7 @@ export async function handleAgentRoutes(
       editions = null;
     }
     // Issue 869: Hub refused this Den's address when it was last told.
-    const tell = await import("../../shared/hub-den-url.js");
+    const tell = await import("../../shared/hub/hub-den-url.js");
     const denUrl = tell.denUrlTellProblem(tell.readDenUrlTell(getStateDir()));
     const hs = await import("./hub-switch.js");
     const { readUserConfig } = await import("../../shared/den-config.js");

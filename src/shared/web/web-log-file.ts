@@ -17,7 +17,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { redactSecrets } from "./redact.js";
+import { redactSecrets } from "../redact.js";
 
 /** The kinds that always reach web.log. */
 export const WEB_LOG_KINDS: ReadonlySet<string> = new Set([

@@ -22,9 +22,9 @@
  */
 import { isServerScope } from "./agents/server-agent.js";
 import * as crypto from "crypto";
-import { hubUrlProblem } from "./hub-url.js";
+import { hubUrlProblem } from "./hub/hub-url.js";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
-import { readHubProjectChoices } from "./hub-project-link.js";
+import { readHubProjectChoices } from "./hub/hub-project-link.js";
 import {
   getSecretsProvider,
   namedSecretRef,
@@ -80,7 +80,7 @@ export interface HubConfig {
   inboxOnStop: "nudge" | "off";
   /**
    * Issue 158 hub.delivery_loop (default true): every agent gets the Hub
-   * delivery loop in its instructions (shared/hub-loop.ts); a project's
+   * delivery loop in its instructions (shared/hub/hub-loop.ts); a project's
    * own setting wins.
    */
   deliveryLoop: boolean;

@@ -18,7 +18,7 @@ import {
   HubConnect,
   type HubConnectDeps,
 } from "../../../src/ui/server/hub-connect.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 
 const ORIGIN = "http://localhost:7300";
 const HUB = "https://hub.example.test";

@@ -1,11 +1,11 @@
 import * as fs from "fs";
 import * as path from "path";
-import { hubOrigin, listPreviousHubs } from "../../shared/hub-binding.js";
-import { relinkMoved, type ArchivedLink } from "../../shared/hub-moved.js";
+import { hubOrigin, listPreviousHubs } from "../../shared/hub/hub-binding.js";
+import { relinkMoved, type ArchivedLink } from "../../shared/hub/hub-moved.js";
 import {
   parseHubProjectLink,
   type HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 
 export interface RelinkAfterMoveDeps {
   stateDir: () => string;

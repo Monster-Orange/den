@@ -4,7 +4,7 @@ import {
   relinkMoved,
   type ArchivedLink,
   type HubProjectSeen,
-} from "../../../src/shared/hub-moved.js";
+} from "../../../src/shared/hub/hub-moved.js";
 
 const OLD = "https://old-hub.example.test";
 const NEW = "https://new-hub.example.test";

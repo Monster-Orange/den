@@ -13,7 +13,7 @@ import {
   fixturePersonOffInstallWarning,
   ignoredConfigWarning,
   readWebAuthConfig,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 
 const dirs: string[] = [];
 afterEach(() => {
