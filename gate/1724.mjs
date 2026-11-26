@@ -9,11 +9,11 @@ export const TAKE_MS = 15000;
 export const clauses = [
   `WebKit at iPad size (${IPAD.width}x${IPAD.height}, touch) attaches to an agent's terminal and sizes it`,
   `a desktop browser (${DESK.width}x${DESK.height}) takes over, then goes away with a 1001 close: the terminal is back at the iPad's size within the leave grace (+${SLACK_MS / 1000} s)`,
-  `a desktop browser takes over, then its connection ends without a going-away close: the terminal is back at the iPad's size within the claim grace (+${SLACK_MS / 1000} s)`,
+  `a desktop browser takes over, then the desktop's connection closes normally (1000): the terminal is back at the iPad's size within the claim grace (+${SLACK_MS / 1000} s)`,
   `a person's Take over in between (the desktop back within the claim grace): the terminal keeps the desktop's size past the grace`,
 ];
 export const CLOSE_WAY =
-  "the desktop is a real Chromium page whose terminal socket goes through Playwright's WebSocket route: 'goes away' closes Den's side with 1001; 'ends' closes it with 1000, which Den takes the same way as a drop (anything but 1001 and 4000 keeps the claim grace); after either, the route refuses the page's reconnects until the case brings it back";
+  "the desktop is a real Chromium page whose terminal socket goes through Playwright's WebSocket route: 'goes away' closes Den's side with 1001, 'closes normally' with 1000; after either, the route refuses the page's reconnects until the case brings it back. This does not cover a dead connection with no close (a laptop lid shut): Den finds that only by its heartbeat's timeout, with other timing";
 export const timeoutMs = 360000;
 
 const AGENT = "g1724-term";
@@ -210,7 +210,7 @@ export async function run(ctx, s) {
     r.ipad = z?.own ?? null;
     r.firstPty = z?.pty ?? null;
     if (!r.pane || r.sizedMs === null) return r;
-    for (const how of ["1001", "drop", "claimed"]) {
+    for (const how of ["1001", "normal", "claimed"]) {
       try {
         r[how] = await oneCase(ctx, ipad.page, s, how, r);
       } catch (e) {
@@ -294,7 +294,7 @@ export function expect(cells) {
   return [
     first,
     caseRow(clauses[1], r["1001"], r, false),
-    caseRow(clauses[2], r.drop, r, false),
+    caseRow(clauses[2], r.normal, r, false),
     caseRow(clauses[3], r.claimed, r, true),
   ];
 }
