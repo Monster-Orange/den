@@ -315,7 +315,7 @@ export function fakeBed({ den = "good" } = {}) {
       return { ok: false };
     },
     readBed(rel) {
-      return rel === "audit.jsonl"
+      return rel === "state:audit.jsonl"
         ? st.audit.map((detail) => JSON.stringify({ detail })).join("\n") + "\n"
         : null;
     },

@@ -61,7 +61,7 @@ async function modeOf(ctx, ws) {
 }
 
 const auditDetails = (ctx) =>
-  String(ctx.readBed("audit.jsonl") ?? "")
+  String(ctx.readBed("state:audit.jsonl") ?? "")
     .split("\n")
     .filter(Boolean)
     .map((l) => {
