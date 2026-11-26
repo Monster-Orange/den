@@ -1375,7 +1375,7 @@
     "set.notifications.alert_sound.finished": "▶ Finished",
     "set.notifications.tab_count": "Count in the tab",
     "set.notifications.tab_count.d":
-      "Show how many agents need you in the tab title and on the tab icon. Zero shows nothing.",
+      "Show the number of agents that need you in the tab title and on the tab icon (not the bell's count). Zero shows nothing.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",

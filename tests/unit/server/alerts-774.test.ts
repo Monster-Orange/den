@@ -37,6 +37,7 @@ import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
 import {
   alertPlan,
   deliverAlert,
+  pageAgent,
 } from "../../../src/ui/server/public/alerts.js";
 import {
   badgeColors,
@@ -482,5 +483,54 @@ describe("the tab badge takes the theme's colors (774)", () => {
       digit: "",
       sans: "",
     });
+  });
+});
+
+describe("issue 774: the agent in front of the person, from the Agents page's address", () => {
+  /** A page at `url` whose list has session `sid` as agent `agent`'s row. */
+  const win = (url: string, rows: Record<string, string> = {}) => ({
+    location: { href: `https://den.example.test${url}` },
+    document: {
+      querySelector: (sel: string) => {
+        const m = /data-id="([^"]+)"/.exec(sel);
+        const agent = m ? rows[m[1]] : undefined;
+        return agent ? { closest: () => ({ dataset: { agent } }) } : null;
+      },
+    },
+  });
+  const need = { id: "x1", why: "permission", agent: "ag-1" };
+  const prefs = { desktop: true, sound: true };
+  const front = (w: unknown) => ({
+    front: true,
+    permission: "granted",
+    pushed: false,
+    agent: pageAgent(w),
+  });
+
+  it("?front= names the session in front: no sound for its agent", () => {
+    const w = win("/agents?open=s-2,s-1&front=s-1", {
+      "s-1": "ag-1",
+      "s-2": "ag-2",
+    });
+    expect(pageAgent(w)).toBe("ag-1");
+    expect(alertPlan(need, prefs, front(w))).toEqual({
+      notify: false,
+      sound: null,
+    });
+  });
+
+  it("one ?open= and no ?front=: that one", () => {
+    expect(pageAgent(win("/agents?open=s-1", { "s-1": "ag-1" }))).toBe("ag-1");
+  });
+
+  it("another agent in front, several open with none in front, or another page: the sound plays", () => {
+    const rows = { "s-1": "ag-1", "s-2": "ag-2" };
+    expect(pageAgent(win("/agents?front=s-2", rows))).toBe("ag-2");
+    expect(
+      alertPlan(need, prefs, front(win("/agents?front=s-2", rows))).sound,
+    ).toBe("needs");
+    expect(pageAgent(win("/agents?open=s-1,s-2", rows))).toBeNull();
+    expect(pageAgent(win("/settings?front=s-1", rows))).toBeNull();
+    expect(pageAgent(win("/agents?front=s-9", rows))).toBeNull();
   });
 });

@@ -443,7 +443,7 @@ function alertRows() {
       category: "notifications",
       label: "Count in the tab",
       description:
-        "Show how many agents need you in the tab title and on the tab icon. Zero shows nothing.",
+        "Show the number of agents that need you in the tab title and on the tab icon (not the bell's count). Zero shows nothing.",
       keywords: ["notifications", "tab", "title", "icon", "count", "badge"],
       scope: "user",
       control: { type: "toggle" },

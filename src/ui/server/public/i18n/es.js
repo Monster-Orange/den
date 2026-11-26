@@ -4352,7 +4352,7 @@
     "set.notifications.alert_sound.finished": "▶ Terminó",
     "set.notifications.tab_count": "Contador en la pestaña",
     "set.notifications.tab_count.d":
-      "Muestra cuántos agentes te necesitan en el título y el icono de la pestaña. Con cero no muestra nada.",
+      "Muestra el número de agentes que te necesitan en el título y el icono de la pestaña (no el número de la campana). Con cero no muestra nada.",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",

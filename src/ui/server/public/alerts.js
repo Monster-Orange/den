@@ -178,11 +178,26 @@ export function alertStream(win, o) {
   return { onEvent, presence };
 }
 
-/** The agent this page shows (the Agents page's ?agent=), or null. */
-function pageAgent(win) {
+/**
+ * The agent this page shows, or null: the Agents page's session in front
+ * (?front=, else its one ?open=), as its list row's agent id (an alert
+ * names the agent, the address names the session).
+ */
+export function pageAgent(win) {
   try {
     const u = new URL(win.location.href);
-    return u.pathname === "/agents" ? u.searchParams.get("agent") : null;
+    if (u.pathname !== "/agents") return null;
+    const open = (u.searchParams.get("open") ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const sid =
+      u.searchParams.get("front") || (open.length === 1 ? open[0] : "");
+    if (!sid) return null;
+    const row = win.document?.querySelector?.(
+      `#agl button[data-id="${String(sid).replace(/["\\]/g, "\\$&")}"]`,
+    );
+    return row?.closest?.("[data-agent]")?.dataset?.agent || null;
   } catch {
     return null;
   }
