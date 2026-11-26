@@ -22,7 +22,12 @@ export interface BusyHooks {
   /** Check again through the product's adapter (statusUrl is then unused). */
   request?: (id: string) => Promise<RequestState | null>;
   report?:
-    | ((info: { title: string; details: string; requestId: string }) => void)
+    | ((info: {
+        title: string;
+        details: string;
+        requestId: string;
+        route: string;
+      }) => void)
     | null;
   toast?: ((text: string) => void) | null;
   open?: (url: string) => void;

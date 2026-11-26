@@ -21,6 +21,7 @@
     "./update-pill.css": "./src/update-pill.css",
     "./busy": "./src/busy.js",
     "./busy-words": "./src/busy-words.js",
+    "./busy-report": "./src/busy-report.js",
     "./dialog": "./src/dialog.js",
     "./savestate": "./src/savestate.js",
     "./strings": "./src/strings.js",

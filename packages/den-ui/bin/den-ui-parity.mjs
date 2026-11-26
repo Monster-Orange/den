@@ -161,7 +161,7 @@ export const COMPONENTS = {
     markup: [cls("bz-dlg")],
     css: ["bz-dlg"],
     code: ["configureBusy", "registerActions"],
-    files: ["busy.js", "busy-words.js", "busy.css"],
+    files: ["busy.js", "busy-words.js", "busy-report.js", "busy.css"],
   },
   // Issue 673: the one button. A product's own `.btn` (its class drawn, or
   // a rule for it) is a copy; the kit's `.den-btn`, and a host's layout of

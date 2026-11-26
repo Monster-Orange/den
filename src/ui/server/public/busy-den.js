@@ -524,7 +524,16 @@ function setUp() {
     lang: () => sh()?.lang?.() || "en",
     idHeader: "X-Den-Request-Id",
     statusUrl: (id) => `/requests/${encodeURIComponent(id)}`,
-    report: sh()?.report ? (info) => sh().report(info) : null,
+    report: sh()?.report
+      ? (info) =>
+          sh().report({
+            prefill: {
+              kind: "bug",
+              title: info.title,
+              description: info.details,
+            },
+          })
+      : null,
     toast: (text) => sh()?.toast?.(text),
     open: (url) => window.location.assign(url),
     logUrl: "/logs",

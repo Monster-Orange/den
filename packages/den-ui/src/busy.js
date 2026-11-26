@@ -14,7 +14,7 @@
  *     request: (id) => Promise<state>  Check again through the product's
  *                                   adapter instead ({ state, result?,
  *                                   error? }); statusUrl is then unused
- *     report: (info) => void,       Report: { title, details, requestId }
+ *     report: (info) => void,       Report: { title, details, requestId, route }
  *     toast: (text) => void,        a fast success, said without a pop-up
  *     open: (url) => void,          a held answer's page (default: go)
  *     logUrl: "/logs",              Open the log (reconnect mode)
@@ -126,6 +126,7 @@
  * and opens url.
  */
 import { BUSY_WORDS } from "./busy-words.js";
+import { failureReport } from "./busy-report.js";
 
 export const OPEN_MS = 300;
 export const MIN_MS = 600;
@@ -651,13 +652,22 @@ export function busyAction(name, run, opts = {}) {
     on("retry", () => attempt());
     on("check", () => (reconnect ? waitBack(Date.now()) : checkAgain()));
     on("log", () => hook.open(hook.logUrl));
-    on("report", () =>
+    on("report", () => {
+      const r = failureReport({
+        lang: hook.lang(),
+        words: hook.words,
+        failure: actionWord(a, "failure", vars),
+        err: lastErr,
+        id,
+        at: lastAt,
+      });
       hook.report?.({
-        title: actionWord(a, "failure", vars),
-        details: detailsText(lastErr, id, lastAt),
-        requestId: id,
-      }),
-    );
+        title: r.title,
+        details: r.description,
+        requestId: r.requestId,
+        route: r.route,
+      });
+    });
   }
 
   function paintFailure(err) {
@@ -969,7 +979,7 @@ export function pending(button, run, opts = {}) {
         } catch {
           body = null;
         }
-        throw { status: r.status, body };
+        throw { status: r.status, body, url: r.url };
       }
       return r;
     },

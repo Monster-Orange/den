@@ -35,6 +35,10 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/report-from-failure-177.browser.test.ts": [
+      "packages/den-ui/src/busy-report.js",
+      "src/ui/server/public/busy-den.js"
+    ],
     "tests/unit/server/size-claim-1724.integration.test.ts": [
       "src/ui/server/session-routes.ts",
       "src/ui/server/term-size-lead.ts"
@@ -1348,6 +1352,7 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-from-failure-177.browser.test.ts",
         "tests/unit/server/report-shot-filing.browser.test.ts",
         "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
@@ -1809,6 +1814,7 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-from-failure-177.browser.test.ts",
         "tests/unit/server/report-shot-filing.browser.test.ts",
         "tests/unit/server/runs-bar-band-283.browser.test.ts",
         "tests/unit/server/runs-dock.browser.test.ts",
@@ -2143,6 +2149,7 @@
         "tests/unit/server/report-dialog.browser.test.ts",
         "tests/unit/server/report-every-page.browser.test.ts",
         "tests/unit/server/report-everywhere.browser.test.ts",
+        "tests/unit/server/report-from-failure-177.browser.test.ts",
         "tests/unit/server/report-shot-filing.browser.test.ts",
         "tests/unit/server/report-visibility.browser.test.ts",
         "tests/unit/server/run-outcome.browser.test.ts",
@@ -4880,8 +4887,12 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/workspace-routes.ts"],
-      "run": ["tests/unit/server/project-agent-cap-1634.integration.test.ts"],
+      "when": [
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/project-agent-cap-1634.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -4959,6 +4970,16 @@
       ],
       "run": [
         "tests/unit/server/report-everywhere.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/busy-report.js",
+        "src/ui/server/public/busy-den.js"
+      ],
+      "run": [
+        "tests/unit/server/report-from-failure-177.browser.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
@@ -5517,7 +5538,9 @@
         "src/ui/server/public/agents-page.js",
         "src/ui/server/term-size-lead.ts"
       ],
-      "run": ["tests/unit/server/size-claim-1724.browser.test.ts"],
+      "run": [
+        "tests/unit/server/size-claim-1724.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5525,7 +5548,9 @@
         "src/ui/server/session-routes.ts",
         "src/ui/server/term-size-lead.ts"
       ],
-      "run": ["tests/unit/server/size-claim-1724.integration.test.ts"],
+      "run": [
+        "tests/unit/server/size-claim-1724.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
