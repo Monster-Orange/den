@@ -2771,6 +2771,15 @@
     },
     {
       "when": [
+        "scripts/test-health.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/test-health-846.test.ts"
+      ],
+      "why": "tests that run scripts/test-health.mjs"
+    },
+    {
+      "when": [
         "scripts/typecheck-tests.mjs"
       ],
       "run": [
