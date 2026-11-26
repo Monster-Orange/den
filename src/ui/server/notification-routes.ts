@@ -10,8 +10,7 @@
  *                                     the person's kinds that are on;
  *                                     items older than foldDays in
  *                                     `older`; unread counts what is shown.
- *                                     `done`, the agents that
- *                                     finished since this person looked.
+ *                                     `done`: agents done since they looked.
  *   POST /api/notifications/read     {id} | {subject} | {scope} | {all: true}
  *                                     (all: what is shown only)
  *   POST /api/notifications/clear    the read ones ({scope} or all).
