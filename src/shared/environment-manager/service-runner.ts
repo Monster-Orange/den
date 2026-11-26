@@ -273,7 +273,9 @@ function readDaemonsFile(filePath: string): Map<string, DaemonRecord> {
     records = null;
   }
   if (!records) {
-    const aside = `${filePath}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    const stamp = `${filePath}.corrupt-${new Date().toISOString().replace(/[:.]/g, "-")}`;
+    let aside = stamp;
+    for (let n = 2; fs.existsSync(aside); n++) aside = `${stamp}-${n}`;
     try {
       fs.renameSync(filePath, aside);
     } catch (e) {

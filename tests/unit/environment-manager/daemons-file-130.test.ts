@@ -85,6 +85,20 @@ describe("the daemons file keeps every record", () => {
     expect(asides()).toHaveLength(2);
   });
 
+  it("two bad files moved aside in the same millisecond both stay, neither overwritten", () => {
+    jest
+      .spyOn(Date.prototype, "toISOString")
+      .mockReturnValue("2026-01-01T00:00:00.000Z");
+    fs.writeFileSync(file, "first");
+    loadDaemonsFromFile();
+    fs.writeFileSync(file, "second");
+    loadDaemonsFromFile();
+    const kept = asides().map((a) =>
+      fs.readFileSync(path.join(dir, a), "utf-8"),
+    );
+    expect(kept.sort()).toEqual(["first", "second"]);
+  });
+
   it("a file Den can't read refuses the change and writes nothing", () => {
     fs.mkdirSync(file); // not a file: reading it fails, and it isn't missing
     expect(() => registerDaemon(record("shop/web"))).toThrow(
