@@ -145,10 +145,13 @@ export async function run(ctx, s) {
   r.upMs = await ctx.until(() => answering(ctx), 90000);
   r.restart = await mark(ctx, a, tool("R"));
 
-  r.rows = tokenRows(ctx.readBed("audit.jsonl"), s.id, r.since);
+  r.rows = auditRows(ctx, s.id, r.since);
   ctx.log?.(`609: ${JSON.stringify({ ...r, rows: r.rows.length })}`);
   return r;
 }
+
+export const auditRows = (ctx, id, since) =>
+  tokenRows(ctx.readBed("state:audit.jsonl"), id, since);
 
 export async function teardown(ctx, s) {
   stopLoad(s?.load);

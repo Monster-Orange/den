@@ -122,4 +122,23 @@ describe("gate/609.mjs", () => {
       rowsOf(audit, "gate609-calls", Date.parse("2026-11-19T11:00:00Z")),
     ).toHaveLength(1);
   });
+
+  it("reads the audit from Den's home (state:audit.jsonl), as the bed keeps it", () => {
+    const row = JSON.stringify({
+      ts: "2026-11-19T12:00:00Z",
+      verb: "agent-token",
+      principal: "agent:gate609-calls",
+    });
+    const js = `
+      const g = await import("./gate/609.mjs");
+      const ctx = { readBed: (rel) => (rel === "state:audit.jsonl" ? ${JSON.stringify(row)} : null) };
+      process.stdout.write(JSON.stringify(g.auditRows(ctx, "gate609-calls", 0)));
+    `;
+    const p = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    expect(p.stderr).toBe("");
+    expect(JSON.parse(p.stdout)).toHaveLength(1);
+  });
 });
