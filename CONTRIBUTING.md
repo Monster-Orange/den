@@ -58,6 +58,20 @@ there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
 totals per kind and never fails.
 
+### Adding a Settings row
+
+A new key on the Settings page has three touch points beyond the page:
+
+1. The server must accept it: `tests/unit/server/settings-inventory.test.ts`
+   keeps its own list of the keys `POST /api/settings` accepts. Add the key.
+2. The row order is pinned in `tests/fixtures/settings-registry-order.json`.
+   Write it with `node scripts/settings-pin.mjs --write` in the same PR,
+   never by hand.
+3. Run `node scripts/fast-checks.mjs` before the push.
+
+Two PRs that each pass alone can still fail together, when one adds a row
+and the other changes the pin, so the PR that adds the row writes the pin.
+
 ### What runs first
 
 The static checks that fail most often run first, in seconds: version
