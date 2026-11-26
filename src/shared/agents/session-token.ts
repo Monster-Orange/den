@@ -45,7 +45,7 @@ export async function readTokenLine(
   tty.setRawMode(true);
   try {
     const drop = () => {
-      while (tty.read() !== null) {}
+      while (tty.read() !== null) continue;
     };
     drop();
     tty.on("readable", drop);
