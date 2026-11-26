@@ -152,7 +152,7 @@ export function ratchetCompare(rule, files) {
   const rows = [];
   for (const f of files) {
     if (!rule.globs.some((g) => g.test(f.path))) continue;
-    const b = f.base === null ? 0 : rule.count(f.base, f.path).length;
+    const b = f.base === null || !rule.globs.some((g) => g.test(f.old ?? f.path)) ? 0 : rule.count(f.base, f.path).length;
     const lines = f.head === null ? [] : rule.count(f.head, f.path);
     was += b;
     now += lines.length;
@@ -195,7 +195,7 @@ export function changedPairs(root, base, excluded = () => false) {
     const headSide = st[0] === "D" ? null : show("HEAD", cur);
     // A side that can't be read (binary, too big) skips the file, so it can't pay for comments added elsewhere.
     if ((!fresh && baseSide === null) || (st[0] !== "D" && headSide === null)) continue;
-    out.push({ path: cur, base: baseSide, head: headSide });
+    out.push({ path: cur, old, base: baseSide, head: headSide });
   }
   return { pairs: out, on: cfg.on ?? [] };
 }
