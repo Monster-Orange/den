@@ -145,8 +145,10 @@ function unwrapXargs(w) {
     if (XARGS_VALUE_OPTS.has(a)) j++;
     j++;
   }
-  const inner = w.slice(j);
-  return repl === null ? inner : inner.filter((x) => x !== repl);
+  const [cmd, ...rest] = w.slice(j);
+  if (cmd === undefined) return [];
+  if (repl !== null && cmd.includes(repl)) return ["printenv"];
+  return [cmd, ...(repl === null ? rest : rest.filter((x) => x !== repl))];
 }
 
 function unwrapWrapper(w) {

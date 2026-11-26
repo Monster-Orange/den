@@ -239,6 +239,10 @@ describe("a command that prints the environment runs, its secret-looking values 
     "xargs --replace=R env R",
     "xargs -l2 env",
     "xargs -eEOF env",
+    "xargs -I env env",
+    "xargs -Ienv env",
+    "xargs -I printenv printenv",
+    "xargs -I {} {}",
   ])("xargs options, BSD and GNU: `%s` is rewritten", (cmd) => {
     expect(hook(cmd).rewritten).toContain("env-mask.mjs");
   });
