@@ -4516,6 +4516,8 @@ const sd = {
   // AG-18, Change persona: null; else the agent's row (id, workspace,
   // persona, model) whose persona changes.
   change: null,
+  // A ?start=1 link's project, folder and repo, for the next Start only.
+  prefill: null,
 };
 
 /** Bring in's conversations: the project's, then (D56) those started outside any. */
@@ -5007,9 +5009,6 @@ function dialogMode(bring, change = null) {
   }
 }
 
-/** 0.4.18: Start agent here (the service panel): ?start=1&ws=…&folder=…. */
-let startPrefill = null;
-
 /** The submit button's words for the dialog's mode. */
 function goLabel() {
   return t(sd.change ? "ag.pc.go" : sd.bring ? "ag.bring.go" : "ag.go");
@@ -5215,8 +5214,8 @@ async function openStart(bring = false, change = null) {
   const dlg = $d("#ag-dlg");
   if (!dlg || dlg.open) return;
   dialogMode(bring, change);
-  const pre = change || bring ? null : startPrefill;
-  startPrefill = null;
+  const pre = change || bring ? null : sd.prefill;
+  sd.prefill = null;
   const shown = change ? [change.workspace] : viewWorkspaces();
   if (pre?.ws && !shown.includes(pre.ws)) shown.push(pre.ws);
   const wsSel = $d("#ag-ws");
@@ -6205,7 +6204,7 @@ export async function mountAgentsPage(root) {
   const startAsked = new URLSearchParams(location.search).get("start") === "1";
   if (startAsked) {
     const q = new URLSearchParams(location.search);
-    startPrefill = {
+    sd.prefill = {
       ws: q.get("project") || q.get("ws") || "",
       folder: q.get("folder") || "",
       repo: q.get("repo") || null,

@@ -98,7 +98,15 @@ import { parseSessionName } from "../../shared/sessions/names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
-import type { HelperSettings } from "../../shared/agents/helpers.js";
+import {
+  HELPER_DEFAULTS,
+  type HelperSettings,
+} from "../../shared/agents/helpers.js";
+import {
+  HelperRows,
+  SERVER_HELPER_ROWS,
+  type HelperAsk,
+} from "./helper-rows.js";
 import {
   agentsListWaits,
   readAgentsConfig,
@@ -200,6 +208,8 @@ export interface SessionRouteDeps {
     | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
+  helperRows?: HelperRows | null;
+  rowHelpers?: typeof rowHelpers;
   /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
   exitedShellMinutes?: () => number;
   /** D44: the Hub server URL an agent would get now (null: none). */
@@ -238,6 +248,8 @@ interface Resolved {
   restartResume?: SessionRouteDeps["restartResume"];
   modeOf?: SessionRouteDeps["modeOf"];
   helperSettings: () => HelperSettings | undefined;
+  helperRows: HelperRows | null;
+  rowHelpers: typeof rowHelpers;
   exitedShellMinutes: () => number;
   hubNow: () => Promise<string | null>;
   uploadSettings: () => UploadSettings;
@@ -284,6 +296,8 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
           return undefined;
         }
       }),
+    helperRows: d.helperRows === undefined ? SERVER_HELPER_ROWS : d.helperRows,
+    rowHelpers: d.rowHelpers ?? rowHelpers,
     activeWorkspaces: d.activeWorkspaces ?? (() => getActiveWorkspaces()),
     workspaceExists:
       d.workspaceExists ??
@@ -622,6 +636,7 @@ export function listedSessions(
       hubWork?: (
         id: string,
       ) => import("../../shared/hub-delivery-loop.js").AgentHubWork | null;
+      helpersOf?: HelpersOf;
     },
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
@@ -828,15 +843,19 @@ export function listedSessions(
       ...contextFields(d.stateDir(), rec.id, isStoppedState(r.state)),
       // D32: the helpers it started in its own session.
       ...(() => {
-        const h = rowHelpers(
-          rec,
-          !isStoppedState(r.state),
-          helperSettings,
-          process.env,
-          Date.now(),
-          readClearedAt(agentFilesDir(d.stateDir(), rec.id)),
-          r.startedAt,
-        );
+        const live = !isStoppedState(r.state);
+        const clearedAt = readClearedAt(agentFilesDir(d.stateDir(), rec.id));
+        const h = d.helpersOf
+          ? d.helpersOf(rec, live, clearedAt, r.startedAt)
+          : rowHelpers(
+              rec,
+              live,
+              helperSettings,
+              process.env,
+              Date.now(),
+              clearedAt,
+              r.startedAt,
+            );
         return h ? { helpers: h } : {};
       })(),
     });
@@ -892,6 +911,70 @@ export function listedSessions(
         : null,
     orderOf,
   );
+}
+
+type HelpersOf = (
+  rec: AgentRecord,
+  live: boolean,
+  clearedAt: number | undefined,
+  liveSince: string | undefined,
+) => AgentRow["helpers"];
+
+async function listWithHelpers(
+  sessions: SessionInfo[],
+  d: Resolved,
+  also?: string,
+  hubUrl?: string | null,
+): Promise<ListedSession[]> {
+  const rows = d.helperRows;
+  if (!rows) return listedSessions(sessions, d, also, hubUrl);
+  const settings = d.helperSettings();
+  const all = { ...HELPER_DEFAULTS, ...settings };
+  const asks: HelperAsk[] = [];
+  const where = [d.stateDir(), process.env.HOME, process.env.CLAUDE_CONFIG_DIR];
+  const stampOf = (rec: AgentRecord): string | null => {
+    try {
+      return getRuntime(rec.runtime)?.helpersStamp?.(rec) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const helpersOf: HelpersOf = (rec, live, clearedAt, liveSince) => {
+    const ask: HelperAsk = {
+      id: rec.id,
+      key: JSON.stringify([
+        where,
+        stampOf(rec),
+        rec.runtime,
+        rec.resumeToken,
+        live,
+        clearedAt ?? null,
+        liveSince ?? null,
+        all,
+      ]),
+      compute: () =>
+        d.rowHelpers(
+          rec,
+          live,
+          settings,
+          process.env,
+          Date.now(),
+          clearedAt,
+          liveSince,
+        ),
+    };
+    asks.push(ask);
+    return rows.peek(ask);
+  };
+  const first = listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
+  const fresh = await rows.ensure(
+    asks,
+    all.refreshSeconds * 1000,
+    all.factsCacheMb * 1024 * 1024,
+  );
+  if (!fresh) return first;
+  asks.length = 0;
+  return listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
 }
 
 /** D32: the helpers count, under /api/sessions/ but no session's route. */
@@ -954,7 +1037,7 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
-  const listed = listedSessions(
+  const listed = await listWithHelpers(
     sessions,
     d,
     wanted?.known ? wanted.workspace : undefined,
@@ -1707,7 +1790,7 @@ async function helpersRunning(
   }
   let running = 0;
   let needs = 0;
-  for (const r of listedSessions(sessions, d)) {
+  for (const r of await listWithHelpers(sessions, d)) {
     running += r.helpers?.running ?? 0;
     if (
       r.kind === "agent" &&
