@@ -197,14 +197,6 @@ export interface LaunchInput {
    * API, and the audit file; absent: none is declared.
    */
   apiOnly?: { rules: string; audit: string };
-  envHold?: {
-    on: boolean;
-    hold: string[];
-    allow: string[];
-    own: string[];
-    guard: boolean;
-    mask?: string[];
-  };
   /**
    * Session rotation (den#4): the compactions after which this agent's
    * session rotates (0: never). Den's hooks count them. Default 3.
