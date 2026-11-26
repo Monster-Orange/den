@@ -30,12 +30,15 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page, Route } from "playwright";
-import { readWebOwner, writeWebOwner } from "../../../src/shared/web-owner.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
+import {
+  readWebOwner,
+  writeWebOwner,
+} from "../../../src/shared/web/web-owner.js";
+import { readWebSecret } from "../../../src/shared/web/web-secret.js";
 import {
   sessionCookieName,
   WebSessionStore,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";

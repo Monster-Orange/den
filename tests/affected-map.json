@@ -7,7 +7,7 @@
     "A rule may also name `importers` (helper files: the tests that import them, by jest import graph, run too) and `mentions` (the browser specs that name a changed catalog key or its English text run too).",
     "tests/fixtures/ci-replay-cases.json holds the real CI failures of the replay (scripts/ci-replay.mjs); tests/unit/test-infra/affected-tests.test.ts fails if this map stops catching one.",
     "Issue 708: a test that starts Den as a process (bin/den, tsx on an entry, startDenServer) runs when its subject changes: the src files named like it, the src files it names, and the globs `subjects` gives it ({test: [globs]}). `subjectless` lists the ones with none yet; it only shrinks, and the selector test fails on a new one.",
-    "subjects: web-log-1344.integration names src/shared/web-log-file.ts only (the cap on tests a change to src/ui/server/index.ts runs). A change to serverLog in index.ts relies on the full run (ci:full) to run it."
+    "subjects: web-log-1344.integration names src/shared/web/web-log-file.ts only (the cap on tests a change to src/ui/server/index.ts runs). A change to serverLog in index.ts relies on the full run (ci:full) to run it."
   ],
   "everything": [
     "src/ui/server/public/shell.js",
@@ -15,7 +15,7 @@
     "src/ui/server/request-guard.ts",
     "src/ui/server/route-classes.ts",
     "src/ui/server/ui-assets.ts",
-    "src/ui/server/ui-language.ts",
+    "src/shared/ui-language.ts",
     "package.json",
     "package-lock.json",
     "jest.config.js",
@@ -48,7 +48,7 @@
       "src/ui/server/public/shell.js"
     ],
     "tests/unit/server/web-log-1344.integration.test.ts": [
-      "src/shared/web-log-file.ts"
+      "src/shared/web/web-log-file.ts"
     ],
     "tests/unit/server/hub-groups-settings-750.integration.test.ts": [
       "src/shared/hub.ts",
@@ -316,7 +316,7 @@
       "src/ui/server/asset-stamp.ts"
     ],
     "tests/unit/server/agents-project-names.browser.test.ts": [
-      "src/shared/hub-project-names.ts",
+      "src/shared/hub/hub-project-names.ts",
       "src/ui/server/hub-names-routes.ts"
     ],
     "tests/unit/server/agents-project-view.browser.test.ts": [
@@ -467,15 +467,20 @@
     "tests/unit/server/host-refresh-web.integration.test.ts": [
       "src/shared/sessions/host-refresh.ts"
     ],
+    "tests/unit/server/hub-agent-tokens-security.integration.test.ts": [
+      "src/shared/hub-agent-tokens.ts",
+      "src/ui/server/hub-proxy-routes.ts",
+      "src/ui/server/hub-connect.ts"
+    ],
     "tests/unit/server/hub-editions-den-yml.integration.test.ts": [
-      "src/shared/hub-editions.ts"
+      "src/shared/hub/hub-editions.ts"
     ],
     "tests/unit/server/hub-tools-restart.integration.test.ts": [
-      "src/shared/hub-tools.ts",
+      "src/shared/hub/hub-tools.ts",
       "src/ui/server/hub-tools-service.ts"
     ],
     "tests/unit/server/hub-tools-slow-stop.integration.test.ts": [
-      "src/shared/hub-tools.ts",
+      "src/shared/hub/hub-tools.ts",
       "src/ui/server/hub-tools-service.ts"
     ],
     "tests/unit/server/i18n-layout.browser.test.ts": [
@@ -662,7 +667,7 @@
       "src/ui/server/edge-up-routes.ts"
     ],
     "tests/unit/server/settings-hub-github.browser.test.ts": [
-      "src/shared/hub-github.ts",
+      "src/shared/hub/hub-github.ts",
       "src/ui/server/hub-proxy-routes.ts"
     ],
     "tests/unit/server/settings-hub-link-all.browser.test.ts": [
@@ -670,7 +675,7 @@
     ],
     "tests/unit/server/settings-hub-project.browser.test.ts": [
       "src/ui/server/hub-project-routes.ts",
-      "src/shared/hub-project-link.ts"
+      "src/shared/hub/hub-project-link.ts"
     ],
     "tests/unit/server/settings-hub.browser.test.ts": [
       "src/ui/server/hub-connect.ts",
@@ -684,7 +689,7 @@
     ],
     "tests/unit/server/settings-project-name.browser.test.ts": [
       "src/ui/server/hub-names-routes.ts",
-      "src/shared/hub-project-names.ts"
+      "src/shared/hub/hub-project-names.ts"
     ],
     "tests/unit/server/settings-signin.browser.test.ts": [
       "src/ui/server/session-routes.ts",
@@ -718,6 +723,9 @@
     "tests/unit/server/start-dialog.browser.test.ts": [
       "src/ui/server/agent-routes.ts",
       "src/shared/agents/runtime-search.ts"
+    ],
+    "tests/unit/server/start-prefill.browser.test.ts": [
+      "src/ui/server/public/agents-page.js"
     ],
     "tests/unit/server/stop-ends-wait.integration.test.ts": [
       "src/ui/server/login-waits.ts",
@@ -830,6 +838,25 @@
     "tests/unit/server/held-focus-den-1434.browser.test.ts": [
       "src/ui/server/public/shell.js",
       "packages/den-ui/src/busy.js"
+    ],
+    "tests/unit/server/agents-list-view.browser.test.ts": [
+      "src/ui/server/public/agents.html",
+      "src/ui/server/public/agents-page.js"
+    ],
+    "tests/unit/server/agents-order-error-width.browser.test.ts": [
+      "src/ui/server/public/agents.html",
+      "src/ui/server/public/agents-page.js"
+    ],
+    "tests/unit/server/agents-tab-strip.browser.test.ts": [
+      "src/ui/server/public/agents.html",
+      "src/ui/server/public/agents-page.js"
+    ],
+    "tests/unit/server/agent-scope-server.integration.test.ts": [
+      "src/shared/agents/scope-rule.ts",
+      "src/ui/server/request-guard.ts",
+      "src/ui/server/session-routes.ts",
+      "src/ui/server/workspace-routes.ts",
+      "src/ui/server/agent-routes.ts"
     ]
   },
   "subjectless": [],
@@ -864,6 +891,8 @@
         "tests/unit/server/agents-helpers.browser.test.ts",
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
+        "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -872,6 +901,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -908,8 +938,11 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-recent.browser.test.ts",
+        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -1036,6 +1069,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1066,6 +1100,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -1101,7 +1136,8 @@
         "tests/unit/server/topbar.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "local-dev.html"
     },
@@ -1258,6 +1294,7 @@
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
@@ -1348,6 +1385,8 @@
         "tests/unit/server/agents-helpers.browser.test.ts",
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
+        "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1356,6 +1395,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1392,8 +1432,11 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-recent.browser.test.ts",
+        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -1418,6 +1461,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1449,6 +1493,8 @@
         "tests/unit/server/agents-helpers.browser.test.ts",
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
+        "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1457,6 +1503,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1481,6 +1528,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -1516,6 +1564,7 @@
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1526,7 +1575,8 @@
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "agents.html, local-dev.html"
     },
@@ -1555,6 +1605,8 @@
         "tests/unit/server/agents-helpers.browser.test.ts",
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
+        "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1563,6 +1615,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1608,8 +1661,11 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-recent.browser.test.ts",
+        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -1644,6 +1700,8 @@
         "tests/unit/server/agents-helpers.browser.test.ts",
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
+        "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1652,6 +1710,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1679,6 +1738,7 @@
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
@@ -1731,8 +1791,11 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-recent.browser.test.ts",
+        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/toast-hold.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -1780,6 +1843,7 @@
         "tests/unit/den-ui/list-bars-kit.browser.test.ts",
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1817,6 +1881,7 @@
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -1861,7 +1926,8 @@
         "tests/unit/server/whats-new-dialog.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "local-dev.html, services.html"
     },
@@ -1910,6 +1976,7 @@
         "tests/unit/den-ui/markdown-editor.browser.test.ts",
         "tests/unit/den-ui/nav-inventory.browser.test.ts",
         "tests/unit/den-ui/panel-fold-switch-kit.browser.test.ts",
+        "tests/unit/den-ui/popover-kit.browser.test.ts",
         "tests/unit/den-ui/preview-kit-789.browser.test.ts",
         "tests/unit/den-ui/rail-folds-1444.browser.test.ts",
         "tests/unit/den-ui/rail-foot-1341.browser.test.ts",
@@ -1941,6 +2008,8 @@
         "tests/unit/server/agents-helpers.browser.test.ts",
         "tests/unit/server/agents-hub-work.browser.test.ts",
         "tests/unit/server/agents-layout.browser.test.ts",
+        "tests/unit/server/agents-list-view.browser.test.ts",
+        "tests/unit/server/agents-order-error-width.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1949,6 +2018,7 @@
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
+        "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
         "tests/unit/server/agents-term-size.browser.test.ts",
         "tests/unit/server/agents-terminal.browser.test.ts",
@@ -1987,6 +2057,7 @@
         "tests/unit/server/graph-many-groups.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
+        "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
@@ -2052,6 +2123,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -2067,7 +2139,8 @@
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
         "tests/unit/server/workspace-health-unfocused.browser.test.ts",
         "tests/unit/server/workspaces-agents.browser.test.ts",
-        "tests/unit/server/workspaces-page.browser.test.ts"
+        "tests/unit/server/workspaces-page.browser.test.ts",
+        "tests/unit/test-infra/find-and-wait.browser.test.ts"
       ],
       "why": "loaded by 12 pages"
     },
@@ -2126,6 +2199,18 @@
       "importers": ["tests/unit/server/helpers/en-catalog.ts"],
       "mentions": true,
       "why": "the UI catalogs"
+    },
+    {
+      "when": [
+        "src/ui/server/public/settings-registry.js",
+        "src/ui/server/public/settings-common.js",
+        "src/ui/server/public/settings-ui-*.js",
+        "src/ui/server/public/settings-rows-*.js",
+        "tests/fixtures/settings-registry-order.json"
+      ],
+      "run": ["tests/unit/server/settings-registry-order.test.ts"],
+      "importers": ["tests/unit/server/helpers/settings-sources.ts"],
+      "why": "the Settings rows: their pin and the tests that read them"
     },
     {
       "when": ["src/ui/server/public/**"],
@@ -2203,6 +2288,7 @@
         "tests/unit/mcp/approval-tools.test.ts",
         "tests/unit/plugins/plugin-command.test.ts",
         "tests/unit/review/review-rules-798.test.ts",
+        "tests/unit/scripts/changelog-line-1611.test.ts",
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/scripts/pw-server-635.test.ts",
         "tests/unit/security/auto-targets.test.ts",
@@ -2222,6 +2308,8 @@
         "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
+        "tests/unit/test-infra/brittle-weekly-841.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -2231,6 +2319,7 @@
       "run": [
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/gates/pw-guard-export-1010.test.ts",
+        "tests/unit/scripts/changelog-line-1611.test.ts",
         "tests/unit/scripts/release-dry-run.test.ts",
         "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/hub-editions-den-yml.integration.test.ts",
@@ -2258,15 +2347,61 @@
       "why": "tests that read examples/"
     },
     {
+      "when": ["gate/**"],
+      "run": [
+        "tests/unit/test-infra/gate-1217-clauses.test.ts",
+        "tests/unit/test-infra/gate-1381.test.ts",
+        "tests/unit/test-infra/gate-1407-clauses.test.ts",
+        "tests/unit/test-infra/gate-142-runner.test.ts",
+        "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-143-runner.test.ts",
+        "tests/unit/test-infra/gate-252-runner.test.ts",
+        "tests/unit/test-infra/gate-380-runner.test.ts",
+        "tests/unit/test-infra/gate-402-clauses.test.ts",
+        "tests/unit/test-infra/gate-415-runner.test.ts",
+        "tests/unit/test-infra/gate-448-clauses.test.ts",
+        "tests/unit/test-infra/gate-448-runner.test.ts",
+        "tests/unit/test-infra/gate-455-runner.test.ts",
+        "tests/unit/test-infra/gate-456-copies.test.ts",
+        "tests/unit/test-infra/gate-459-runner.test.ts",
+        "tests/unit/test-infra/gate-479-quarantined.test.ts",
+        "tests/unit/test-infra/gate-503-runner.test.ts",
+        "tests/unit/test-infra/gate-536-runner.test.ts",
+        "tests/unit/test-infra/gate-563-runner.test.ts",
+        "tests/unit/test-infra/gate-573-runner.test.ts",
+        "tests/unit/test-infra/gate-601-port.test.ts",
+        "tests/unit/test-infra/gate-609.test.ts",
+        "tests/unit/test-infra/gate-629-runner.test.ts",
+        "tests/unit/test-infra/gate-631-runner.test.ts",
+        "tests/unit/test-infra/gate-701-659-runner.test.ts",
+        "tests/unit/test-infra/gate-746-teardown-1293.test.ts",
+        "tests/unit/test-infra/gate-828.test.ts",
+        "tests/unit/test-infra/gate-93-pointer.test.ts",
+        "tests/unit/test-infra/gate-checks.test.ts",
+        "tests/unit/test-infra/gate-cli-json-840.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
+        "tests/unit/test-infra/gate-expect-shape.test.ts",
+        "tests/unit/test-infra/gate-fixture-project-1215.test.ts",
+        "tests/unit/test-infra/gate-json-fail-840.test.ts",
+        "tests/unit/test-infra/gate-readonly-modules.test.ts"
+      ],
+      "why": "the live checks' own tests (runners, shape, clauses)"
+    },
+    {
       "when": ["scripts/affected-tests.mjs"],
-      "run": ["tests/unit/test-infra/fast-checks.test.ts"],
+      "run": [
+        "tests/unit/scripts/node22-tests.test.ts",
+        "tests/unit/test-infra/fast-checks.test.ts",
+        "tests/unit/test-infra/queue-merge-tests.test.ts"
+      ],
       "why": "tests that run scripts/affected-tests.mjs"
     },
     {
       "when": ["scripts/brittle-ratchet.mjs"],
       "run": [
         "tests/unit/scripts/kit-version.test.ts",
-        "tests/unit/test-infra/brittle-ratchet.test.ts"
+        "tests/unit/test-infra/brittle-ratchet.test.ts",
+        "tests/unit/test-infra/brittle-weekly-841.test.ts"
       ],
       "why": "tests that run scripts/brittle-ratchet.mjs"
     },
@@ -2281,13 +2416,24 @@
       "why": "tests that run scripts/build-sketch-theme.ts"
     },
     {
+      "when": ["scripts/changelog-line.mjs"],
+      "run": ["tests/unit/scripts/changelog-line-1611.test.ts"],
+      "why": "tests that run scripts/changelog-line.mjs"
+    },
+    {
       "when": ["scripts/ci-force-all.mjs"],
-      "run": ["tests/unit/test-infra/release-tree-check.test.ts"],
+      "run": [
+        "tests/unit/scripts/node22-tests.test.ts",
+        "tests/unit/test-infra/release-tree-check.test.ts"
+      ],
       "why": "tests that run scripts/ci-force-all.mjs"
     },
     {
       "when": ["scripts/ci-ok.mjs"],
-      "run": ["tests/unit/test-infra/ci-ok.test.ts"],
+      "run": [
+        "tests/unit/scripts/node22-tests.test.ts",
+        "tests/unit/test-infra/ci-ok.test.ts"
+      ],
       "why": "tests that run scripts/ci-ok.mjs"
     },
     {
@@ -2297,7 +2443,10 @@
     },
     {
       "when": ["scripts/dist-smoke.sh"],
-      "run": ["tests/unit/test-infra/shard-plan.test.ts"],
+      "run": [
+        "tests/unit/test-infra/dist-smoke-env-1689.test.ts",
+        "tests/unit/test-infra/shard-plan.test.ts"
+      ],
       "why": "tests that run scripts/dist-smoke.sh"
     },
     {
@@ -2339,6 +2488,11 @@
       "why": "tests that run scripts/flake-evidence.mjs"
     },
     {
+      "when": ["scripts/gate-evidence.mjs"],
+      "run": ["tests/unit/test-infra/gate-evidence.test.ts"],
+      "why": "tests that run scripts/gate-evidence.mjs"
+    },
+    {
       "when": ["scripts/gate-shape.mjs"],
       "run": ["tests/unit/test-infra/gate-checks.test.ts"],
       "why": "tests that run scripts/gate-shape.mjs"
@@ -2353,13 +2507,22 @@
     },
     {
       "when": ["scripts/no-close-keywords.mjs"],
-      "run": ["tests/unit/scripts/no-close-keywords.test.ts"],
+      "run": [
+        "tests/unit/scripts/no-close-keywords.test.ts",
+        "tests/unit/test-infra/pr-text-queue-1235.test.ts"
+      ],
       "why": "tests that run scripts/no-close-keywords.mjs"
+    },
+    {
+      "when": ["scripts/node22-tests.mjs"],
+      "run": ["tests/unit/scripts/node22-tests.test.ts"],
+      "why": "tests that run scripts/node22-tests.mjs"
     },
     {
       "when": ["scripts/org-name-commits.mjs"],
       "run": [
         "tests/unit/scripts/org-name-commits-main.test.ts",
+        "tests/unit/scripts/org-name-commits-queue-1610.test.ts",
         "tests/unit/scripts/org-name-commits.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts"
       ],
@@ -2389,6 +2552,11 @@
       "when": ["scripts/pw-server.mjs"],
       "run": ["tests/unit/scripts/pw-server-635.test.ts"],
       "why": "tests that run scripts/pw-server.mjs"
+    },
+    {
+      "when": ["scripts/queue-merge-tests.mjs"],
+      "run": ["tests/unit/test-infra/queue-merge-tests.test.ts"],
+      "why": "tests that run scripts/queue-merge-tests.mjs"
     },
     {
       "when": ["scripts/release-ancestry.sh"],
@@ -2445,6 +2613,11 @@
       "why": "tests that run scripts/release-tree.sh"
     },
     {
+      "when": ["scripts/settings-pin.mjs"],
+      "run": ["tests/unit/server/settings-registry-order.test.ts"],
+      "why": "tests that run scripts/settings-pin.mjs"
+    },
+    {
       "when": ["scripts/setup-secrets.ts"],
       "run": [
         "tests/unit/cli/secrets-preflight.test.ts",
@@ -2462,9 +2635,19 @@
       "why": "tests that run scripts/shard-plan.cjs"
     },
     {
+      "when": ["scripts/shim-imports.mjs"],
+      "run": ["tests/unit/test-infra/shim-imports.test.ts"],
+      "why": "tests that run scripts/shim-imports.mjs"
+    },
+    {
       "when": ["scripts/state-writes-gate.mjs"],
       "run": ["tests/unit/test-infra/state-writes-gate.test.ts"],
       "why": "tests that run scripts/state-writes-gate.mjs"
+    },
+    {
+      "when": ["scripts/test-health.mjs"],
+      "run": ["tests/unit/test-infra/test-health-846.test.ts"],
+      "why": "tests that run scripts/test-health.mjs"
     },
     {
       "when": ["scripts/typecheck-tests.mjs"],
@@ -2482,6 +2665,7 @@
     {
       "when": ["scripts/words-gate.mjs"],
       "run": [
+        "tests/unit/scripts/words-gate-moves.test.ts",
         "tests/unit/scripts/words-gate-vendored.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts",
         "tests/unit/test-infra/shard-plan.test.ts"
@@ -2495,12 +2679,174 @@
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
+        "tests/unit/scripts/words-gate-moves.test.ts",
         "tests/unit/scripts/words-gate-vendored.test.ts",
         "tests/unit/scripts/words.test.ts",
         "tests/unit/server/i18n-171-values.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts"
       ],
       "why": "tests that run scripts/words.js"
+    },
+    {
+      "when": ["gate/1217.mjs"],
+      "run": ["tests/unit/test-infra/gate-1217-clauses.test.ts"],
+      "why": "tests that load gate/1217.mjs"
+    },
+    {
+      "when": ["gate/1381.mjs"],
+      "run": [
+        "tests/unit/test-infra/gate-1381.test.ts",
+        "tests/unit/test-infra/gate-expect-shape.test.ts"
+      ],
+      "why": "tests that load gate/1381.mjs"
+    },
+    {
+      "when": ["gate/1407.mjs"],
+      "run": ["tests/unit/test-infra/gate-1407-clauses.test.ts"],
+      "why": "tests that load gate/1407.mjs"
+    },
+    {
+      "when": ["gate/142.mjs"],
+      "run": [
+        "tests/unit/test-infra/gate-142-runner.test.ts",
+        "tests/unit/test-infra/gate-142-stubs.test.ts"
+      ],
+      "why": "tests that load gate/142.mjs"
+    },
+    {
+      "when": ["gate/143.mjs"],
+      "run": ["tests/unit/test-infra/gate-143-runner.test.ts"],
+      "why": "tests that load gate/143.mjs"
+    },
+    {
+      "when": ["gate/252.mjs"],
+      "run": ["tests/unit/test-infra/gate-252-runner.test.ts"],
+      "why": "tests that load gate/252.mjs"
+    },
+    {
+      "when": ["gate/380.mjs"],
+      "run": ["tests/unit/test-infra/gate-380-runner.test.ts"],
+      "why": "tests that load gate/380.mjs"
+    },
+    {
+      "when": ["gate/402.mjs"],
+      "run": ["tests/unit/test-infra/gate-402-clauses.test.ts"],
+      "why": "tests that load gate/402.mjs"
+    },
+    {
+      "when": ["gate/415.mjs"],
+      "run": ["tests/unit/test-infra/gate-415-runner.test.ts"],
+      "why": "tests that load gate/415.mjs"
+    },
+    {
+      "when": ["gate/448.mjs"],
+      "run": [
+        "tests/unit/test-infra/gate-448-clauses.test.ts",
+        "tests/unit/test-infra/gate-448-runner.test.ts"
+      ],
+      "why": "tests that load gate/448.mjs"
+    },
+    {
+      "when": ["gate/455.mjs"],
+      "run": ["tests/unit/test-infra/gate-455-runner.test.ts"],
+      "why": "tests that load gate/455.mjs"
+    },
+    {
+      "when": ["gate/456.mjs"],
+      "run": ["tests/unit/test-infra/gate-456-copies.test.ts"],
+      "why": "tests that load gate/456.mjs"
+    },
+    {
+      "when": ["gate/459.mjs"],
+      "run": ["tests/unit/test-infra/gate-459-runner.test.ts"],
+      "why": "tests that load gate/459.mjs"
+    },
+    {
+      "when": ["gate/479.mjs"],
+      "run": ["tests/unit/test-infra/gate-479-quarantined.test.ts"],
+      "why": "tests that load gate/479.mjs"
+    },
+    {
+      "when": ["gate/503.mjs"],
+      "run": ["tests/unit/test-infra/gate-503-runner.test.ts"],
+      "why": "tests that load gate/503.mjs"
+    },
+    {
+      "when": ["gate/536.mjs"],
+      "run": ["tests/unit/test-infra/gate-536-runner.test.ts"],
+      "why": "tests that load gate/536.mjs"
+    },
+    {
+      "when": ["gate/563.mjs"],
+      "run": ["tests/unit/test-infra/gate-563-runner.test.ts"],
+      "why": "tests that load gate/563.mjs"
+    },
+    {
+      "when": ["gate/573.mjs"],
+      "run": ["tests/unit/test-infra/gate-573-runner.test.ts"],
+      "why": "tests that load gate/573.mjs"
+    },
+    {
+      "when": ["gate/601.mjs"],
+      "run": ["tests/unit/test-infra/gate-601-port.test.ts"],
+      "why": "tests that load gate/601.mjs"
+    },
+    {
+      "when": ["gate/609.mjs"],
+      "run": ["tests/unit/test-infra/gate-609.test.ts"],
+      "why": "tests that load gate/609.mjs"
+    },
+    {
+      "when": ["gate/629.mjs"],
+      "run": ["tests/unit/test-infra/gate-629-runner.test.ts"],
+      "why": "tests that load gate/629.mjs"
+    },
+    {
+      "when": ["gate/631.mjs"],
+      "run": ["tests/unit/test-infra/gate-631-runner.test.ts"],
+      "why": "tests that load gate/631.mjs"
+    },
+    {
+      "when": ["gate/658.mjs"],
+      "run": ["tests/unit/test-infra/gate-701-659-runner.test.ts"],
+      "why": "tests that load gate/658.mjs"
+    },
+    {
+      "when": ["gate/659.mjs"],
+      "run": ["tests/unit/test-infra/gate-701-659-runner.test.ts"],
+      "why": "tests that load gate/659.mjs"
+    },
+    {
+      "when": ["gate/701.mjs"],
+      "run": ["tests/unit/test-infra/gate-701-659-runner.test.ts"],
+      "why": "tests that load gate/701.mjs"
+    },
+    {
+      "when": ["gate/746.mjs"],
+      "run": ["tests/unit/test-infra/gate-746-teardown-1293.test.ts"],
+      "why": "tests that load gate/746.mjs"
+    },
+    {
+      "when": ["gate/750.mjs"],
+      "run": [
+        "tests/unit/gates/gate-750-hub-leg.test.ts",
+        "tests/unit/gates/gate-750-real-read.test.ts",
+        "tests/unit/server/agent-groups-view.test.ts"
+      ],
+      "why": "tests that load gate/750.mjs"
+    },
+    {
+      "when": ["gate/828.mjs"],
+      "run": ["tests/unit/test-infra/gate-828.test.ts"],
+      "why": "tests that load gate/828.mjs"
+    },
+    {
+      "when": ["gate/93.mjs"],
+      "run": [
+        "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-93-pointer.test.ts"
+      ],
+      "why": "tests that load gate/93.mjs"
     },
     {
       "when": ["src/shared/agents/runtimes.ts"],
@@ -2846,6 +3192,17 @@
     },
     {
       "when": [
+        "src/shared/agents/scope-rule.ts",
+        "src/ui/server/agent-routes.ts",
+        "src/ui/server/request-guard.ts",
+        "src/ui/server/session-routes.ts",
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": ["tests/unit/server/agent-scope-server.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
         "src/shared/agents/runtime-search.ts",
         "src/ui/server/agent-routes.ts"
       ],
@@ -2941,8 +3298,24 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": [
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/agents.html"
+      ],
+      "run": ["tests/unit/server/agents-list-view.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/shared/den-config.ts", "src/shared/settings-cli-rows.ts"],
       "run": ["tests/unit/server/agents-max-1373.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/agents.html"
+      ],
+      "run": ["tests/unit/server/agents-order-error-width.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -2952,7 +3325,7 @@
     },
     {
       "when": [
-        "src/shared/hub-project-names.ts",
+        "src/shared/hub/hub-project-names.ts",
         "src/ui/server/hub-names-routes.ts"
       ],
       "run": ["tests/unit/server/agents-project-names.browser.test.ts"],
@@ -3005,6 +3378,14 @@
         "src/ui/server/session-routes.ts"
       ],
       "run": ["tests/unit/server/agents-subagents.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/agents.html"
+      ],
+      "run": ["tests/unit/server/agents-tab-strip.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -3368,6 +3749,17 @@
     },
     {
       "when": [
+        "src/shared/hub-agent-tokens.ts",
+        "src/ui/server/hub-connect.ts",
+        "src/ui/server/hub-proxy-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/hub-agent-tokens-security.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
         "src/shared/agents/guardrails/attention-hook.ts",
         "src/ui/server/hub-approval.ts"
       ],
@@ -3376,21 +3768,21 @@
     },
     {
       "when": [
-        "src/shared/hub-delivery-journal.ts",
-        "src/shared/hub-delivery-loop.ts",
-        "src/shared/hub-delivery.ts",
+        "src/shared/hub/hub-delivery-journal.ts",
+        "src/shared/hub/hub-delivery-loop.ts",
+        "src/shared/hub/hub-delivery.ts",
         "src/ui/server/hub-delivery-service.ts"
       ],
       "run": ["tests/unit/server/hub-delivery.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-editions.ts"],
+      "when": ["src/shared/hub/hub-editions.ts"],
       "run": ["tests/unit/server/hub-editions-den-yml.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-editions.ts"],
+      "when": ["src/shared/hub/hub-editions.ts"],
       "run": ["tests/unit/server/hub-editions.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3404,22 +3796,36 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-loop.ts"],
+      "when": ["src/shared/hub/hub-loop.ts"],
       "run": ["tests/unit/server/hub-loop-settings.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
+      "when": ["src/ui/server/hub-switch.ts"],
+      "run": ["tests/unit/server/hub-switch.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/hub/hub-tools.ts",
+        "src/ui/server/hub-tools-service.ts"
+      ],
       "run": ["tests/unit/server/hub-tools-restart.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
+      "when": [
+        "src/shared/hub/hub-tools.ts",
+        "src/ui/server/hub-tools-service.ts"
+      ],
       "run": ["tests/unit/server/hub-tools-slow-stop.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
+      "when": [
+        "src/shared/hub/hub-tools.ts",
+        "src/ui/server/hub-tools-service.ts"
+      ],
       "run": ["tests/unit/server/hub-tools.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3429,7 +3835,7 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/web-session.ts"],
+      "when": ["src/shared/web/web-session.ts"],
       "run": ["tests/unit/server/i18n-pages.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3909,7 +4315,10 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-github.ts", "src/ui/server/hub-proxy-routes.ts"],
+      "when": [
+        "src/shared/hub/hub-github.ts",
+        "src/ui/server/hub-proxy-routes.ts"
+      ],
       "run": ["tests/unit/server/settings-hub-github.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3920,7 +4329,7 @@
     },
     {
       "when": [
-        "src/shared/hub-project-link.ts",
+        "src/shared/hub/hub-project-link.ts",
         "src/ui/server/hub-project-routes.ts"
       ],
       "run": ["tests/unit/server/settings-hub-project.browser.test.ts"],
@@ -3948,7 +4357,7 @@
     },
     {
       "when": [
-        "src/shared/hub-project-names.ts",
+        "src/shared/hub/hub-project-names.ts",
         "src/ui/server/hub-names-routes.ts"
       ],
       "run": ["tests/unit/server/settings-project-name.browser.test.ts"],
@@ -4043,6 +4452,11 @@
         "src/ui/server/agent-routes.ts"
       ],
       "run": ["tests/unit/server/start-dialog.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/agents-page.js"],
+      "run": ["tests/unit/server/start-prefill.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -4168,7 +4582,7 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/web-log-file.ts"],
+      "when": ["src/shared/web/web-log-file.ts"],
       "run": ["tests/unit/server/web-log-1344.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },

@@ -97,6 +97,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/project-colour-picker.js",
+    "/health-rollup.js",
     "/favicon.ico",
     // Issue 644: the kit's site files (its head snippet names them).
     "/favicon.svg",
@@ -239,6 +240,10 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/agents/stale",
     "D44: the running agents whose MCP servers are out of date (ids and projects)",
+  ),
+  R(
+    "/api/agents/restart-status",
+    "issue 1407: each agent of a restart for its tools, live (state, job command redacted, why one failed, redacted); a signed-in person's only",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",

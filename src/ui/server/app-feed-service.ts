@@ -18,7 +18,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import {
   feedPointerDelivery,
@@ -36,7 +36,7 @@ import {
   type FeedStore,
   type StoredEvent,
 } from "../../shared/app-feed-reader.js";
-import type { Delivery } from "../../shared/hub-delivery.js";
+import type { Delivery } from "../../shared/hub/hub-delivery.js";
 import {
   checkedAddress,
   type FeedLookup,
@@ -112,6 +112,8 @@ export interface FeedRead {
   unread: number;
 }
 
+const LEGACY = "legacy";
+const EPOCH = /^(legacy|[0-9a-f]{8,32})$/;
 const FILE = /^(\d{1,15})-([0-9a-f]{16})-(\d{1,12}|x)\.json$/;
 const kh = (key: string) =>
   createHash("sha256").update(key).digest("hex").slice(0, 16);
@@ -119,14 +121,14 @@ const kh = (key: string) =>
 /**
  * A feed's events on disk: one file each, named by its sequence number,
  * its key's hash and its size, so opening the store reads no event. The
- * read mark and the last pointer's sequence go in a small meta file.
+ * read mark, the last pointer's sequence and the store's epoch go in meta.
  */
 export class FileFeedStore implements FeedStore {
   private readonly seqs: number[] = [];
   private readonly files = new Map<number, string>();
   private readonly keys = new Map<string, number>();
   private readonly sizes = new Map<number, number | null>();
-  private meta = { read: 0, pointed: 0 };
+  private meta = { read: 0, pointed: 0, epoch: "" };
 
   constructor(
     private readonly dir: string,
@@ -146,12 +148,23 @@ export class FileFeedStore implements FeedStore {
     try {
       const v = JSON.parse(
         fs.readFileSync(path.join(dir, "meta.json"), "utf8"),
-      ) as { read?: unknown; pointed?: unknown };
+      ) as { read?: unknown; pointed?: unknown; epoch?: unknown };
       if (typeof v.read === "number") this.meta.read = v.read;
       if (typeof v.pointed === "number") this.meta.pointed = v.pointed;
+      if (typeof v.epoch === "string" && EPOCH.test(v.epoch))
+        this.meta.epoch = v.epoch;
     } catch {
-      /* a new store */
+      this.meta.epoch = "";
     }
+    if (this.meta.epoch) return;
+    const old =
+      this.seqs.length > 0 || fs.existsSync(path.join(dir, "meta.json"));
+    this.meta.epoch = old ? LEGACY : randomBytes(8).toString("hex");
+    this.saveMeta();
+  }
+
+  epoch(): string {
+    return this.meta.epoch === LEGACY ? "" : this.meta.epoch;
   }
 
   private saveMeta(): void {
@@ -562,6 +575,7 @@ export class AppFeeds {
         seq,
         feedPointerText(where, u),
         this.now(),
+        store.epoch(),
       );
       if (this.d.seen(dv.id)) {
         store.setPointed(seq);

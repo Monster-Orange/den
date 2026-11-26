@@ -1171,6 +1171,9 @@
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.tools_probe": "Den ツールによるこのインストールの確認 (秒)",
+    "set.server.tools_probe.d":
+      "エージェントの Den ツールが、__DEN_TITLE__ がこのインストールだと答えるのを待つ時間です。これを過ぎると呼び出しは拒否されます。忙しい __DEN_TITLE__ は遅れて答えますが、遅れた答えも有効です。次の呼び出しで再び確認します。__DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.start_wait": "起動の待ち時間 (秒)",
     "set.server.start_wait.d":
       "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
@@ -1249,6 +1252,10 @@
       "この時間待った印付きのリリース実行は追い越されない（分）",
     "set.server.gate_priority_pass.d":
       "優先されたリリース実行は、同じ種類の他のすべての待機中の実行より先に進みます。リリース優先の印が付いた実行どうしでは、この時間待っているものは追い越しません。0 では他の印付きの実行を追い越しません。__DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
+    "set.server.gate_release_pass_other":
+      "待機中のリリース実行が、先に頼まれた別の種類の実行を追い越せる待ち時間の上限（分）",
+    "set.server.gate_release_pass_other.d":
+      "優先されたリリース実行が待っている間、先に頼まれた別の種類（cpu またはブラウザー）の実行は、その実行が必要とする枠では始まりません。この時間より長く待っているものは始まります。実行中のものは止めません。0 ではどれも追い越しません。__DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
     "set.server.gate_priority_agents":
       "エージェントもリリースの優先を依頼できる",
     "set.server.gate_priority_agents.d":
@@ -1374,6 +1381,9 @@
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "プロジェクトごとのエージェント数",
+    "set.agents.max_per_project.d":
+      "1 つのプロジェクトで同時に動かせるエージェントの数です。0 は「同時に動かせるエージェント数」以外の上限なしです。プロジェクトは自分用にもっと低い値を設定できます（workspaces.yml のそのプロジェクトの agents.max_per_project）。これを超える起動は拒否され、どの上限で止まったかが表示されます。__DEN_CLI__ config agents.max_per_project=10",
     "set.server.sessions_max": "同時に開けるターミナル数",
     "set.server.sessions_max.d":
       "同時に動かせる通常のターミナルの数です。エージェントは数に入りません。これを超える新しいターミナルは断られ、その旨が表示されます。__DEN_CLI__ config sessions.max_concurrent=8",
@@ -1463,6 +1473,9 @@
     "set.server.health_poll_hidden": "非表示タブでのヘルスチェック",
     "set.server.health_poll_hidden.d":
       "非表示のタブにあるページがヘルスを確認する間隔: 10〜3600 秒。表示中のページがないとき、チェックは最大でもこの間隔でしか実行されません。表示に戻ると、すぐに確認します。__DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "同時に実行する git の読み取り",
+    "set.server.git_reads.d":
+      "ページがリポジトリを読むとき (テストページのブランチやコミットなど) に Den が同時に実行する git プロセスの数: 1〜64。__DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -1529,6 +1542,10 @@
       "リポジトリの公開範囲を再確認するまでの時間",
     "set.agents.issue_writes_visibility_minutes.d":
       "公開リポジトリ、または公開範囲がわからないリポジトリにエージェントが投稿するテキストは、先にリストの名前が含まれていないか確認されます。これは、リポジトリの公開範囲を GitHub に再確認するまで保持する分数です。公開に変わったリポジトリも、すぐに確認の対象になります。1 から 1440。__DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    "set.agents.issue_writes_public":
+      "公開リポジトリにエージェントが issue を書く",
+    "set.agents.issue_writes_public.d":
+      "オンの場合、エージェントは公開リポジトリに issue とコメントを作成できます。テキストは先にリストの名前がないか確認され、フッターにはエージェント名もインストール名も入りません。オフの場合、公開リポジトリへの書き込みは拒否されます。オンにするにはあなたの許可が必要です。__DEN_CLI__ config agents.issue_writes_public=false",
     "ap.do.agent_import":
       "会話 {session} をプロジェクト「{project}」の {persona} エージェントとして取り込む",
     "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",
@@ -1631,6 +1648,11 @@
     "hub.addressMore": "Hub のアドレス…",
     "hub.justConnected":
       "{company}（{host}）に接続しました。別の会社のつもりでしたか？",
+    "hub.switching":
+      "{to} に切り替え中です。終えるにはそこでサインインしてください。それまで __DEN_TITLE__ は {from} のままです。",
+    "hub.switchEnded":
+      "{to} への切り替えはサインインを待ちすぎたため終了しました。__DEN_TITLE__ は {from} のままです。",
+    "hub.switchSignin": "新しい Hub にサインイン",
     "hub.reconnect": "再接続",
     "hub.cw.done": "Hub（{company}）に接続しました。",
     "hub.cw.doneNoCo": "Hub に接続しました。",
@@ -1864,6 +1886,8 @@
     "ag.none": "このプロジェクトにはまだエージェントがありません",
     "ag.personaOf": "ペルソナ {persona}",
     "ag.state.running": "実行中",
+    "ag.activity.working": "作業中",
+    "ag.activity.idle": "アイドル",
     "ag.state.stopping": "停止中…",
     "ag.state.stopped": "停止済み",
     "ag.state.ended": "終了",
@@ -2382,6 +2406,10 @@
       "その後 Den が再起動し、エージェントは次に再起動したときに Hub のツールを使えるようになります。",
     "ap.det.hub_connect.connect":
       "その後、設定 › Hub で接続します。そこで「接続」を押すと Hub にサインインします。",
+    "ap.det.hub_connect.keep":
+      "{url} にサインインするまで、Den は {was} とそのキーを使い続けます。",
+    "ap.det.hub_connect.signin":
+      "許可すると {url} のサインインが開きます。その Hub が応答したら Den はそちらに切り替わり、{was} はキーを無効にします。失敗した場合、Den は {was} のままで、理由を伝えます。",
     "ap.det.den_pin_commit.pr":
       "Den は package.json と package-lock.json をブランチ den/pin-{version} にコミットし、プルリクエストを開きます。",
     "ap.det.den_pin_commit.push":
@@ -2912,7 +2940,16 @@
       "{name} の質問を取り下げました。解決済み: {reason}（{text}）",
     "bell.m.settledLate":
       "{name} の質問は解決済みでした: {reason}。あなたの回答はその後に届き、エージェントに渡しました（{text}）",
+    "bell.m.hubSwitchWaits":
+      "Hub の切り替えを終えるには {to} にサインインしてください。それまで __DEN_TITLE__ は {from} のままです",
+    "bell.m.hubSwitchExpired":
+      "{to} への切り替えはサインインを {days} 日待ったため終了しました。__DEN_TITLE__ は {from} のままです。切り替えるにはもう一度依頼してください",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ は {to} に切り替えられませんでした: {why}。{from} のままです。設定 › Hub でもう一度サインインしてください",
+    "ap.hubSwitchSignin": "{url} のサインインを開いています…",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
+    "bell.m.hubMoved":
+      "プロジェクト {project} は {hub} に移動しました。リンクを保つには、このインストールをその Hub に切り替えてください。",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
     "bell.m.hostRestarted":
@@ -2927,6 +2964,11 @@
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
+    "bell.m.rsTimedOut":
+      "{id} は再起動されませんでした: {min} 分後も作業中でした",
+    "bell.m.rsJob":
+      "{id} は再起動されませんでした: バックグラウンドのジョブが実行中です ({cmd}、{min} 分)",
+    "bell.m.rsFailed": "{id} は再起動されませんでした",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.unaskedExit":
@@ -2944,6 +2986,8 @@
     "bell.m.vschedExpire":
       "スケジュール「{name}」の許可はあと {n} 日で切れます。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
+    "bell.m.heldAllowClaimed":
+      "あなたの許可を待っています: {what}。あなたが {name} として依頼しました（未確認）。",
     "bell.m.shared": "{actor} さんが {title} を共有しました",
     "bell.m.sharedNote": "{actor} さんが {title} を共有しました: {note}",
     "bell.m.sharedAgent": "エージェント {actor} が {title} を共有しました",
@@ -2969,6 +3013,7 @@
     "bell.ap.h": "あなたの許可待ち",
     "bell.ap.row": "{name} の依頼: {what}",
     "bell.ap.rowAsk": "依頼: {what}",
+    "bell.ap.rowClaimed": "あなたが {name} として依頼（未確認）: {what}",
     "bell.ap.waits": "{ago} 待機中 · 期限 {time}",
     "bell.ap.allow": "許可",
     "bell.ap.deny": "拒否",
@@ -2986,6 +3031,8 @@
     "rs.barBtn": "{n} 件すべてを次の待機時に再起動",
     "rs.allName": "エージェント",
     "rs.done": "{id}: 同じ会話のまま再起動しました。",
+    "rs.timedOut":
+      "{id}: 再起動されませんでした。{min} 分後も作業中でした。今すぐ再起動するとターンが終わります。",
     "rs.failed":
       "{id}: 再起動できませんでした。エージェントのページから再起動してください。",
     "bell.ap.denied": "拒否しました: {what}",
@@ -2998,6 +3045,12 @@
       "ログアウトしていた間（{min} 分）に止まったエージェント: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
+    "bell.m.deliveryFileBad":
+      "保留中の配信 {n} 件を読めませんでした。ファイルは {moved} として保存しました。",
+    "bell.m.deliveryFileBadUncounted":
+      "{file} を読めず、保留中の配信の数もわかりませんでした。ファイルは {moved} として保存しました。",
+    "bell.m.deliveryFileBadKept":
+      "Den は {file} を読めず、移すこともできませんでした。保留中だった内容なしで配信を続けます。",
     "bell.m.notAtPrompt":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが入力プロンプトにいません",
     "bell.m.held.busy":
@@ -3026,9 +3079,13 @@
       "__DEN_TITLE__ の Web アプリが {m} 分間に {n} 回、正常に終了せずに止まりました。{s} 秒待ってから再起動しました",
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} が出ました。都合のよいときに更新を許可してください (このインストールは {have})",
+    "bell.m.updateRollbackFailed":
+      "__DEN_TITLE__ を {v} に更新できず、元に戻す処理も失敗しました: __DEN_TITLE__ {from} は起動しない可能性があります。{root} でバージョンを {from} に戻し、そこで npm install を実行してください。理由: {why}",
     "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.hubAgentsReconnect":
+      "エージェントが自分の作業に署名できるよう、Hub に接続し直してください",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
     "bell.m.updateWaitsWhat":
@@ -3085,6 +3142,8 @@
       "Hub のコメントが届いていません: Hub がコメントのストリームを何度も閉じています",
     "bell.m.hubCommentsSilent":
       "Hub のコメントが届いていません: コメントのストリームが途絶えました",
+    "bell.m.hubCommentsStale":
+      "Hub のコメントが届いていません: コメントのストリームは開いていますが、Hub に未送信のコメントがあります",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",
@@ -3484,6 +3543,12 @@
     "ag.signIn": "{label} で実行",
     "ag.signIn.tip":
       "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
+    "ag.hub.bound": "Hub で確認済み",
+    "ag.hub.bound.tip":
+      "自分のトークンで Hub を呼び出すので、Hub はその作業と承認をこのエージェント自身のものとして数えます。",
+    "ag.hub.unbound": "Hub で未確認",
+    "ag.hub.unbound.tip":
+      "今はこのインストールのトークンで Hub を呼び出すため、Hub はその承認をインストールのものと区別できません。次に Hub を呼び出すとき、Den が Hub にこのエージェント専用のトークンを求めます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",
@@ -3586,6 +3651,9 @@
       "枠を確保済み。負荷 ({load}) が {limit} 未満に下がるまで開始を待っています",
     "gate.leftoversH": "実行の終了後に止めたもの",
     "gate.leftovers": "{label} ({cmd}) の残りのプロセス {n} 個",
+    "gate.removedH": "実行の終了後に削除した使い捨てコンテナ",
+    "gate.removed": "{label} のコンテナ {n} 個 ({images})",
+    "gate.removedBare": "{label} のコンテナ {n} 個",
     "busy.setUndoW": "設定を元に戻しています…",
     "busy.setUndoS": "設定を元に戻しました。",
     "busy.setUndoF": "設定を元に戻せませんでした。",
@@ -4724,6 +4792,9 @@
     "env.run.title": "GitHub 上のデプロイ実行",
     "env.run": "実行",
     "env.timedOut": "{s} 秒でタイムアウト",
+    "env.fetchFailed": "応答なし: 起動していますか?",
+    "env.fetchFailedWhy":
+      "{url} が応答しませんでした。起動しているか、このコンピューターからそのアドレスに届くかを確認してください。",
     "env.up": "稼働中",
     "env.down": "停止中",
     "env.service": "サービス",

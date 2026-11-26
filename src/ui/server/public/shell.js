@@ -2170,6 +2170,11 @@
     "hub.addressMore": "Hub address…",
     "hub.justConnected":
       "Connected to {company} ({host}). Not the company you meant?",
+    "hub.switching":
+      "Switching to {to}: sign in there to finish. __DEN_TITLE__ stays on {from} until then.",
+    "hub.switchEnded":
+      "The switch to {to} waited too long for a sign-in and has ended. __DEN_TITLE__ stays on {from}.",
+    "hub.switchSignin": "Sign in to the new Hub",
     "hub.reconnect": "Reconnect",
     "hub.cw.done": "Connected to Hub ({company}).",
     "hub.cw.doneNoCo": "Connected to Hub.",
@@ -2420,6 +2425,9 @@
     "set.server.start_wait": "Start wait, in seconds",
     "set.server.start_wait.d":
       "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
+    "set.server.tools_probe": "Den tools' check of this install, in seconds",
+    "set.server.tools_probe.d":
+      "How long an agent's Den tools wait for __DEN_TITLE__ to say it is this install before a call is refused. A busy __DEN_TITLE__ answers late; a late answer still counts. The next call checks again. __DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
       "How many unit-test runs (`gate run --kind cpu`) share this machine. Unit and browser test runs wait in separate lines. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
@@ -2497,6 +2505,10 @@
       "Waiting this long, a marked release run is never passed, in minutes",
     "set.server.gate_priority_pass.d":
       "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
+    "set.server.gate_release_pass_other":
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes",
+    "set.server.gate_release_pass_other.d":
+      "While a release run with priority waits, a cpu or browser run of the other kind asked before it doesn't start in a slot it needs, unless it has waited longer than this. It never stops a running one. 0: it passes none of them. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
     "set.server.gate_priority_agents": "Agents may ask for release priority",
     "set.server.gate_priority_agents.d":
       "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
@@ -2619,6 +2631,9 @@
     "set.agents.max_concurrent": "Agents at once",
     "set.agents.max_concurrent.d":
       "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "Agents per project",
+    "set.agents.max_per_project.d":
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -2710,6 +2725,9 @@
     "set.server.health_poll_hidden": "Health checks in a hidden tab",
     "set.server.health_poll_hidden.d":
       "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "Git reads at once",
+    "set.server.git_reads.d":
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -2777,6 +2795,9 @@
       "Recheck a repo's visibility after",
     "set.agents.issue_writes_visibility_minutes.d":
       "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    "set.agents.issue_writes_public": "Agents write issues in public repos",
+    "set.agents.issue_writes_public.d":
+      "On, agents may create issues and comments in public repos. Their text is first checked for listed names, and the footer names no agent or install. Off, a write to a public repo is refused. Turning it on needs your Allow. __DEN_CLI__ config agents.issue_writes_public=false",
     "ap.do.agent_import":
       'Bring in conversation {session} as a {persona} agent of project "{project}"',
     "ap.do.approval_policy":
@@ -2871,6 +2892,8 @@
     "ag.none": "No agents in this project yet",
     "ag.personaOf": "persona {persona}",
     "ag.state.running": "running",
+    "ag.activity.working": "working",
+    "ag.activity.idle": "idle",
     "ag.state.stopping": "stopping…",
     "ag.state.stopped": "stopped",
     "ag.state.ended": "ended",
@@ -3379,6 +3402,10 @@
       "Then Den restarts, and agents get Hub's tools when they next restart.",
     "ap.det.hub_connect.connect":
       "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
+    "ap.det.hub_connect.keep":
+      "Den stays on {was} with its key until you sign in to {url}.",
+    "ap.det.hub_connect.signin":
+      "After your Allow, {url}'s sign-in opens. Once that Hub answers, Den switches to it and {was} revokes its key; if it fails, Den stays on {was} and says why.",
     "ap.det.den_pin_commit.pr":
       "Den commits package.json and package-lock.json on the branch den/pin-{version} and opens a pull request.",
     "ap.det.den_pin_commit.push":
@@ -3902,7 +3929,16 @@
       "You withdrew {name}'s question, settled: {reason} ({text})",
     "bell.m.settledLate":
       "{name}'s question was settled: {reason}; your answer came after it and was passed on ({text})",
+    "bell.m.hubSwitchWaits":
+      "Sign in to {to} to finish switching Hubs; __DEN_TITLE__ stays on {from} until then",
+    "bell.m.hubSwitchExpired":
+      "The switch to {to} waited {days} days for a sign-in and has ended. __DEN_TITLE__ stays on {from}; ask again to switch",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ couldn't switch to {to}: {why}. It stays on {from}; sign in again in Settings › Hub",
+    "ap.hubSwitchSignin": "Opening {url}'s sign-in…",
     "bell.m.pick": "{n} projects need your pick",
+    "bell.m.hubMoved":
+      "Project {project} moved to {hub}. Switch this install to that Hub to keep it linked.",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
     "bell.pickBody.one":
@@ -3920,6 +3956,11 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. Terminals that ended: {terminals}. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
+    "bell.m.rsTimedOut":
+      "{id} was not restarted: still working after {min} min",
+    "bell.m.rsJob":
+      "{id} was not restarted: a background job is running ({cmd}, {min} min)",
+    "bell.m.rsFailed": "{id} was not restarted",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
@@ -3942,6 +3983,8 @@
     "bell.m.vschedExpire.one":
       'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.heldAllowClaimed":
+      "Waiting for your Allow: {what}. You asked, as {name} (not verified).",
     "bell.m.shared": "{actor} shared {title} with you",
     "bell.m.sharedNote": "{actor} shared {title} with you: {note}",
     "bell.m.sharedAgent": "The agent {actor} shared {title} with you",
@@ -3965,6 +4008,7 @@
     "bell.ap.h": "Waiting for your Allow",
     "bell.ap.row": "{name} asks: {what}",
     "bell.ap.rowAsk": "Asked: {what}",
+    "bell.ap.rowClaimed": "You asked, as {name} (not verified): {what}",
     "bell.ap.waits": "Waiting {ago} · expires {time}",
     "bell.ap.allow": "Allow",
     "bell.ap.deny": "Deny",
@@ -3982,6 +4026,8 @@
     "rs.barBtn": "Restart all {n} at their next idle",
     "rs.allName": "the agents",
     "rs.done": "{id}: restarted, in the same conversation.",
+    "rs.timedOut":
+      "{id}: not restarted, still working after {min} min. Restart now ends its turn.",
     "rs.failed": "{id}: not restarted. Restart it from the Agents page.",
     "bell.ap.denied": "Denied: {what}",
     "bell.ap.failed": "That didn't work: {error}",
@@ -3995,6 +4041,14 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
+    "bell.m.deliveryFileBad":
+      "Den couldn't read {n} held deliveries; kept the file as {moved}.",
+    "bell.m.deliveryFileBad.one":
+      "Den couldn't read {n} held delivery; kept the file as {moved}.",
+    "bell.m.deliveryFileBadUncounted":
+      "Den couldn't read {file} or count its held deliveries; kept the file as {moved}.",
+    "bell.m.deliveryFileBadKept":
+      "Den couldn't read {file} and couldn't move it aside; delivery goes on without what it held.",
     "bell.m.notAtPrompt":
       "{name}: {n} messages wait for {m} min. Waiting: the agent isn't at its prompt",
     "bell.m.notAtPrompt.one":
@@ -4047,9 +4101,13 @@
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} is out. Allow the update when it suits you (this install runs {have})",
+    "bell.m.updateRollbackFailed":
+      "__DEN_TITLE__ couldn't update to {v}, and the rollback failed too: __DEN_TITLE__ {from} may not start. Put the pin back on {from} in {root} and run npm install there. Why: {why}",
     "bell.m.updateFailed": "__DEN_TITLE__ couldn't update to {v}: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow",
+    "bell.m.hubAgentsReconnect":
+      "Reconnect to Hub so your agents sign their own work",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
     "bell.m.updateWaitsWhat":
@@ -4106,6 +4164,8 @@
       "Hub comments aren't arriving: Hub keeps closing the comment stream",
     "bell.m.hubCommentsSilent":
       "Hub comments aren't arriving: the comment stream went silent",
+    "bell.m.hubCommentsStale":
+      "Hub comments aren't arriving: the comment stream is open, but Hub lists comments it hasn't sent",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",
@@ -4504,6 +4564,12 @@
     "ag.signIn": "on {label}",
     "ag.signIn.tip":
       "It signs in with {label}, whose token is in this install's secrets store, so it keeps running after logout.",
+    "ag.hub.bound": "Verified on Hub",
+    "ag.hub.bound.tip":
+      "It calls Hub with its own token, so Hub counts its work and approvals as its own.",
+    "ag.hub.unbound": "Not verified on Hub",
+    "ag.hub.unbound.tip":
+      "It calls Hub with this install's token for now, so Hub can't tell its approvals from the install's. Den asks Hub for its own token when it next calls Hub.",
     "ag.tabs": "Open terminals",
     "ag.hint.focus":
       "Click shows one terminal. Shift- or ⌘-click adds it alongside.",
@@ -4609,6 +4675,11 @@
     "gate.leftoversH": "Stopped after their run ended",
     "gate.leftovers": "{n} leftover processes of {label} ({cmd})",
     "gate.leftovers.one": "{n} leftover process of {label} ({cmd})",
+    "gate.removedH": "Throwaway containers removed after their run",
+    "gate.removed": "{n} containers of {label} ({images})",
+    "gate.removed.one": "{n} container of {label} ({images})",
+    "gate.removedBare": "{n} containers of {label}",
+    "gate.removedBare.one": "{n} container of {label}",
     "busy.setUndoW": "Putting the setting back…",
     "busy.setUndoS": "The setting is back as it was.",
     "busy.setUndoF": "Couldn't put the setting back.",
@@ -4867,6 +4938,9 @@
     "env.run.title": "The deploy run on GitHub",
     "env.run": "run",
     "env.timedOut": "timed out after {s} s",
+    "env.fetchFailed": "No answer: is it running?",
+    "env.fetchFailedWhy":
+      "{url} didn't answer. Check that it is running and that this computer can reach it.",
     "env.up": "up",
     "env.down": "down",
     "env.service": "Service",
@@ -9668,6 +9742,40 @@
             ).then(function (f) {
               f({ confirm: false, post: false });
             });
+            return;
+          } else if (
+            decision === "allow" &&
+            res &&
+            res.connect === true &&
+            a.action === "hub_connect"
+          ) {
+            toast(t("ap.hubSwitchSignin", { url: res.url || "" }));
+            window.denShell
+              .busyAction(
+                "connect",
+                function (headers) {
+                  return api(
+                    "POST",
+                    "/api/hub/connect",
+                    { switch: true },
+                    { headers },
+                  );
+                },
+                {
+                  button: pressed,
+                  onDone: function (r) {
+                    location.assign(r.location);
+                  },
+                  onFail: function (e) {
+                    apClose();
+                    toast(t("ap.failed", { error: (e && e.message) || "?" }));
+                  },
+                },
+              )
+              .catch(function (e) {
+                apClose();
+                toast(t("ap.failed", { error: (e && e.message) || "?" }));
+              });
             return;
           } else if (decision === "allow") toast(apDoneWords(a, res));
           // Issue 334: the page that asked hears what ran (a new app key,

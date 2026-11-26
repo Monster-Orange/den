@@ -19,11 +19,12 @@ import {
   WEB_SESSIONS_LOCK,
   WebSessionStore,
   webSessionsPath,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 import {
   patchCliRows,
   PERSON_ONLY_SETTINGS,
 } from "../../../src/shared/settings-cli-rows.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 let tmp = "";
 beforeEach(() => {
@@ -155,7 +156,7 @@ describe("issue 1299: web.sessions_lock_wait_ms", () => {
   it("has a Settings row, words in en/es/ja, and a config name", () => {
     const pub = path.join(__dirname, "../../../src/ui/server/public");
     const read = (f: string) => fs.readFileSync(path.join(pub, f), "utf-8");
-    expect(read("settings-registry.js")).toMatch(
+    expect(readSettingsSources()).toMatch(
       /id: "access\.sessions_lock_wait"[\s\S]{0,900}web_sessions\.lock_wait_ms/,
     );
     for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {

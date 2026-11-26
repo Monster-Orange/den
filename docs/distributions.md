@@ -3616,7 +3616,7 @@ and logs to `<stateDir>/logs/<cli>/sessions-host.log`. The state dir is
 the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 
 ```
-<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>
+<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] [--json] -- <argv…>
 <cli> sessions list [-w <ws>] [--json]
 <cli> sessions attach <name|id>          # ctrl-] detaches; the session keeps running
 <cli> sessions kill <name|id> [--signal INT|TERM|HUP|KILL] [--grace <s>]
@@ -4700,6 +4700,8 @@ agents:
     active_minutes: 10 # no activity this long, not known done: idle
     row_max: 4 # deprecated (0.4.45): ignored
     read_max_mb: 64 # the most of an agent's transcript read for them
+    facts_cache_mb: 256 # what Den keeps of all agents' transcripts between reads
+    refresh_seconds: 5 # how old a helper row in the agents list may be
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
@@ -4708,6 +4710,8 @@ agents:
 | `active_minutes`        | minutes, above 0 to 100000 | 10      |
 | `row_max`               | deprecated, ignored        | 4       |
 | `read_max_mb`           | MB, above 0 to 4096        | 64      |
+| `facts_cache_mb`        | MB, above 0 to 4096        | 256     |
+| `refresh_seconds`       | seconds, 0 to 3600         | 5       |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
 
 `read_max_mb` (0.4.36): a helper's state comes partly from its agent's own
@@ -4715,6 +4719,22 @@ transcript (its notification, its result). Den reads only that much of the
 transcript's end, then only what is added, so a transcript of gigabytes
 costs what a 64 MB one does. A helper whose notification is further back
 gets its state from its own files.
+
+`facts_cache_mb` (0.4.90): what Den keeps from every agent's transcript
+between reads, so that each look at the agents list reads only what was
+added since the last. When it's full, the agent looked at least recently
+is dropped first. Before 0.4.90 Den kept 64 agents' facts. With more
+agents than that, each look at the list read every transcript again, and
+Den's pages and tools stalled for seconds. The facts are small, about 0.1
+MB for a busy agent, so the default holds thousands of agents.
+
+`refresh_seconds` (0.4.90): the agents list and the helpers count share
+one set of helper rows. A row is read again in the background once it is
+older than this, and the list shows the last one meanwhile, so a list
+never waits on transcripts. A new agent, or one whose state changed
+(started, stopped, cleared), is read before the list answers. The
+reading yields between agents, so Den keeps answering while it reads.
+At 0, every list reads its rows, as before 0.4.90.
 
 `row_max` no longer does anything (0.4.45): how many helpers show under
 an agent is each person's `agents.helpers_shown` (above).
@@ -5549,7 +5569,7 @@ prompt gets them). They say:
 own settings file, `--settings <stateDir>/agent-files/<id>/settings.json`.
 Den never writes your `~/.claude`; your own hooks still run.
 
-- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no imports)
+- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no packages)
   blocks, with a reason Claude sees (exit 2):
   - reading all of a log or a large file into the conversation: a `Read`
     with no `limit`, or `cat`, `less`, or `tail` from a line (`tail +1`,
@@ -5564,8 +5584,30 @@ Den never writes your `~/.claude`; your own hooks still run.
     wait primitive. Recent Claude Code versions have their own sleep guard,
     which answers first (and also stops `sleep … &`). The sleep is blocked
     either way; Den's hook covers runtimes and versions without that guard.
-  - Nothing else. Quoted text, heredoc bodies and other tools always pass,
-    and a hook that can't read its input lets the call through.
+  - a `gh` write to a public repo whose title or body holds a listed name
+    (issue 1127): `gh pr create|edit|comment|review|merge|close|reopen`,
+    `gh issue create|edit|comment|close|reopen`, and `gh api` writes to
+    issues, pulls, comments or GraphQL mutations. The text comes from
+    `--title`, `--subject`, `--body`, `--comment`, `--body-file` (a file,
+    or `-` from a heredoc or a pipe), `-f`/`-F` `title=`/`body=` (and
+    `body=@file`) and `--input`. The list is the
+    org-name gate's (`DEN_ORG_NAMES`, `DEN_ORG_NAMES_FILE` or
+    `~/.config/den-dev/org-names.txt`); with none, nothing is checked.
+    GitHub is asked a repo's visibility only on a hit, and the answer is
+    kept 10 minutes (`--visibility-minutes`) in
+    `~/.cache/den/repo-visibility.json`. Private and internal repos pass;
+    a repo whose visibility can't be found is checked. The reason quotes
+    the agent's own phrase and offers neutral words ("the person", "the
+    project", "the company", "an internal host"), never the list. This
+    check runs with `--no-guardrails` too. A list that can't be read (a
+    missing `DEN_ORG_NAMES_FILE`, a line that isn't a valid regex) holds
+    `gh` writes with a message saying so, and the hook's other blocks
+    still run. Each list line is matched as written, so give a common
+    word its own `\b` (`\bacme\b`) to keep it from matching inside
+    other words.
+  - Nothing else. Quoted text, heredoc bodies and other tools always pass
+    (other than the `gh` writes above), and a hook that can't read its
+    input lets the call through.
 - `Stop` (`stop-hook.ts`) checks a turn's last message, which is what the
   person reads. With a `Hand-back` heading it gets the whole hand-back
   check; any other message gets the plain-writing part only (every ID

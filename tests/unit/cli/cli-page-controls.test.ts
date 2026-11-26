@@ -11,11 +11,19 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import { AGENTS_ENTRY, agentsSource } from "../server/helpers/agents-source.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const CLI = path.join(process.cwd(), "src", "ui", "cli");
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (dir: string, f: string) =>
   fs.readFileSync(path.join(dir, f), "utf-8");
+const pageText = (f: string) =>
+  f === "settings-registry.js"
+    ? readSettingsSources()
+    : f === AGENTS_ENTRY
+      ? agentsSource()
+      : read(PUBLIC, f);
 
 type Entry =
   | { read: true }
@@ -191,6 +199,12 @@ const LISTING: Record<string, Entry> = {
   "agents folder": slot("0.4.50", "move a stopped agent to another folder"),
   "agents unlink": page("agents-page.js", 'agentPath(r, "link"'),
   "agents rm": page("agents-page.js", 'agentPath(r, "remove"'),
+  "agents os-login": script(
+    "the agents' own login, made and removed with sudo at a terminal",
+  ),
+  "agents session": script(
+    "what the launcher runs as the agents' own login to start one agent",
+  ),
   "agents handback-check": script("a linter for agents' hand-backs"),
   "agents handoff-check": script("a linter for agents' hand-offs"),
   // Issue 163 (b): `claude setup-token` prints it in a terminal; it is
@@ -330,7 +344,7 @@ describe("MODE-5: every CLI command has its page control listed", () => {
       .filter(
         (e): e is [string, { page: string; marker: string }] => "page" in e[1],
       )
-      .filter(([, e]) => !read(PUBLIC, e.page).includes(e.marker))
+      .filter(([, e]) => !pageText(e.page).includes(e.marker))
       .map(([c, e]) => `${c}: ${e.page} has no ${e.marker}`);
     expect(missing).toEqual([]);
   });

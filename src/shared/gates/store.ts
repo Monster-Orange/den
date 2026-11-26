@@ -115,6 +115,7 @@ import {
   type GateKind,
   type GateSettings,
   type MachineReading,
+  onOff,
 } from "./rules.js";
 
 /**
@@ -176,6 +177,7 @@ export type GateSettingsPatch = {
   remote_max_asks?: number | null;
   priority_max?: number | null;
   priority_pass_limit_minutes?: number | null;
+  release_pass_other_kind_minutes?: number | null;
   priority_agents?: number | null;
   priority_runners?: number | null;
   claim_minutes?: number | null;
@@ -288,6 +290,7 @@ export const GATE_LIMITS: Record<
   priority_max: { min: 0, max: 16, int: true },
   // Issue 751: between marked runs only; 0: a marked run is never passed.
   priority_pass_limit_minutes: { min: 0, max: 24 * 60, int: false },
+  release_pass_other_kind_minutes: { min: 0, max: 24 * 60, int: false },
   priority_agents: { min: 0, max: 1, int: true },
   // Issue 739: CI runners may ask for priority; 1 yes, 0 no.
   priority_runners: { min: 0, max: 1, int: true },
@@ -340,6 +343,16 @@ export function checkGatePatch(
         error: `gate_slots.${k} is not a setting (${[...Object.keys(GATE_LIMITS), ...Object.keys(GATE_TEXT)].join(", ")})`,
       };
     if (x === undefined) continue;
+    if (k === "route_agents" && x !== null) {
+      const b = onOff(x);
+      if (b === null)
+        return {
+          ok: false,
+          error: `gate_slots.${k} is on (1, true, "yes", "on") or off (0, false, "no", "off"), or null`,
+        };
+      patch[k] = b ? 1 : 0;
+      continue;
+    }
     if (
       x !== null &&
       (typeof x !== "number" ||
@@ -1225,6 +1238,10 @@ export class GateStore {
           "priority_pass_limit_minutes",
           GATE_DEFAULTS.priorityPassLimitMinutes,
         ),
+        releasePassOtherKindMinutes: num(
+          "release_pass_other_kind_minutes",
+          GATE_DEFAULTS.releasePassOtherKindMinutes,
+        ),
         priorityAgents:
           num("priority_agents", GATE_DEFAULTS.priorityAgents ? 1 : 0) === 1,
         priorityRunners:
@@ -1265,10 +1282,7 @@ export class GateStore {
         browserBoxDefault:
           text("browser_box_default").trim() === "local" ? "local" : "any",
         browserHostOnly: text("browser_host_only"),
-        // Issue 1264: false is slice 1's form of off, as the hook reads it.
-        routeAgents:
-          v.route_agents !== false &&
-          num("route_agents", GATE_DEFAULTS.routeAgents ? 1 : 0) === 1,
+        routeAgents: onOff(v.route_agents) ?? GATE_DEFAULTS.routeAgents,
         routeCommands: (() => {
           const l = parseRouteCommands(text("route_commands"));
           return typeof l === "string" || !l.length
@@ -2663,6 +2677,10 @@ export class GateStore {
     } catch {
       return {};
     }
+  }
+
+  savedValue(key: string): unknown {
+    return this.settingsFile()[key];
   }
 
   /** The test boxes (settings.json `boxes`); none by default. */

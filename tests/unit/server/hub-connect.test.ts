@@ -187,6 +187,55 @@ describe("start: den_url, this Den's https edge address", () => {
   });
 });
 
+describe("the agents' grant on Connect", () => {
+  it("the first Connect sends agents=yes, with no whoami before it", () => {
+    const h = harness();
+    expect(start(h).q.agents).toBe("yes");
+  });
+
+  it("whoami's connect.agents feature is never read as 'the grant took': nothing is kept from it", async () => {
+    let whoami = 0;
+    const h = harness({
+      ...({
+        confirmAgents: async () => {
+          whoami += 1;
+          return true;
+        },
+      } as Partial<HubConnectDeps>),
+    });
+    const { q } = start(h);
+    expect((await h.hc.finish(back({ state: q.state, code: "c1" }))).ok).toBe(
+      true,
+    );
+    expect(whoami).toBe(0);
+    expect(
+      (h.user().hub as Record<string, unknown>).agents_grant,
+    ).toBeUndefined();
+  });
+
+  it("every Connect and every Disconnect clears the not-covered hold and the reconnect item, so the next mint asks again", async () => {
+    const settled: string[] = [];
+    const h = harness({
+      agentGrantSettled: () => void settled.push("settled"),
+      config: () =>
+        ({
+          url: HUB,
+          tokenRef: null,
+          tokenSource: { kind: "file", path: "/state/hub/token" },
+          tokenFrom: "hub.token",
+        }) as unknown as HubConfig,
+    });
+    let q = start(h).q;
+    await h.hc.finish(back({ state: q.state, code: "c1" }));
+    expect(settled).toEqual(["settled"]);
+    q = start(h).q;
+    await h.hc.finish(back({ state: q.state, code: "c2" }));
+    expect(settled).toEqual(["settled", "settled"]);
+    await h.hc.disconnect();
+    expect(settled).toEqual(["settled", "settled", "settled"]);
+  });
+});
+
 describe("finish: what comes back from Hub", () => {
   it("approved: trades the code with the verifier, keeps the token, writes hub.* in user.yml", async () => {
     const h = harness();
@@ -411,6 +460,43 @@ describe("disconnect", () => {
       revoked: false,
       message: /already revoked/,
     });
+  });
+
+  it("revokes every agent's Hub token, then the install's; one Hub can't revoke stops it unless forced", async () => {
+    const calls: string[] = [];
+    let fail = 1;
+    const h = harness({
+      config: () => cfg,
+      revoke: async (url, t) => {
+        calls.push(`install ${url} ${t === TOKEN ? "TOKEN" : t}`);
+        return true;
+      },
+      unbindAgents: async (hub, force) => {
+        calls.push(
+          `agents ${hub.url} ${hub.token === TOKEN ? "TOKEN" : hub.token} ${force}`,
+        );
+        return { revoked: 2, failed: force ? 0 : fail };
+      },
+    });
+    h.setUser({ hub: { url: HUB, token: "file:/state/hub/token" } });
+    expect(await h.hc.disconnect()).toMatchObject({
+      ok: false,
+      error: /1 agent's Hub token.*Nothing was removed/,
+    });
+    expect(calls).toEqual([`agents ${HUB} TOKEN false`]);
+    expect(h.forgot).toEqual([]);
+    fail = 0;
+    calls.length = 0;
+    expect(await h.hc.disconnect()).toEqual({
+      ok: true,
+      revoked: true,
+      message:
+        "Disconnected. Hub revoked this install's token and 2 agents' tokens.",
+    });
+    expect(calls).toEqual([
+      `agents ${HUB} TOKEN false`,
+      `install ${HUB} TOKEN`,
+    ]);
   });
 
   it("not connected: nothing to do", async () => {

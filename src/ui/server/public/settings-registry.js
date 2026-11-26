@@ -40,7 +40,12 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
-import { restartResultHtml, wireRestartNow } from "./restart-result.js";
+import {
+  followRestarts,
+  mergeLive,
+  restartResultHtml,
+  wireRestartNow,
+} from "./restart-result.js";
 
 export { restartResultHtml };
 import { dialogHtml, mountDialog } from "./dialog-den.js";
@@ -3447,6 +3452,26 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
   },
   {
+    id: "server.tools_probe",
+    category: "server",
+    label: "Den tools' check of this install, in seconds",
+    description:
+      "How long an agent's Den tools wait for __DEN_TITLE__ to say it is this install before a call is refused. A busy __DEN_TITLE__ answers late; a late answer still counts. The next call checks again. __DEN_CLI__ config web.tools_probe_seconds=30",
+    keywords: [
+      "agent",
+      "tools",
+      "mcp",
+      "timeout",
+      "server-info",
+      "web.tools_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.tools_probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.toolsProbeSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ web_ready: { tools_probe_seconds: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",
@@ -3793,6 +3818,21 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.gate_slots?.priorityPassLimitMinutes ?? 0,
     write: (v, ctx) =>
       ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
+  },
+  {
+    id: "server.gate_release_pass_other",
+    category: "server",
+    label:
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes",
+    description:
+      "While a release run with priority waits, a cpu or browser run of the other kind asked before it doesn't start in a slot it needs, unless it has waited longer than this. It never stops a running one. 0: it passes none of them. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
+    keywords: ["gate", "slot", "priority", "release", "cpu", "browser", "wait"],
+    scope: "user",
+    keys: ["gate_slots.release_pass_other_kind_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.releasePassOtherKindMinutes ?? 30,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { release_pass_other_kind_minutes: v } }),
   },
   {
     id: "server.gate_priority_agents",
@@ -5186,6 +5226,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ health_poll: { hidden_seconds: v } }),
   },
   {
+    id: "server.git_reads",
+    category: "server",
+    label: "Git reads at once",
+    description:
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
+    keywords: ["git", "repos", "processes", "parallel", "concurrency", "tests"],
+    scope: "user",
+    keys: ["git_reads.at_once"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.git_reads?.at_once ?? 16,
+    write: (v, ctx) => ctx.post({ git_reads: { at_once: v } }),
+  },
+  {
     // issue_write: which persona roles write GitHub issues in their
     // project's repos (user.yml agents.issue_writes). A person's only.
     id: "agents.issue_writes",
@@ -5259,6 +5312,26 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agent_issue_writes?.visibility_minutes ?? 10,
     write: (v, ctx) =>
       ctx.post({ agent_issue_writes: { visibility_minutes: v } }),
+  },
+  {
+    id: "agents.issue_writes_public",
+    category: "agents",
+    label: "Agents write issues in public repos",
+    description:
+      "On, agents may create issues and comments in public repos. Their text is first checked for listed names, and the footer names no agent or install. Off, a write to a public repo is refused. Turning it on needs your Allow. __DEN_CLI__ config agents.issue_writes_public=false",
+    keywords: [
+      "issue",
+      "github",
+      "public",
+      "names",
+      "footer",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.public"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.agent_issue_writes?.public !== false,
+    write: (v, ctx) => ctx.post({ agent_issue_writes: { public: !!v } }),
   },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
@@ -5348,6 +5421,19 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 1000, step: 1 },
     read: (ctx) => ctx.data.agents_limits?.max_concurrent ?? 4,
     write: (v, ctx) => ctx.post({ agents_limits: { max_concurrent: v } }),
+  },
+  {
+    id: "agents.max_per_project",
+    category: "agents",
+    label: "Agents per project",
+    description:
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
+    keywords: ["agents", "limit", "max_per_project", "project", "cap"],
+    scope: "user",
+    keys: ["agents_limits.max_per_project"],
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agents_limits?.max_per_project ?? 0,
+    write: (v, ctx) => ctx.post({ agents_limits: { max_per_project: v } }),
   },
   {
     // den#156: the Agents list's waits (user.yml agents_list.*).
@@ -6768,8 +6854,16 @@ export function hubHtml(b, flash, t = (k) => k) {
         : "") +
       `</div>${acts}</div>`
     : "";
+  const sw =
+    b.switching && typeof b.switching.to === "string"
+      ? `<p class="set-note set-warn" role="status" data-hub-switching>${escR(t("hub.switching", { to: b.switching.to, from: b.url || "" }))} ` +
+        `<button type="button" class="den-btn sm primary" data-hub-action="connect" data-hub-switch-signin>${escR(t("hub.switchSignin"))}</button></p>`
+      : b.switchEnded && typeof b.switchEnded.to === "string"
+        ? `<p class="set-note" role="status" data-hub-switch-ended>${escR(t("hub.switchEnded", { to: b.switchEnded.to, from: b.url || "" }))}</p>`
+        : "";
   return (
     (just || flashHtml) +
+    sw +
     head +
     (first
       ? `<div data-hub-addr-wrap hidden>${hubAddressHtml(b)}</div>`
@@ -6912,6 +7006,31 @@ function wireRestartResult(box, ctx) {
   });
 }
 
+/**
+ * The answer box follows its agents live (restarted,
+ * a wait that ran out, failed) and goes once they are all done.
+ */
+function followRestartResult(box, ctx, plan) {
+  let shown = Array.isArray(plan) ? plan : [];
+  if (!shown.length) return;
+  const f = followRestarts({
+    api: (...a) => ctx.shell.api(...a),
+    onRows: (rows) => {
+      if (!box.isConnected) return f.stop();
+      const next = mergeLive(shown, rows);
+      if (JSON.stringify(next) === JSON.stringify(shown)) return;
+      shown = next;
+      if (!shown.length) {
+        f.stop();
+        box.remove();
+        return;
+      }
+      box.innerHTML = restartResultHtml(shown, (k, v) => ctx.shell.t(k, v));
+      wireRestartResult(box, ctx);
+    },
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6933,6 +7052,7 @@ function offerRestart(host, ctx, fresh) {
               ctx.shell.t(k, v),
             );
             wireRestartResult(box, ctx);
+            followRestartResult(box, ctx, x?.agents);
           })
           .catch((e) => {
             box.insertAdjacentHTML(
@@ -8637,7 +8757,11 @@ function wireHub(host, ctx) {
           ctx.shell.api(
             "POST",
             "/api/hub/connect",
-            typed ? { url: typed.value } : {},
+            button?.dataset.hubSwitchSignin !== undefined
+              ? { switch: true }
+              : typed
+                ? { url: typed.value }
+                : {},
             { headers },
           ),
         {

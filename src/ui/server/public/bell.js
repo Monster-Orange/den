@@ -253,9 +253,12 @@ export function allowsOf(b) {
 function allowRowHtml(w, open) {
   if (w.coach && typeof w.coach === "object") return coachRowHtml(w);
   const what = allowWhat(w);
+  // The person asked, under an unverified agent claim.
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
-    : tr("bell.ap.rowAsk", { what });
+    : w.claimedAs
+      ? tr("bell.ap.rowClaimed", { name: w.claimedAs, what })
+      : tr("bell.ap.rowAsk", { what });
   const waits =
     typeof w.since === "string" && typeof w.expiresAt === "string"
       ? tr("bell.ap.waits", {
@@ -737,6 +740,10 @@ export function initBell(doc = document) {
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
+  // The control a paint couldn't give the keyboard back to (its
+  // row wasn't drawn: a refresh that came back without it). The next paint
+  // that draws it again focuses it, unless the person moved on meanwhile.
+  let lost = "";
   const bell = hydrateBell(btn, {
     lang: () => window.denShell?.lang?.() ?? "en",
     // den#143: its Report footer drawn with it, so a repaint (every
@@ -748,6 +755,7 @@ export function initBell(doc = document) {
     onOpen: () => void refresh(),
     onClose: () => {
       ui.ask = null;
+      lost = "";
     },
     // Esc in the ⊘'s question cancels it; the panel stays.
     onEscape: () => {
@@ -763,6 +771,15 @@ export function initBell(doc = document) {
   // Issue 1054: the button held with the kit's dots, and how to let it go.
   let heldBtn = null;
   let letGo = null;
+  const loose = () => {
+    const a = doc.activeElement;
+    return !a || a === doc.body || a === doc.documentElement;
+  };
+  doc.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (t === doc.body || t === doc.documentElement) return;
+    if (lost && !pop.contains(t)) lost = "";
+  });
   const paint = () => {
     const at = doc.activeElement;
     const keep =
@@ -792,13 +809,23 @@ export function initBell(doc = document) {
       heldBtn = b;
       letGo = b ? (window.denShell?.holdDots?.(b) ?? null) : null;
     }
-    if (keep) pop.querySelector(keep)?.focus?.();
+    const want = keep || (lost && loose() ? lost : "");
+    if (!want) return;
+    const el = pop.querySelector(want);
+    if (el) {
+      el.focus?.();
+      lost = "";
+    } else if (loose()) lost = want;
   };
+  let asked = 0;
+  let drawn = 0;
   const refresh = async () => {
+    const n = ++asked;
     const b = await load();
-    // Issue 1339: a refresh while Mark all read or Clear read runs would
-    // put back what the person just saw go.
-    if (!b || ui.busy) return;
+    // None while Mark all or Clear read runs, and none older than the
+    // answer drawn last: answers can land out of order.
+    if (!b || ui.busy || n < drawn) return;
+    drawn = n;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
     bell.setCount((b?.unread ?? 0) + overrunsOf(b).length);

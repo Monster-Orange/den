@@ -17,9 +17,9 @@
  *   web_github: { owner_name_timeout_seconds? }
  *                                     user.yml web.owner_name_timeout_seconds
  *                                     (issue 406)
- *   web_ready: { probe_seconds?, start_seconds? }
+ *   web_ready: { probe_seconds?, start_seconds?, tools_probe_seconds? }
  *                                     user.yml web.ready_probe_seconds,
- *                                     web.start_wait_seconds (den#143)
+ *                                     web.start_wait_seconds, web.tools_probe_seconds
  *   web_pairing: { requests_per_minute?, approve_attempts?,
  *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
  *                                     web.approve_attempts,
@@ -41,7 +41,7 @@
  *                                     user.yml agents.draft_hold_max_minutes
  *                                     (issue 1311)
  *   agent_issue_writes: { roles?: [role, …] | null, per_hour?,
- *     visibility_minutes? }           user.yml agents.issue_writes,
+ *     visibility_minutes?, public? }  user.yml agents.issue_writes,
  *                                     agents.issue_writes_per_hour and
  *                                     agents.issue_writes_visibility_minutes
  *                                     (issue_write; issue 1127)
@@ -72,6 +72,7 @@
  *                                     den-config checks them
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
+ *   git_reads: { at_once? }   user.yml git_reads.*
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
  *     api_budget_floor?, watches_max?, watch_stale_minutes?,
  *     watch_max_open_hours?, rerun_look_minutes? }
@@ -95,7 +96,7 @@ import {
   SESSIONS_LOCK_WAIT_RANGE,
   PAIR_LIMITS,
   WEB_WAIT_RANGE,
-} from "./web-session.js";
+} from "./web/web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
   AGENTS_RESUME_LIMITS,
@@ -108,12 +109,13 @@ import {
   agentsLimitValueError,
 } from "./den-config.js";
 import { HEALTH_POLL } from "./health-poll.js";
+import { GIT_READS } from "./git-reads.js";
 import {
   ISSUE_WRITES_PER_HOUR,
   ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
-import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
+import { LOOKUP_LIMITS } from "./proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
 import { SERVER_LOG_LIMITS } from "./server-log-file.js";
@@ -212,6 +214,7 @@ export const PERSON_ONLY_SETTINGS = [
   "held_writes",
   // Issue 1022: how often the page polls health, visible and hidden.
   "health_poll",
+  "git_reads",
 ] as const;
 
 /**
@@ -356,6 +359,11 @@ const WEB_READY: Record<string, Limit> = {
   },
   start_seconds: {
     key: "start_wait_seconds",
+    ...WEB_WAIT_RANGE,
+    int: false,
+  },
+  tools_probe_seconds: {
+    key: "tools_probe_seconds",
     ...WEB_WAIT_RANGE,
     int: false,
   },
@@ -520,6 +528,10 @@ const HEALTH_POLL_LIMITS: Record<string, Limit> = {
     int: true,
   },
   hidden_seconds: { key: "hidden_seconds", ...HEALTH_POLL.hidden, int: true },
+};
+
+const GIT_READS_LIMITS: Record<string, Limit> = {
+  at_once: { key: "at_once", ...GIT_READS, int: true },
 };
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
@@ -814,9 +826,22 @@ export function patchCliRows(
       return {
         ok: false,
         error:
-          "agent_issue_writes is an object: roles, per_hour, visibility_minutes",
+          "agent_issue_writes is an object: roles, per_hour, visibility_minutes, public",
       };
-    const { roles, ...rest } = iw;
+    const { roles, public: pub, ...rest } = iw;
+    if (pub !== undefined && pub !== null && typeof pub !== "boolean")
+      return {
+        ok: false,
+        error: "agent_issue_writes.public is true, false or null",
+      };
+    if (pub !== undefined)
+      apply.push(() => {
+        const a = isObj(user.agents) ? { ...user.agents } : {};
+        if (pub === null) delete a.issue_writes_public;
+        else a.issue_writes_public = pub;
+        if (Object.keys(a).length) user.agents = a;
+        else delete user.agents;
+      });
     if (
       roles !== undefined &&
       roles !== null &&
@@ -977,6 +1002,14 @@ export function patchCliRows(
       "health_poll",
       HEALTH_POLL_LIMITS,
       body.health_poll,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "git_reads",
+      "git_reads",
+      GIT_READS_LIMITS,
+      body.git_reads,
       apply,
     ) ??
     patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);
