@@ -13,6 +13,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- On a test install, a live check can now set one of the test's own agents to "ask" or "edits", or back to its project's mode, from the agent's row. Before, the request was refused, so the row's mode switch couldn't be checked there. Wider modes, agents the test didn't start and the server agent are still refused.
 - After a Den restart, an agent's question still shows on its wait: Den adopted the kept bell row but lost the question text, so the agent's row showed no question while the bell still did. Each kind of kept row is read for its own text, including rows from older Dens. (issue 1699)
 - After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.
 
