@@ -132,7 +132,14 @@ describe("a bulk restart for tools goes through the restart queue, a batch at a 
     await new Promise<void>((resolve) => {
       void restartMany({} as never, agents, {
         slot: async (id) => {
-          await queue.add({ id, why: "tools", run: async () => true });
+          await queue.add({
+            id,
+            why: "tools",
+            run: async () => {
+              inWindow++;
+              return true;
+            },
+          });
           return () => undefined;
         },
         stateOf: async (_d, id, ws) =>
@@ -145,7 +152,6 @@ describe("a bulk restart for tools goes through the restart queue, a batch at a 
           o?: { slot?: () => Promise<() => void> },
         ) => {
           const release = await o?.slot?.();
-          inWindow++;
           release?.();
           return {} as never;
         }) as never,
