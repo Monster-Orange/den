@@ -13,6 +13,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
+import { readJson } from "./lib/read-json.mjs";
 export const issue = 715;
 // It is also 991's live check: a box run goes through the gate's queue (Den 0.4.84).
 export const items = [715, 991];
@@ -102,23 +103,24 @@ export async function run(ctx, state) {
     env,
     timeout: 30000,
   });
-  const view = parse(json?.out ?? "");
+  const view = json?.code === 0 ? readJson(json, "gate status") : { slots: [] };
   const slots = Array.isArray(view?.slots) ? view.slots : [];
   // Never run `gate run` unless the CLI reads this check's own folder:
   // otherwise it would ask in the machine's shared queue.
   r.ownDir = slots.some((s) => s.id === ID.first);
   r.statusCode = json?.code ?? null;
   if (!r.ownDir) {
-    r.statusTail = String(json?.err ?? json?.out ?? "").slice(-300);
+    r.statusTail = String(json?.err ?? "").slice(-300);
     return r;
   }
   r.waitOrder = slots.filter((s) => !s.granted).map((s) => s.id);
   r.firstPriority = slots.find((s) => s.id === ID.first)?.priority ?? null;
   const text = await ctx.cli(["gate", "status"], { env, timeout: 30000 });
-  r.textLine =
-    String(text?.out ?? "")
-      .split("\n")
-      .find((l) => l.includes(ID.first)) ?? "";
+  const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const said = new RegExp(
+    `${esc(ID.first)}[^\\n]*release priority: "${esc(WHY_FIRST)}"`,
+  ).exec(String(text?.out ?? ""));
+  r.textLine = said ? said[0] : "";
   const t0 = Date.now();
   const second = await ctx.cli(
     [
@@ -163,9 +165,9 @@ export async function run(ctx, state) {
       passed,
       behind,
     }));
-  const after = parse(
-    (await ctx.cli(["gate", "status", "--json"], { env, timeout: 30000 }))
-      ?.out ?? "",
+  const after = readJson(
+    await ctx.cli(["gate", "status", "--json"], { env, timeout: 30000 }),
+    "gate status",
   );
   r.after = (after?.slots ?? []).map((s) => ({ id: s.id, granted: s.granted }));
   fs.writeFileSync(ctx.evidence("715-events.json"), JSON.stringify(r, null, 2));
@@ -263,7 +265,7 @@ export function expect(cells) {
       ok:
         r.firstPriority?.reason === WHY_FIRST &&
         r.firstPriority?.holds === true &&
-        r.textLine.includes(`release priority: "${WHY_FIRST}"`),
+        r.textLine !== "",
       detail: `--json: ${JSON.stringify(r.firstPriority)}; text: ${r.textLine}`,
     },
   ];

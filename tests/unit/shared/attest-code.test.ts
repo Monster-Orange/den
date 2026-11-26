@@ -13,7 +13,7 @@ import {
   mintAttestCode,
 } from "../../../src/shared/attest-code.js";
 import { checkClaimCode } from "../../../src/shared/claim-code.js";
-import { checkLoginCode } from "../../../src/shared/web-session.js";
+import { checkLoginCode } from "../../../src/shared/web/web-session.js";
 
 const secret = randomBytes(32);
 const T0 = 1_800_000_000_000;

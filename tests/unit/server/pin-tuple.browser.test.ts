@@ -31,6 +31,7 @@ import type { Browser, Page } from "playwright";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { uiModuleFile } from "../../../src/ui/server/ui-assets.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const browsers: Record<string, Browser> = {};
@@ -103,10 +104,13 @@ async function mount(
     const kit = kitAsset(url.pathname);
     if (kit) return r.fulfill(kit);
     const file = /^\/([\w-]+\.js)$/.exec(url.pathname);
-    if (file && fs.existsSync(path.join(PUBLIC, file[1])))
+    const served =
+      file &&
+      (uiModuleFile(url.pathname, PUBLIC) ?? path.join(PUBLIC, file[1]));
+    if (served && fs.existsSync(served))
       return r.fulfill({
         contentType: "text/javascript; charset=utf-8",
-        body: fs.readFileSync(path.join(PUBLIC, file[1]), "utf-8"),
+        body: fs.readFileSync(served, "utf-8"),
       });
     switch (url.pathname) {
       case "/api/settings":

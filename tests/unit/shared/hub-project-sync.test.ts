@@ -8,7 +8,7 @@ import {
   readSyncReply,
   syncAgents,
   type SyncProject,
-} from "../../../src/shared/hub-project-sync";
+} from "../../../src/shared/hub/hub-project-sync";
 import type { WorkspacesFile } from "../../../src/shared/types";
 
 const file = (w: Record<string, unknown>) =>

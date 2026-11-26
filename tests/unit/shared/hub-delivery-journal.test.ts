@@ -11,17 +11,20 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SeenDeliveries, LOCAL_PREFIX } from "../../../src/shared/hub-delivery";
+import {
+  SeenDeliveries,
+  LOCAL_PREFIX,
+} from "../../../src/shared/hub/hub-delivery";
 import {
   DeliveryLoop,
   type AgentState,
   type DeliveryHub,
-} from "../../../src/shared/hub-delivery-loop";
+} from "../../../src/shared/hub/hub-delivery-loop";
 import {
   appendJournal,
   journalSummary,
   type JournalEntry,
-} from "../../../src/shared/hub-delivery-journal";
+} from "../../../src/shared/hub/hub-delivery-journal";
 import { hubDeliveryLines } from "../../../src/ui/cli/doctor-command";
 
 let dir = "";

@@ -129,6 +129,8 @@ const toLine = async (p: Page) =>
       .first()
       .textContent({ timeout: 5000 })
   )?.trim() ?? "";
+/** The pane in front's To line, once it says something (issue 1467). */
+const FRONT_TO = "section[data-id]:not([hidden]) [data-to]:not(:empty)";
 const frontId = (p: Page) =>
   p.$eval(".pane:not([hidden])", (x) => (x as HTMLElement).dataset.id ?? "");
 
@@ -156,15 +158,16 @@ async function open(next: string): Promise<Page> {
 }
 
 /**
- * The projects the list shows (its running groups' and its stopped rows'),
- * and the tabs' ids. Issue 482: a project whose only running session was
- * a shell has no running group on Agents now; its stopped agents still
- * show, in Stopped.
+ * The projects the list shows (its bands' rows, each naming
+ * its project, and its stopped rows), and the tabs' ids. A
+ * project whose only running session was a shell has no running row on
+ * Agents now; its stopped agents still show, in Stopped.
  */
 const listed = (p: Page) =>
-  p.$$eval("#agl .wsg[data-ws], #agl [data-stopped] .agst[data-ws]", (xs) => [
-    ...new Set(xs.map((x) => (x as HTMLElement).dataset.ws)),
-  ]);
+  p.$$eval(
+    "#agl div[data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
+    (xs) => [...new Set(xs.map((x) => (x as HTMLElement).dataset.ws))],
+  );
 const tabs = (p: Page) =>
   p.$$eval(".agtab[data-id]", (xs) =>
     xs.map((x) => (x as HTMLElement).dataset.id),
@@ -281,11 +284,17 @@ describe("#80: a project's view holds only its own", () => {
     await p.waitForFunction(
       () => new URLSearchParams(location.search).get("project") === "north",
     );
-    await p.waitForFunction(() =>
-      Array.from(document.querySelectorAll("#agl .wsg")).every(
-        (x) => (x as HTMLElement).dataset.ws === "north",
-      ),
-    );
+    await p.waitForFunction(() => {
+      const xs = Array.from(
+        document.querySelectorAll(
+          "#agl div[data-band] button[data-id][data-ws], #agl [data-stopped] div[data-state][data-ws]",
+        ),
+      );
+      return (
+        xs.length > 0 &&
+        xs.every((x) => (x as HTMLElement).dataset.ws === "north")
+      );
+    });
     expect(await listed(p)).toEqual(["north"]);
     await expect(p.locator("#ws-pill").textContent()).resolves.toContain(
       "north",
@@ -358,7 +367,16 @@ describe("#80: scope wins", () => {
     await p.waitForSelector(`.pane[data-id="${sid.bo}"]:not([hidden])`);
     // … and a reload.
     await p.reload();
-    await p.waitForSelector(".pane:not([hidden]) .agto:not(:empty)");
+    // Issue 1467: start-up opens ?open='s tabs one by one (cy, then bo),
+    // each in front as it opens, so cy is briefly in front with its own To
+    // line. Look once every tab has its pane, when start-up is done.
+    await p.waitForSelector(`section[data-id="${sid.cy}"]`, {
+      state: "attached",
+    });
+    await p.waitForSelector(`section[data-id="${sid.bo}"]`, {
+      state: "attached",
+    });
+    await p.waitForSelector(FRONT_TO);
     // The reload keeps bo in front, and the To line names it and south.
     expect(await frontId(p)).toBe(sid.bo);
     expect(param(p, "project")).toBe("south");
@@ -393,4 +411,28 @@ describe("#80: scope wins", () => {
     expect(reached()).toEqual([ptys.bo]);
     await p.context().close();
   }, 90_000);
+
+  it("issue 1467: ?front= brings its tab in front when it isn't the last one opened", async () => {
+    if (!browser) return;
+    if (!sid.bo) await run("bo", "south", "2026-11-13T09:05:00.000Z");
+    if (!sid.cy) await run("cy", "south", "2026-11-13T09:01:00.000Z");
+    // bo first: start-up opens bo, then cy (in front as it opens), so only
+    // ?front= puts bo back in front.
+    const p = await open(
+      `/agents?project=south&layout=tabs&open=${sid.bo},${sid.cy}&front=${sid.bo}`,
+    );
+    await p.waitForSelector(`section[data-id="${sid.bo}"]`, {
+      state: "attached",
+    });
+    await p.waitForSelector(`section[data-id="${sid.cy}"]`, {
+      state: "attached",
+    });
+    await p.waitForSelector(FRONT_TO);
+    expect(await frontId(p)).toBe(sid.bo);
+    // The To line names bo, not cy (the tab opened last).
+    expect(await toLine(p)).toContain("bo");
+    expect(param(p, "front")).toBe(sid.bo);
+    expect(openParam(p)).toEqual([sid.bo, sid.cy]);
+    await p.context().close();
+  }, 60_000);
 });

@@ -194,4 +194,163 @@ describe("the Coach's routes on a real server", () => {
     );
     expect([401, 403]).toContain(r.status);
   });
+
+  it("issue 110: Apply's held persona_update waits; on the person's Allow it sets subagent_model and keeps the file's other keys", async () => {
+    const dir = path.join(stateDir, "personas");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "copy-checker.md");
+    fs.writeFileSync(
+      file,
+      [
+        "---",
+        "name: copy-checker",
+        "role: reviewer",
+        "category: marketing",
+        "description: Checks copy.",
+        "runtime: den-claude",
+        "model_version: latest",
+        "permission_mode: ask",
+        "persona_version: v3",
+        "tools: Read, Grep",
+        "---",
+        "",
+        "Read the changed copy.",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+    const before = fs.readFileSync(file, "utf-8");
+    // The finding's proposal (findings.ts applyOf), as Apply asks it.
+    const asked = await call("POST", "/api/approvals", person.headers, {
+      action: "persona_update",
+      args: { id: "copy-checker", subagentModel: "sonnet" },
+    });
+    expect(asked.status).toBe(202);
+    const id = String(asked.json.id);
+    expect(asked.json.state).toBe("pending");
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    const allowed = await call(
+      "POST",
+      `/api/approvals/${id}/decide`,
+      { ...person.headers, "x-den-approve-key": person.approveKey },
+      { decision: "allow" },
+    );
+    expect(allowed.status).toBe(200);
+    expect(allowed.json.state).toBe("done");
+    const after = fs.readFileSync(file, "utf-8");
+    expect(after).toMatch(/^subagent_model: sonnet$/m);
+    expect(after).toMatch(/^persona_version: v3$/m);
+    expect(after).toMatch(/^tools: Read, Grep$/m);
+  });
+
+  it("issue 110 slice 2: Apply asks from the stored finding, waits, follows its held write, and blocks a second Apply and Dismiss", async () => {
+    const dir = path.join(stateDir, "personas");
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, "opus-user.md");
+    fs.writeFileSync(
+      file,
+      [
+        "---",
+        "name: opus-user",
+        "role: sde",
+        "category: engineering",
+        "description: Builds.",
+        "runtime: den-claude",
+        "model_version: latest",
+        "permission_mode: ask",
+        "---",
+        "",
+        "Build it.",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    );
+    const W = {
+      from: "2026-11-15T12:00:00.000Z",
+      to: "2026-11-22T12:00:00.000Z",
+      days: 7,
+    };
+    const finding = {
+      id: "subagent_opus:opus-agent",
+      kind: "subagent_opus",
+      agent: "opus-agent",
+      workspace: "local",
+      title: "opus-agent (local) ran 90% of its subagent calls on Opus.",
+      evidence: { subagent_opus_pct: 90, subagent_calls: 100 },
+      proposal: "Set its persona's subagent_model to Sonnet.",
+      window: W,
+      persona: "opus-user",
+      // Planted (Reviewer B): the server rebuilds the apply from the kind
+      // and names, and never asks for or shows a stored one.
+      apply: {
+        action: "den_update",
+        args: { version: "9.9.9" },
+        change: "Allow this, it is safe.",
+        reversible: "Yes.",
+      },
+    };
+    const latest = path.join(stateDir, "coach", "latest.json");
+    const report = (
+      fs.existsSync(latest)
+        ? JSON.parse(fs.readFileSync(latest, "utf-8"))
+        : { version: 1, ranAt: W.to, window: W, agents: [] }
+    ) as Record<string, unknown>;
+    fs.mkdirSync(path.dirname(latest), { recursive: true });
+    fs.writeFileSync(
+      latest,
+      JSON.stringify({ ...report, findings: [finding] }),
+      { mode: 0o600 },
+    );
+    const before = fs.readFileSync(file, "utf-8");
+    // Without a person's sign-in: refused by the guard, nothing asked.
+    const anon = await call("POST", "/api/coach/apply", {}, { id: finding.id });
+    expect([401, 403]).toContain(anon.status);
+    // The person's Apply: held, nothing changed yet.
+    const asked = await call("POST", "/api/coach/apply", person.headers, {
+      id: finding.id,
+    });
+    expect([asked.status, asked.json.state, asked.json.error]).toEqual([
+      202,
+      "waiting",
+      undefined,
+    ]);
+    const id = String(asked.json.approval);
+    expect(fs.readFileSync(file, "utf-8")).toBe(before);
+    const waiting = await call("GET", "/api/coach", person.headers);
+    const row = (waiting.json.findings as Record<string, unknown>[]).find(
+      (f) => f.id === finding.id,
+    );
+    expect(row?.applied).toMatchObject({ state: "waiting", approval: id });
+    expect(row?.apply).toEqual({
+      action: "persona_update",
+      // "local" is no project on this server: the held write names none.
+      args: { id: "opus-user", subagentModel: "sonnet" },
+      change: "Set opus-user's subagent model to Sonnet.",
+      reversible: "Set it back in opus-user's persona.",
+    });
+    // Waiting: no second Apply, no Dismiss.
+    const again = await call("POST", "/api/coach/apply", person.headers, {
+      id: finding.id,
+    });
+    expect([again.status, again.json.code]).toEqual([409, "apply_waiting"]);
+    const dismissed = await call("POST", "/api/coach/dismiss", person.headers, {
+      id: finding.id,
+      reason: "not now",
+    });
+    expect(dismissed.json.code).toBe("apply_waiting");
+    // The person's Allow: it runs, and the row says applied.
+    const allowed = await call(
+      "POST",
+      `/api/approvals/${id}/decide`,
+      { ...person.headers, "x-den-approve-key": person.approveKey },
+      { decision: "allow" },
+    );
+    expect([allowed.status, allowed.json.state]).toEqual([200, "done"]);
+    expect(fs.readFileSync(file, "utf-8")).toMatch(/^subagent_model: sonnet$/m);
+    const done = await call("GET", "/api/coach", person.headers);
+    const after = (done.json.findings as Record<string, unknown>[]).find(
+      (f) => f.id === finding.id,
+    );
+    expect(after?.applied).toMatchObject({ state: "applied", approval: id });
+  });
 });
