@@ -6,6 +6,7 @@ import {
   claimStateDir,
   giveOwnStateDir,
   ownStateDirOf,
+  ownStateDirProblem,
   stateDirShared,
   takeConnectNext,
   writeConnectNext,
@@ -93,10 +94,73 @@ describe("issue 1632 part 4: a checkout's own state folder", () => {
     expect(fs.readFileSync(path.join(s, "web.secret"), "utf-8")).toBe("x");
   });
 
-  it("the same checkout gets the same folder again", () => {
+  it("a folder is never given twice: a second give makes another new one", () => {
     const b = checkout("b");
     const s = stateDir();
-    expect(giveOwnStateDir(b, s)).toBe(giveOwnStateDir(b, s));
+    const one = giveOwnStateDir(b, s);
+    const two = giveOwnStateDir(b, s);
+    expect(two).not.toBe(one);
+    expect(fs.readdirSync(two)).toEqual(["owner.json"]);
+  });
+
+  it("a folder planted at the name ahead of time is never used, and its web.secret is never read", () => {
+    const b = checkout("b");
+    const s = stateDir();
+    const planted = `${s}-aaaaaaaa`;
+    fs.mkdirSync(path.join(planted, "sessions"), {
+      recursive: true,
+      mode: 0o700,
+    });
+    fs.writeFileSync(path.join(planted, "web.secret"), "planted", {
+      mode: 0o600,
+    });
+    const names = ["aaaaaaaa", "bbbbbbbb"];
+    const dir = giveOwnStateDir(b, s, () => names.shift()!);
+    expect(dir).toBe(`${s}-bbbbbbbb`);
+    expect(fs.readdirSync(dir)).toEqual(["owner.json"]);
+    expect(ownStateDirOf(b)).toBe(dir);
+    expect(fs.readdirSync(planted).sort()).toEqual(["sessions", "web.secret"]);
+  });
+
+  it("a symlink planted at the name is never followed", () => {
+    const b = checkout("b");
+    const s = stateDir();
+    const elsewhere = path.join(root, "elsewhere");
+    fs.mkdirSync(elsewhere, { mode: 0o755 });
+    fs.symlinkSync(elsewhere, `${s}-aaaaaaaa`);
+    const names = ["aaaaaaaa", "bbbbbbbb"];
+    const dir = giveOwnStateDir(b, s, () => names.shift()!);
+    expect(dir).toBe(`${s}-bbbbbbbb`);
+    expect(fs.lstatSync(dir).isSymbolicLink()).toBe(false);
+    expect(fs.readdirSync(elsewhere)).toEqual([]);
+    expect(fs.statSync(elsewhere).mode & 0o777).toBe(0o755);
+  });
+
+  it("at start, a recorded folder is used only while it is still the one Den made", () => {
+    const b = checkout("b");
+    const s = stateDir();
+    const dir = giveOwnStateDir(b, s);
+    expect(ownStateDirOf(b)).toBe(dir);
+    expect(ownStateDirProblem(b)).toBeNull();
+    fs.chmodSync(dir, 0o755);
+    expect(ownStateDirOf(b)).toBeNull();
+    expect(ownStateDirProblem(b)).toMatch(/isn't the one Den made/);
+    expect(ownStateDirProblem(b)).not.toContain(dir);
+    fs.chmodSync(dir, 0o700);
+    fs.writeFileSync(
+      path.join(dir, "owner.json"),
+      JSON.stringify({ distRoot: checkout("other") }),
+    );
+    expect(ownStateDirOf(b)).toBeNull();
+    fs.rmSync(dir, { recursive: true });
+    const elsewhere = path.join(root, "elsewhere");
+    fs.mkdirSync(elsewhere, { mode: 0o700 });
+    fs.writeFileSync(
+      path.join(elsewhere, "owner.json"),
+      JSON.stringify({ distRoot: b }),
+    );
+    fs.symlinkSync(elsewhere, dir);
+    expect(ownStateDirOf(b)).toBeNull();
   });
 
   it("a recorded folder that isn't absolute is ignored", () => {
@@ -174,6 +238,17 @@ describe("issue 1632 part 4: doctor on a shared state folder", () => {
     const s = stateDir();
     claimStateDir(s, a);
     expect(rows(s, a).status).toBe("ok");
+  });
+
+  it("warns when the recorded own folder isn't the one Den made, never naming it", () => {
+    const b = checkout("b");
+    const s = stateDir();
+    const dir = giveOwnStateDir(b, s);
+    fs.chmodSync(dir, 0o755);
+    const r = rows(s, b);
+    expect(r.status).toBe("warn");
+    expect(r.detail).toMatch(/isn't the one Den made/);
+    expect(r.detail).not.toContain(dir);
   });
 });
 

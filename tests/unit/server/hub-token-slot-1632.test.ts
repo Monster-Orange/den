@@ -10,6 +10,7 @@ import {
   hubTokenFile,
   hubTokenRotation,
   hubTokenSlot,
+  isDensOwnRef,
   storeRefFor,
   type HubConnectDeps,
   type StoredToken,
@@ -45,6 +46,24 @@ describe("issue 1632 part 4: each install and Hub has its own token slot", () =>
     expect(storeRefFor("doppler", "0123456789")).toEqual({
       key: expect.stringMatching(/_HUB_TOKEN_0123456789$/),
     });
+  });
+
+  it("a store item is Den's own only in the default vault: the same name in a vault a distribution chose is not", () => {
+    const ours = storeRefFor("1password")!;
+    const slotted = `${ours.item} 0123456789`;
+    expect(isDensOwnRef({ item: slotted, field: "token" }, ours)).toBe(true);
+    expect(isDensOwnRef({ item: ours.item, vault: "" }, ours)).toBe(true);
+    expect(
+      isDensOwnRef(
+        { item: slotted, vault: "Distribution", field: "token" },
+        ours,
+      ),
+    ).toBe(false);
+    expect(isDensOwnRef({ item: `${ours.item} not-a-slot` }, ours)).toBe(false);
+    const doppler = storeRefFor("doppler")!;
+    expect(isDensOwnRef({ key: `${doppler.key}_0123456789` }, doppler)).toBe(
+      true,
+    );
   });
 
   it("rotation still owns a token kept in the old shared file, and one in a slot", () => {

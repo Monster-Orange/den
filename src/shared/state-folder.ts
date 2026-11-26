@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
@@ -58,7 +58,7 @@ export function claimStateDir(
   return { shared: false };
 }
 
-export function ownStateDirOf(distRoot: string): string | null {
+function recordedDir(distRoot: string): string | null {
   try {
     const raw = JSON.parse(
       fs.readFileSync(path.join(distRoot, RECORD), "utf-8"),
@@ -71,14 +71,67 @@ export function ownStateDirOf(distRoot: string): string | null {
   }
 }
 
-export function giveOwnStateDir(distRoot: string, sharedDir: string): string {
-  const id = createHash("sha256")
-    .update(real(distRoot))
-    .digest("hex")
-    .slice(0, 6);
-  const dir = `${path.resolve(sharedDir)}-${id}`;
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  fs.chmodSync(dir, 0o700);
+function madeByDen(dir: string, distRoot: string): boolean {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(dir);
+  } catch {
+    return false;
+  }
+  const uid = process.getuid?.();
+  return (
+    st.isDirectory() &&
+    !st.isSymbolicLink() &&
+    (uid === undefined || st.uid === uid) &&
+    (st.mode & 0o777) === 0o700 &&
+    ownerOf(dir) === real(distRoot)
+  );
+}
+
+export function ownStateDirOf(distRoot: string): string | null {
+  const dir = recordedDir(distRoot);
+  return dir && madeByDen(dir, distRoot) ? dir : null;
+}
+
+export function ownStateDirProblem(distRoot: string): string | null {
+  const dir = recordedDir(distRoot);
+  return dir && !madeByDen(dir, distRoot)
+    ? "this install's own state folder isn't the one Den made (a link, another owner or other permissions), so Den doesn't use it: Settings › Hub's Connect offers a new one"
+    : null;
+}
+
+function newEmptyDir(base: string, rand: () => string): string {
+  for (let i = 0; i < 8; i++) {
+    const dir = `${base}-${rand()}`;
+    try {
+      fs.mkdirSync(dir, { mode: 0o700 });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "EEXIST") continue;
+      throw e;
+    }
+    const st = fs.lstatSync(dir);
+    const uid = process.getuid?.();
+    if (
+      !st.isDirectory() ||
+      st.isSymbolicLink() ||
+      (uid !== undefined && st.uid !== uid) ||
+      fs.readdirSync(dir).length
+    )
+      continue;
+    fs.chmodSync(dir, 0o700);
+    return dir;
+  }
+  throw new Error(
+    "Den couldn't make a new state folder: every name it tried was taken",
+  );
+}
+
+export function giveOwnStateDir(
+  distRoot: string,
+  sharedDir: string,
+  rand: () => string = () => randomBytes(4).toString("hex"),
+): string {
+  const dir = newEmptyDir(path.resolve(sharedDir), rand);
   claimStateDir(dir, distRoot);
   const file = path.join(distRoot, RECORD);
   fs.mkdirSync(path.dirname(file), { recursive: true });

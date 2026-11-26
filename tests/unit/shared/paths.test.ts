@@ -21,6 +21,7 @@ import {
   getInvokeCwd,
 } from "../../../src/shared/paths.js";
 import { resetProfileCache } from "../../../src/shared/profile.js";
+import { giveOwnStateDir } from "../../../src/shared/state-folder.js";
 
 const SAVED = ["DEN_ROOT", "DEN_ROOT", "DEN_HOME", "DEN_PROFILE"];
 let saved: Record<string, string | undefined>;
@@ -140,22 +141,47 @@ describe("getStateDir", () => {
     process.env.DEN_HOME = path.join(tmpDir, "state");
     expect(getStateDir()).toBe(path.join(tmpDir, "state"));
   });
+
+  it("a recorded folder Den didn't make is not used", () => {
+    profile(tmpDir);
+    process.env.DEN_ROOT = tmpDir;
+    const planted = path.join(tmpDir, "planted");
+    fs.mkdirSync(planted, { mode: 0o700 });
+    fs.mkdirSync(path.join(tmpDir, "config", "local"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "config", "local", "state-dir.json"),
+      JSON.stringify({ dir: planted }),
+    );
+    resetProfileCache();
+    expect(getStateDir()).not.toBe(planted);
+  });
 });
 
 describe("issue 1632 part 4: getStateDir and a checkout's own state folder", () => {
   it("the folder recorded in config/local/state-dir.json, under <PREFIX>_HOME", () => {
     profile(tmpDir);
     process.env.DEN_ROOT = tmpDir;
-    const own = path.join(tmpDir, "own-state");
     fs.mkdirSync(path.join(tmpDir, "config", "local"), { recursive: true });
-    fs.writeFileSync(
-      path.join(tmpDir, "config", "local", "state-dir.json"),
-      JSON.stringify({ dir: own }),
-    );
+    const own = giveOwnStateDir(tmpDir, path.join(tmpDir, "shared-state"));
     resetProfileCache();
     expect(getStateDir()).toBe(own);
     process.env.DEN_HOME = path.join(tmpDir, "state");
     expect(getStateDir()).toBe(path.join(tmpDir, "state"));
+  });
+
+  it("a recorded folder Den didn't make is not used", () => {
+    const home = profile(tmpDir);
+    process.env.DEN_ROOT = tmpDir;
+    const planted = path.join(tmpDir, "planted");
+    fs.mkdirSync(planted, { mode: 0o700 });
+    fs.mkdirSync(path.join(tmpDir, "config", "local"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, "config", "local", "state-dir.json"),
+      JSON.stringify({ dir: planted }),
+    );
+    resetProfileCache();
+    expect(getStateDir()).not.toBe(planted);
+    void home;
   });
 });
 

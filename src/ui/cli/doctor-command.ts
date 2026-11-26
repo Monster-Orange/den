@@ -69,7 +69,10 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
-import { stateDirShared } from "../../shared/state-folder.js";
+import {
+  ownStateDirProblem,
+  stateDirShared,
+} from "../../shared/state-folder.js";
 import {
   bothSpellings,
   readRulesCover,
@@ -1797,9 +1800,18 @@ export function sharedUserLines(
   } catch {
     folderShared = false;
   }
-  const folderDetail = folderShared
-    ? `another copy of ${title} on this computer uses this state folder too; Settings › Hub's Connect offers to give this one its own`
-    : "this install's state folder is its own";
+  let folderIgnored: string | null = null;
+  try {
+    folderIgnored = ownStateDirProblem(o.distRoot ?? getDistRoot());
+  } catch {
+    folderIgnored = null;
+  }
+  if (folderIgnored) folderShared = true;
+  const folderDetail =
+    folderIgnored ??
+    (folderShared
+      ? `another copy of ${title} on this computer uses this state folder too; Settings › Hub's Connect offers to give this one its own`
+      : "this install's state folder is its own");
   const reg = o.registry ?? registryDir();
   const home = o.home ?? process.env.HOME;
   const others = listOtherInstalls(reg, {

@@ -437,8 +437,15 @@ function isOwnStoreRef(cfg: HubConfig): boolean {
   if (!cfg.tokenRef) return false;
   const st = secretsStatus(readSecretsConfig(), process.env);
   const ours = storeRefFor(st.backend);
-  if (!ours) return false;
-  const got = ours.item ? cfg.tokenRef.item : cfg.tokenRef.key;
+  return !!ours && isDensOwnRef(cfg.tokenRef, ours);
+}
+
+export function isDensOwnRef(
+  ref: Partial<SecretRef>,
+  ours: Partial<SecretRef>,
+): boolean {
+  if ((ref.vault ?? "") !== (ours.vault ?? "")) return false;
+  const got = ours.item ? ref.item : ref.key;
   const base = ours.item ?? ours.key ?? "";
   if (!got || !base) return false;
   const sep = ours.item ? " " : "_";

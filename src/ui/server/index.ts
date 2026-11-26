@@ -143,6 +143,7 @@ import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import {
   claimStateDir,
   giveOwnStateDir,
+  ownStateDirProblem,
   stateDirShared,
   writeConnectNext,
 } from "../../shared/state-folder.js";
@@ -3928,6 +3929,8 @@ try {
   serverLog(`  ⚠ install registry: ${(e as Error).message}`, "warn");
 }
 try {
+  const ignored = ownStateDirProblem(getDistRoot());
+  if (ignored) serverLog(`  ⚠ ${ignored}`, "warn");
   if (claimStateDir(getStateDir(), getDistRoot()).shared)
     serverLog(
       `  ⚠ another copy of ${product().title} on this computer uses this state folder: Settings › Hub's Connect offers to give this one its own`,
