@@ -171,6 +171,14 @@ async function open(
   };
 }
 
+const heldNow = (p: Page) =>
+  p.waitForFunction(() => {
+    const b = document.querySelector<HTMLButtonElement>(
+      '#den-bell-pop [data-bell="all"]',
+    );
+    return b?.getAttribute("aria-busy") === "true" && b.disabled;
+  });
+
 describe("Mark all read (issue 1339)", () => {
   it("busy in the button and the rows read before the POST answers; back after", async () => {
     if (skip()) return;
@@ -179,8 +187,7 @@ describe("Mark all read (issue 1339)", () => {
     expect(await count(p, UNREAD)).toBe(3);
     const btn = p.locator('#den-bell-pop [data-bell="all"]');
     await btn.click();
-    expect(await btn.getAttribute("aria-busy")).toBe("true");
-    expect(await btn.isDisabled()).toBe(true);
+    await heldNow(p);
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
     // The probe sees the kit's hold: one button, this one.
@@ -229,8 +236,7 @@ describe("Clear read (issue 1339)", () => {
     const { p, release } = await open("clear", 5);
     const btn = p.locator('#den-bell-pop [data-bell="clear"]');
     await btn.click();
-    expect(await btn.getAttribute("aria-busy")).toBe("true");
-    expect(await btn.isDisabled()).toBe(true);
+    await heldNow(p);
     // The kit's dots: the held button's one aria-hidden part.
     await btn.locator('[aria-hidden="true"]').waitFor();
     // The probe sees the kit's hold: one button, this one.
