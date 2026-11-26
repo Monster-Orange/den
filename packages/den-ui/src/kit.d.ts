@@ -8,6 +8,7 @@ import type {
   pending,
   watchForms,
   holdDots,
+  holdRow,
 } from "./busy.js";
 import type {
   AccountHydrateOptions,
@@ -73,7 +74,11 @@ import type {
   SettingFieldOptions,
   settingFieldHtml,
 } from "./setting-field.js";
-import type { syncPinToggles } from "./shell-client.js";
+import type {
+  hydrateRailFolds,
+  railFoldStore,
+  syncPinToggles,
+} from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
 import type { FilterBar, FilterBarOptions } from "./filter-bar.js";
@@ -187,6 +192,7 @@ export declare const busy: {
   watchForms: typeof watchForms;
   /** Issue 698: the dots alone (no pop-up); (button, false) lets go. */
   holdDots: typeof holdDots;
+  holdRow: typeof holdRow;
   configure: typeof configureBusy;
 };
 /** An autosaving editor's save-state line, in the kit's language. */
@@ -264,6 +270,8 @@ export interface DenUIKit {
   hydrateAccount: typeof hydrateAccount;
   attachMenuFilter: typeof attachMenuFilter;
   syncPinToggles: typeof syncPinToggles;
+  hydrateRailFolds: typeof hydrateRailFolds;
+  railFoldStore: typeof railFoldStore;
   icon: typeof icon;
   esc: typeof esc;
   t: typeof t;

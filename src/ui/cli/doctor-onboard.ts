@@ -42,6 +42,7 @@ export interface OnboardCheck {
   detail: string;
   /** A command the agent can run to fix it. */
   fix?: string;
+  notes?: string[];
   /** A question for the person, when only they can fix it. */
   ask?: string;
   /**

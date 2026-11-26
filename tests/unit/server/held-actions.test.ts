@@ -449,3 +449,25 @@ describe("issue 160: pr_close, closing a stale or superseded PR after a Hub note
     ).toMatchObject({ ok: false });
   });
 });
+
+// A repo that folds into another path in a URL is refused
+// before gh is asked.
+describe("issue 1568: pr_close refuses a repo GitHub would refuse", () => {
+  it.each(["acme/..", "acme/.", "../api", "-acme/api"])("%s", async (repo) => {
+    const f = fakes();
+    let asked = 0;
+    f.deps.prClose = async (a) => {
+      asked++;
+      return { ok: true, repo: a.repo, pr: a.pr };
+    };
+    const c = await heldActions(f.deps).pr_close.check(
+      { repo, pr: 42, comment: "Superseded by 57 (Hub note)" },
+      { agent: "lead", project: "repos" },
+    );
+    expect(c).toMatchObject({
+      ok: false,
+      error: "repo: a GitHub repo, owner/name",
+    });
+    expect(asked).toBe(0);
+  });
+});

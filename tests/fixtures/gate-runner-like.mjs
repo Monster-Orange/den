@@ -7,7 +7,21 @@
  */
 import { checkGateModule, checkRows } from "../../scripts/gate-shape.mjs";
 
-export async function runLikeBed(file, mod, ctx) {
+/** The runner's withLimit (a race; the run itself goes on), its timer cleared after. */
+function withLimit(p, ms, what) {
+  if (!ms) return p;
+  let timer;
+  const late = new Promise((_, rej) => {
+    timer = setTimeout(
+      () => rej(new Error(`${what} timed out after ${ms} ms`)),
+      ms,
+    );
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
+/** `limitMs`: a cell's time limit, as the runner's timeoutMs (none when unset). */
+export async function runLikeBed(file, mod, ctx, { limitMs = 0 } = {}) {
   const shape = checkGateModule(file, mod);
   if (shape.length) return { error: "shape: " + shape.join("; ") };
   let state;
@@ -21,10 +35,19 @@ export async function runLikeBed(file, mod, ctx) {
           Object.assign(ctx, { page: ctx.newPage(b, w), browser: b, width: w });
           result.push({
             cell: { browser: b, width: w },
-            result: await mod.run(ctx, state),
+            result: await withLimit(
+              Promise.resolve(mod.run(ctx, state)),
+              limitMs,
+              `run ${b} ${w}`,
+            ),
           });
         }
-    } else result = await mod.run(ctx, state);
+    } else
+      result = await withLimit(
+        Promise.resolve(mod.run(ctx, state)),
+        limitMs,
+        "run",
+      );
     const rows = await mod.expect(result);
     const bad = checkRows(rows, mod.clauses);
     if (bad.length) return { error: "rows: " + bad.join("; ") };

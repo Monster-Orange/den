@@ -16,7 +16,7 @@ import type {
   Notification,
   NotificationStore,
 } from "../../shared/notifications.js";
-import type { Approval } from "./approvals.js";
+import { claimantIsPerson, type Approval } from "./approvals.js";
 import { allowPath } from "../../shared/agent-links.js";
 
 /** A held write's bell item: `record:held-<request id>`. */
@@ -72,16 +72,26 @@ export function syncHeldBell(
       project = undefined;
     }
     const what = a.summary;
+    const claimed = claimantIsPerson(a.actor) ? a.claimedAs : undefined;
     const n = store.add({
       kind: "decision",
       subject,
       scope: `workspace/${project || "den-server"}`,
+      // A person's own ask under an unverified agent claim
+      // says so, never as though that agent asked.
       text: a.agent
         ? `${a.agent} waits for your Allow: ${what}`
-        : `Waiting for your Allow: ${what}`,
+        : claimed
+          ? `Waiting for your Allow: ${what}. You asked, as ${claimed} (not verified).`
+          : `Waiting for your Allow: ${what}`,
       msg: a.agent
         ? { key: "bell.m.heldAllow", vars: { name: a.agent, what } }
-        : { key: "bell.m.heldAllowAsk", vars: { what } },
+        : claimed
+          ? {
+              key: "bell.m.heldAllowClaimed",
+              vars: { name: claimed, what },
+            }
+          : { key: "bell.m.heldAllowAsk", vars: { what } },
       link: heldLink(a.agent, project),
     });
     if (n) added++;
@@ -100,6 +110,8 @@ export interface HeldWaiting {
   action: string;
   what: string;
   agent?: string;
+  /** The person asked, under this unverified agent claim. */
+  claimedAs?: string;
   since: string;
   expiresAt: string;
   /**
@@ -111,6 +123,8 @@ export interface HeldWaiting {
   details?: readonly string[];
   /** One per details line: its message key and words (null: as is). */
   detailKeys?: Approval["detailKeys"];
+  /** Issue 110: the Coach finding it came from, for the bell's card. */
+  coach?: Approval["coach"];
 }
 
 /**
@@ -127,6 +141,9 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       action: a.action,
       what: a.summary,
       ...(a.agent ? { agent: a.agent } : {}),
+      ...(a.claimedAs && !a.agent && claimantIsPerson(a.actor)
+        ? { claimedAs: a.claimedAs }
+        : {}),
       since: new Date(a.requestedAt).toISOString(),
       expiresAt: new Date(a.expiresAt).toISOString(),
       ...(a.params ? { params: a.params } : {}),
@@ -134,6 +151,7 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       ...(a.details?.length && a.detailKeys?.length
         ? { detailKeys: a.detailKeys }
         : {}),
+      ...(a.coach ? { coach: a.coach } : {}),
     }));
 }
 

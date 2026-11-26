@@ -8,6 +8,7 @@
 // sign-in works again once web.address_unknown_keep_seconds passes. Its
 // first four clauses only read; the last runs after them, through the
 // harness's ctx.addressDead (the address down, the window set short).
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 601;
 export const clauses = [
   "a real browser signed in through the address holds a host-only Secure __Host- session cookie, and the session answers signed in",
@@ -18,18 +19,6 @@ export const clauses = [
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 300000;
-
-/** doctor --json's signin_host check, or null. */
-function signinRow(out) {
-  const at = String(out ?? "").indexOf("{");
-  if (at < 0) return null;
-  try {
-    const j = JSON.parse(String(out).slice(at));
-    return (j.checks ?? []).find((c) => c?.id === "signin_host") ?? null;
-  } catch {
-    return null;
-  }
-}
 
 /** A loopback GET with nothing: its status, Location, whether it set a
  * cookie, and whether it answered with a page. */
@@ -82,7 +71,7 @@ export async function setup() {
 
 export async function run(ctx) {
   const doc = await ctx.cli(["doctor", "--json"]);
-  const row = signinRow(doc.out);
+  const row = doctorChecks(doc).find((c) => c?.id === "signin_host") ?? null;
   const proven = row?.status === "ok";
 
   await ctx.goto(ctx.page, "/");

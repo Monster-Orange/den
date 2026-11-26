@@ -20,12 +20,14 @@
  * again (the world may have changed while it waited). Every ask and every
  * decision is in the activity trail.
  */
+import { actorFromHeaders } from "../../shared/agent-actor.js";
 import type * as http from "http";
 import { agentTokenLive } from "../../shared/actor-token.js";
 import {
   APPROVAL_TICKET_HEADER,
   ApprovalQueue,
   approverAllowed,
+  claimantIsPerson,
   newApprovalTicket,
   type Approval,
   type AskedBy,
@@ -46,9 +48,14 @@ import { allowLink } from "../../shared/agent-links.js";
 import {
   agentPrincipalOf,
   auditActorOf,
+  operatorActOf,
   principalOf,
   type GuardResult,
 } from "./request-guard.js";
+import {
+  OPERATOR_HELD_ACTIONS,
+  OPERATOR_PRINCIPAL,
+} from "../../shared/test-operator.js";
 
 export type HeldCheck =
   | {
@@ -195,6 +202,21 @@ function askerOf(req: http.IncomingMessage): string {
 }
 
 /**
+ * The agent a request with no agent token claims to be (the
+ * audit headers a person's own `mcp --actor agent:<id>` sends), kept only
+ * when well-formed (actorFromHeaders drops a malformed id). Never verified.
+ */
+function claimedAgentOf(req: http.IncomingMessage): { claimedAs?: string } {
+  // Only on a verified person's own ask (a person's token or the OS user's
+  // browser). Anonymous asks ("loopback": any local program with no
+  // credential), the fixture person, the test operator and an agent's view
+  // send the headers too, but their claim would read as "You asked".
+  if (!claimantIsPerson(principalOf(req))) return {};
+  const c = actorFromHeaders(req.headers);
+  return c?.kind === "agent" && c.agent ? { claimedAs: c.agent } : {};
+}
+
+/**
  * Issue 621: a run result's part for its asker only (a new runner token),
  * `forAsker`. Every view leaves it out; the asker's own read of the
  * request has it once, merged into the result (forgetForAsker after).
@@ -226,6 +248,9 @@ export function approvalView(
     id: a.id,
     action: a.action,
     ...(a.agent ? { agent: a.agent } : {}),
+    ...(a.claimedAs && claimantIsPerson(a.actor)
+      ? { claimedAs: a.claimedAs }
+      : {}),
     summary: a.summary,
     ...(a.params ? { params: a.params } : {}),
     ...(a.details ? { details: a.details } : {}),
@@ -313,6 +338,240 @@ const refuse = (
   error: string,
 ): void => sendJson(res, { ok: false, code, error }, status);
 
+/**
+ * Issue 110: ask for a held write, as POST /api/approvals does, and say
+ * what to answer. The route answers with it; the Coach's Apply asks
+ * through it too, so a held write has one path: the same checks, queue,
+ * audit and policy.
+ */
+export async function askHeld(
+  req: http.IncomingMessage,
+  deps: ApprovalRouteDeps,
+  body: Record<string, unknown> | null,
+  /** Issue 110: Den's own callers only (never from a request's body). */
+  opts: { coach?: unknown } = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const agent = agentPrincipalOf(req);
+  const refused = (status: number, code: string, error: string) => ({
+    status,
+    body: { ok: false, code, error } as Record<string, unknown>,
+  });
+  let on: boolean;
+  try {
+    on = deps.enabled ? deps.enabled() : true;
+  } catch {
+    on = false;
+  }
+  if (!on) {
+    return refused(
+      403,
+      "approvals_off",
+      "This distribution turned the held writes off (mcp.approvals: false).",
+    );
+  }
+  if (!body) {
+    return refused(
+      400,
+      "bad_body",
+      "The body must be JSON: { action, args, note? }.",
+    );
+  }
+  const extra = Object.keys(body).filter(
+    (k) => k !== "action" && k !== "args" && k !== "note" && k !== "ask",
+  );
+  if (extra.length) {
+    return refused(400, "unknown_field", `Unknown field: ${extra.join(", ")}.`);
+  }
+  // Issue 160: an agent may ask for any write, whatever the policy says;
+  // it says why.
+  if (body.ask !== undefined && typeof body.ask !== "boolean") {
+    return refused(400, "bad_body", "ask is true or false.");
+  }
+  const askAnyway = body.ask === true;
+  if (
+    askAnyway &&
+    !(typeof body.note === "string" && body.note.trim().length > 0)
+  ) {
+    return refused(
+      400,
+      "ask_needs_note",
+      "Asking anyway needs a note: one line for the person on why.",
+    );
+  }
+  const action = typeof body.action === "string" ? body.action : "";
+  const held = Object.hasOwn(deps.actions, action)
+    ? deps.actions[action]
+    : undefined;
+  if (!held) {
+    return refused(
+      400,
+      "unknown_action",
+      `Den holds ${Object.keys(deps.actions).join(", ")} for the person; not "${action}".`,
+    );
+  }
+  const args =
+    body.args && typeof body.args === "object" && !Array.isArray(body.args)
+      ? (body.args as Record<string, unknown>)
+      : {};
+  const checked = await held.check(
+    args,
+    agent
+      ? {
+          agent: agent.actor.slice("agent:".length),
+          project: agent.workspace,
+        }
+      : {},
+  );
+  if (!checked.ok) {
+    recordAction(
+      auditActorOf(req),
+      {
+        verb: "approval-ask",
+        detail: action,
+        outcome: "refused",
+        reason: checked.error,
+      },
+      principalOf(req),
+    );
+    return refused(400, "invalid_args", checked.error);
+  }
+  // Issue 199: a choice is the person's, made as they Allow: an ask's
+  // args never carry one.
+  const stored = { ...checked.args };
+  for (const k of checked.choices ?? []) delete stored[k];
+  // An asker with no agent token proves it is the asker with a ticket.
+  const ticket = agent ? null : newApprovalTicket();
+  let a: Approval;
+  try {
+    a = deps.queue.request({
+      ...(ticket ? { ticketHash: ticket.hash } : {}),
+      actor: askerOf(req),
+      ...(agent ? { agent: agent.actor.slice("agent:".length) } : {}),
+      // A person's own scoped server's --actor, unverified.
+      ...(agent ? {} : claimedAgentOf(req)),
+      action,
+      args: stored,
+      summary: checked.summary,
+      params: checked.params,
+      details: checked.details,
+      ...(checked.detailKeys?.length ? { detailKeys: checked.detailKeys } : {}),
+      ...(checked.ownMode?.length ? { ownMode: checked.ownMode } : {}),
+      ...(checked.choices?.length ? { choices: checked.choices } : {}),
+      note: typeof body.note === "string" ? body.note : undefined,
+      ...(opts.coach ? { coach: opts.coach } : {}),
+    });
+  } catch (e) {
+    return refused(429, "too_many_waiting", (e as Error).message);
+  }
+  recordAction(
+    auditActorOf(req),
+    { verb: "approval-ask", detail: `${action}: ${a.summary} [${a.id}]` },
+    principalOf(req),
+  );
+  // Issue 160: an agent's routine write follows the approval policy;
+  // a critical one (it widens what an agent may do) never does.
+  // The project it changes, else the asker's (its token's).
+  const project =
+    typeof stored.project === "string" ? stored.project : agent?.workspace;
+  let ran: { kind: PolicyKind; from: string } | null = null;
+  // Issue 160: why the policy holds it (critical, watched, …), for the asker.
+  let heldBy: string | undefined;
+  let mode: InstallMode = "strict";
+  try {
+    mode = deps.installMode?.() ?? "strict";
+  } catch {
+    mode = "strict"; // a bad setting: today's asks
+  }
+  if (
+    a.agent &&
+    !askAnyway &&
+    deps.policy &&
+    !isCriticalWrite(action, checked.personOnly === true, checked.areas, mode)
+  ) {
+    try {
+      const p = deps.policy(action, project, checked.personOnly === true, {
+        args: stored,
+        ...(checked.areas?.length ? { areas: checked.areas } : {}),
+        ...(checked.category ? { category: checked.category } : {}),
+      });
+      if (p.kind !== "ask") ran = p;
+      else heldBy = p.from;
+    } catch {
+      ran = null; // a bad setting: held, as with ask
+    }
+  }
+  let auto: string | null = null;
+  if (ran) auto = `approvals policy: ${ran.kind} (${ran.from})`;
+  else
+    try {
+      auto =
+        a.agent &&
+        !checked.personOnly &&
+        !checked.areas?.length &&
+        !heldBy &&
+        !askAnyway
+          ? (deps.autoAllow?.(action, a.agent, agent?.workspace) ?? null)
+          : null;
+    } catch {
+      auto = null; // a bad setting: held, as with ask
+    }
+  if (auto) {
+    const r = await deps.queue.decide(a.id, "allow", `auto:${auto}`);
+    recordAction(
+      auditActorOf(req),
+      r.ok
+        ? {
+            verb: "approval-decide",
+            detail: `auto-allow ${action}: ${a.summary} [${a.id}] (${auto})`,
+          }
+        : {
+            verb: "approval-decide",
+            detail: `auto-allow ${action} [${a.id}] (${auto})`,
+            outcome: "refused",
+            reason: r.code,
+          },
+      principalOf(req),
+    );
+    if (r.ok) a = r.approval;
+    // A run that failed answers the agent with its error; nothing to tell.
+    const failed = (a.result as { ok?: unknown } | undefined)?.ok === false;
+    if (r.ok && ran?.kind === "notify" && !failed)
+      try {
+        deps.notify?.(a, project, ran.from);
+      } catch {
+        /* the bell is best effort: the trail has it */
+      }
+  } else if (a.agent && a.state === "pending")
+    try {
+      deps.held?.(a.agent, project);
+    } catch {
+      /* an alert is best effort: the Allow dialog still asks */
+    }
+  changed(deps);
+  return {
+    status: 202,
+    body: {
+      ok: true,
+      ...approvalView(a),
+      ...(a.state === "pending" && a.agent && !askAnyway
+        ? {
+            askedBecause:
+              heldBy ??
+              criticalWhy(
+                action,
+                checked.personOnly === true,
+                checked.areas,
+                mode,
+              ) ??
+              undefined,
+          }
+        : {}),
+      ...(ticket ? { ticket: ticket.ticket } : {}),
+      ...allowLinkOf(a, agent?.workspace, deps.webUrl),
+    },
+  };
+}
+
 /** Handles the routes above; false when `pathname` is not one of them. */
 export async function handleApprovalRoutes(
   req: http.IncomingMessage,
@@ -375,6 +634,12 @@ export async function handleApprovalRoutes(
      * link on it, never a guessed one.
      */
     webUrl?: () => string | null;
+    /**
+     * Whether a held write's asker (`agent:<id>`) is one of a
+     * test bed's own agents (test-operator.ts testBedAsker). Only then may
+     * the test operator Allow it. Not given: the operator Allows nothing.
+     */
+    testBedAsker?: (actor: string) => boolean;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -383,233 +648,8 @@ export async function handleApprovalRoutes(
   const agent = agentPrincipalOf(req);
 
   if (pathname === "/api/approvals" && method === "POST") {
-    let on: boolean;
-    try {
-      on = deps.enabled ? deps.enabled() : true;
-    } catch {
-      on = false;
-    }
-    if (!on) {
-      refuse(
-        res,
-        403,
-        "approvals_off",
-        "This distribution turned the held writes off (mcp.approvals: false).",
-      );
-      return true;
-    }
-    const body = await jsonBody(req);
-    if (!body) {
-      refuse(
-        res,
-        400,
-        "bad_body",
-        "The body must be JSON: { action, args, note? }.",
-      );
-      return true;
-    }
-    const extra = Object.keys(body).filter(
-      (k) => k !== "action" && k !== "args" && k !== "note" && k !== "ask",
-    );
-    if (extra.length) {
-      refuse(res, 400, "unknown_field", `Unknown field: ${extra.join(", ")}.`);
-      return true;
-    }
-    // Issue 160: an agent may ask for any write, whatever the policy says;
-    // it says why.
-    if (body.ask !== undefined && typeof body.ask !== "boolean") {
-      refuse(res, 400, "bad_body", "ask is true or false.");
-      return true;
-    }
-    const askAnyway = body.ask === true;
-    if (
-      askAnyway &&
-      !(typeof body.note === "string" && body.note.trim().length > 0)
-    ) {
-      refuse(
-        res,
-        400,
-        "ask_needs_note",
-        "Asking anyway needs a note: one line for the person on why.",
-      );
-      return true;
-    }
-    const action = typeof body.action === "string" ? body.action : "";
-    const held = Object.hasOwn(deps.actions, action)
-      ? deps.actions[action]
-      : undefined;
-    if (!held) {
-      refuse(
-        res,
-        400,
-        "unknown_action",
-        `Den holds ${Object.keys(deps.actions).join(", ")} for the person; not "${action}".`,
-      );
-      return true;
-    }
-    const args =
-      body.args && typeof body.args === "object" && !Array.isArray(body.args)
-        ? (body.args as Record<string, unknown>)
-        : {};
-    const checked = await held.check(
-      args,
-      agent
-        ? {
-            agent: agent.actor.slice("agent:".length),
-            project: agent.workspace,
-          }
-        : {},
-    );
-    if (!checked.ok) {
-      recordAction(
-        auditActorOf(req),
-        {
-          verb: "approval-ask",
-          detail: action,
-          outcome: "refused",
-          reason: checked.error,
-        },
-        principalOf(req),
-      );
-      refuse(res, 400, "invalid_args", checked.error);
-      return true;
-    }
-    // Issue 199: a choice is the person's, made as they Allow: an ask's
-    // args never carry one.
-    const stored = { ...checked.args };
-    for (const k of checked.choices ?? []) delete stored[k];
-    // An asker with no agent token proves it is the asker with a ticket.
-    const ticket = agent ? null : newApprovalTicket();
-    let a: Approval;
-    try {
-      a = deps.queue.request({
-        ...(ticket ? { ticketHash: ticket.hash } : {}),
-        actor: askerOf(req),
-        ...(agent ? { agent: agent.actor.slice("agent:".length) } : {}),
-        action,
-        args: stored,
-        summary: checked.summary,
-        params: checked.params,
-        details: checked.details,
-        ...(checked.detailKeys?.length
-          ? { detailKeys: checked.detailKeys }
-          : {}),
-        ...(checked.ownMode?.length ? { ownMode: checked.ownMode } : {}),
-        ...(checked.choices?.length ? { choices: checked.choices } : {}),
-        note: typeof body.note === "string" ? body.note : undefined,
-      });
-    } catch (e) {
-      refuse(res, 429, "too_many_waiting", (e as Error).message);
-      return true;
-    }
-    recordAction(
-      auditActorOf(req),
-      { verb: "approval-ask", detail: `${action}: ${a.summary} [${a.id}]` },
-      principalOf(req),
-    );
-    // Issue 160: an agent's routine write follows the approval policy;
-    // a critical one (it widens what an agent may do) never does.
-    // The project it changes, else the asker's (its token's).
-    const project =
-      typeof stored.project === "string" ? stored.project : agent?.workspace;
-    let ran: { kind: PolicyKind; from: string } | null = null;
-    // Issue 160: why the policy holds it (critical, watched, …), for the asker.
-    let heldBy: string | undefined;
-    let mode: InstallMode = "strict";
-    try {
-      mode = deps.installMode?.() ?? "strict";
-    } catch {
-      mode = "strict"; // a bad setting: today's asks
-    }
-    if (
-      a.agent &&
-      !askAnyway &&
-      deps.policy &&
-      !isCriticalWrite(action, checked.personOnly === true, checked.areas, mode)
-    ) {
-      try {
-        const p = deps.policy(action, project, checked.personOnly === true, {
-          args: stored,
-          ...(checked.areas?.length ? { areas: checked.areas } : {}),
-          ...(checked.category ? { category: checked.category } : {}),
-        });
-        if (p.kind !== "ask") ran = p;
-        else heldBy = p.from;
-      } catch {
-        ran = null; // a bad setting: held, as with ask
-      }
-    }
-    let auto: string | null = null;
-    if (ran) auto = `approvals policy: ${ran.kind} (${ran.from})`;
-    else
-      try {
-        auto =
-          a.agent &&
-          !checked.personOnly &&
-          !checked.areas?.length &&
-          !heldBy &&
-          !askAnyway
-            ? (deps.autoAllow?.(action, a.agent, agent?.workspace) ?? null)
-            : null;
-      } catch {
-        auto = null; // a bad setting: held, as with ask
-      }
-    if (auto) {
-      const r = await deps.queue.decide(a.id, "allow", `auto:${auto}`);
-      recordAction(
-        auditActorOf(req),
-        r.ok
-          ? {
-              verb: "approval-decide",
-              detail: `auto-allow ${action}: ${a.summary} [${a.id}] (${auto})`,
-            }
-          : {
-              verb: "approval-decide",
-              detail: `auto-allow ${action} [${a.id}] (${auto})`,
-              outcome: "refused",
-              reason: r.code,
-            },
-        principalOf(req),
-      );
-      if (r.ok) a = r.approval;
-      // A run that failed answers the agent with its error; nothing to tell.
-      const failed = (a.result as { ok?: unknown } | undefined)?.ok === false;
-      if (r.ok && ran?.kind === "notify" && !failed)
-        try {
-          deps.notify?.(a, project, ran.from);
-        } catch {
-          /* the bell is best effort: the trail has it */
-        }
-    } else if (a.agent && a.state === "pending")
-      try {
-        deps.held?.(a.agent, project);
-      } catch {
-        /* an alert is best effort: the Allow dialog still asks */
-      }
-    changed(deps);
-    sendJson(
-      res,
-      {
-        ok: true,
-        ...approvalView(a),
-        ...(a.state === "pending" && a.agent && !askAnyway
-          ? {
-              askedBecause:
-                heldBy ??
-                criticalWhy(
-                  action,
-                  checked.personOnly === true,
-                  checked.areas,
-                  mode,
-                ) ??
-                undefined,
-            }
-          : {}),
-        ...(ticket ? { ticket: ticket.ticket } : {}),
-        ...allowLinkOf(a, agent?.workspace, deps.webUrl),
-      },
-      202,
-    );
+    const r = await askHeld(req, deps, await jsonBody(req));
+    sendJson(res, r.body, r.status);
     return true;
   }
 
@@ -622,6 +662,20 @@ export async function handleApprovalRoutes(
       sendJson(res, {
         ok: true,
         mine: deps.queue.ofActor(agent.actor).map((x) => approvalView(x)),
+      });
+      return true;
+    }
+    // `?mine=1`, a person's own requests by its bearer or
+    // session (`<cli> approvals list --mine`), never another's. Nobody
+    // signed in falls through to the refusal below.
+    const mineOf = principalOf(req);
+    if (
+      new URL(req.url ?? "/", "http://x").searchParams.get("mine") === "1" &&
+      mineOf
+    ) {
+      sendJson(res, {
+        ok: true,
+        mine: deps.queue.ofActor(mineOf).map((x) => approvalView(x)),
       });
       return true;
     }
@@ -698,9 +752,85 @@ export async function handleApprovalRoutes(
     return true;
   }
 
+  /**
+   * Whether the test operator's Allow may run held write `a`:
+   * its check, run again now (as the run does), passes, says nothing
+   * person-only, and is not critical on this install's mode. Anything that
+   * throws: no.
+   */
+  async function operatorMayRun(a: Approval): Promise<boolean> {
+    try {
+      const act = Object.hasOwn(deps.actions, a.action)
+        ? deps.actions[a.action]
+        : undefined;
+      if (!act) return false;
+      const again = await act.check({ ...a.args }, undefined, { again: true });
+      if (!again.ok || again.personOnly === true) return false;
+      const mode = deps.installMode?.() ?? "strict";
+      return !isCriticalWrite(a.action, false, again.areas, mode);
+    } catch {
+      return false;
+    }
+  }
+
   const dec = DECIDE_PATH.exec(pathname);
   if (dec && method === "POST") {
-    const who = approverAllowed(req, guard);
+    // The test operator's Allow (the request gate let this
+    // fixture request through as the act: an operator install, loopback,
+    // unforwarded). Allow only, and only a held write one of the bed's own
+    // agents asked for. Anything else: refused, as the fixture person is.
+    const opAllow = operatorActOf(req) === "approval-allow";
+    const who: ReturnType<typeof approverAllowed> = opAllow
+      ? { ok: true, session: OPERATOR_PRINCIPAL }
+      : approverAllowed(req, guard);
+    let opBody: Awaited<ReturnType<typeof jsonBody>> = null;
+    if (opAllow) {
+      opBody = await jsonBody(req);
+      const body = opBody;
+      const held = deps.queue.get(dec[1]);
+      let bed = false;
+      try {
+        bed = !!held && deps.testBedAsker?.(held.actor) === true;
+      } catch {
+        bed = false;
+      }
+      let refusal: string | null =
+        body?.decision !== "allow"
+          ? "operator_allow_only"
+          : !bed
+            ? "operator_not_test_bed"
+            : !OPERATOR_HELD_ACTIONS.includes(held!.action)
+              ? "operator_action_not_allowed"
+              : null;
+      // Builder 2, Reviewer C: never a person-only or critical one, judged
+      // now from the held record (the ask's answer may be stale).
+      if (!refusal && !(await operatorMayRun(held!))) {
+        refusal = "operator_action_not_allowed";
+      }
+      if (refusal) {
+        recordAction(
+          auditActorOf(req),
+          {
+            verb: "approval-decide",
+            detail: dec[1],
+            outcome: "refused",
+            reason: refusal,
+          },
+          principalOf(req),
+        );
+        refuse(
+          res,
+          403,
+          refusal,
+          refusal === "operator_allow_only"
+            ? "The test operator may only Allow."
+            : refusal === "operator_action_not_allowed"
+              ? "The test operator may Allow only a routine setting change: this one is the person's."
+              : "The test operator may Allow only what a test bed's own agent asked for.",
+        );
+        return true;
+      }
+    }
     if (!who.ok) {
       recordAction(
         auditActorOf(req),
@@ -715,7 +845,7 @@ export async function handleApprovalRoutes(
       refuse(res, 403, who.code, who.error);
       return true;
     }
-    const body = await jsonBody(req);
+    const body = opAllow ? opBody : await jsonBody(req);
     const decision = body?.decision;
     if (decision !== "allow" && decision !== "deny") {
       refuse(res, 400, "bad_decision", 'decision is "allow" or "deny".');
@@ -852,6 +982,13 @@ export async function handleApprovalRoutes(
   return true;
 }
 
+/** Issue 1371 Part 2, issue 1480: held writes whose bell row has Undo. */
+export const UNDOABLE_ACTIONS: ReadonlySet<string> = new Set([
+  "setting_change",
+  "project_event_feed_add",
+  "project_event_feed_remove",
+]);
+
 /**
  * Issue 160: the person's updates say what an agent did under the approval
  * policy's notify, one item per write (never folded into another).
@@ -864,8 +1001,9 @@ export function notePolicyRun(
 ): void {
   const name = a.agent ?? "An agent";
   // Issue 1371 Part 2: a setting changed without asking can be undone.
+  // Issue 1480: and so can an event feed added or removed.
   const undoable =
-    a.action === "setting_change" &&
+    UNDOABLE_ACTIONS.has(a.action ?? "") &&
     (a.result as { ok?: unknown } | undefined)?.ok === true;
   store.add({
     ...(undoable ? { undo: { approval: a.id } } : {}),
@@ -877,3 +1015,4 @@ export function notePolicyRun(
     link: "/agents",
   });
 }
+export type ApprovalRouteDeps = Parameters<typeof handleApprovalRoutes>[4];

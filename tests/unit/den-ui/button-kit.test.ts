@@ -119,7 +119,12 @@ describe("button.css", () => {
       "background: var(--primary-bg, var(--accent-fill)); border-color: var(--primary-border, var(--accent-fill)); color: var(--primary-text, var(--on-accent));",
     );
     expect(rule(".den-btn.sm")).toBe("padding: 2px 9px; font-size: 12.5px;");
-    expect(rule('.den-btn:disabled, a.den-btn[aria-disabled="true"]')).toBe(
+    // Issue 1434: a held link (aria-busy too) keeps its full look.
+    expect(
+      rule(
+        '.den-btn:disabled, a.den-btn[aria-disabled="true"]:not([aria-busy="true"])',
+      ),
+    ).toBe(
       // Issue 1137: the opacity and label colour are tokens (today's values).
       "opacity: var(--btn-disabled-opacity, 0.6); cursor: default; color: var(--btn-disabled-text, var(--text));",
     );
