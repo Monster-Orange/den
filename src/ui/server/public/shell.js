@@ -2885,6 +2885,8 @@
     "ag.none": "No agents in this project yet",
     "ag.personaOf": "persona {persona}",
     "ag.state.running": "running",
+    "ag.activity.working": "working",
+    "ag.activity.idle": "idle",
     "ag.state.stopping": "stopping…",
     "ag.state.stopped": "stopped",
     "ag.state.ended": "ended",
