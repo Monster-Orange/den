@@ -1120,7 +1120,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "release_status",
     "Release status",
-    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool. For the whole Den (not a project's agent), also `denUpdate`: Den's last update of itself, by den_update or by Den's own check: `from` and `to` (versions), `state` (good, rolled_back, …), `at`, `why` when it rolled back, and the doctor field: the new Den's doctor results from that update (`at`, and `lines`: each failing or warning check), when its doctor ran.",
+    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool. For the whole Den (not a project's agent), also `denUpdate`: Den's last update of itself, by den_update or by Den's own check: `from` and `to` (versions), `state` (good, rolled_back, …), `at`, `why` when it rolled back, the doctor field: the new Den's doctor results from that update (`at`, and `lines`: each failing or warning check), when its doctor ran; and the pin field: what Den's pin step last did (`version`, `state` such as pushed, pr_opened or push_failed, `branch`, `branchWhy` when it chose another branch name, `why`, `url`).",
     {
       env: z
         .string()

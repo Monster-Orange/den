@@ -6,6 +6,7 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.91] - unreleased
 
+- A self-update's pin no longer gets stuck when the remote has a branch named `den`. Den checks the remote's branches first and pushes the pin under a name that can't clash (`den-pin-<version>`), and the bell, doctor and `release_status` say which name and why. A failed pin push now shows in `release_status`, and Den tells its server agent. After the next restart the "back on" line names a pin that was never pushed.
 - Doctor says when agents commit without a signing key. A self-update's pin commit is signed with the agents' key when one is set. When no key is set and the branch requires signed commits, the pin goes to a pull request instead of a push that would be refused, and the bell says why.
 - You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.

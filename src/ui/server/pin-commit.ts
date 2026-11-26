@@ -85,6 +85,7 @@ export type PinStep =
       sha: string;
       why: string;
       first: boolean;
+      branchWhy?: string;
     }
   | { did: "commit_failed"; version: string; why: string; first: boolean }
   /** The pin files had nothing to commit (someone committed them). */
@@ -99,6 +100,7 @@ export type PinStep =
       unsignedRequired?: true;
       /** Issue 1189: set to push, it went this way, and why. */
       via?: PinVia;
+      branchWhy?: string;
     }
   /** pr: the branch is pushed, but gh couldn't open the pull request. */
   | {
@@ -112,6 +114,7 @@ export type PinStep =
       first: boolean;
       unsignedRequired?: true;
       via?: PinVia;
+      branchWhy?: string;
     }
   /** Issue 160: held for the person's Allow (the approval policy). */
   | { did: "held"; version: string; first: boolean }
@@ -154,6 +157,52 @@ export interface PinCommitDeps {
 
 /** The pull request's branch for `version`. */
 export const pinBranch = (version: string): string => `den/pin-${version}`;
+
+export const pinBranchFree = (version: string, n = 1): string =>
+  n === 1 ? `den-pin-${version}` : `den-pin-${version}-${n}`;
+
+export function refClash(out: string): boolean {
+  return /directory file conflict|cannot lock ref|unable to resolve reference|already exists/i.test(
+    out,
+  );
+}
+
+export async function choosePinBranch(
+  git: GitRun,
+  remote: string,
+  version: string,
+  sha: string,
+): Promise<{ branch: string; why?: string }> {
+  const want = pinBranch(version);
+  const ls = await git(["ls-remote", "--heads", remote]);
+  if (ls.code !== 0) return { branch: want };
+  const heads = new Map<string, string>();
+  for (const line of ls.out.split("\n")) {
+    const m = /^([0-9a-f]{40})\s+refs\/heads\/(\S+)$/.exec(line.trim());
+    if (m) heads.set(m[2], m[1]);
+  }
+  const blocked = (name: string): string | null => {
+    const there = heads.get(name);
+    if (there !== undefined) return there === sha ? null : `${name} is taken`;
+    const parts = name.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      const parent = parts.slice(0, i).join("/");
+      if (heads.has(parent))
+        return `the remote's \`${parent}\` branch leaves no room for ${name}`;
+    }
+    for (const h of heads.keys())
+      if (h.startsWith(`${name}/`))
+        return `the remote has branches under ${name}/`;
+    return null;
+  };
+  const why = blocked(want);
+  if (!why) return { branch: want };
+  for (let n = 1; n <= 9; n++) {
+    const name = pinBranchFree(version, n);
+    if (!blocked(name)) return { branch: name, why };
+  }
+  return { branch: want };
+}
 
 /** A GitHub remote's compare page for `head` onto `base`, or null. */
 export function compareLink(
@@ -666,6 +715,7 @@ function pushFailed(
   d: PinCommitDeps,
   at: () => string,
   branch?: string,
+  branchWhy?: string,
 ): PinStep {
   const first = !(same?.state === "push_failed" && same.noted);
   writePinRecord(d.stateDir, {
@@ -676,8 +726,16 @@ function pushFailed(
     noted: true,
     at: at(),
     ...(branch ? { branch } : {}),
+    ...(branchWhy ? { branchWhy } : {}),
   });
-  return { did: "push_failed", version, sha, why, first };
+  return {
+    did: "push_failed",
+    version,
+    sha,
+    why,
+    first,
+    ...(branchWhy ? { branchWhy } : {}),
+  };
 }
 
 /** pr: push the pin's branch (unless pushed), then gh opens the PR. */
@@ -693,13 +751,19 @@ async function openPr(
   /** Issue 1189: something the person should know (kept as `why`). */
   note?: string,
 ): Promise<PinStep> {
+  let branchWhy = same?.state === "branch_pushed" ? same.branchWhy : undefined;
   if (same?.state !== "branch_pushed") {
-    const p = await d.git([
-      "push",
-      "--quiet",
-      up.remote,
-      `${sha}:refs/heads/${branch}`,
-    ]);
+    const push = (name: string) =>
+      d.git(["push", "--quiet", up.remote, `${sha}:refs/heads/${name}`]);
+    const chosen = await choosePinBranch(d.git, up.remote, version, sha);
+    branch = chosen.branch;
+    branchWhy = chosen.why;
+    let p = await push(branch);
+    if (p.code !== 0 && branch === pinBranch(version) && refClash(p.out)) {
+      branchWhy = `the remote refused ${branch} (${tail(p.out)})`;
+      branch = pinBranchFree(version);
+      p = await push(branch);
+    }
     if (p.code !== 0)
       return pushFailed(
         version,
@@ -709,6 +773,7 @@ async function openPr(
         d,
         at,
         branch,
+        branchWhy,
       );
   }
   const run = d.run ?? runArgv;
@@ -738,9 +803,18 @@ async function openPr(
       url,
       ...(via ? { via } : {}),
       ...(note ? { why: note } : {}),
+      ...(branchWhy ? { branchWhy } : {}),
       at: at(),
     });
-    return { did: "pr", version, sha, branch, url, ...(via ? { via } : {}) };
+    return {
+      did: "pr",
+      version,
+      sha,
+      branch,
+      url,
+      ...(via ? { via } : {}),
+      ...(branchWhy ? { branchWhy } : {}),
+    };
   }
   const why = `gh pr create: ${tail(gh.out)}`;
   const r = await d.git(["remote", "get-url", up.remote]);
@@ -754,6 +828,7 @@ async function openPr(
     why,
     noted: true,
     ...(via ? { via } : {}),
+    ...(branchWhy ? { branchWhy } : {}),
     at: at(),
   });
   return {
@@ -765,6 +840,7 @@ async function openPr(
     link,
     first,
     ...(via ? { via } : {}),
+    ...(branchWhy ? { branchWhy } : {}),
   };
 }
 
@@ -976,6 +1052,13 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
           step.url,
         );
       }
+      if (step.branchWhy)
+        return item(
+          `${t} updated to ${v}: its pin is in a pull request on ${step.branch}, since ${step.branchWhy}`,
+          "bell.m.pinPrRenamed",
+          { branch: step.branch, why: step.branchWhy },
+          step.url,
+        );
       return item(
         `${t} updated to ${v}: its pin is in a pull request (${step.branch})`,
         "bell.m.pinPrOpened",
@@ -999,4 +1082,9 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
     default:
       return null;
   }
+}
+
+export function pinAgentLine(step: PinStep, t: string): string | null {
+  if (step.did !== "push_failed" || !step.first) return null;
+  return `${t} ${step.version}'s pin couldn't be pushed: ${step.why}. ${t} tries again at its next update check; the person has it in the bell.`;
 }

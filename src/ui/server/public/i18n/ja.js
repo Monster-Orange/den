@@ -3102,6 +3102,8 @@
       "__DEN_TITLE__ {v}: 固定バージョンはコミット ({sha}) されましたが、プッシュに失敗しました: {why}。__DEN_TITLE__ は次の更新チェックで再試行します",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
+    "bell.m.pinPrRenamed":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンは {branch} のプルリクエストにあります。理由: {why}",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
     "bell.m.pinPrUnsigned":

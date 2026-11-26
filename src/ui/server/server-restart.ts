@@ -169,6 +169,14 @@ const DOCTOR_LINES_MAX = 8;
  * session, which outlives the restart), so the line sends it to no tool
  * for this. One line: what is typed is submitted with Enter.
  */
+const UNPUSHED_PIN = new Set(["push_failed", "commit_failed", "branch_pushed"]);
+
+function pinNews(version: string, update?: LastUpdate | null): string {
+  const p = update?.pin;
+  if (!p || p.version === version || !UNPUSHED_PIN.has(p.state)) return "";
+  return ` Den ${p.version}'s pin was not pushed: ${p.why ?? p.state}. Only the latest pin is kept and tried again: ${version}'s pin replaces it.`;
+}
+
 function doctorNews(
   m: RestartMarker,
   version: string,
@@ -215,6 +223,7 @@ export function backMessage(
           doctorNews(m, version, update)
       : `Den is back on ${version} (pid ${pid}) (it was ${m.fromVersion}). ` +
           `Den updated itself: ${m.reason}. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off.` +
+          pinNews(version, update) +
           doctorNews(m, version, update) +
           TOOLS_LINE;
   if (m.rolledBack)
@@ -230,7 +239,7 @@ export function backMessage(
     m.fromVersion !== version &&
     update?.from === m.fromVersion &&
     update.to === version
-      ? doctorNews(m, version, update) + TOOLS_LINE
+      ? pinNews(version, update) + doctorNews(m, version, update) + TOOLS_LINE
       : "";
   return (
     `Server is back on ${version} (pid ${pid})${was}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
