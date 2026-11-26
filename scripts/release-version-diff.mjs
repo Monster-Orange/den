@@ -9,13 +9,20 @@
  *   - package-lock.json: the root's "version" and packages[""].version;
  *   - the example distribution's package.json ($RELEASE_EXAMPLE, default
  *     examples/distribution/package.json): its pin of this package;
- *   - CHANGELOG.md: new lines, and its "## [<version>] - unreleased"
- *     heading dated.
+ *   - CHANGELOG.md: what release-dry-run.mjs apply makes of the dev tag's
+ *     changelog and changes/ fragments, each fragment then removed.
  * Every other file, and every other change, was never tested: a refusal
  * names it (as ::error::). Exit 0: only the version; 1: more; 2: bad
  * arguments.
  */
 import { execFileSync } from "child_process";
+import {
+  FRAGMENT_DIR,
+  FragmentError,
+  assemble,
+  isFragmentPath,
+  parseFragments,
+} from "./changelog-fragments.mjs";
 
 const [dev, head, version] = process.argv.slice(2);
 if (!dev || !head || !/^\d+\.\d+\.\d+$/.test(version ?? "")) {
@@ -31,6 +38,16 @@ const git = (...a) =>
 const show = (c, f) => JSON.parse(git("show", `${c}:${f}`));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const problems = [];
+const list = (c) =>
+  git("ls-tree", "-r", "--name-only", c, "--", `${FRAGMENT_DIR}/`)
+    .split("\n")
+    .filter((f) => f && isFragmentPath(f));
+const present = (c, f) => list(c).includes(f);
+let parsed = null;
+const devFragments = () =>
+  (parsed ??= parseFragments(
+    list(dev).map((file) => ({ file, text: git("show", `${dev}:${file}`) })),
+  ));
 
 const changed = git("diff", "--name-only", "-z", "--no-renames", dev, head)
   .split("\0")
@@ -71,38 +88,40 @@ for (const f of changed) {
       if (!same(a, b))
         problems.push(`${f} changes more than its pin of ${name}`);
     } else if (f === "CHANGELOG.md") {
-      const diff = git(
-        "diff",
-        "--unified=0",
-        "--no-color",
-        dev,
-        head,
-        "--",
-        f,
-      ).split("\n");
-      const cut = diff.filter((l) => l.startsWith("-") && !l.startsWith("---"));
-      const added = diff.filter(
-        (l) => l.startsWith("+") && !l.startsWith("+++"),
-      );
-      const esc = version.replace(/\./g, "\\.");
-      const heading = new RegExp(`^-## \\[${esc}\\] - unreleased$`);
-      const dated = new RegExp(`^\\+## \\[${esc}\\] - \\d{4}-\\d{2}-\\d{2}$`);
-      const ok =
-        cut.length === 0 ||
-        (cut.length === 1 &&
-          heading.test(cut[0]) &&
-          added.some((l) => dated.test(l)));
-      if (!ok)
+      const log = git("show", `${head}:${f}`);
+      const date = new RegExp(
+        `^## \\[${version.replace(/\./g, "\\.")}\\] - (\\d{4}-\\d{2}-\\d{2})$`,
+        "m",
+      ).exec(log)?.[1];
+      const want = date
+        ? assemble(git("show", `${dev}:${f}`), devFragments(), version, date)
+        : null;
+      if (want !== log)
         problems.push(
-          `${f} loses or rewrites lines (only new lines, and its heading's date)`,
+          `${f} isn't the dev tag's changelog with its ${FRAGMENT_DIR}/ fragments assembled under a dated "## [${version}]" (release-dry-run.mjs apply makes it)`,
         );
+    } else if (isFragmentPath(f) && !present(head, f)) {
+      continue;
     } else problems.push(`${f} isn't a version file`);
   } catch (e) {
+    if (e instanceof FragmentError) {
+      problems.push(e.message);
+      continue;
+    }
     problems.push(
       `${f} couldn't be read as JSON (${String(e.message ?? e).split("\n")[0]})`,
     );
   }
 }
+
+for (const f of list(head))
+  problems.push(
+    `${f}: the version commit assembles every fragment into CHANGELOG.md and removes it (release-dry-run.mjs apply)`,
+  );
+if (list(dev).length && !changed.includes("CHANGELOG.md"))
+  problems.push(
+    `CHANGELOG.md: the dev tag has ${FRAGMENT_DIR}/ fragments, and the version commit doesn't assemble them`,
+  );
 
 for (const p of problems) console.log(`::error::${p}`);
 if (problems.length) {

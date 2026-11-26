@@ -350,6 +350,29 @@ describe("release-dry-run.mjs apply", () => {
     expect(read("package.json")).toBe(pkgJson(DEN, "1.2.3-dev.4"));
   });
 
+  it("assembles the changes/ fragments into the changelog entry, and removes them", () => {
+    candidate("1.2.3-dev.4", "0.5.0");
+    write("changes/12-later.md", "### Fixed\n\n- a later fix\n");
+    write("changes/7-first.md", "### Added\n\n- a feature\n");
+    write("changes/README.md", "How to write one.\n");
+    const r = run("apply", "1.2.3", "0.5.0", "2026-11-19");
+    expect(r.status).toBe(0);
+    expect(read("CHANGELOG.md")).toBe(
+      "# Changelog\n\nIntro.\n\n## [1.2.3] - 2026-11-19\n\n### Added\n\n- a feature\n\n### Fixed\n\n- a fix\n- a later fix\n\n## [0.0.1] - 2020-01-01\n\n- old\n",
+    );
+    expect(fs.readdirSync(path.join(repo, "changes"))).toEqual(["README.md"]);
+  });
+
+  it("a fragment that isn't one: fails, names it, and changes nothing", () => {
+    candidate("1.2.3-dev.4", "0.5.0");
+    write("changes/7-bad.md", "### Fixes\n\n- x\n");
+    const r = run("apply", "1.2.3", "0.5.0", "2026-11-19");
+    expect(r.status).toBe(1);
+    expect(r.stdout + r.stderr).toContain("changes/7-bad.md");
+    expect(read("package.json")).toBe(pkgJson(DEN, "1.2.3-dev.4"));
+    expect(fs.existsSync(path.join(repo, "changes/7-bad.md"))).toBe(true);
+  });
+
   it("a file without the line it edits: fails, and names it", () => {
     candidate("1.2.3-dev.4", "0.5.0");
     write("examples/distribution/package.json", '{\n  "name": "acme"\n}\n');

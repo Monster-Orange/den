@@ -120,6 +120,18 @@ describe("release-tree.sh", () => {
     expect(r.status).toBe(0);
   });
 
+  it("a candidate with changes/ fragments: the release commit removes them and passes; one left behind fails, named", () => {
+    write("changes/1703-a.md", "### Fixed\n\n- a fix\n");
+    commitAll("work with a fragment");
+    candidate(1);
+    git("rm", "-q", "changes/1703-a.md");
+    expect(check("1.2.0", releaseCommit()).status).toBe(0);
+    git("reset", "-q", "--hard", "v1.2.0-dev.1");
+    const r = check("1.2.0", releaseCommit());
+    expect(r.status).toBe(1);
+    expect(out(r)).toContain("changes/1703-a.md");
+  });
+
   it("a kit bump in the release commit, as the dry run plans it: passes", () => {
     candidate(1);
     expect(check("1.2.0", releaseCommit({ kit: "0.6.0" })).status).toBe(0);

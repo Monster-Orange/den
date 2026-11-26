@@ -78,9 +78,12 @@ GitHub App, issue 1181) will make a PASS name its tester too.
 On the release branch, make the release's version commit right on top of
 the dev tag. It changes only the version: Den's `version` in
 `package.json`, the root's version in `package-lock.json`, the pin in
-`examples/distribution/package.json`, and new lines in `CHANGELOG.md`
-(its `## [<version>] - unreleased` heading may get its date). Push the
-branch, then start the release from `main` with that commit:
+`examples/distribution/package.json`, and `CHANGELOG.md` with the
+`changes/` fragments assembled under a dated `## [<version>]` heading and
+removed. Make those edits with
+`node scripts/release-dry-run.mjs apply <version> <kit version> <date>`, the
+same edits the dry run checked. Push the branch, then start the release
+from `main` with that commit:
 
 ```sh
 gh workflow run release.yml -f promote=<the version commit's sha>
