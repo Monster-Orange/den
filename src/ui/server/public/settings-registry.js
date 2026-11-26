@@ -3906,6 +3906,21 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
   },
   {
+    id: "server.gate_release_pass_other",
+    category: "server",
+    label:
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes",
+    description:
+      "While a release run with priority waits, a cpu or browser run of the other kind asked before it doesn't start in a slot it needs, unless it has waited longer than this. It never stops a running one. 0: it passes none of them. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
+    keywords: ["gate", "slot", "priority", "release", "cpu", "browser", "wait"],
+    scope: "user",
+    keys: ["gate_slots.release_pass_other_kind_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.releasePassOtherKindMinutes ?? 30,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { release_pass_other_kind_minutes: v } }),
+  },
+  {
     id: "server.gate_priority_agents",
     category: "server",
     label: "Agents may ask for release priority",
@@ -5472,6 +5487,19 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 1000, step: 1 },
     read: (ctx) => ctx.data.agents_limits?.max_concurrent ?? 4,
     write: (v, ctx) => ctx.post({ agents_limits: { max_concurrent: v } }),
+  },
+  {
+    id: "agents.max_per_project",
+    category: "agents",
+    label: "Agents per project",
+    description:
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
+    keywords: ["agents", "limit", "max_per_project", "project", "cap"],
+    scope: "user",
+    keys: ["agents_limits.max_per_project"],
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agents_limits?.max_per_project ?? 0,
+    write: (v, ctx) => ctx.post({ agents_limits: { max_per_project: v } }),
   },
   {
     id: "agents.max_subagents",

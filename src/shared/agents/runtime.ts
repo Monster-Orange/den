@@ -449,6 +449,7 @@ export interface Runtime {
    * running first. Read-only. None: the runtime can't tell. Never throws.
    */
   helpers?(rec: AgentRecord, opts?: HelperReadOptions): Helper[];
+  helpersStamp?(rec: AgentRecord, env?: NodeJS.ProcessEnv): string;
   /** D32: one helper's transcript, tool calls summarized; null if none. Never throws. */
   helperTranscript?(
     rec: AgentRecord,

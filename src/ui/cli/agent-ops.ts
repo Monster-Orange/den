@@ -442,6 +442,7 @@ import {
   type SandboxWrap,
 } from "../../shared/agents/sandbox.js";
 import { gateDir } from "../../shared/gates/store.js";
+import { projectAgentCap } from "../../shared/agents/project-cap.js";
 import {
   AGENT_TOKEN_REF_NAME,
   agentSignInMode,
@@ -3663,15 +3664,28 @@ function binDirOf(det: RuntimeDetect): { binDir?: string } {
 }
 
 /** The host's cap refusal as an AgentError (its hint says what to do). */
-function capOrThrow(d: AgentsResolved, e: unknown): never {
+function capOrThrow(
+  d: AgentsResolved,
+  e: unknown,
+  project?: { key: string },
+): never {
+  const mine =
+    e instanceof HostError && /\(agents\.max_per_project\)$/.test(e.message);
   if (e instanceof HostError && e.code === "cap")
-    throw new AgentError(e.message, {
-      status: 429,
-      code: "cap",
-      hints: [
-        `Stop one first (\`${d.cli} agents stop <id>\`), or raise agents.max_concurrent.`,
-      ],
-    });
+    throw new AgentError(
+      mine && project
+        ? e.message.replace(/\(agents\.max_per_project\)$/, `(${project.key})`)
+        : e.message,
+      {
+        status: 429,
+        code: "cap",
+        hints: [
+          mine && project
+            ? `Stop one of its agents first (\`${d.cli} agents stop <id>\`), or raise ${project.key}.`
+            : `Stop one first (\`${d.cli} agents stop <id>\`), or raise agents.max_concurrent.`,
+        ],
+      },
+    );
   throw e;
 }
 
@@ -3769,6 +3783,15 @@ async function startSession(
         [`\`${d.cli} agents doctor\` shows why.`],
         409,
       );
+    let projectCap: { limit: number; key: string };
+    try {
+      projectCap = projectAgentCap(
+        launch.rec.workspace,
+        d.agentsConfig().maxPerProject ?? 0,
+      );
+    } catch (e) {
+      throw usage(`agents start: ${(e as Error).message}`);
+    }
     info = await c
       .start(
         {
@@ -3790,9 +3813,14 @@ async function startSession(
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
         },
-        { limit: d.maxConcurrent(), pool: "agents" },
+        {
+          limit: d.maxConcurrent(),
+          pool: "agents",
+          project: launch.rec.workspace,
+          projectLimit: projectCap.limit,
+        },
       )
-      .catch((e: unknown) => capOrThrow(d, e));
+      .catch((e: unknown) => capOrThrow(d, e, projectCap));
   } catch (e) {
     revokeActorToken(d.stateDir(), minted.key);
     removeActorTokenFile(d.stateDir(), launch.rec.id);
@@ -9473,6 +9501,7 @@ export async function markInterrupted(
     writeRecord(d.stateDir(), next);
     marked.push(next);
     found.interrupted.push(rec.id);
+    await new Promise<void>((r) => setImmediate(r));
   }
   if (opts.autoResume === false || !marked.length) return found;
   const find = personaLookup(d);

@@ -91,6 +91,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // Issue 715: release priority.
     priority_max: true,
     priority_pass_limit_minutes: true,
+    release_pass_other_kind_minutes: true,
     priority_agents: true,
     // Issue 739: CI runners may ask for priority.
     priority_runners: true,
@@ -123,6 +124,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // Issue 1373: the agents' limits (user.yml agents.*, over den.yml).
   agents_limits: {
     max_concurrent: true,
+    max_per_project: true,
     max_subagents: true,
     subagents_respect_load_hold: true,
   },
@@ -367,6 +369,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.priority_pass_limit_minutes",
         "gate_slots.priority_runners",
         "gate_slots.reap_grace_seconds",
+        "gate_slots.release_pass_other_kind_minutes",
         "gate_slots.route_agents",
         "gate_slots.route_commands",
         "gate_slots.remote_lapse_seconds",
@@ -384,6 +387,7 @@ describe("the settings inventory (R21)", () => {
         "agents_limits.max_subagents",
         "agents_limits.subagents_respect_load_hold",
         "skill_packs",
+        "agents_limits.max_per_project",
         // Issue 403: how long a filed report's screenshot is kept.
         "reports.screenshot_keep_days",
         "reports.screenshot_max_mb",

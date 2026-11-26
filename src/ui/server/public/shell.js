@@ -2508,6 +2508,10 @@
       "Waiting this long, a marked release run is never passed, in minutes",
     "set.server.gate_priority_pass.d":
       "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
+    "set.server.gate_release_pass_other":
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes",
+    "set.server.gate_release_pass_other.d":
+      "While a release run with priority waits, a cpu or browser run of the other kind asked before it doesn't start in a slot it needs, unless it has waited longer than this. It never stops a running one. 0: it passes none of them. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
     "set.server.gate_priority_agents": "Agents may ask for release priority",
     "set.server.gate_priority_agents.d":
       "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
@@ -2650,6 +2654,9 @@
     "set.agents.max_concurrent": "Agents at once",
     "set.agents.max_concurrent.d":
       "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "Agents per project",
+    "set.agents.max_per_project.d":
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",

@@ -582,7 +582,7 @@ export interface UserConfig {
   /**
    * Issue 609: how long Den's process lookups (lsof, ps) wait:
    * first_seconds (5) the first try, retry_seconds (20) the one after
-   * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
+   * (shared/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
    */
   process_lookup?: {
     first_seconds?: unknown;
@@ -2040,6 +2040,7 @@ export function readMcpConfig(
 export interface AgentsConfig {
   /** Agents that may run at once (default 4); plain sessions never count. */
   max_concurrent?: number;
+  max_per_project?: number;
   /**
    * Persona packs (AG-2a): directories of persona files, relative to the
    * distribution root. Den's default pack is always read first; a pack's
@@ -2129,6 +2130,7 @@ export interface PersonaPackConfig {
 }
 
 export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
+export const DEFAULT_AGENTS_MAX_PER_PROJECT = 0;
 
 /** The keys of `agents:` that are not an agent id. */
 /** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
@@ -2187,6 +2189,7 @@ export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
   "max_subagents",
   "subagents_respect_load_hold",
+  "max_per_project",
   // #70: an agent's token only from its own processes.
   "token_binding",
   // Issue 242: how long an agent's call waits for Den to find its process.
@@ -2333,6 +2336,7 @@ export interface ResolvedAgentsConfig {
   maxSubagents?: number;
   subagentsRespectLoadHold?: boolean;
   skillPacks?: { den: unknown; user: unknown };
+  maxPerProject: number;
   /** Issue 1391: the install's mode (resolveInstallMode). */
   mode?: InstallMode;
   /** Issue 1391: which file set it. */
@@ -2444,7 +2448,7 @@ export function helpersBlock(v: unknown): HelperSettings {
   if (v === undefined || v === null) return out;
   if (!isMapping(v))
     throw new Error(
-      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb (got ${JSON.stringify(v)})`,
+      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds (got ${JSON.stringify(v)})`,
     );
   for (const [k, x] of Object.entries(v)) {
     if (k === "row_max") {
@@ -2453,6 +2457,22 @@ export function helpersBlock(v: unknown): HelperSettings {
           `agents.helpers.row_max: must be a whole number from 1 to 1000 (got ${JSON.stringify(x)})`,
         );
       out.rowMax = x;
+      continue;
+    }
+    if (k === "refresh_seconds") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x < 0 || x > 3600)
+        throw new Error(
+          `agents.helpers.refresh_seconds: must be a number of seconds, from 0 to 3600 (got ${JSON.stringify(x)})`,
+        );
+      out.refreshSeconds = x;
+      continue;
+    }
+    if (k === "facts_cache_mb") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 4096)
+        throw new Error(
+          `agents.helpers.facts_cache_mb: must be a number of MB, above 0 and at most 4096 (got ${JSON.stringify(x)})`,
+        );
+      out.factsCacheMb = x;
       continue;
     }
     if (k === "read_max_mb") {
@@ -2472,7 +2492,7 @@ export function helpersBlock(v: unknown): HelperSettings {
           : null;
     if (!key)
       throw new Error(
-        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb)`,
+        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds)`,
       );
     if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 100_000)
       throw new Error(
@@ -2649,6 +2669,7 @@ export const AGENTS_USER_LIMIT_KEYS = [
   "max_concurrent",
   "max_subagents",
   "subagents_respect_load_hold",
+  "max_per_project",
   "token_peer_wait_ms",
   "turn_read_max_mb",
   "restart_wait_minutes",
@@ -2706,6 +2727,7 @@ const AGENT_LIMIT_DEFAULTS: Readonly<
   max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
   max_subagents: SUBAGENTS_PER_AGENT_SLOT * DEFAULT_AGENTS_MAX_CONCURRENT,
   subagents_respect_load_hold: true,
+  max_per_project: DEFAULT_AGENTS_MAX_PER_PROJECT,
   token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
   turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
   restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
@@ -2937,6 +2959,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     );
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+    maxPerProject: DEFAULT_AGENTS_MAX_PER_PROJECT,
     restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
     rotationWaitMs: ROTATION_WAIT_MINUTES_DEFAULT * 60_000,
     unaskedExitWindowMs: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000,
@@ -3074,6 +3097,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.subagentsRespectLoadHold = hold;
   }
+  const per = raw.max_per_project;
+  if (per !== undefined) {
+    if (typeof per !== "number" || !Number.isInteger(per) || per < 0)
+      throw new Error(
+        `agents.max_per_project: must be a whole number, 0 or more (0: no limit) (got ${JSON.stringify(per)})`,
+      );
+    out.maxPerProject = per;
+  }
   const packs = raw.persona_packs;
   if (packs !== undefined && packs !== null) {
     if (!Array.isArray(packs))
@@ -3099,7 +3130,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
+        `${where}: unknown key (agents: takes max_concurrent, max_per_project, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))
