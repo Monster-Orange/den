@@ -2641,6 +2641,11 @@
       "why": "tests that run scripts/shard-plan.cjs"
     },
     {
+      "when": ["scripts/shim-imports.mjs"],
+      "run": ["tests/unit/test-infra/shim-imports.test.ts"],
+      "why": "tests that run scripts/shim-imports.mjs"
+    },
+    {
       "when": ["scripts/state-writes-gate.mjs"],
       "run": ["tests/unit/test-infra/state-writes-gate.test.ts"],
       "why": "tests that run scripts/state-writes-gate.mjs"

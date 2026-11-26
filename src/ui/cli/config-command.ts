@@ -132,6 +132,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
     "agent_issue_writes",
     "visibility_minutes",
   ],
+  "agents.issue_writes_public": ["agent_issue_writes", "public"],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",

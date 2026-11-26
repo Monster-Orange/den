@@ -5400,6 +5400,26 @@ export const DEN_SETTINGS = [
       ctx.post({ agent_issue_writes: { visibility_minutes: v } }),
   },
   {
+    id: "agents.issue_writes_public",
+    category: "agents",
+    label: "Agents write issues in public repos",
+    description:
+      "On, agents may create issues and comments in public repos. Their text is first checked for listed names, and the footer names no agent or install. Off, a write to a public repo is refused. Turning it on needs your Allow. __DEN_CLI__ config agents.issue_writes_public=false",
+    keywords: [
+      "issue",
+      "github",
+      "public",
+      "names",
+      "footer",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.public"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.agent_issue_writes?.public !== false,
+    write: (v, ctx) => ctx.post({ agent_issue_writes: { public: !!v } }),
+  },
+  {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
     // named as the Den-wide default, with what is in effect and the
     // projects that override it.
