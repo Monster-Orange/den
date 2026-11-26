@@ -159,6 +159,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agent_context.pause_after_loop",
   "alerts.push_timeout_seconds",
   "alerts.push_ttl_seconds",
+  "alerts.tab_first_seconds",
+  "alerts.max_streams",
   "feedback.visibility_cache_hours",
   "feedback.visibility_timeout_seconds",
   "feedback.visibility_retry_seconds",

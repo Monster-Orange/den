@@ -76,6 +76,7 @@ async function open(
   o: {
     permission: string;
     front: boolean;
+    hidden?: boolean;
     /** S2: the device's subscription a stubbed PushManager hands out. */
     sub?: PushStub["subscription"];
   },
@@ -85,7 +86,7 @@ async function open(
     reducedMotion: "reduce",
   });
   await ctx.addInitScript(
-    ({ v, permission, front, sub }) => {
+    ({ v, permission, front, hidden, sub }) => {
       try {
         for (const k of ["den-changelog-seen", "acme-changelog-seen"])
           localStorage.setItem(k, v);
@@ -117,6 +118,10 @@ async function open(
       }
       w.Notification = FakeNotification;
       Document.prototype.hasFocus = () => front;
+      if (hidden)
+        Object.defineProperty(Document.prototype, "visibilityState", {
+          get: () => "hidden",
+        });
       if (sub) {
         // S2: a service worker and PushManager that never reach a real
         // push service: the subscription is the test's local stub.
@@ -328,6 +333,7 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       const p = await open("/settings#notifications", {
         permission: "default",
         front: false,
+        hidden: true,
         sub: stub.subscription,
       });
       await p.click('#set-nav a[data-cat="notifications"]');

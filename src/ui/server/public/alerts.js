@@ -170,6 +170,7 @@ export function initAlerts(win = window) {
     streaming = true;
     const post = async (path, body) => {
       try {
+        // busy-ok: the alert stream's background ack; no button sends it
         const r = await win.fetch(path, {
           method: "POST",
           headers: { "content-type": "application/json" },
