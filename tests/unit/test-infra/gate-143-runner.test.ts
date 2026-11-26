@@ -24,6 +24,7 @@ interface Gh {
     event?: string;
   }[];
   jobs?: Job[];
+  jobsByRun?: Record<string, Job[]>;
   down?: boolean;
   tgz?: string | null;
 }
@@ -53,7 +54,7 @@ function runGate(gh: Gh) {
       if (url.includes("/repos/acme/widget/actions/workflows/ci.yml/runs?") && url.includes("head_sha=" + sha))
         return ok({ workflow_runs: gh.runs ?? [] });
       const m = /\\/repos\\/acme\\/widget\\/actions\\/runs\\/(\\d+)\\/attempts\\/1\\/jobs/.exec(url);
-      if (m) return ok({ jobs: gh.jobs ?? [] });
+      if (m) return ok({ jobs: (gh.jobsByRun ?? {})[m[1]] ?? gh.jobs ?? [] });
       return new Response("{}", { status: 404 });
     };
     const page = {
@@ -141,6 +142,44 @@ describe("gate/143.mjs: the clean-run clause reads CI's first attempt on the bed
       jobs: shards("pr-shards (24.13.0, 1)"),
     });
     expect(clean(r)!.ok).toBe(false);
+  });
+
+  it("a newer run started by hand (no shards) beside a clean pull_request run: PASS on the pull_request run", () => {
+    const r = runGate({
+      runs: [
+        {
+          ...RUN,
+          id: 888,
+          event: "workflow_dispatch",
+          html_url: "https://github.com/acme/widget/actions/runs/888",
+        },
+        RUN,
+      ],
+      jobsByRun: {
+        "888": [
+          { name: "dist-smoke", conclusion: "success" },
+          { name: "den-ui-nav", conclusion: "success" },
+        ],
+      },
+      jobs: shards(),
+    });
+    const row = clean(r)!;
+    expect(row.ok).toBe(true);
+    expect(row.detail).toContain("actions/runs/777");
+  });
+
+  it("only scheduled or by-hand runs: FAIL, as no ci run", () => {
+    const row = clean(
+      runGate({
+        runs: [
+          { ...RUN, event: "schedule" },
+          { ...RUN, id: 888, event: "workflow_dispatch" },
+        ],
+        jobs: shards(),
+      }),
+    )!;
+    expect(row.ok).toBe(false);
+    expect(row.detail).toContain("no ci run");
   });
 
   it("no ci run for the commit: FAIL, saying so", () => {
