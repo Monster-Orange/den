@@ -192,6 +192,7 @@ interface Watch {
   suitesDue?: number[];
   /** Suites it asked for: never asked again (another app's has none). */
   suitesAsked?: number[];
+  dropSuites?: number[];
   /**
    * Issue 1166: a check (or workflow run) of it is still queued or in
    * progress: CI is working, so it counts as progress.
@@ -240,6 +241,21 @@ const RUNS_LOOKBACK_MS = 24 * 3600_000;
 const RUNS_PAGE = 100;
 
 const PASS = new Set(["success"]);
+const PR_EVENTS = new Set([
+  "pull_request",
+  "pull_request_target",
+  "merge_group",
+]);
+
+function runNewer(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const ta = Date.parse(asStr(a.created_at));
+  const tb = Date.parse(asStr(b.created_at));
+  if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta > tb;
+  return (asNum(a.id) ?? 0) > (asNum(b.id) ?? 0);
+}
 /** Issue 1166: a check or run not yet on a runner. */
 const QUEUED = new Set(["queued", "waiting", "pending", "requested"]);
 const SKIP = new Set(["skipped", "neutral"]);
@@ -942,7 +958,10 @@ export class GithubWatcher {
       const mine =
         w.kind === "run"
           ? runs.filter((r) => r.id === w.number)
-          : runs.filter((r) => r.head_sha === w.head);
+          : this.ownNewest(
+              w,
+              runs.filter((r) => r.head_sha === w.head),
+            );
       if (!mine.length && byHead && w.suitesDue?.length) {
         // Issue 1279: no runs for them: another app's checks.
         w.suitesAsked = [...(w.suitesAsked ?? []), ...w.suitesDue];
@@ -1000,12 +1019,44 @@ export class GithubWatcher {
     return changed;
   }
 
+  private ownNewest(
+    w: Watch,
+    onHead: Record<string, unknown>[],
+  ): Record<string, unknown>[] {
+    const newest = new Map<string, Record<string, unknown>>();
+    const drop = new Set(w.dropSuites ?? []);
+    for (const r of onHead) {
+      const ev = asStr(r.event);
+      if (ev && !PR_EVENTS.has(ev)) {
+        const sid = asNum(r.check_suite_id);
+        if (sid !== undefined) drop.add(sid);
+        continue;
+      }
+      const key = String(asNum(r.workflow_id) ?? `run:${asNum(r.id)}`);
+      const had = newest.get(key);
+      if (!had || runNewer(r, had)) newest.set(key, r);
+    }
+    const kept = [...newest.values()];
+    const keptSuites = new Set(kept.map((r) => asNum(r.check_suite_id)));
+    for (const r of onHead) {
+      const sid = asNum(r.check_suite_id);
+      if (sid !== undefined && !keptSuites.has(sid)) drop.add(sid);
+    }
+    for (const sid of keptSuites) if (sid !== undefined) drop.delete(sid);
+    w.dropSuites = drop.size ? [...drop].sort((a, b) => a - b) : undefined;
+    return kept;
+  }
+
   private applyChecks(ws: Watch[], body: unknown, now: number): boolean {
-    const all = (
+    const every = (
       isObj(body) && Array.isArray(body.check_runs) ? body.check_runs : []
     ).filter(isObj);
     let changed = false;
     for (const w of ws) {
+      const dropped = new Set(w.kind === "pr" ? (w.dropSuites ?? []) : []);
+      const all = dropped.size
+        ? every.filter((c) => !dropped.has(suiteOf(c) ?? -1))
+        : every;
       const cs =
         w.kind === "run" && w.suite !== undefined
           ? all.filter(
