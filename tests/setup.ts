@@ -16,7 +16,11 @@ import {
   configLocalSnapshot,
   tripwireCalls,
 } from "./tripwire";
-import { armWriteGuard, writeGuardRoots } from "./write-guard";
+import {
+  armWriteGuard,
+  linkedModulesEntry,
+  writeGuardRoots,
+} from "./write-guard";
 
 // No real credentials reach a test, or its failure output (scrub-env.ts).
 scrubSecretEnv();
@@ -83,17 +87,9 @@ process.env.DEN_NO_OPEN = "1";
 const guardRoots = writeGuardRoots();
 armWriteGuard(afterAll, guardRoots);
 // Issue 1356: Den's roots come from the checkout under test, never from
-// where node_modules resolves (a link into another checkout made a test
-// write that checkout's config/local).
-try {
-  const nm = fs.realpathSync(path.join(guardRoots.checkout, "node_modules"));
-  if (!nm.startsWith(guardRoots.checkout + path.sep)) {
-    process.env.DEN_ROOT ??= guardRoots.checkout;
-    process.env.DEN_ENGINE_ROOT ??= guardRoots.checkout;
-  }
-} catch {
-  /* no node_modules here: nothing resolves elsewhere */
-}
+// where node_modules resolves, and no Den marker is set here.
+const entry = linkedModulesEntry(guardRoots.checkout);
+if (entry) process.argv[1] = entry;
 
 // 0.4.48 tripwires (tripwire.ts): no test reaches a person's browser or
 // Terminal (open, osascript, xdg-open, x-www-browser are failing shims

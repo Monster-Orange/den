@@ -115,6 +115,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "web.owner_name_timeout_seconds",
   "web.ready_probe_seconds",
   "web.start_wait_seconds",
+  "web.tools_probe_seconds",
   "web.sessions_lock_wait_ms",
   "web.address_check_timeout_seconds",
   "web.address_check_retries",
@@ -134,6 +135,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
+  "agents.max_per_project",
   // Issue 1417: every agent limit has an agent ask path.
   "agents.token_peer_wait_ms",
   "agents.turn_read_max_mb",
@@ -172,6 +174,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "sessions.pty_machine_warn_percent",
   "health_poll.visible_seconds",
   "health_poll.hidden_seconds",
+  "git_reads.at_once",
   "hub.groups_cache_seconds",
   // Vision's ruling (issue 1391): Settings' own fields, each named.
   "hub.delivery_loop",
@@ -1165,6 +1168,7 @@ function readDoc(file: string): yaml.Document {
  */
 export const CAP_KEYS = [
   "agents.max_concurrent",
+  "agents.max_per_project",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
   // Issue 1417 (Builder 2): every agent limit setting_change takes. Past
@@ -1200,6 +1204,7 @@ const SAFE_AT_ZERO: readonly string[] = ["agents.unasked_exit_window_minutes"];
 
 const ZERO_IS_UNLIMITED: readonly string[] = [
   "agents.max_concurrent",
+  "agents.max_per_project",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
   "agents.exited_shell_minutes",

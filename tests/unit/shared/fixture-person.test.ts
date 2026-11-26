@@ -255,6 +255,7 @@ describe("what a fixture session may reach: an allow-list", () => {
     ["GET", "/api/manifest/validate", "mutating"],
     // Issue 1407: a restart (the route allows only the bed's own agents).
     ["POST", "/api/workspaces/notes/agents/a1/restart", "mutating"],
+    ["POST", "/api/workspaces/notes/agents/a1/mode", "mutating"],
   ] as const)("%s %s passes", (m, p, cls) => {
     expect(fixtureScopeRefusal(m, p, cls)).toBeNull();
   });

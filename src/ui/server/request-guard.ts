@@ -93,6 +93,8 @@ import {
 /** Issue 796: the audit client of an agent's read-only view. */
 export const AGENT_VIEW_CLIENT = "page view (read-only)";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
+import { isDockerBridgeAddress } from "../../shared/edge/docker-bridge.js";
+export { isDockerBridgeAddress };
 import {
   EMBED_KEY_ROUTES,
   RUNNER_ROUTES,
@@ -550,18 +552,6 @@ export function isLoopbackBind(host: string): boolean {
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
   return h === "localhost" || isLoopbackAddress(h);
-}
-
-/**
- * A Docker bridge address (172.16.0.0/12): where a Linux host's containers
- * reach it as host.docker.internal (`host-gateway`, the edge's
- * extra_hosts). One address, never 0.0.0.0 or ::.
- */
-export function isDockerBridgeAddress(addr: string): boolean {
-  const a = addr.trim();
-  if (!net.isIPv4(a)) return false;
-  const [x, y] = a.split(".").map(Number);
-  return x === 172 && y >= 16 && y <= 31;
 }
 
 /**
