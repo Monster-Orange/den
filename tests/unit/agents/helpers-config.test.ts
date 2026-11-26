@@ -24,6 +24,7 @@ describe("agents.helpers", () => {
       rowMax: 4,
       readMaxMb: 64,
       factsCacheMb: 256,
+      refreshSeconds: 5,
     });
     expect(readAgentsConfig({} as DenConfig).helpers).toEqual(HELPER_DEFAULTS);
     expect(helpersBlock(null)).toEqual(HELPER_DEFAULTS);
@@ -36,6 +37,7 @@ describe("agents.helpers", () => {
       rowMax: 4,
       readMaxMb: 64,
       factsCacheMb: 256,
+      refreshSeconds: 5,
     });
     expect(readAgentsConfig(cfg({ row_max: 12 })).helpers).toEqual({
       activeMinutes: 10,
@@ -43,6 +45,7 @@ describe("agents.helpers", () => {
       rowMax: 12,
       readMaxMb: 64,
       factsCacheMb: 256,
+      refreshSeconds: 5,
     });
     // D76: how much of an agent's transcript its helpers are read from.
     expect(readAgentsConfig(cfg({ read_max_mb: 512 })).helpers.readMaxMb).toBe(

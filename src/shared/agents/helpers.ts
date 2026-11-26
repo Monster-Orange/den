@@ -84,6 +84,7 @@ export interface HelperSettings {
   readMaxMb: number;
   /** D76: the facts kept from agents' transcripts, in MB (least recently used out). */
   factsCacheMb: number;
+  refreshSeconds: number;
 }
 
 export const HELPER_DEFAULTS: HelperSettings = {
@@ -92,6 +93,7 @@ export const HELPER_DEFAULTS: HelperSettings = {
   rowMax: 4,
   readMaxMb: 64,
   factsCacheMb: 256,
+  refreshSeconds: 5,
 };
 
 /** What a runtime's helpers hooks are given. */
