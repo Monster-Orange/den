@@ -427,6 +427,16 @@ const WIDENS_AT: readonly [
   // runs outside the gate: widens. Adding one, or reordering, doesn't.
   // With no old value known, judged against the default list.
   [
+    "gate.throwaway_sweep",
+    (v, before) => {
+      const to = level(v);
+      const from = level(before);
+      if (to === null) return true;
+      return from === null ? to === 0 : to < from;
+    },
+    ["personal", "strict"],
+  ],
+  [
     "gate.route_commands",
     (v, before) => {
       const to = programs(v);

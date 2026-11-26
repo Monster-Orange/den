@@ -1320,6 +1320,9 @@
     "set.server.gate_route_agents": "エージェントの重い実行を順番待ちに通す",
     "set.server.gate_route_agents.d":
       "オンなら、エージェントの単独のテスト、型チェック、ブラウザテストはほかと同じく順番待ちの枠を使います。オフなら、そのまま実行して下で数えます。__DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_throwaway_sweep": "使い捨てのテスト用コンテナを削除する",
+    "set.server.gate_throwaway_sweep.d":
+      "オンなら、順番待ちの実行が終わった使い捨てのテスト用コンテナを Den が削除し、使われていない保持中のコンテナを止めます。オフなら、Den はそのために docker を実行しません。手で削除するまで残り、Doctor はこの片付けがオフだと表示します。__DEN_CLI__ gate settings --throwaway-sweep 1",
     "set.server.gate_route_commands": "順番待ちに通すプログラム",
     "set.server.gate_route_commands.d":
       'カンマ区切りのプログラム名、または npm test と npm run test*(* は任意の末尾)。空なら jest, vitest, tsc, playwright, npm test, npm run test*。__DEN_CLI__ gate settings --route-commands "jest, vitest"',
@@ -3201,6 +3204,8 @@
       "__DEN_TITLE__ {v}: 固定バージョンはコミット ({sha}) されましたが、プッシュに失敗しました: {why}。__DEN_TITLE__ は次の更新チェックで再試行します",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
+    "bell.m.pinPrRenamed":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンは {branch} のプルリクエストにあります。理由: {why}",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
     "bell.m.pinPrUnsigned":

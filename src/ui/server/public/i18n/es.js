@@ -1367,6 +1367,10 @@
       "Las ejecuciones pesadas de los agentes pasan por la cola",
     "set.server.gate_route_agents.d":
       "Activado, una prueba, comprobación de tipos o prueba de navegador de un agente toma un turno de la cola como cualquier otra. Desactivado, se ejecuta tal cual y aparece en el recuento de abajo. __DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_throwaway_sweep":
+      "Quitar los contenedores de prueba desechables",
+    "set.server.gate_throwaway_sweep.d":
+      "Activado, Den quita los contenedores de prueba desechables cuya ejecución en la cola ha terminado, y detiene los conservados que están inactivos. Desactivado, Den nunca ejecuta docker para ellos: se quedan hasta que los quites, y Doctor dice que la limpieza está desactivada. __DEN_CLI__ gate settings --throwaway-sweep 1",
     "set.server.gate_route_commands": "Programas que pasan por la cola",
     "set.server.gate_route_commands.d":
       'Nombres de programas separados por comas, o npm test y npm run test* (* vale por cualquier final). Vacío: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
@@ -3320,6 +3324,8 @@
       "__DEN_TITLE__ {v}: su versión fijada está confirmada ({sha}), pero el envío falló: {why}. __DEN_TITLE__ lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
+    "bell.m.pinPrRenamed":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios en {branch}, porque {why}",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
     "bell.m.pinPrUnsigned":

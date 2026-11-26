@@ -3317,7 +3317,13 @@ async function throwawayRows() {
     const checkouts = new Set(
       all.flatMap((e) => (e.checkout ? [e.checkout] : [])),
     );
-    return throwawayLines(list, live, storeTag(store.dir), checkouts);
+    return throwawayLines(
+      list,
+      live,
+      storeTag(store.dir),
+      checkouts,
+      store.settings().throwawaySweep,
+    );
   } catch {
     return throwawayLines(null, new Set());
   }
