@@ -225,7 +225,8 @@ export async function teardown(ctx, s) {
 }
 
 export function expect(cells) {
-  const r = cells.find((c) => c?.result)?.result ?? {};
+  const r =
+    (Array.isArray(cells) ? cells.find((c) => c?.result)?.result : cells) ?? {};
   const fileOk = !!r.envFile && path.basename(r.envFile) === "env-hold.sh";
   const g = r.guard ?? {};
   const masked = ["env", "printenv", "set"].every(
