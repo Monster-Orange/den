@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { readSyncReply } from "../../../src/shared/hub-project-sync.js";
+import { hubGetProject } from "../../../src/shared/hub.js";
 
 const MOVED_TO = {
   hub: "https://new-hub.example.test",
@@ -51,5 +52,59 @@ describe("issue 1632 part 2: the sync reply's moved projects", () => {
     });
     expect(r.moved[0].movedTo.hubName).toMatch(/^New x+$/);
     expect(r.moved[0].movedTo.hubName.length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("issue 1632 part 2: one Hub project by id, with its move", () => {
+  const ID = "0b6c1d2e-3f40-4a5b-8c6d-7e8f90a1b2c3";
+  const answer = (status: number, body: unknown) =>
+    (async () =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      })) as unknown as typeof fetch;
+
+  it("reads the project and where it came from", async () => {
+    const seen: string[] = [];
+    const f = (async (u: string) => {
+      seen.push(u);
+      return answer(200, {
+        project: { id: ID, slug: "web", name: "Web" },
+        movedTo: null,
+        movedFrom: { ...MOVED_TO, hub: "https://old-hub.example.test" },
+      })(u);
+    }) as unknown as typeof fetch;
+    const p = await hubGetProject("https://new-hub.example.test", "t", ID, {
+      fetch: f,
+    });
+    expect(seen).toEqual([`https://new-hub.example.test/api/projects/${ID}`]);
+    expect(p).toEqual({
+      id: ID,
+      slug: "web",
+      name: "Web",
+      movedFrom: { hub: "https://old-hub.example.test" },
+      movedTo: null,
+    });
+  });
+
+  it("a 404 is no such project here: null", async () => {
+    expect(
+      await hubGetProject("https://h.example.test", "t", ID, {
+        fetch: answer(404, { error: "no such project" }),
+      }),
+    ).toBeNull();
+  });
+
+  it("an answer with no project, or an id that isn't Den's to ask for, is null", async () => {
+    expect(
+      await hubGetProject("https://h.example.test", "t", ID, {
+        fetch: answer(200, { movedTo: null }),
+      }),
+    ).toBeNull();
+    expect(
+      await hubGetProject("https://h.example.test", "t", "../installs", {
+        fetch: answer(200, {}),
+      }),
+    ).toBeNull();
   });
 });
