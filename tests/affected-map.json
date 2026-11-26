@@ -2272,6 +2272,7 @@
         "tests/unit/shared/hub-plan-creates.test.ts",
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
+        "tests/unit/test-infra/brittle-weekly-841.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -2357,7 +2358,8 @@
       "when": ["scripts/brittle-ratchet.mjs"],
       "run": [
         "tests/unit/scripts/kit-version.test.ts",
-        "tests/unit/test-infra/brittle-ratchet.test.ts"
+        "tests/unit/test-infra/brittle-ratchet.test.ts",
+        "tests/unit/test-infra/brittle-weekly-841.test.ts"
       ],
       "why": "tests that run scripts/brittle-ratchet.mjs"
     },
