@@ -730,6 +730,8 @@ import {
   type HubConfig,
 } from "../../shared/hub.js";
 import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
+import { serverHubAgentTokens } from "../../shared/hub-agent-tokens.js";
+import { syncAgentGrantNote } from "../../shared/hub-agent-grant.js";
 import { editorOpen, patchEditorOpen } from "./editor-open-pref.js";
 import {
   contextUrlProblem,
@@ -10086,7 +10088,19 @@ async function handleRequest(
   // ── D52: Hub, for agents, through Den (hub-proxy.ts) ────────────────────
   if (
     await handleHubProxy(req, res, pathname, {
-      upstream: (who) => hubUpstream(agentWebDeps(), who),
+      upstream: (who) =>
+        hubUpstream(
+          agentWebDeps({
+            hubAgentToken: (h, a) =>
+              serverHubAgentTokens(() =>
+                syncAgentGrantNote(notificationDeps().store, {
+                  connected: true,
+                  notCovered: true,
+                }),
+              ).tokenFor(h, a),
+          }),
+          who,
+        ),
       onMcpInit: (agentId, o) => noteHubMcpInit(getStateDir(), agentId, o),
       // Issue 749: a tool listing that failed leaves it without Hub's tools.
       onMcpToolsList: (agentId, o) =>
@@ -10095,7 +10109,10 @@ async function handleRequest(
       // next call read it again (at most once a minute), as Den's own
       // status check does; and the agent's note says how its calls go.
       onHubAnswer: (agentId, o) => {
-        if (o.status === 401) forgetHubToken();
+        if (o.status === 401) {
+          forgetHubToken();
+          serverHubAgentTokens().rejected(agentId);
+        }
         if (o.sub === "/mcp")
           noteHubMcpCall(getStateDir(), agentId, {
             ok: o.status !== null && o.status >= 200 && o.status < 300,
@@ -12362,6 +12379,20 @@ void CRASH_GATE.then(() =>
             (await import("./hub-delivery-service.js")).relayMessage(dv),
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
+      );
+    void hubChecked
+      .then(() => import("../../shared/hub-agent-tokens.js"))
+      .then((m) =>
+        m.startAgentTokenRevokeRetry(
+          async () => {
+            const { readHubConfig, readHubToken } =
+              await import("../../shared/hub.js");
+            const cfg = readHubConfig();
+            const token = cfg ? await readHubToken(cfg) : null;
+            return cfg && token ? { url: cfg.url, token } : null;
+          },
+          (l) => serverLog(`  [hub] ${l}`, "warn"),
+        ),
       );
   }),
 );

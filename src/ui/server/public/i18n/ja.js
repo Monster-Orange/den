@@ -3044,6 +3044,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.hubAgentsReconnect":
+      "エージェントが自分の作業に署名できるよう、Hub に接続し直してください",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
     "bell.m.updateWaitsWhat":
@@ -3501,6 +3503,12 @@
     "ag.signIn": "{label} で実行",
     "ag.signIn.tip":
       "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
+    "ag.hub.bound": "Hub で確認済み",
+    "ag.hub.bound.tip":
+      "自分のトークンで Hub を呼び出すので、Hub はその作業と承認をこのエージェント自身のものとして数えます。",
+    "ag.hub.unbound": "Hub で未確認",
+    "ag.hub.unbound.tip":
+      "今はこのインストールのトークンで Hub を呼び出すため、Hub はその承認をインストールのものと区別できません。次に Hub を呼び出すとき、Den が Hub にこのエージェント専用のトークンを求めます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",

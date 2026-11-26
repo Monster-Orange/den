@@ -3157,6 +3157,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
     "bell.m.updateWaits":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.hubAgentsReconnect":
+      "Vuelve a conectar Hub para que tus agentes firmen su propio trabajo",
     "bell.m.updateWaitsAsked":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "bell.m.updateWaitsWhat":
@@ -3630,6 +3632,12 @@
     "ag.signIn": "con {label}",
     "ag.signIn.tip":
       "Inicia sesión con {label}, cuyo token está en el almacén de secretos de esta instalación, así que sigue en marcha tras cerrar la sesión.",
+    "ag.hub.bound": "Verificado en Hub",
+    "ag.hub.bound.tip":
+      "Llama a Hub con su propio token, así que Hub reconoce su trabajo y sus aprobaciones como suyos.",
+    "ag.hub.unbound": "Sin verificar en Hub",
+    "ag.hub.unbound.tip":
+      "Por ahora llama a Hub con el token de esta instalación, así que Hub no distingue sus aprobaciones de las de la instalación. Den le pide a Hub su propio token la próxima vez que llame a Hub.",
     "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
       "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",
