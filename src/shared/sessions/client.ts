@@ -239,7 +239,6 @@ export class HostClient extends EventEmitter {
        * or plain ones (sessions.max_concurrent). Without it, all of them.
        */
       pool?: SessionPool;
-      /** Issue 1634: the agent's project, and its cap (none: the machine's only). */
       project?: string;
       projectLimit?: number;
       /** `--keep-env` names, for the host's audit line (never values). */

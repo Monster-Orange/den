@@ -1,8 +1,3 @@
-/**
- * Issue 1634: the host counts a project's running agents against its cap,
- * in the same check as the machine cap, so two starts at once can't both
- * slip past it.
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";

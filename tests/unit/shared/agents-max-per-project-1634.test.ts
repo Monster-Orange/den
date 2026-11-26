@@ -1,9 +1,11 @@
-/**
- * Issue 1634: agents.max_per_project, a Setting with a permissive default
- * (0: no limit beyond agents.max_concurrent), and a project's own
- * `agents.max_per_project` in workspaces.yml over it. Invented names only.
- */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";

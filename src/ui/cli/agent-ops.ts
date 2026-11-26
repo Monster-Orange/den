@@ -3643,10 +3643,13 @@ function capOrThrow(
   e: unknown,
   project?: { key: string },
 ): never {
-  const mine = e instanceof HostError && /\(agents\.max_per_project\)$/.test(e.message);
+  const mine =
+    e instanceof HostError && /\(agents\.max_per_project\)$/.test(e.message);
   if (e instanceof HostError && e.code === "cap")
     throw new AgentError(
-      mine && project ? e.message.replace(/\(agents\.max_per_project\)$/, `(${project.key})`) : e.message,
+      mine && project
+        ? e.message.replace(/\(agents\.max_per_project\)$/, `(${project.key})`)
+        : e.message,
       {
         status: 429,
         code: "cap",

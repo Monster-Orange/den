@@ -1,8 +1,3 @@
-/**
- * Issue 1634: how many agents project `ws` may run at once, and the key
- * that sets it. A project's own `agents.max_per_project` (workspaces.yml)
- * may only lower the install's; 0 is no limit beyond agents.max_concurrent.
- */
 import { readAgentsConfig } from "../den-config.js";
 import { readWorkspacesFile } from "../environment-manager/workspaces.js";
 import type { WorkspacesFile } from "../types/index.js";
@@ -22,7 +17,8 @@ export function projectAgentCap(
   } catch {
     own = undefined;
   }
-  if (own === undefined || own === null) return { limit: install, key: INSTALL_KEY };
+  if (own === undefined || own === null)
+    return { limit: install, key: INSTALL_KEY };
   if (typeof own !== "number" || !Number.isInteger(own) || own < 0)
     throw new Error(
       `${projectCapKey(ws)}: must be a whole number, 0 or more (0: the install's) (got ${JSON.stringify(own)})`,

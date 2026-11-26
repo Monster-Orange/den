@@ -2037,7 +2037,6 @@ export function readMcpConfig(
 export interface AgentsConfig {
   /** Agents that may run at once (default 4); plain sessions never count. */
   max_concurrent?: number;
-  /** Issue 1634: agents one project may run at once (default 0: no limit). */
   max_per_project?: number;
   /**
    * Persona packs (AG-2a): directories of persona files, relative to the
