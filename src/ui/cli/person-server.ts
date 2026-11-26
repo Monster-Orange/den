@@ -14,8 +14,8 @@ import * as net from "net";
 import * as os from "os";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { webProbeTarget } from "../../shared/web-dial.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
+import { webProbeTarget } from "../../shared/web/web-dial.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
 
 export interface ServerAnswer {
   status: number;

@@ -23,7 +23,7 @@ import {
   githubEndpoints,
 } from "../../../src/shared/github-app.js";
 import { githubDeviceClient } from "../../../src/shared/github-device.js";
-import { webOwnerPath } from "../../../src/shared/web-owner.js";
+import { webOwnerPath } from "../../../src/shared/web/web-owner.js";
 import {
   startFakeGithub,
   type FakeGithub,

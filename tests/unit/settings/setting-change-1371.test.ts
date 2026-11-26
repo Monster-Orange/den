@@ -31,7 +31,7 @@ import {
   type DenConfig,
   type UserConfig,
 } from "../../../src/shared/den-config.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
 import { policyFor } from "../../../src/shared/approval-policy.js";
 
 let dir = "";
@@ -429,6 +429,13 @@ describe("USER_ONLY_WIDENING matches what den-config reads (issue 1371)", () => 
       expect(() =>
         readAgentsConfig(
           { agents: { bo: { sandbox: false } } } as unknown as DenConfig,
+          {},
+        ),
+      ).toThrow(/user\.yml/),
+    "agents.os_login": () =>
+      expect(() =>
+        readAgentsConfig(
+          { agents: { os_login: "off" } } as unknown as DenConfig,
           {},
         ),
       ).toThrow(/user\.yml/),

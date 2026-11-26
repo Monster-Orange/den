@@ -2,7 +2,7 @@
  * Issue 271: POST /api/workspaces/:ws/hub-create {name}. Settings ›
  * Project › Hub project's "Create a Hub project named …": Den asks Hub for
  * a new project with its project plan path (held for an owner in Hub),
- * and keeps the ask next to the project (shared/hub-project-create.ts).
+ * and keeps the ask next to the project (shared/hub/hub-project-create.ts).
  * GET /api/workspaces/:ws/hub-project then says what became of it, and
  * links it once an owner allowed it.
  *
@@ -18,13 +18,16 @@ import type * as http from "http";
 import {
   askHubCreate,
   type HubCreateDeps,
-} from "../../shared/hub-project-create.js";
+} from "../../shared/hub/hub-project-create.js";
 import { HUB_PROJECT_NAME_MAX } from "../../shared/hub.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import type { DetailKey, HeldOpCheck } from "../cli/agent-ops.js";
 import type { AskedBy } from "./approvals.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
-import { hubCreateOf, hubProjectOf } from "../../shared/hub-project-link.js";
+import {
+  hubCreateOf,
+  hubProjectOf,
+} from "../../shared/hub/hub-project-link.js";
 import { workspaceDisplayName } from "../../shared/workspace-name.js";
 import { readRecord } from "../../shared/agents/records.js";
 import { getStateDir } from "../../shared/paths.js";
@@ -96,7 +99,7 @@ export async function hubCreateRoute(
 /** The deps on this install: its projects, its links, Hub with its token. */
 export async function defaultHubCreateDeps(): Promise<HubCreateDeps> {
   const [link, w, sync] = await Promise.all([
-    import("../../shared/hub-project-link.js"),
+    import("../../shared/hub/hub-project-link.js"),
     import("../../shared/environment-manager/workspaces.js"),
     import("./hub-sync-service.js"),
   ]);
@@ -138,8 +141,8 @@ export async function settleAllHubCreates(
 ): Promise<string[]> {
   const [{ readWorkspacesFile }, link, c] = await Promise.all([
     import("../../shared/environment-manager/workspaces.js"),
-    import("../../shared/hub-project-link.js"),
-    import("../../shared/hub-project-create.js"),
+    import("../../shared/hub/hub-project-link.js"),
+    import("../../shared/hub/hub-project-create.js"),
   ]);
   const waiting = Object.keys(readWorkspacesFile().workspaces).filter((ws) => {
     const a = link.hubCreateOf(ws);

@@ -10,7 +10,7 @@ import { afterAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { HubToolsWatch } from "../../../src/shared/hub-tools.js";
+import { HubToolsWatch } from "../../../src/shared/hub/hub-tools.js";
 import { RestartQueue } from "../../../src/shared/agents/restart-queue.js";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-1129-hub-"));
