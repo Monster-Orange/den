@@ -177,8 +177,8 @@ function distribution(root: string): void {
   );
 }
 
-function timed(port: number, p: string): Promise<number> {
-  const started = performance.now();
+function timed(port: number, p: string, from: number): Promise<number> {
+  const started = from;
   return new Promise((resolve) => {
     const req = http.get(
       {
@@ -284,24 +284,32 @@ describe(`the web server under ${P.agents} agents with helpers, ${P.pages} pages
 
     const info: number[] = [];
     const list: number[] = [];
-    const end = performance.now() + P.seconds * 1000;
+    const start = performance.now();
+    const end = start + P.seconds * 1000;
+    const want = { info: 0, list: 0 };
     const loop = async (
       route: string,
       every: number,
       into: number[],
       offset: number,
+      count: "info" | "list",
     ) => {
-      await sleep(offset);
-      while (performance.now() < end) {
-        const t0 = performance.now();
-        into.push(await timed(port, route));
-        await sleep(Math.max(0, every - (performance.now() - t0)));
+      for (let slot = start + offset; slot < end; slot += every) {
+        want[count]++;
+        await sleep(Math.max(0, slot - performance.now()));
+        into.push(await timed(port, route, slot));
       }
     };
     const clients: Promise<void>[] = [];
     for (let c = 0; c < P.pages; c++)
       clients.push(
-        loop("/api/sessions", P.pageListMs, list, (c * P.pageListMs) / P.pages),
+        loop(
+          "/api/sessions",
+          P.pageListMs,
+          list,
+          (c * P.pageListMs) / P.pages,
+          "list",
+        ),
       );
     for (let c = 0; c < P.tools; c++) {
       clients.push(
@@ -310,10 +318,17 @@ describe(`the web server under ${P.agents} agents with helpers, ${P.pages} pages
           P.toolInfoMs,
           info,
           (c * P.toolInfoMs) / P.tools,
+          "info",
         ),
       );
       clients.push(
-        loop("/api/sessions", P.toolListMs, list, (c * P.toolListMs) / P.tools),
+        loop(
+          "/api/sessions",
+          P.toolListMs,
+          list,
+          (c * P.toolListMs) / P.tools,
+          "list",
+        ),
       );
     }
     await Promise.all(clients);
@@ -330,7 +345,14 @@ describe(`the web server under ${P.agents} agents with helpers, ${P.pages} pages
         max: Math.round(Math.max(...list)),
       },
     };
-    process.stdout.write(`load-1668 ${JSON.stringify({ params: P, got })}\n`);
+    process.stdout.write(
+      `load-1668 ${JSON.stringify({ params: P, want, got })}\n`,
+    );
+    expect(got.serverInfo.n).toBe(want.info);
+    expect(got.sessions.n).toBe(want.list);
+    expect(want.info).toBeGreaterThanOrEqual(
+      Math.floor((P.seconds * 1000 * P.tools) / P.toolInfoMs),
+    );
     expect(got.serverInfo.p95).toBeLessThan(P.p95Ms);
     expect(got.sessions.p95).toBeLessThan(P.p95Ms);
   }, 900_000);
