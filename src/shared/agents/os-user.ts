@@ -420,7 +420,7 @@ export function setupPlan(
       ? [
           {
             say: `Close your home ${l.personHome} to everyone but you (0700), so the agents' login can't read your files`,
-            argv: ["chmod", "0750", l.personHome],
+            argv: ["chmod", "0700", l.personHome],
           },
         ]
       : []),
