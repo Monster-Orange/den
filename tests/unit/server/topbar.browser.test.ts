@@ -574,6 +574,7 @@ describe("the ⌘K palette (R17)", () => {
       "Hold new unit test runs over this load per core SETTING",
       // Issue 1274: fuzzy too ("s…h…o…p" in "this much swap in use").
       "Hold new runs here over this much swap in use (GB) SETTING",
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes SETTING",
       // Issue 816: fuzzy too ("s…h…o…p" in "installs on this computer").
       "Test installs on this computer SETTING",
     ]);
