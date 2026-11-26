@@ -102,6 +102,7 @@ const select = (a: {
   map: Map;
   importersOf?: Record<string, string[]>;
   mentioned?: string[];
+  named?: Record<string, string[]>;
 }) => call<Selection>(AFFECTED, "selectTests", a);
 
 /** Every *.test.ts under tests/, as jest lists them (repo-relative). */
@@ -228,6 +229,51 @@ describe("selectTests (fixtures)", () => {
     );
     expect(r.status).not.toBe(0);
     expect(r.stderr).toMatch(/rules\[0\]: needs when, run and why/);
+  });
+});
+
+describe("tests that read a changed file as text (issue 1707)", () => {
+  // PR 1281 changed src/ui/server/index.ts; birth-import-first-814 reads that
+  // file's text (no import edge), so neither its CI nor the queue ran it.
+  const naming = (changed: string[], sources: Record<string, string>) =>
+    call<Record<string, string[]>>(
+      AFFECTED,
+      "testsNamingPaths",
+      changed,
+      sources,
+    );
+
+  it("a test whose text names a changed file's repo path is picked, with the path as its reason", () => {
+    const n = naming(["src/ui/server/index.ts", "src/lib.ts"], {
+      "tests/reads.test.ts":
+        'path.resolve(__dirname, "../../../src/ui/server/index.ts")',
+      "tests/other.test.ts": 'import { x } from "../src/other";',
+      "tests/near.test.ts": '"src/ui/server/index.tsx"',
+    });
+    expect(n).toEqual({ "tests/reads.test.ts": ["src/ui/server/index.ts"] });
+    const s = select({
+      changed: ["src/ui/server/index.ts"],
+      allTests: ["tests/reads.test.ts", "tests/other.test.ts"],
+      related: [],
+      map: { everything: [], smoke: [], rules: [] },
+      named: n,
+    });
+    expect(s.files).toEqual({
+      "tests/reads.test.ts": ["names src/ui/server/index.ts"],
+    });
+  });
+
+  it("PR 1281's change picks birth-import-first-814 from the real tests", () => {
+    const sources = Object.fromEntries(
+      TESTS.map((t) => [t, fs.readFileSync(path.join(ROOT, t), "utf-8")]),
+    );
+    const n = naming(
+      ["src/ui/server/index.ts", "src/ui/cli/web-command.ts"],
+      sources,
+    );
+    expect(n["tests/unit/server/birth-import-first-814.test.ts"]).toEqual([
+      "src/ui/server/index.ts",
+    ]);
   });
 });
 

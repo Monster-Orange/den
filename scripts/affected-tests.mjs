@@ -132,6 +132,26 @@ export function ranFirstTests(root = ROOT) {
   return JSON.parse(fs.readFileSync(file, "utf-8")).jest ?? [];
 }
 
+/**
+ * Issue 1707: tests that read a changed file as text (no import edge, so
+ * jest's related list misses them; 1281 changed index.ts and never ran
+ * birth-import-first-814). sources: { test file: its text }. Returns
+ * { test file: [the changed repo paths its text names] }; a longer name
+ * (index.tsx for index.ts) doesn't count.
+ */
+export function testsNamingPaths(changed, sources) {
+  const out = {};
+  for (const [t, text] of Object.entries(sources))
+    for (const f of changed) {
+      if (f === t) continue;
+      let i = text.indexOf(f);
+      while (i >= 0 && /[\w.-]/.test(text[i + f.length] ?? ""))
+        i = text.indexOf(f, i + 1);
+      if (i >= 0) (out[t] ??= []).push(f);
+    }
+  return out;
+}
+
 export function selectTests({
   changed,
   allTests,
@@ -139,6 +159,7 @@ export function selectTests({
   map,
   importersOf = {},
   mentioned = [],
+  named = {},
   ranFirst = [],
 }) {
   const skip = new Set(ranFirst);
@@ -163,6 +184,8 @@ export function selectTests({
   const tests = new Set(allTests);
   for (const f of changed) if (tests.has(f)) add(f, "changed");
   for (const f of related) if (tests.has(f)) add(f, "related");
+  for (const [t, paths] of Object.entries(named))
+    if (tests.has(t)) for (const p of paths) add(t, `names ${p}`);
   for (const rule of map.rules) {
     const when = matcher(rule.when);
     const trigger = changed.filter(when);
@@ -393,6 +416,12 @@ async function main(argv) {
     map,
     importersOf,
     mentioned,
+    named: testsNamingPaths(
+      changed,
+      Object.fromEntries(
+        allTests.map((t) => [t, fs.readFileSync(path.join(ROOT, t), "utf-8")]),
+      ),
+    ),
     ranFirst: ranFirstTests(),
   });
   if (sel.all)
