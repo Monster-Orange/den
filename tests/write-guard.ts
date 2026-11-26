@@ -253,6 +253,19 @@ export function writeGuardRoots(
   };
 }
 
+/** An entry inside `checkout` when its node_modules links elsewhere (a worker's own entry is there); else null. */
+export function linkedModulesEntry(checkout: string): string | null {
+  let nm: string;
+  try {
+    nm = fs.realpathSync(path.join(checkout, "node_modules"));
+  } catch {
+    return null;
+  }
+  return inside(nm, fs.realpathSync(checkout))
+    ? null
+    : path.join(checkout, "tests", "setup.ts");
+}
+
 /** Where Playwright keeps its browsers (its registry's own rule). */
 function playwrightBrowsers(env: NodeJS.ProcessEnv): string {
   const set = env.PLAYWRIGHT_BROWSERS_PATH?.trim();
