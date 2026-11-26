@@ -16,7 +16,7 @@
  * title or body holds a listed name (public-text.mjs), with or without
  * --no-guardrails, as the api-only rules are.
  *
- * Its guardrails block exactly two things, and nothing else:
+ * Its guardrails block these, plus emptying a linked node_modules:
  *
  *   1. Whole-file reads of a log or a large file into the conversation:
  *      - Read with no `limit`;
@@ -46,6 +46,7 @@ import {
   looksLikeGhWrite,
   publicTextDecision,
 } from "./public-text.mjs";
+import { linkedModulesReason } from "./linked-modules.mjs";
 import {
   apiOnlyDecision,
   apiOnlyMessage,
@@ -377,6 +378,8 @@ export function bashDecision(command, opts = {}) {
   } catch {
     return null;
   }
+  const linked = linkedModulesReason(command, parseShell, { cwd, home });
+  if (linked) return linked;
   for (const stages of pipelines)
     for (let s = 0; s < stages.length; s++) {
       const st = stages[s];
