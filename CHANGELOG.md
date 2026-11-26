@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.90] - unreleased
 
+### Changed
+
+- When this install moves to another Hub, what belonged to the old one is closed or cleared. Waiting requests to link a project to a Hub project, or to make one, are closed. Nothing runs from them, the bell says why, and the agent that asked is told. The old Hub's leftover answers and its delivery log are put away, and Doctor names the Hub each linked project is on.
+
 ### Fixed
 
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
