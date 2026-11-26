@@ -8,6 +8,13 @@ Not in use yet: setup makes the login and doctor checks it, but Den's server
 doesn't start agents through it until a later slice. Until then agents still
 run as the person, and setup and doctor say so.
 
+This Den version still owes some checks before the login is safe to use:
+access lists (ACLs) on Den's runtime on macOS, and service logs private to
+the person's login. Until that list (`OS_LOGIN_OWED`) is empty, `agents
+os-login setup` and `agents session` refuse with "the agents' own login isn't
+ready on this Den version yet", and name what is still to come. Each later
+slice removes its own item.
+
 It is off by default. The person turns it on once, at setup, by answering yes
 at a terminal: a piped yes is refused. The admin password is asked only when
 the first sudo step runs. `remove` turns it off only once nothing is left. Only user.yml
@@ -134,5 +141,5 @@ These hold before the server starts any agent as the agents' login:
 3. The person's Den never trusts or follows a link in `own/`.
 4. Every launch checks that the agents' login can't write Den's runtime, or
    any folder above it, before it starts. The check reads owners and mode bits
-   only: access control lists (ACLs) aren't checked yet, and that check lands
-   before `agents.os_login` is used to start any agent.
+   only: access control lists (ACLs) aren't checked yet. That check is on the
+   owed list above, so setup and launch refuse until it lands.
