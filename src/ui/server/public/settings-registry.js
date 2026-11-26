@@ -538,7 +538,6 @@ function drawPush(host, ctx, io) {
   };
   const draw = (on, note) => {
     host.innerHTML =
-      // Issue 680: the kit's switch, named by the row's label.
       switchInputHtml({
         id: "set-phone-push",
         on,
@@ -1729,7 +1728,6 @@ function drawGateBoxes(host, ctx) {
       "number",
       'min="1" max="86400" step="1"',
     ) +
-    // Issue 680: an on/off setting is the kit's switch.
     switchHtml({ id: "set-box-on", label: L("set.ui.boxOn", "On"), on: true }) +
     `<button type="button" class="den-btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +
@@ -2870,7 +2868,6 @@ function renderKeepRunning(host, ctx) {
   const signLine = keepTokenLine(ctx.data.agent_signin, t);
   host.innerHTML =
     `<div data-keep style="display:grid;gap:8px">` +
-    // Issue 680: the kit's switch; data-keep-on is the handler's hook.
     switchHtml({
       label: t("keep.label"),
       on: on0,
@@ -6916,7 +6913,6 @@ export function hubHtml(b, flash, t = (k) => k) {
             ? t("hub.legacy")
             : "";
   const tools =
-    // Issue 680: the kit's switch.
     switchHtml({
       id: "hub-allow-tools",
       label: L("set.ui.hub.tools", "Agents use Hub's tools without asking"),

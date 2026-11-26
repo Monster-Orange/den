@@ -1,12 +1,3 @@
-/**
- * Issue 680 (Harmony): one on/off switch, the kit's, for both products.
- * Den's on/off settings were plain checkboxes with a look of their own
- * (.set-check, .toggle-input). They are the kit's switch now: a settings
- * row keeps its own label (the row's), so the kit draws the bare switch
- * for it (switchInputHtml), the same input switchHtml draws in its label.
- * The second product draws no on/off control today (checked during the
- * build); when it does, it renders the same builder.
- */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -84,9 +75,6 @@ describe("issue 680: Den draws its on/off settings with the kit's switch", () =>
       expect([f, /set-check|toggle-input/.test(read(f))]).toEqual([f, false]);
   });
 
-  // Review: every on/off setting is a switch; a checkbox that picks an
-  // option inside a form stays one, and is named here, so a new checkbox
-  // has to choose.
   const MUST_BE_SWITCHES: [string, RegExp][] = [
     ["settings-registry.js", /switchHtml\(\{\s*id: "set-box-on"/],
     ["settings-registry.js", /switchHtml\(\{\s*id: "hub-allow-tools"/],
@@ -139,12 +127,6 @@ describe("issue 680: Den draws its on/off settings with the kit's switch", () =>
   });
 });
 
-/**
- * Issue 680, second part: the kit's switch is the sister app's shipped switch
- *, value for value, on the kit's tokens. Den Design and
- * Reviewer A said yes; the token map came from the sister app's design agent.
- * The 44px touch target under a coarse pointer is the kit's own addition.
- */
 describe("issue 680: the switch copies the sister app's, value for value", () => {
   const css = fs.readFileSync(
     path.join(process.cwd(), "packages/den-ui/src/switch.css"),
@@ -154,7 +136,6 @@ describe("issue 680: the switch copies the sister app's, value for value", () =>
     path.join(process.cwd(), "packages/den-ui/src/tokens.css"),
     "utf-8",
   );
-  /** The declarations of the first rule whose selector list is exactly sel. */
   const rule = (sel: string): Record<string, string> => {
     const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const m = new RegExp(`(?:^|\\})\\s*${esc}\\s*\\{([^}]*)\\}`, "m").exec(
@@ -175,7 +156,9 @@ describe("issue 680: the switch copies the sister app's, value for value", () =>
 
   it("the switch comes before its label, 10px apart, top-aligned", () => {
     const html = switchHtml({ id: "n", label: "Notes", help: "Kept." });
-    expect(html.indexOf("<input")).toBeLessThan(html.indexOf("den-switch-text"));
+    expect(html.indexOf("<input")).toBeLessThan(
+      html.indexOf("den-switch-text"),
+    );
     const row = rule(".den-switch");
     expect(row.gap).toBe("10px");
     expect(row["align-items"]).toBe("flex-start");
@@ -199,8 +182,6 @@ describe("issue 680: the switch copies the sister app's, value for value", () =>
 
   it("the knob: 18px at 3px, the knob colour and shadow, 16px of travel", () => {
     const k = rule(".den-switch-input::before");
-    // 3px from the track's outer edge: its 1px border (seen in forced
-    // colours) is inside the box, and top/left count from inside it.
     expect(rule(".den-switch-input").border).toBe("1px solid transparent");
     expect(k.top).toBe("2px");
     expect(k.left).toBe("2px");
@@ -217,8 +198,6 @@ describe("issue 680: the switch copies the sister app's, value for value", () =>
   it("the tokens: an ease-out curve, a knob light in both themes, the sister app's shadow", () => {
     expect(tokens).toContain("--ease-out: cubic-bezier(0.22, 1, 0.36, 1);");
     expect(tokens).toContain("--shadow-knob: 0 1px 3px rgb(32 38 29 / 0.25);");
-    // Light: the surface. Dark (both the media query and data-theme): the
-    // text colour, which is light there, as the sister app's knob is.
     expect(tokens.match(/--switch-knob: var\(--surface\);/g)).toHaveLength(1);
     expect(tokens.match(/--switch-knob: var\(--text\);/g)).toHaveLength(2);
   });

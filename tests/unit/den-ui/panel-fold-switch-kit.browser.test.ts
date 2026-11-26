@@ -420,8 +420,7 @@ describe("the look: 1280 and 390, light and dark", () => {
         );
         expect(await style(p, SHOW, "outline-width")).toBe("2px");
         await p.keyboard.press("Enter");
-        // The switch (the sister app's, issue 680): on is the accent fill, off the
-        // strong border; disabled is the same track at .45.
+        // The switch: on is the accent fill, off the strong border; disabled at .45.
         expect(await style(p, "#sw", "background-color")).toBe(
           await token(p, "--accent-fill"),
         );
@@ -450,7 +449,6 @@ describe("the look: 1280 and 390, light and dark", () => {
         // Sizes: 44px targets on a phone; the desktop's own sizes else.
         const fold = await box(p, FOLD);
         if (width === 390) {
-          // The switch's 44px target on touch; its drawn size stays.
           const swHit = await p.evaluate(() => {
             const s = getComputedStyle(
               document.querySelector("#sw")!,

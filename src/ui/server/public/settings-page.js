@@ -25,11 +25,6 @@
 import { projectLabel } from "./workspace-picker.js";
 import { switchInputHtml } from "/kit/switch.js";
 
-/**
- * Issue 680: an on/off setting is the kit's switch. The row draws its own
- * label (<label for=cid>), so it is the kit's bare switch input, described
- * by the row's description and focused again by its key after a redraw.
- */
 export function toggleControlHtml({ cid, key, on, did }) {
   return switchInputHtml({
     id: cid,

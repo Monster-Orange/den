@@ -7,28 +7,19 @@
  * own language. Pure builder, runs in Node too:
  *
  *   switchHtml({ label, on, disabled, help, id, attrs })
- *     <label class="den-switch" for=id>: <input type="checkbox"
- *     role="switch">, then the label (and the help under it, its
- *     description), as the sister app's switch is (issue 680).
- *     No label: nothing is drawn (a switch must have a name). No id: one
- *     of the kit's own (den-sw-N). attrs: more attributes on the input
- *     (a host's data-*, for its handler).
- *
+ *     <label class="den-switch" for=id>: <input role="switch">, then the
+ *     label and its help (its description). No label: nothing is drawn.
+ *     No id: den-sw-N. attrs: more attributes on the input, escaped.
  *   switchInputHtml({ id, on, disabled, labelledBy, describedBy, attrs })
- *     The bare switch (issue 680), for a row that draws its own label (a
- *     settings row): the same input switchHtml draws, named by the row's
- *     label (its <label for=id>, or labelledBy) and described by
- *     describedBy. attrs: more attributes, escaped (data-* for the host).
+ *     The same input alone, for a row that draws its own label.
  *
  * In the page:
- *
  *   const sw = hydrateSwitch(inputOrLabel, { onChange: (on) => … });
  *     A change (a click on the switch or its words, Space, Enter) calls
  *     onChange(on). The host keeps the state: sw.set(on) moves it with no
  *     call; sw.setDisabled(off); sw.on(); sw.destroy().
  *
- * The look is switch.css: link it after tokens.css. The sister app's switch,
- * value for value; a 44px target under a coarse pointer.
+ * The look is switch.css, after tokens.css; 44px to tap on touch.
  */
 import { esc } from "./strings.js";
 
@@ -63,7 +54,6 @@ export function switchHtml(o = {}) {
   const labelId = `${id}-label`;
   return (
     `<label class="den-switch" for="${esc(id)}"${o.disabled ? " data-disabled" : ""}>` +
-    // The switch first, then its words (issue 680: the sister app's order).
     switchInputHtml({
       id,
       on: o.on,

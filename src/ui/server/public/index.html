@@ -242,7 +242,7 @@
         color: var(--muted);
         white-space: nowrap;
       }
-      /* On/off controls are the kit's switch (switch.css, issue 680). */
+      /* On/off controls are the kit's switch (switch.css). */
       /* Per-perf-test optional launch fields (generic, declarative) */
       #perf-opt-fields {
         display: contents;
@@ -1771,7 +1771,6 @@
           if (f.type === "boolean") {
             const input = document.createElement("input");
             input.type = "checkbox";
-            // Issue 680: the kit's switch input (switch.css).
             input.className = "den-switch-input";
             input.setAttribute("role", "switch");
             input.dataset.denSwitch = "";
