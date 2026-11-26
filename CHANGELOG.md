@@ -40,6 +40,7 @@ config and manifest changes a distribution must make to move to it under
 - An agent's `npm ci`, `npm install`, `pnpm install`, `yarn install`, `rm -rf node_modules/` or `git clean -x` is refused where `node_modules` is a link to a folder other worktrees share, since it would empty that folder for all of them. The refusal says to remove only the link (`rm node_modules`), then install.
 - The Agents page shows every running agent in one list across projects, in four bands: Needs you, Done (finished, not yet seen), Working and Idle. Needs you and Done put the longest wait first; Working and Idle go A to Z until you drag them. Opening an agent marks its finished turn seen, per person, on every device, and the marks survive a restart (issue 773).
 - After a restart, a service whose `up` is detached (such as `make up` for Docker Compose) is no longer named in the bell as "not brought back" while it is up. The restore now asks the service's own health check after each try, with no extra wait: a pass counts it as back. Den's own Up still runs first. A service with no health check is judged as before.
+- An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 
 ## [0.4.90] - 2026-11-25
 

@@ -1484,7 +1484,12 @@ import {
   type HeldActions,
   type HeldCheck,
 } from "./approval-routes.js";
-import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
+import {
+  heldLapsed,
+  heldLost,
+  noteHeldWithdrawn,
+  syncHeldBell,
+} from "./held-bell.js";
 import { bellGateOverruns } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
@@ -5047,6 +5052,9 @@ type ApprovalDeps = {
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
+  withdrawn: NonNullable<
+    Parameters<typeof handleApprovalRoutes>[4]["withdrawn"]
+  >;
   webUrl: () => string | null;
   testBedAsker: (actor: string) => boolean;
 };
@@ -5638,6 +5646,13 @@ function approvalDeps(): ApprovalDeps {
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
     // Issue 142: a held write counts in the bell while it waits.
     changed: syncHeldWrites,
+    withdrawn: (a, reason) =>
+      void noteHeldWithdrawn(
+        notificationDeps().store,
+        a,
+        reason,
+        heldProjectOf(a),
+      ),
     // Issue 1016: an agent's held write carries its full Allow link.
     webUrl: () => peopleWebUrl(),
     // What the test operator may Allow.
