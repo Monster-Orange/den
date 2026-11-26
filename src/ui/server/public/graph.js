@@ -162,6 +162,7 @@ function prefs() {
 }
 function savePrefs() {
   store.set("prefs", prefs());
+  // busy-ok: a view setting applies at once; the redrawn graph is the answer
   fetch("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

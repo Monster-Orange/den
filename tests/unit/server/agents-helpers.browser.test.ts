@@ -36,6 +36,7 @@ import { pageImport } from "./helpers/page-import.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 const FIXTURE = path.resolve(
   __dirname,
@@ -174,14 +175,7 @@ async function open(width = 1280) {
     reducedMotion: "reduce",
   });
   await signIn(ctx, s.stateDir, s.base);
-  await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
-  });
+  await seeWhatsNew(ctx, s.base);
   const p: Page = await ctx.newPage();
   const errors: string[] = [];
   p.on("pageerror", (e) => errors.push(e.message));
@@ -1002,7 +996,7 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.waitForFunction(
       (sel) => {
         const b = document.querySelector(sel) as HTMLButtonElement | null;
-        return !!b && !b.disabled;
+        return !!b && !b.disabled && b.getAttribute("aria-disabled") !== "true";
       },
       stop,
       { timeout: 15_000 },

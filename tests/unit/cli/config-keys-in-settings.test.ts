@@ -12,13 +12,17 @@ import * as os from "os";
 import * as path from "path";
 import { parse as parseYaml } from "yaml";
 import { configKeyNames } from "../../../src/ui/cli/config-command.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 
 function commandKeys(): { file: string; key: string }[] {
   const out: { file: string; key: string }[] = [];
   for (const f of ["settings-registry.js", "shell.js"]) {
-    const src = fs.readFileSync(path.join(PUBLIC, f), "utf-8");
+    const src =
+      f === "settings-registry.js"
+        ? readSettingsSources()
+        : fs.readFileSync(path.join(PUBLIC, f), "utf-8");
     for (const m of src.matchAll(
       /(?:__DEN_CLI__|\{cli\}|\bden) config (?!rm\b)([A-Za-z0-9_.-]+)=/g,
     ))

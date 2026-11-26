@@ -69,11 +69,16 @@ describe("search", () => {
       [
         "agents",
         [
+          // Issue 1371 Part 2: Integrations names terminals.
+          "agents.settings_integrations",
           "agents.pane_reconnect",
           "agents.pane_reconnect_window",
           "agents.pane_reconnect_wait",
+          // Issue 1373: Agents at once (plain terminals never count).
+          "agents.max_concurrent",
           // den#156: the Agents list's wait for the terminal host.
           "agents.list_host_wait",
+          "agents.draft_hold_max",
         ],
       ],
       // Issue 532: Server › the terminal limits.
@@ -82,6 +87,8 @@ describe("search", () => {
         [
           "server.sessions_max",
           "server.sessions_close_grace",
+          "server.sessions_size_claim_grace",
+          "server.sessions_size_leave_grace",
           "server.sessions_pty_close",
           "server.sessions_pty_warn",
           "server.sessions_pty_machine",

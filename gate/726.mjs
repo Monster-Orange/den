@@ -29,6 +29,7 @@
 //     hub:unrevoked ok.
 //
 // Without ctx.den2 or the fixture Connect every clause skips.
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 726;
 export const clauses = [
   "address change: a comment on Hub A is typed once, and after the change no old comment is typed again (A's seen file archived, its cursor not sent to B)",
@@ -164,7 +165,9 @@ async function pickCount(ctx) {
 }
 
 function doctorRows(ctx) {
-  const j = parse(ctx.cli(["doctor", "--json"], { timeout: 90000 })?.out);
+  const j = {
+    checks: doctorChecks(ctx.cli(["doctor", "--json"], { timeout: 90000 })),
+  };
   const row = (id) => {
     const c = (j?.checks ?? []).find((x) => x?.id === id);
     return c ? { status: c.status, detail: String(c.detail ?? "") } : null;
