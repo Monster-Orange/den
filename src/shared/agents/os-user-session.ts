@@ -2,7 +2,11 @@ import * as fs from "fs";
 import * as path from "path";
 import { getEngineRoot } from "../paths.js";
 import { OWN_FOLDER, readAgentLaunch } from "./os-user-launch-files.js";
-import { runtimeProblemsOrUnread } from "./os-user.js";
+import {
+  OS_LOGIN_OWED,
+  OWED_REFUSAL,
+  runtimeProblemsOrUnread,
+} from "./os-user.js";
 import type { SandboxWrap } from "./sandbox.js";
 import { readTokenLine } from "./session-token.js";
 import { TOKEN_FD, spawnWithTokenFd } from "./token-fd.js";
@@ -31,6 +35,7 @@ export interface AgentSessionDeps {
   ) => Promise<number>;
   err: (m: string) => void;
   runtimeProblems: () => string[];
+  owed: () => readonly string[];
 }
 
 export async function runAgentSession(
@@ -51,6 +56,13 @@ export async function runAgentSession(
   if (d.personUid === 0 || d.personUid === d.ownUid) {
     d.err(
       `${CMD}: the launch files' owner (uid ${d.personUid}) is this login or root: they must be the person's`,
+    );
+    return EXIT_REFUSED;
+  }
+  const owed = d.owed();
+  if (owed.length) {
+    d.err(
+      `${CMD}: ${OWED_REFUSAL} (still to come: ${owed.join("; ")}), so no agent starts`,
     );
     return EXIT_REFUSED;
   }
@@ -163,6 +175,7 @@ export function defaultAgentSessionDeps(
     }),
     run: (argv, o) => spawnWithTokenFd(argv, o),
     err: (m) => process.stderr.write(`✗ ${m}\n`),
+    owed: () => OS_LOGIN_OWED,
     runtimeProblems: () =>
       runtimeProblemsOrUnread(
         {
