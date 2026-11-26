@@ -153,6 +153,7 @@ export interface HubConnectDeps {
    * unlinks the projects, before the review offers them again).
    */
   rebind?: (url: string, company: string | undefined) => Promise<unknown>;
+  tellDenUrl?: (hubUrl: string, token: string) => Promise<unknown>;
   /**
    * Issue 726: a forced disconnect Hub couldn't hear: keep it on record
    * (doctor lists it; each start tries the revoke again).
@@ -454,6 +455,19 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     rebind: async (url, company) => {
       const m = await import("./hub-change.js");
       return m.noteHub(await m.defaultHubChangeDeps(), { url, company });
+    },
+    tellDenUrl: async (url, token) => {
+      const w = readWebUrl();
+      if (!w?.url) return;
+      const [{ tellHubDenUrl }, { hubPutDenUrl }] = await Promise.all([
+        import("../../shared/hub-den-url.js"),
+        import("../../shared/hub.js"),
+      ]);
+      await tellHubDenUrl(w.url, {
+        hub: async () => ({ url, token }),
+        put: hubPutDenUrl,
+        stateDir: getStateDir(),
+      });
     },
     unrevoked: (u) => void recordUnrevoked(getStateDir(), u),
     agentGrantSettled: () => {
@@ -809,6 +823,8 @@ export class HubConnect {
         () => true,
         () => false,
       );
+    if (this.deps.tellDenUrl)
+      void this.deps.tellDenUrl(hubUrl, grant.token).catch(() => undefined);
     // Issue 648: the links Hub's one approval made. Written only when the
     // rebind resolved and hub/bound.json names this Hub, each stamped with
     // it (else a new company's ids would count as the old Hub's). Only a
