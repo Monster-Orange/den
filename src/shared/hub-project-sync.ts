@@ -323,6 +323,7 @@ export interface ProjectSyncDeps {
    * lowercase; a repo Hub names is shown with Den's spelling.
    */
   spelling?: (ws: string) => string[];
+  moved?: (m: MovedProject[]) => void;
   now?: () => Date;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -437,6 +438,13 @@ export class ProjectSync {
       if (body) {
         this.sentKey = key;
         this.result = { at: now(), ok: true, ...readSyncReply(body) };
+        const moved = this.result.moved ?? [];
+        if (moved.length && this.deps.moved)
+          try {
+            this.deps.moved(moved);
+          } catch {
+            return;
+          }
       }
     } catch (e) {
       const refused = (e as { kind?: string })?.kind === "refused";

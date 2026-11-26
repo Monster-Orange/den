@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@jest/globals";
 import {
+  movedNote,
   relinkMoved,
   type ArchivedLink,
   type HubProjectSeen,
@@ -92,5 +93,38 @@ describe("issue 1632 part 2: after a switch, moved projects re-link by identity"
     });
     expect(r.relink.map((x) => x.ws)).toEqual(["web"]);
     void NEW;
+  });
+});
+
+describe("issue 1632 part 2: the bell row for a project that moved", () => {
+  it("one decision per project, opening Settings › Hub, in words with the Hub's name", () => {
+    const n = movedNote({
+      workspace: "web",
+      hubProject: "p1",
+      movedTo: {
+        hub: NEW,
+        hubName: "New Hub",
+        company: "north",
+        project: "p1",
+        at: "",
+      },
+    });
+    expect(n).toEqual({
+      kind: "decision",
+      subject: "record:hub-moved:web",
+      scope: "workspace/web",
+      text: "Project web moved to New Hub. Switch this install to that Hub to keep it linked.",
+      msg: { key: "bell.m.hubMoved", vars: { project: "web", hub: "New Hub" } },
+      link: "/settings#agents.hub",
+    });
+  });
+
+  it("no Hub name: its host", () => {
+    const n = movedNote({
+      workspace: "web",
+      hubProject: "p1",
+      movedTo: { hub: NEW, hubName: "", company: "", project: "p1", at: "" },
+    });
+    expect(n.msg.vars.hub).toBe("new-hub.example.test");
   });
 });

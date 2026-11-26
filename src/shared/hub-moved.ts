@@ -62,3 +62,24 @@ export async function relinkMoved(
   }
   return out;
 }
+
+export function movedNote(m: {
+  workspace: string;
+  movedTo: { hub: string; hubName: string };
+}) {
+  let host = m.movedTo.hub;
+  try {
+    host = new URL(m.movedTo.hub).host;
+  } catch {
+    host = m.movedTo.hub;
+  }
+  const hub = m.movedTo.hubName || host;
+  return {
+    kind: "decision" as const,
+    subject: `record:hub-moved:${m.workspace}`,
+    scope: `workspace/${m.workspace}`,
+    text: `Project ${m.workspace} moved to ${hub}. Switch this install to that Hub to keep it linked.`,
+    msg: { key: "bell.m.hubMoved", vars: { project: m.workspace, hub } },
+    link: "/settings#agents.hub",
+  };
+}

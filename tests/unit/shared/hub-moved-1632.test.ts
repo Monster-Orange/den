@@ -1,5 +1,8 @@
 import { describe, expect, it } from "@jest/globals";
-import { readSyncReply } from "../../../src/shared/hub-project-sync.js";
+import {
+  ProjectSync,
+  readSyncReply,
+} from "../../../src/shared/hub-project-sync.js";
 import { hubGetProject } from "../../../src/shared/hub.js";
 
 const MOVED_TO = {
@@ -106,5 +109,36 @@ describe("issue 1632 part 2: one Hub project by id, with its move", () => {
         fetch: answer(200, {}),
       }),
     ).toBeNull();
+  });
+});
+
+describe("issue 1632 part 2: the sync says which projects moved", () => {
+  const sync = (reply: Record<string, unknown>) => {
+    const told: unknown[] = [];
+    const s = new ProjectSync({
+      list: () => [],
+      send: async () => reply,
+      moved: (m) => void told.push(m),
+      setTimer: () => 0,
+      clearTimer: () => undefined,
+    });
+    return { s, told };
+  };
+
+  it("tells the moved projects once a reply names them", async () => {
+    const r = sync({
+      moved: [{ workspace: "web", hub_project: "p_1", movedTo: MOVED_TO }],
+    });
+    await r.s.run();
+    expect(r.told).toEqual([
+      [{ workspace: "web", hubProject: "p_1", movedTo: MOVED_TO }],
+    ]);
+    expect(r.s.last()?.moved).toHaveLength(1);
+  });
+
+  it("a reply with none tells nothing", async () => {
+    const r = sync({ setups: 0 });
+    await r.s.run();
+    expect(r.told).toEqual([]);
   });
 });
