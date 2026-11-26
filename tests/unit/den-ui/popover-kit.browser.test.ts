@@ -15,9 +15,11 @@
  *     focus
  *   - a press on the open anchor closes it, and that press's click never
  *     reaches the anchor, so a page that opens it on click doesn't open it
- *     again (and a link anchor doesn't follow its href)
+ *     again (and a link anchor doesn't follow its href); a press that
+ *     never becomes a click (a touch that turns into a scroll) holds
+ *     nothing back, so Enter on the anchor still opens it
  *   - no focus trap: Tab past its last control closes it and goes on to
- *     what follows the anchor; Shift+Tab before its first goes back to the
+ *     what follows the anchor (never to an inert or invisible control); Shift+Tab before its first goes back to the
  *     anchor
  *   - placed below the anchor, or above when there is no room, always
  *     8px inside the viewport; an SVG node anchors it too
@@ -64,6 +66,8 @@ const PAGE = (mode: string) => `<!doctype html>
 #right { position: absolute; top: 40px; right: 4px; } svg { position: absolute; top: 200px; left: 300px; }</style></head>
 <body>
 <button id="open">Open</button>
+<div inert style="position: absolute; top: 120px; left: 900px"><button id="inert-btn">Inert</button></div>
+<button id="unseen" style="visibility: hidden; position: absolute; top: 160px; left: 900px">Unseen</button>
 <button id="other">Other</button>
 <button id="low">Low</button>
 <button id="right">R</button>
@@ -280,6 +284,39 @@ for (const engine of ["chromium", "webkit"])
       // The next press opens it again: only the closing press's click is held back.
       await p.locator("#open").click();
       await expect(p.getByRole("dialog").count()).resolves.toBe(1);
+      await expect(opens(p)).resolves.toBe(2);
+      await p.context().close();
+    });
+
+    it("a press on the open anchor that is cancelled (a touch scroll) holds nothing back: Enter opens it", async () => {
+      if (skip()) return;
+      const p = await open();
+      await p.evaluate(() =>
+        (window as unknown as { wire: (i: string) => void }).wire("open"),
+      );
+      await p.locator("#open").click();
+      await expect(opens(p)).resolves.toBe(1);
+      await p.locator("#open").dispatchEvent("pointerdown");
+      await p.locator("#open").dispatchEvent("pointercancel");
+      await expect(p.getByRole("dialog").count()).resolves.toBe(0);
+      await p.locator("#open").focus();
+      await p.keyboard.press("Enter");
+      await expect(opens(p)).resolves.toBe(2);
+      await expect(p.getByRole("dialog").count()).resolves.toBe(1);
+      await p.context().close();
+    });
+
+    it("a press on the open anchor with no click after it holds nothing back from the next key", async () => {
+      if (skip()) return;
+      const p = await open();
+      await p.evaluate(() =>
+        (window as unknown as { wire: (i: string) => void }).wire("open"),
+      );
+      await p.locator("#open").click();
+      await p.locator("#open").dispatchEvent("pointerdown");
+      await expect(p.getByRole("dialog").count()).resolves.toBe(0);
+      await p.locator("#open").focus();
+      await p.keyboard.press("Enter");
       await expect(opens(p)).resolves.toBe(2);
       await p.context().close();
     });
