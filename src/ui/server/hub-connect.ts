@@ -50,7 +50,12 @@ import {
 import { readUserConfig, writeUserConfig } from "../../shared/den-config.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { webRouteHosts } from "../../shared/edge/render.js";
-import { getStateDir } from "../../shared/paths.js";
+import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import { readWebAuthConfig } from "../../shared/web-session.js";
+import {
+  listOtherInstalls,
+  registryDir,
+} from "../../shared/install-registry.js";
 import {
   hubOrigin,
   readHubBinding,
@@ -291,15 +296,47 @@ export function edgeDenUrl(
 export function defaultInstallLabel(
   cli = product().cli,
   host = os.hostname(),
+  o: { machineName?: string | null; stateDir?: string; others?: number } = {},
 ): string {
-  const machine = host.split(".")[0] || "this machine";
+  const machine =
+    o.machineName?.trim() || host.split(".")[0] || "this machine";
+  const id =
+    o.others && o.stateDir
+      ? createHash("sha256")
+          .update(path.resolve(o.stateDir))
+          .digest("hex")
+          .slice(0, 4)
+      : "";
   // Hub's rule: 1–40 of [A-Za-z0-9 ._-], starting with a letter or digit.
   const label = `${cli} on ${machine}`
     .replace(/[^A-Za-z0-9 ._-]/g, "-")
     .replace(/^[^A-Za-z0-9]+/, "")
-    .slice(0, 40)
+    .slice(0, id ? 35 : 40)
     .trimEnd();
+  if (id) return `${label || "den"} ${id}`;
   return label || "den";
+}
+
+function installLabelHere(): string {
+  let machineName: string | undefined;
+  try {
+    machineName = readWebAuthConfig(getDistRoot(), product().configFile)
+      .machineName;
+  } catch {
+    machineName = undefined;
+  }
+  const stateDir = getStateDir();
+  let others = 0;
+  try {
+    others = listOtherInstalls(registryDir(), { ownStateDir: stateDir }).length;
+  } catch {
+    others = 0;
+  }
+  return defaultInstallLabel(undefined, undefined, {
+    machineName,
+    stateDir,
+    others,
+  });
 }
 
 export function hubTokenSlot(hubUrl: string, stateDir = getStateDir()): string {
@@ -510,7 +547,7 @@ export function defaultHubConnectDeps(): HubConnectDeps {
     readToken: (c) => readHubToken(c),
     readUser: () => readUserConfig() as Record<string, unknown>,
     writeUser: (u) => writeUserConfig(u as never),
-    installLabel: () => defaultInstallLabel(),
+    installLabel: installLabelHere,
     // D80: the install's address, as Hub takes it (https, or a .localhost).
     denUrl: () => {
       const w = readWebUrl();
