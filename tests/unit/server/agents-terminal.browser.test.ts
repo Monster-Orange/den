@@ -818,6 +818,58 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       it(`a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (${how})`, async () => {
         if (skip()) return;
         const p = await page(`/agents?layout=focus`);
+        await p.context().addInitScript(() => {
+          const t0 = performance.now();
+          const log: string[] = [];
+          (window as unknown as { __trace: string[] }).__trace = log;
+          const d = (el: Element | null) =>
+            !el
+              ? "null"
+              : el === document.body
+                ? "body"
+                : `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}.${String(el.className).slice(0, 30)}${el.closest(".pane") ? "[IN-PANE]" : ""}${el.closest("#agl") ? "[list]" : ""}`;
+          const at = () => Math.round(performance.now() - t0);
+          for (const k of ["pointerdown", "keydown"])
+            document.addEventListener(
+              k,
+              (e) =>
+                log.push(
+                  `${at()} ${k} ${(e as KeyboardEvent).key ?? ""} target=${d(e.target as Element)} active=${d(document.activeElement)} trusted=${e.isTrusted}`,
+                ),
+              true,
+            );
+          document.addEventListener(
+            "focusin",
+            (e) => log.push(`${at()} focusin ${d(e.target as Element)}`),
+            true,
+          );
+          document.addEventListener(
+            "focusout",
+            (e) =>
+              log.push(
+                `${at()} focusout ${d(e.target as Element)} -> ${d(e.relatedTarget as Element)}`,
+              ),
+            true,
+          );
+          const f = HTMLElement.prototype.focus;
+          HTMLElement.prototype.focus = function (...a: unknown[]) {
+            log.push(
+              `${at()} focus() on ${d(this)} from ${(new Error().stack || "")
+                .split("\n")
+                .slice(2, 7)
+                .map((l) => l.trim().replace(/https?:\/\/[^/]+/, ""))
+                .join(" < ")}`,
+            );
+            return f.apply(this, a as []);
+          };
+          const W = window.WebSocket;
+          const send = W.prototype.send;
+          W.prototype.send = function (data: unknown) {
+            if (typeof data === "string" && data.length < 200)
+              log.push(`${at()} ws send ${data.slice(0, 120)}`);
+            return send.call(this, data as string);
+          };
+        });
         await holdIo(p);
         await p.reload();
         await p.waitForSelector(row("planner"));
@@ -827,11 +879,24 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         if (how === "click")
           await p.locator("#agl").click({ position: { x: 4, y: 2 } });
         else await p.keyboard.press("Shift+Tab");
+        const marks = [
+          `moved ${await p.evaluate(() => (window as unknown as { __trace: string[] }).__trace.length)}`,
+        ];
         await releaseIo(p);
+        marks.push(
+          `released ${await p.evaluate(() => (window as unknown as { __trace: string[] }).__trace.length)}`,
+        );
         await new Promise((r) => setTimeout(r, 500));
-        expect(
-          await p.evaluate(() => !!document.activeElement?.closest(".pane")),
-        ).toBe(false);
+        const inPane = await p.evaluate(
+          () => !!document.activeElement?.closest(".pane"),
+        );
+        const trace = await p.evaluate(
+          () => (window as unknown as { __trace: string[] }).__trace,
+        );
+        process.stdout.write(
+          `\nTRACE-1832 ${how} inPane=${inPane} ${marks.join(" ")}\n${trace.map((l) => "  " + l).join("\n")}\nTRACE-1832 end\n`,
+        );
+        expect(inPane).toBe(false);
         expect(await typedInto(p, "z1")).toEqual([]);
         await p.context().close();
       }, 60_000);

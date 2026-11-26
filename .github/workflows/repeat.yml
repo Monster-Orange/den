@@ -11,6 +11,7 @@
 # otherwise GitHub-hosted. Issue 1492: the event check stays in the expression, so a
 # trigger added later can't bring someone else's code to the box.
 name: repeat
+run-name: "Evidence for issue 1832: shard 15 of run 45876385372 with a focus trace in D40 (not a re-run of the carry)"
 
 on:
   workflow_dispatch:
@@ -50,6 +51,7 @@ jobs:
         node: ${{ fromJSON(inputs.nodes == 'both' && '["22.13.0","24.13.0"]' || inputs.nodes == '22' && '["22.13.0"]' || '["24.13.0"]') }}
     env:
       DEN_TEST_WORKERS: "2"
+      DEN_TEST_DOCKER: skip
       # Inputs reach the shell through the environment, never pasted into
       # the script.
       FILES: ${{ inputs.files }}
@@ -116,3 +118,10 @@ jobs:
           echo >> "$GITHUB_STEP_SUMMARY"
           echo "**$fails of $COUNT runs failed.**" >> "$GITHUB_STEP_SUMMARY"
           [ "$fails" -eq 0 ]
+      - name: The run logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: probe-1832-node${{ matrix.node }}
+          path: run-*.log
+          retention-days: 14
