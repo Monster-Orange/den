@@ -6,10 +6,13 @@ export const SEED_MB = 4;
 export const TRIES = 5;
 export const LIMIT_MS = 1500;
 export const PROBE_MS = 500;
+export const PROBE_AFTER_MS = 20;
+export const IN_FLIGHT_MIN = 3;
+export const IDLE_TRIES = 3;
 
 export const clauses = [
   `with ${SEED_AGENTS} agents, each with helpers and ${SEED_MB} MB of transcript, the agents list (GET /api/sessions) answers within ${LIMIT_MS} ms (the median of ${TRIES} tries after a warm-up)`,
-  `while that list is being made, /api/server-info answers within ${PROBE_MS} ms`,
+  `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries; its idle time is shown beside it)`,
 ];
 export const SEED_WAY =
   "one real stub start makes a template agent; the gate process then writes the other agents' records, transcripts and helpers into that test Den's own state (the one home whose template record holds the token it just made), so seeding takes seconds and /api/sessions reads them as it reads any agent";
@@ -138,7 +141,12 @@ async function timedList(d2) {
   const r = await d2
     .fetch("/api/sessions", { method: "GET" })
     .catch((e) => ({ status: null, body: { error: msg(e) } }));
-  return { ms: Date.now() - t, status: r.status, body: r.body };
+  return {
+    ms: Date.now() - t,
+    end: Date.now(),
+    status: r.status,
+    body: r.body,
+  };
 }
 
 function helperRows(body) {
@@ -208,22 +216,35 @@ export async function run(ctx, s) {
   const warm = await timedList(d2);
   r.warmMs = warm.ms;
   r.helperRows = helperRows(warm.body);
+  const info = async () => {
+    const pt = Date.now();
+    const p = await d2
+      .fetch("/api/server-info", { method: "GET" })
+      .catch(() => ({ status: null }));
+    return { start: pt, ms: Date.now() - pt, status: p.status };
+  };
+  r.idle = [];
+  for (let i = 0; i < IDLE_TRIES; i++) {
+    await ctx.sleep(200);
+    const p = await info();
+    r.idle.push({ ms: p.ms, status: p.status });
+  }
+  r.idleMs = median(r.idle.map((p) => p.ms));
   r.tries = [];
   r.probes = [];
   for (let i = 0; i < TRIES; i++) {
     await ctx.sleep(1000);
     const list = timedList(d2);
-    await ctx.sleep(50);
-    const pt = Date.now();
-    const p = await d2
-      .fetch("/api/server-info", { method: "GET" })
-      .catch(() => ({ status: null }));
-    r.probes.push({ ms: Date.now() - pt, status: p.status });
+    await ctx.sleep(PROBE_AFTER_MS);
+    const p = await info();
     const l = await list;
+    r.probes.push({ ms: p.ms, status: p.status, inFlight: l.end > p.start });
     r.tries.push({ ms: l.ms, status: l.status });
   }
   r.medianMs = median(r.tries.map((t) => t.ms));
-  r.maxProbeMs = Math.max(...r.probes.map((p) => p.ms));
+  const counted = r.probes.filter((p) => p.inFlight);
+  r.inFlight = counted.length;
+  r.maxProbeMs = counted.length ? Math.max(...counted.map((p) => p.ms)) : null;
   const fs = await import("fs");
   fs.writeFileSync(ctx.evidence("1668-run.json"), JSON.stringify(r, null, 2));
   return r;
@@ -267,6 +288,10 @@ export function expect(cells) {
       `1668 not measured: the list showed helpers on ${r.helperRows} of ${SEED_AGENTS} seeded agents`,
     );
   const seedLine = `seeded ${SEED_AGENTS} agents in ${r.seedMs} ms, rows with helpers ${r.helperRows}; ${SEED_WAY}`;
+  if ((r.inFlight ?? 0) < IN_FLIGHT_MIN)
+    throw new Error(
+      `1668 not measured: server-info started while the list was still in flight on ${r.inFlight ?? 0} of ${TRIES} tries (needs ${IN_FLIGHT_MIN}); list tries ${JSON.stringify((r.tries ?? []).map((t) => t.ms))} ms`,
+    );
   const allOk = (xs) =>
     (xs ?? []).length === TRIES && xs.every((t) => t.status === 200);
   return [
@@ -278,7 +303,7 @@ export function expect(cells) {
     row(
       clauses[1],
       allOk(r.probes) && r.maxProbeMs <= PROBE_MS,
-      `${seedLine}; server-info during each list ${JSON.stringify((r.probes ?? []).map((p) => p.ms))} ms, max ${r.maxProbeMs} (limit ${PROBE_MS})`,
+      `${seedLine}; server-info idle ${r.idleMs} ms (median of ${IDLE_TRIES}); during each list ${JSON.stringify((r.probes ?? []).map((p) => (p.inFlight ? p.ms : `${p.ms} (list done)`)))} ms, max in flight ${r.maxProbeMs} over ${r.inFlight} of ${TRIES} (limit ${PROBE_MS})`,
     ),
   ];
 }
