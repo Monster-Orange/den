@@ -2725,11 +2725,6 @@ export function teamSelfUpdateKey(
   }
 }
 
-/**
- * Issue 765: a wrong agents.rotation_defer_max_hours in user.yml. Putting
- * off falls back to the default quietly, so doctor says so: a person who
- * typed "7d" learns the cap is not what they set.
- */
 export function rotationDeferMaxBad(
   read: () => { agents?: unknown } = readUserConfig,
 ): string[] {
@@ -2739,7 +2734,6 @@ export function rotationDeferMaxBad(
   } catch {
     return [];
   }
-  // One rule: the reader's own (agentsRotationDeferMaxHours) decides.
   try {
     agentsRotationDeferMaxHours(() => cfg);
     return [];

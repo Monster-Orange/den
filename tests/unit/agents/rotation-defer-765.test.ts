@@ -423,7 +423,6 @@ describe("issue 765: the most a rotation can be put off (a setting)", () => {
   });
 });
 
-// Slice C: doctor says when the cap in user.yml is wrong (Den uses 168 h).
 
 describe("issue 765: doctor flags a wrong agents.rotation_defer_max_hours", () => {
   it("names the value and the 168 h Den uses instead; quiet when unset or right", () => {

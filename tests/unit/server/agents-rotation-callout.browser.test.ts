@@ -328,7 +328,6 @@ describe("a rotation put off (issue 765)", () => {
       /^Rotation put off until \S/,
     );
     expect(await line.locator("time").getAttribute("datetime")).toBe(until);
-    // Put off: nothing is due, so none of the due callout's buttons.
     expect(await row(p).locator("[data-rot-msg]").count()).toBe(0);
     const res = p.waitForResponse(
       (r) =>

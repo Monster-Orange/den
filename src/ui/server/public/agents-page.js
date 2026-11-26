@@ -782,10 +782,6 @@ function rotFromText(rot) {
   );
 }
 
-/**
- * Issue 765: a person put its rotation off: until when, and Stop putting
- * it off (the person-only defer route, until null). "" when it isn't.
- */
 export function rotDeferredHtml(r) {
   const until = r.rotation?.deferredUntil;
   if (!until) return "";
@@ -796,7 +792,6 @@ export function rotDeferredHtml(r) {
   );
 }
 
-/** Issue 765: Stop putting it off: its rotation counts again from now. */
 async function undeferRotation(r, button) {
   await window.denShell.busyAction(
     "rot-undefer",
