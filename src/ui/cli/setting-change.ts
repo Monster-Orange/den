@@ -168,6 +168,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agent_hooks.backoff_seconds",
   "sessions.max_concurrent",
   "sessions.close_grace_seconds",
+  "sessions.size_claim_grace_seconds",
   "sessions.pty_close_seconds",
   "sessions.pty_warn_above",
   "sessions.pty_machine_warn_percent",

@@ -208,6 +208,7 @@ export interface SessionRouteDeps {
   uploadSettings?: () => UploadSettings;
   /** sessions.close_grace_seconds: Close's wait between HUP and KILL. */
   closeGrace?: () => number;
+  sizeClaimGraceMs?: () => number;
   /** D65 v2: workspace `ws`'s repo names (null: it can't be read). */
   repoNames?: (ws: string) => ReadonlySet<string> | null;
   now?: () => Date;
@@ -242,6 +243,7 @@ interface Resolved {
   hubNow: () => Promise<string | null>;
   uploadSettings: () => UploadSettings;
   closeGrace: () => number;
+  sizeClaimGraceMs: () => number;
   repoNames: (ws: string) => ReadonlySet<string> | null;
   now: () => Date;
   listWaits: () => ListWaits;
@@ -305,6 +307,9 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     draftWaiting: d.draftWaiting ?? defaultDraftWaiting,
     hubNow: d.hubNow ?? (() => defaultHubNow()),
     closeGrace: d.closeGrace ?? (() => readSessionsConfig().closeGraceSeconds),
+    sizeClaimGraceMs:
+      d.sizeClaimGraceMs ??
+      (() => readSessionsConfig().sizeClaimGraceSeconds * 1000),
     uploadSettings:
       d.uploadSettings ??
       (() => readAgentsConfig().uploads ?? { ...UPLOAD_DEFAULTS }),
@@ -357,7 +362,26 @@ const VIEWERS = new Map<
   Set<{ open: boolean; send(d: string): void }>
 >();
 
-const LEADS = new Map<string, SizeLead<object>>();
+const LEADS = new Map<string, SizeLead<string>>();
+const VIEW_IDS = new WeakMap<object, string>();
+const VIEW_ID = /^[A-Za-z0-9_-]{8,64}$/;
+const PANE_CLOSED = 4000;
+let unnamedViews = 0;
+
+function tellLead(id: string): void {
+  const lead = LEADS.get(id);
+  const set = VIEWERS.get(id);
+  if (!lead || !set) return;
+  for (const v of set)
+    if (v.open)
+      v.send(
+        JSON.stringify({
+          type: "lead",
+          yours: lead.holds(VIEW_IDS.get(v) ?? ""),
+          held: lead.held(),
+        }),
+      );
+}
 
 /**
  * Issue 1311: Den's typing queue's and Hub's held messages for `agent`
@@ -1568,9 +1592,28 @@ export async function handleSessionUpgrade(
   VIEWERS.set(s.ref.id, set);
   set.add(ws);
   const viewers = set.size;
-  const lead = LEADS.get(s.ref.id) ?? new SizeLead<object>();
+  const asked = new URL(req.url ?? "/", "http://localhost").searchParams.get(
+    "view",
+  );
+  const asView = asked && VIEW_ID.test(asked) ? asked : `~${++unnamedViews}`;
+  const lead =
+    LEADS.get(s.ref.id) ??
+    new SizeLead<string>({ graceMs: d.sizeClaimGraceMs() });
   LEADS.set(s.ref.id, lead);
-  lead.attach(ws);
+  for (const v of set)
+    if (v !== ws && VIEW_IDS.get(v) === asView) {
+      const renamed = `~${++unnamedViews}`;
+      VIEW_IDS.set(v, renamed);
+      lead.attach(renamed);
+    }
+  VIEW_IDS.set(ws, asView);
+  const view = () => VIEW_IDS.get(ws) ?? asView;
+  lead.attach(asView);
+  const relead = (f: () => void) => {
+    const was = lead.leader();
+    f();
+    if (lead.leader() !== was) tellLead(s.ref.id);
+  };
   let ptySize: { cols: number; rows: number } | null = null;
   const resize = (z: { cols: number; rows: number } | null) => {
     if (z && !exited) client.resize(s.ref.id, z.cols, z.rows);
@@ -1583,6 +1626,8 @@ export async function handleSessionUpgrade(
       workspace: p.workspace,
       label: p.name,
       viewers,
+      lead: lead.holds(view()),
+      held: lead.held(),
       exited: s.exited === true,
       ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
     }),
@@ -1615,7 +1660,7 @@ export async function handleSessionUpgrade(
   ws.on("message", (data: Buffer, binary: boolean) => {
     if (binary) {
       if (!exited && data.length) {
-        if (!terminalReportOnly(data)) lead.input(ws);
+        if (!terminalReportOnly(data)) relead(() => lead.input(view()));
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
         if (!terminalReportOnly(data)) {
@@ -1643,11 +1688,11 @@ export async function handleSessionUpgrade(
       const ok = (n: unknown): n is number =>
         typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 1000;
       if (!exited && ok(msg.cols) && ok(msg.rows)) {
-        const z = lead.resize(
-          ws,
-          { cols: msg.cols, rows: msg.rows },
-          msg.claim === true,
-        );
+        const size = { cols: msg.cols, rows: msg.rows };
+        const claim = msg.claim === true;
+        const was = lead.leader();
+        const z = lead.resize(view(), size, claim);
+        if (lead.leader() !== was) tellLead(s.ref.id);
         if (z) resize(z);
         else if (ptySize && ws.open)
           ws.send(JSON.stringify({ type: "size", ...ptySize, lead: false }));
@@ -1655,7 +1700,7 @@ export async function handleSessionUpgrade(
     } else if (msg?.type === "input" && typeof msg.data === "string") {
       if (!exited && msg.data) {
         const data = Buffer.from(msg.data, "utf-8");
-        if (!terminalReportOnly(data)) lead.input(ws);
+        if (!terminalReportOnly(data)) relead(() => lead.input(view()));
         client.write(s.ref.id, data);
         if (!terminalReportOnly(data)) {
           d.typed(s.ref.id);
@@ -1681,18 +1726,23 @@ export async function handleSessionUpgrade(
   }, DRAFT_WAITING_LOOK_MS);
   waitingTimer.unref?.();
   let done = false;
-  const detach = () => {
+  const detach = (code?: number) => {
     if (done) return;
     done = true;
     clearInterval(waitingTimer);
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
-    lead.detach(ws);
+    const held = lead.holds(view());
+    relead(() => lead.detach(view(), code !== PANE_CLOSED));
     if (viewing?.size) tellViewers(s.ref.id);
-    else {
-      VIEWERS.delete(s.ref.id);
-      LEADS.delete(s.ref.id);
-    }
+    else VIEWERS.delete(s.ref.id);
+    if (!lead.held()) LEADS.delete(s.ref.id);
+    else if (held && lead.holds(view()))
+      setTimeout(() => {
+        if (lead.expire()) tellLead(s.ref.id);
+        if (!lead.held() && LEADS.get(s.ref.id) === lead)
+          LEADS.delete(s.ref.id);
+      }, d.sizeClaimGraceMs() + 50).unref?.();
     // Detach only: the session keeps running in the host.
     att.detach();
     client.close();
@@ -1700,7 +1750,7 @@ export async function handleSessionUpgrade(
       `detach ${s.name} (browser, ${Math.round((Date.now() - since) / 1000)}s)`,
     );
   };
-  ws.on("close", detach);
+  ws.on("close", (code: number) => detach(code));
   client.once("close", () => {
     if (ws.open) ws.close(WS_CLOSE.goingAway, "the session host went away");
     detach();
