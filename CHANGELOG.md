@@ -8,6 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A delivery file Den can't read (`hub/deliveries-seen.json` or `hub/feed-pointers-seen.json`, truncated or garbled) is no longer emptied silently. Den moves it to `<name>.bad-<time>`, logs it, and the bell says so once, naming both files. Delivery goes on. Before, everything it held was lost with no trace.
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
 - No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).
