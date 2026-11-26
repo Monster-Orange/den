@@ -847,6 +847,9 @@
     "tests/unit/server/agents-tab-strip.browser.test.ts": [
       "src/ui/server/public/agents.html",
       "src/ui/server/public/agents-page.js"
+    ],
+    "tests/unit/server/project-agent-cap-1634.integration.test.ts": [
+      "src/ui/server/workspace-routes.ts"
     ]
   },
   "subjectless": [],
@@ -3921,6 +3924,11 @@
     {
       "when": ["src/ui/server/theme-runtime.ts", "src/ui/server/ui-assets.ts"],
       "run": ["tests/unit/server/popup-font.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/workspace-routes.ts"],
+      "run": ["tests/unit/server/project-agent-cap-1634.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
