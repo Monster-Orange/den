@@ -150,7 +150,8 @@ export function termPane(o) {
     let s;
     try {
       s = new WebSocket(
-        `${proto}//${location.host}/api/sessions/${encodeURIComponent(o.id)}/io`,
+        `${proto}//${location.host}/api/sessions/${encodeURIComponent(o.id)}/io` +
+          (o.view ? `?view=${encodeURIComponent(o.view())}` : ""),
         ["den.io", `den.csrf.${tok ?? ""}`],
       );
     } catch (err) {
@@ -236,7 +237,7 @@ export function termPane(o) {
       rc.stop();
       panes.delete(c);
       try {
-        sock?.close();
+        sock?.close(4000, "pane closed");
       } catch {
         /* already closed */
       }

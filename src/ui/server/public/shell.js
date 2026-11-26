@@ -2643,6 +2643,9 @@
     "set.server.sessions_close_grace": "Terminal close grace",
     "set.server.sessions_close_grace.d":
       "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_size_claim_grace": "Terminal size hold",
+    "set.server.sessions_size_claim_grace.d":
+      "How long the window that last set a terminal's size keeps it after its connection drops, so a brief drop or a reload does not hand the size to another window. 0 hands it on at once. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
     "set.server.sessions_pty_close": "Terminal close after exit",
     "set.server.sessions_pty_close.d":
       "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -8852,6 +8855,32 @@
     var ban = BANNERS[b.getAttribute("data-bn-act")];
     if (ban && ban.action) ban.action.run();
   });
+
+  document.addEventListener(
+    "click",
+    function (e) {
+      if (!e.isTrusted) return;
+      var a = e.target && e.target.closest && e.target.closest("a[href]");
+      if (!a) return;
+      var u;
+      try {
+        u = new URL(a.href, location.href);
+      } catch (_) {
+        return;
+      }
+      if (u.origin !== location.origin) return;
+      var deep = /^\/p\/[^/]+\/agents\/[^/]+\/?$/.test(u.pathname);
+      var page = /^\/(agents|terminals)\/?$/.test(u.pathname);
+      if (
+        !deep &&
+        !(page && (u.searchParams.get("open") || u.searchParams.get("agent")))
+      )
+        return;
+      u.searchParams.set("claim", "1");
+      a.href = u.href;
+    },
+    true,
+  );
 
   // MD-2: the engine on disk is not the one this server runs: a new
   // version of Den is installed. The shared update pill (den-ui,

@@ -6,6 +6,7 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.91] - unreleased
 
+- With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window that drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server, so a reload does not hand it on; a pane you close hands it on at once. (issue 1724)
 - When the bell's Allow row leaves and comes back while you're on its Review button, the keyboard goes back to Review even if you switched to another window meanwhile. Coming back to the window isn't moving on.
 - When an update fails and putting the old version back fails too, the bell now says so on its own. It leads with what to do by hand: put the pin back on the old version in the distribution's folder and run npm install there. npm's reasons come last.
 - Doctor warns when the gate's `route_agents` setting holds a value that is neither on nor off. The warning names the value, what Den reads it as, and the forms the setting takes. How the value is read is unchanged.

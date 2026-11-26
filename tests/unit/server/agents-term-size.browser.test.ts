@@ -48,7 +48,9 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
-  s = await startAgentsPageServer();
+  s = await startAgentsPageServer({
+    userYml: "sessions:\n  size_claim_grace_seconds: 1\n",
+  });
   host = await connectHost(sessionPaths(s.stateDir).socket);
   latest =
     (

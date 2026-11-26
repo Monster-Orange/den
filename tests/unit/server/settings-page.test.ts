@@ -87,6 +87,7 @@ describe("search", () => {
         [
           "server.sessions_max",
           "server.sessions_close_grace",
+          "server.sessions_size_claim_grace",
           "server.sessions_pty_close",
           "server.sessions_pty_warn",
           "server.sessions_pty_machine",
