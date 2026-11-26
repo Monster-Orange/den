@@ -2947,6 +2947,8 @@
       "__DEN_TITLE__ は {to} に切り替えられませんでした: {why}。{from} のままです。設定 › Hub でもう一度サインインしてください",
     "ap.hubSwitchSignin": "{url} のサインインを開いています…",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
+    "bell.m.hubMoved":
+      "プロジェクト {project} は {hub} に移動しました。リンクを保つには、このインストールをその Hub に切り替えてください。",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
     "bell.m.hostRestarted":

@@ -24,7 +24,7 @@ beforeEach(() => {
     argv: ["/usr/local/bin/claude", "--resume", "abc"],
     cwd: "/work/north",
     env: { DEN_AGENT: "agent:scout" },
-    tokenEnv: "CLAUDE_CODE_OAUTH_TOKEN",
+    tokenFdEnv: "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR",
   });
 });
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -69,7 +69,7 @@ function deps(over: Partial<AgentSessionDeps> = {}) {
 }
 
 describe("issue 988: agents session", () => {
-  it("launch files, then the token, then the temp folder; the runtime starts sandboxed with the token in its env only", async () => {
+  it("launch files, then the token, then the temp folder; the runtime starts sandboxed with the token on its fd, never in its env", async () => {
     const { d, log, started } = deps();
     await expect(runAgentSession(["scout", N], d)).resolves.toBe(7);
     expect(log).toEqual([`token:${N}`, "tmp", "run", "rm:/t/den-abc123"]);
@@ -86,7 +86,7 @@ describe("issue 988: agents session", () => {
     expect(s.env).toMatchObject({
       DEN_AGENT: "agent:scout",
       DEN_AGENT_SANDBOX: "1",
-      CLAUDE_CODE_OAUTH_TOKEN: "tok-SECRET",
+      CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR: "3",
       TMPDIR: "/t/den-abc123",
     });
     expect(s.argv.join(" ")).not.toContain("tok-SECRET");
@@ -160,7 +160,7 @@ describe("issue 988: a launch file's token env name", () => {
         argv: ["/x"],
         cwd: "/w",
         env: {},
-        tokenEnv: "A=B",
+        tokenFdEnv: "A=B",
       }),
     ).toThrow(/env name/);
   });

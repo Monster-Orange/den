@@ -1,10 +1,9 @@
-import { spawn } from "child_process";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { OWN_FOLDER, readAgentLaunch } from "./os-user-launch-files.js";
 import type { SandboxWrap } from "./sandbox.js";
 import { readTokenLine } from "./session-token.js";
+import { TOKEN_FD, spawnWithTokenFd } from "./token-fd.js";
 
 const CMD = "`agents session`";
 
@@ -26,7 +25,7 @@ export interface AgentSessionDeps {
   wrap: (argv: string[], o: { tmp?: string; ownDir: string }) => SandboxWrap;
   run: (
     argv: string[],
-    o: { cwd: string; env: Record<string, string> },
+    o: { cwd: string; env: Record<string, string>; secret?: string },
   ) => Promise<number>;
   err: (m: string) => void;
 }
@@ -83,10 +82,21 @@ export async function runAgentSession(
       ...spec.env,
       ...w.env,
       ...(tmp ? { TMPDIR: tmp } : {}),
-      ...(spec.tokenEnv ? { [spec.tokenEnv]: token } : {}),
+      ...(spec.tokenFdEnv ? { [spec.tokenFdEnv]: String(TOKEN_FD) } : {}),
     };
+    if (
+      token &&
+      [...Object.values(env), ...w.argv].some((v) => v.includes(token))
+    ) {
+      d.err(`${CMD}: the token would be in the runtime's env or argv`);
+      return EXIT_REFUSED;
+    }
     try {
-      return await d.run(w.argv, { cwd: spec.cwd, env });
+      return await d.run(w.argv, {
+        cwd: spec.cwd,
+        env,
+        ...(spec.tokenFdEnv ? { secret: token } : {}),
+      });
     } catch (e) {
       d.err(`${CMD}: the runtime didn't start: ${(e as Error).message}`);
       return EXIT_FAILED;
@@ -141,18 +151,7 @@ export function defaultAgentSessionDeps(
       env: {},
       reason: "the agents' login has no sandbox policy yet",
     }),
-    run: (argv, o) =>
-      new Promise((resolve, reject) => {
-        const c = spawn(argv[0]!, argv.slice(1), {
-          cwd: o.cwd,
-          env: o.env,
-          stdio: "inherit",
-        });
-        c.on("error", reject);
-        c.on("exit", (code, sig) =>
-          resolve(code ?? (sig ? 128 + (os.constants.signals[sig] ?? 1) : 1)),
-        );
-      }),
+    run: (argv, o) => spawnWithTokenFd(argv, o),
     err: (m) => process.stderr.write(`✗ ${m}\n`),
   };
 }
