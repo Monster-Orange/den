@@ -8,6 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- Restart many agents with one Allow. When two or more agents ask to be restarted (with the new `agent_restart_self` ask), the bell shows one card, "Restart N agents when idle": each restarts at its next idle moment on the same conversation, and any row can be taken out before Allow. After an update changes Den's own tools, Den offers that card itself, and questions agents already asked about restarting for new tools join it. The Agents page has "Restart idle (N)" on each project and, on a wider screen, "Restart all idle agents (N)", and says which agents restart now and which wait. (issue 1406)
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
 
 ### Fixed
