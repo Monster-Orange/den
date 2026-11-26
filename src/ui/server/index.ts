@@ -657,6 +657,7 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
 import { accountNameOf } from "../../shared/agents/catalog.js";
+import { agentKeyInForce } from "../../shared/agents/git-signing.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -6157,7 +6158,10 @@ async function runPinCommit(
     return { did: "skipped", version, why: "server_agent.pin_commit: off" };
   let signingKey: string | undefined;
   try {
-    signingKey = readAgentsConfig().git?.signingKey;
+    signingKey = agentKeyInForce(
+      readAgentsConfig().git,
+      getStateDir(),
+    )?.signingKey;
   } catch {
     signingKey = undefined;
   }
@@ -6166,6 +6170,28 @@ async function runPinCommit(
     stateDir: getStateDir(),
     git: pc.pinGit(getDistRoot(), { signingKey }),
     mode,
+    signed: !!signingKey,
+    signaturesRequired: pc.ghSignaturesRequired(
+      (argv, cwd) =>
+        new Promise((resolve) =>
+          execFile(
+            argv[0],
+            argv.slice(1),
+            { cwd, timeout: 30_000, maxBuffer: 1024 * 1024 },
+            (err, out, errOut) =>
+              resolve({
+                code: err
+                  ? typeof (err as { code?: unknown }).code === "number"
+                    ? (err as { code: number }).code
+                    : null
+                  : 0,
+                out: `${out ?? ""}${errOut ?? ""}`,
+              }),
+          ),
+        ),
+      ["gh"],
+      getDistRoot(),
+    ),
     ...(policy
       ? {
           allow: () => {
