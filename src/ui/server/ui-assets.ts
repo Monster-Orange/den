@@ -175,6 +175,9 @@ export const KIT_FILES: readonly string[] = [
   // switch, with their looks.
   "panel-fold.js",
   "panel-fold.css",
+  // A non-modal popover anchored to what opened it, and its look.
+  "popover.js",
+  "popover.css",
   "switch.js",
   "switch.css",
   // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.
@@ -413,14 +416,26 @@ export function kitPage(html: string): string {
     );
 }
 
+export function uiModuleFile(
+  pathname: string,
+  publicDir: string,
+): string | null {
+  if (pathname === "/health-rollup.js")
+    return path.join(publicDir, "../../../shared/health/rollup-rule.js");
+  return UI_MODULES.includes(pathname)
+    ? path.join(publicDir, pathname.slice(1))
+    : null;
+}
+
 /** Serves a UI module or vendored asset; false when `pathname` is neither. */
 export function serveUiAsset(
   res: http.ServerResponse,
   pathname: string,
   publicDir: string,
 ): boolean {
-  if (UI_MODULES.includes(pathname)) {
-    serveFile(res, path.join(publicDir, pathname.slice(1)));
+  const ui = uiModuleFile(pathname, publicDir);
+  if (ui) {
+    serveFile(res, ui);
     return true;
   }
   if (pathname === KIT_SHELL_SCRIPT) {
