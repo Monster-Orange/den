@@ -63,6 +63,7 @@ import {
 import {
   alertFeed,
   attentionDetail,
+  attentionActivity,
   attentionWaiting,
   notificationDeps,
 } from "./notification-service.js";
@@ -10178,6 +10179,7 @@ async function handleRequest(
       {
         waitingAgents: waitingAgentIds,
         waitingWhy: waitingReasons,
+        activity: attentionActivity,
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),
