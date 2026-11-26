@@ -2959,7 +2959,6 @@
     "bell.m.rsJob":
       "{id} は再起動されませんでした: バックグラウンドのジョブが実行中です ({cmd}、{min} 分)",
     "bell.m.rsFailed": "{id} は再起動されませんでした",
-    "bell.m.rsMatched": "{id} は新しいツールのための再起動を求めました: 再起動カードに入っています",
     "bell.m.restartGroup": "手が空いたら {n} 件のエージェントを再起動: {names}",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",

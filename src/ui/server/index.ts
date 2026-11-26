@@ -5806,10 +5806,9 @@ async function matchFreeTextRestartsNow(): Promise<void> {
   const matched = await matchFreeTextRestarts({
     rows: () => store.list(),
     pending: () => ap.queue.pending(),
-    check: (a, who) =>
-      op.check(a, who) as RestartSelfCheck | Promise<RestartSelfCheck>,
+    askedBefore: (actor) => ap.queue.ofActor(actor).length > 0,
+    check: (a) => op.check(a) as RestartSelfCheck | Promise<RestartSelfCheck>,
     request: (r) => ap.queue.request(r),
-    settle: (id, s, say) => store.settle(id, s, say),
   });
   if (matched.length)
     recordAction(null, {

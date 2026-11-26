@@ -1,6 +1,4 @@
 import { describe, expect, it } from "@jest/globals";
-import * as fs from "fs";
-import * as path from "path";
 import type { RestartSelfCheck } from "../../../src/shared/agents/restart-self.js";
 import type { Notification } from "../../../src/shared/notifications.js";
 import {
@@ -23,9 +21,12 @@ const q = (id: string, agent: string, text: string, over = {}): Notification =>
     ...over,
   }) as unknown as Notification;
 
-function harness(rows: Notification[], pendingFor: string[] = []) {
+function harness(
+  rows: Notification[],
+  pendingFor: string[] = [],
+  askedFor: string[] = [],
+) {
   const asked: Asked[] = [];
-  const settled: { id: string; by: string; key: string }[] = [];
   const d: FreeTextRestartDeps = {
     rows: () => rows,
     pending: () =>
@@ -33,42 +34,58 @@ function harness(rows: Notification[], pendingFor: string[] = []) {
         action: "agent_restart_self",
         args: { agent: id },
       })),
-    check: (a, who): RestartSelfCheck => ({
-      ok: true,
-      summary: `restart ${String(who?.agent)} when idle`,
-      params: { agent: String(who?.agent), reason: String(a.reason) },
-      details: [],
-      detailKeys: [],
-      args: { agent: String(who?.agent), project: "north", reason: "tools" },
-    }),
+    askedBefore: (actor) =>
+      askedFor.some((id) => actor === `den:free-text:north/${id}`),
+    check: (a): RestartSelfCheck =>
+      a.agent === "stopped-one"
+        ? { ok: false, error: "stopped" }
+        : {
+            ok: true,
+            summary: `restart ${String(a.agent)} when idle`,
+            params: { agent: String(a.agent), reason: String(a.reason) },
+            details: [],
+            detailKeys: [],
+            args: {
+              agent: String(a.agent),
+              project: "north",
+              reason: "tools",
+            },
+          },
     request: (r) => {
       asked.push(r);
-      return { id: `ap-${String(r.agent)}` };
-    },
-    settle: (id, s, say) => {
-      settled.push({ id, by: s.by, key: String(say.msg.key) });
+      return { id: `ap-${String(r.args.agent)}` };
     },
   };
-  return { d, asked, settled };
+  return { d, asked };
 }
 
 describe("issue 1406, clause 3: free-text restart asks already waiting join the card", () => {
-  it("a question that says restart and tools becomes the agent's own structured ask", async () => {
-    const { d, asked, settled } = harness([
+  it("a question that says restart and tools becomes a structured ask, from Den, with the agent's words", async () => {
+    const { d, asked } = harness([
       q("n1", "ana", "Please restart me so I get the new Hub tools."),
       q("n2", "bo", "Could you Restart this session? The tool list changed."),
     ]);
     expect(await matchFreeTextRestarts(d)).toEqual(["ana", "bo"]);
     expect(
-      asked.map((a) => [a.actor, a.agent, a.action, a.args.reason]),
+      asked.map((a) => [a.actor, a.action, a.args.agent, a.args.reason]),
     ).toEqual([
-      ["agent:ana", "ana", "agent_restart_self", "tools"],
-      ["agent:bo", "bo", "agent_restart_self", "tools"],
+      ["den:free-text:north/ana", "agent_restart_self", "ana", "tools"],
+      ["den:free-text:north/bo", "agent_restart_self", "bo", "tools"],
     ]);
-    expect(settled).toEqual([
-      { id: "n1", by: "den", key: "bell.m.rsMatched" },
-      { id: "n2", by: "den", key: "bell.m.rsMatched" },
-    ]);
+    for (const a of asked) expect(a).not.toHaveProperty("agent");
+    expect(asked[0]!.note).toBe(
+      "From ana's question: Please restart me so I get the new Hub tools.",
+    );
+  });
+
+  it("the question itself stays, as it was", async () => {
+    const rows = [
+      q("n1", "ana", "restart me for the new tools, and is 2 right?"),
+    ];
+    const before = JSON.stringify(rows);
+    const { d } = harness(rows);
+    await matchFreeTextRestarts(d);
+    expect(JSON.stringify(rows)).toBe(before);
   });
 
   it("Japanese words for restart and tools match too", async () => {
@@ -79,13 +96,12 @@ describe("issue 1406, clause 3: free-text restart asks already waiting join the 
   });
 
   it("restart alone, or tools alone, is left as the question it is", async () => {
-    const { d, asked, settled } = harness([
+    const { d, asked } = harness([
       q("n1", "ana", "Should I restart the dev server?"),
       q("n2", "bo", "Which tools should I use for this?"),
     ]);
     expect(await matchFreeTextRestarts(d)).toEqual([]);
     expect(asked).toEqual([]);
-    expect(settled).toEqual([]);
   });
 
   it("only open questions: not settled, read, a permission prompt, or another kind", async () => {
@@ -103,48 +119,36 @@ describe("issue 1406, clause 3: free-text restart asks already waiting join the 
     expect(await matchFreeTextRestarts(d)).toEqual([]);
   });
 
-  it("an agent with a structured ask waiting keeps its question; no second ask", async () => {
-    const { d, asked, settled } = harness(
+  it("no second ask: one waiting, or one Den made from its question before (a denial stays denied)", async () => {
+    const a = harness(
       [q("n1", "ana", "restart me for the new tools")],
       ["ana"],
     );
-    expect(await matchFreeTextRestarts(d)).toEqual([]);
-    expect(asked).toEqual([]);
-    expect(settled).toEqual([]);
+    expect(await matchFreeTextRestarts(a.d)).toEqual([]);
+    const b = harness(
+      [q("n1", "ana", "restart me for the new tools")],
+      [],
+      ["ana"],
+    );
+    expect(await matchFreeTextRestarts(b.d)).toEqual([]);
+    expect([...a.asked, ...b.asked]).toEqual([]);
   });
 
-  it("one the check or the queue refuses keeps its question, and the rest go on", async () => {
-    const { d, asked, settled } = harness([
-      q("n1", "ana", "restart me for the new tools"),
+  it("one the check or the queue refuses is skipped, and the rest go on", async () => {
+    const a = harness([
+      q("n1", "stopped-one", "restart me for the new tools"),
       q("n2", "bo", "restart me for the new tools"),
     ]);
-    const check = d.check;
-    d.check = (a, who) =>
-      who?.agent === "ana" ? { ok: false, error: "stopped" } : check(a, who);
-    expect(await matchFreeTextRestarts(d)).toEqual(["bo"]);
-    expect(settled.map((s) => s.id)).toEqual(["n2"]);
+    expect(await matchFreeTextRestarts(a.d)).toEqual(["bo"]);
     const h = harness([
       q("n1", "ana", "restart me for the new tools"),
       q("n2", "bo", "restart me for the new tools"),
     ]);
     const request = h.d.request;
     h.d.request = (r) => {
-      if (r.agent === "ana") throw new Error("full");
+      if (r.args.agent === "ana") throw new Error("full");
       return request(r);
     };
     expect(await matchFreeTextRestarts(h.d)).toEqual(["bo"]);
-    expect(h.settled.map((s) => s.id)).toEqual(["n2"]);
-    expect(asked.length + h.asked.length).toBe(2);
-  });
-
-  it("its bell line is in en, es and ja", () => {
-    const root = path.join(__dirname, "../../../src/ui/server/public");
-    for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"])
-      expect([
-        f,
-        fs
-          .readFileSync(path.join(root, f), "utf-8")
-          .includes('"bell.m.rsMatched"'),
-      ]).toEqual([f, true]);
   });
 });
