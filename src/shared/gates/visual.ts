@@ -14,9 +14,16 @@
  */
 import type { Browser } from "@playwright/test";
 import * as fs from "fs";
+import { createRequire } from "module";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
-import { boxEndpointFor, type GateBox } from "./boxes.js";
+import { getEngineRoot } from "../paths.js";
+import {
+  boxEndpointFor,
+  boxEndpoints,
+  pwServes,
+  type GateBox,
+} from "./boxes.js";
 
 export const VISUAL_TAG = "@visual-reference";
 
@@ -281,7 +288,64 @@ export function envMismatch(want: VisualEnv, got: VisualEnv): string {
   return "";
 }
 
-export type BrowserRead = (ws: string, timeoutMs: number) => Promise<VisualEnv>;
+export interface BrowserReadFrom {
+  from?: string;
+  serves?: string;
+}
+
+export type BrowserRead = (
+  ws: string,
+  timeoutMs: number,
+  o?: BrowserReadFrom,
+) => Promise<VisualEnv>;
+
+export class PwClientMismatch extends Error {
+  readonly serves: string | undefined;
+  readonly client: string;
+  readonly from: string;
+  constructor(o: { serves?: string; client: string; from: string }) {
+    super(
+      `${o.serves ? `serves Playwright ${o.serves}` : "serves another Playwright version (it answered 428)"}; this run's client is ${o.client} (from ${o.from})`,
+    );
+    this.name = "PwClientMismatch";
+    this.serves = o.serves;
+    this.client = o.client;
+    this.from = o.from;
+  }
+}
+
+interface PwClient {
+  chromium: {
+    connect(ws: string, o: { timeout: number }): Promise<Browser>;
+  };
+}
+
+const PW_CLIENTS = ["@playwright/test", "playwright", "playwright-core"];
+
+export function runPlaywright(
+  from?: string,
+): { client: PwClient; version: string; dir: string } | undefined {
+  for (const base of from ? [from, getEngineRoot()] : [getEngineRoot()]) {
+    const req = createRequire(path.join(base, "package.json"));
+    for (const p of PW_CLIENTS) {
+      let dir: string;
+      let version: unknown;
+      try {
+        dir = path.dirname(req.resolve(`${p}/package.json`));
+        version = (
+          JSON.parse(
+            fs.readFileSync(path.join(dir, "package.json"), "utf-8"),
+          ) as { version?: unknown }
+        ).version;
+      } catch {
+        continue;
+      }
+      if (typeof version === "string")
+        return { client: req(p) as PwClient, version, dir };
+    }
+  }
+  return undefined;
+}
 
 /**
  * `p`, or a rejection "no answer in N s" once `ms` pass: one deadline on
@@ -300,11 +364,20 @@ export function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** One connect to the box's server, and its VisualEnv. */
-export const realBrowserRead: BrowserRead = async (ws, timeoutMs) => {
-  const { chromium } = await import("@playwright/test");
+export const realBrowserRead: BrowserRead = async (ws, timeoutMs, o = {}) => {
+  const pw = runPlaywright(o.from);
+  if (!pw) throw new Error("no Playwright client to read the box with");
+  const mismatch = (serves?: string) =>
+    new PwClientMismatch({ serves, client: pw.version, from: pw.dir });
+  if (o.serves && !pwServes(o.serves, pw.version)) throw mismatch(o.serves);
   let browser: Browser | undefined;
   const read = (async () => {
-    browser = await chromium.connect(ws, { timeout: timeoutMs });
+    try {
+      browser = await pw.client.chromium.connect(ws, { timeout: timeoutMs });
+    } catch (e) {
+      if (/\b428\b/.test((e as Error).message)) throw mismatch(o.serves);
+      throw e;
+    }
     return visualEnvOf(browser);
   })();
   try {
@@ -366,6 +439,7 @@ export async function visualFit(o: {
   timeoutMs: number;
   dir: string;
   now: () => number;
+  from?: string;
 }): Promise<VisualFit> {
   const out: VisualFit = { fit: [], unfit: [] };
   const bad = o.records.find((r) => typeof r.env === "string");
@@ -386,14 +460,22 @@ export async function visualFit(o: {
           b,
           why: `box ${b.name} serves no Playwright of this run's version`,
         };
+      const serves = boxEndpoints(b).find((x) => x.ws === ws)?.version;
+      const from: BrowserReadFrom = {
+        ...(o.from ? { from: o.from } : {}),
+        ...(serves ? { serves } : {}),
+      };
       try {
         // Any read, the real one or not, gets the one deadline.
         return {
           b,
-          got: await withDeadline(o.read(ws, o.timeoutMs), o.timeoutMs),
+          got: await withDeadline(o.read(ws, o.timeoutMs, from), o.timeoutMs),
         };
       } catch (e) {
-        return { b, error: oneLine((e as Error).message.split("\n")[0] ?? "") };
+        const error = oneLine((e as Error).message.split("\n")[0] ?? "");
+        return e instanceof PwClientMismatch
+          ? { b, error, why: `box ${b.name} ${error}` }
+          : { b, error };
       }
     }),
   );

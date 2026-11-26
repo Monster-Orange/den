@@ -52,6 +52,7 @@ config and manifest changes a distribution must make to move to it under
 - An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 - A relaunched agent's first prompt now says the current local time, so it counts times and ETAs from now, not from its handoff or older messages.
 - Doctor says when agents commit without a signing key. A self-update's pin commit is signed with the agents' key when one is set. When no key is set and the branch requires signed commits, the pin goes to a pull request instead of a push that would be refused, and the bell says why.
+- A gate run with a visual-reference test now checks a test box's browser with the run's own Playwright, loaded from the run's folder, not the installed Den's. Before, a Den whose Playwright was newer than the project's got a 428 from every box, and the run stayed on this machine. When the versions do differ, the gate says so: "box m1 serves Playwright 1.61.1; this run's client is 1.64.1 (from <folder>)". Doctor warns when a box's Playwright isn't the version a project pins (issue 1827).
 
 ## [0.4.90] - 2026-11-25
 
