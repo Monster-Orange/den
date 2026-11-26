@@ -118,6 +118,18 @@ describe("issue 988: agents os-login setup", () => {
     expect(r.set).toEqual([true]);
   });
 
+  it("Den's runtime the login could change: setup refuses before it asks, and runs nothing", async () => {
+    const r = rig({
+      yes: true,
+      facts: { ...NONE, runtime: ["/opt/node is 0777: anyone can change it"] },
+    });
+    expect(await cmdOsUser(["setup"], r.d)).toBe(1);
+    expect(r.ran).toEqual([]);
+    expect(r.asked).toEqual([]);
+    expect(r.err.join("\n")).toContain("/opt/node is 0777");
+    expect(r.set).toEqual([]);
+  });
+
   it("a failed step stops it, says which, and leaves agents.os_login as it was", async () => {
     const r = rig({ yes: true, fail: "visudo" });
     expect(await cmdOsUser(["setup"], r.d)).toBe(1);

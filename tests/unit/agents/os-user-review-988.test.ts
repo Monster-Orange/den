@@ -235,6 +235,7 @@ describe("issue 988 review, should 5: whose launch files", () => {
         wrap: () => ({ applied: false, argv: [], env: {}, reason: "x" }),
         run: async () => 0,
         err: (m) => errs.push(m),
+        runtimeProblems: () => [],
       };
       await expect(
         runAgentSession(["scout", "0123456789abcdef0123456789abcdef"], d),
