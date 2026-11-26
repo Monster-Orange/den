@@ -10,7 +10,7 @@
  *   node watch.mjs <plan.json>
  *
  * The plan (written by den-update.ts, 0600, no secrets):
- *   { port, to, from, fromPid, waitMs, pollMs?, root, backups: [{ saved,
+ *   { port, to, from, fromPid, waitMs, pollMs?, root, backups, npm, restart, restartEnv, stateFile, restartMarker }
  *
  * It waits up to waitMs for this Den's /api/server-info to answer the new
  * version from a new pid. Then it writes { state: "good" } and exits.
