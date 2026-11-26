@@ -81,6 +81,34 @@ describe("gate/732.mjs (issue 829)", () => {
     ]);
   });
 
+  it("a stub nobody could look in skips, saying it couldn't look, never that no shell runs", () => {
+    const rows = judge({
+      ...good,
+      seen: false,
+      probe: { status: 202, code: null },
+      jobPresent: null,
+    });
+    expect(rows.map((r) => r.skip)).toEqual([
+      "needs-background-job",
+      "needs-background-job",
+      "needs-background-job",
+    ]);
+    expect(rows[0].detail).toMatch(/couldn't look/);
+    expect(rows[0].detail).not.toMatch(
+      /none runs there|kept no background shell/,
+    );
+  });
+
+  it("a stub with no background shell running says so", () => {
+    const rows = judge({
+      ...good,
+      seen: false,
+      probe: { status: 202, code: null },
+      jobPresent: false,
+    });
+    expect(rows[0].detail).toMatch(/none runs there/);
+  });
+
   it("a turn that never started skips clause 2 as needs-turn, with the write's status", () => {
     const rows = judge({
       ...good,

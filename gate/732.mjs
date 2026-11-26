@@ -9,15 +9,18 @@
 //
 // First, whether Den sees that job at all: a Restart after its turn, as
 // the Agents page asks it, must answer 409 job_running with the job's
+// minutes, and nothing restarts (clause 3).
 //
 // Clause 1: with the job still running and the turn ended, a Hub comment
 // for it is typed in within seconds. Clause 2: a turn starts (a prompt
 // record appended to its transcript, as the runtime writes one); a second
 // comment waits, with Den's held reason "the agent is busy with a turn";
-// once the turn ends it is typed. A second Restart probe after clause 2
+// once the turn ends it is typed, and a second Restart still sees the job.
 //
-// Without a Hub on the bed, every clause skips (needs-hub). Names are new
-// each run.
+// Den sees no job: every clause fails if the stub's background shell is
+// running, and skips if it isn't or nobody could look (needs-background-job).
+// No turn started: clause 2 skips (needs-turn). No Hub: every clause skips
+// (needs-hub). Names are new each run.
 
 export const issue = 732;
 export const items = [732, 829];
@@ -301,7 +304,7 @@ export function expect(res) {
   if (!r.seen)
     return skipAll(
       "needs-background-job",
-      `Den saw no job under the stub's session, and none runs there (looked: ${JSON.stringify(r.jobPresent ?? null)}; /bg answered ${JSON.stringify(r.bg ?? null)}; restart after its turn answered ${JSON.stringify(r.probe)}): the bed's stub kept no background shell under it`,
+      `${r.jobPresent === false ? "Den saw no job under the stub's session, and none runs there" : "Den saw no job under the stub's session, and the check couldn't look for one (the stub's shell gave no answer)"} (/bg answered ${JSON.stringify(r.bg ?? null)}; restart after its turn answered ${JSON.stringify(r.probe)})`,
     );
   const c3 =
     r.probe.status === 409 &&
