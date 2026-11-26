@@ -490,3 +490,41 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
     expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
   });
 });
+
+describe("the terminal's own status (OSC 7501) sets working or idle", () => {
+  it("a 7501 working makes a running agent Working with no turn under way", () => {
+    const d = mk();
+    expect(
+      agentStateOf(
+        { ...row("scribe"), activity: "working" },
+        "person:a",
+        d.deps,
+      )?.attn,
+    ).toBe("working");
+  });
+
+  it("a 7501 idle makes it Idle while a turn's working mark is still held", async () => {
+    const d = mk();
+    await d.a.event("builder", "north", { event: "resumed", from: "prompt" });
+    expect(
+      agentStateOf({ ...row("builder"), activity: "idle" }, "person:a", d.deps)
+        ?.attn,
+    ).toBe("idle");
+  });
+
+  it("a wait for the person still wins over a 7501 working", () => {
+    const d = mk();
+    expect(
+      agentStateOf(
+        {
+          ...row("scribe"),
+          activity: "working",
+          waiting: true,
+          waitingWhy: "permission",
+        },
+        "person:a",
+        d.deps,
+      )?.attn,
+    ).toBe("needs");
+  });
+});
