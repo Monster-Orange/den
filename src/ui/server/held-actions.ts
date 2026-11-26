@@ -45,9 +45,6 @@
  *                     its project's (agent-ops.ts checkAgentMode,
  *                     runAgentMode); a running one restarts after its turn
  *                     on the same conversation. The person's Allow only
- *   agent_rotation_defer  issue 765: put an agent's rotation off until a
- *                     time, or stop (agent-ops.ts checkAgentRotationDefer,
- *                     runAgentRotationDefer); the time is fixed when asked
  *   agent_sandbox_set issue 1328: turn one agent's sandbox off or on
  *                     (agents/sandbox-set.ts): only agents.<id>.sandbox in
  *                     user.yml; a running one restarts after its turn on

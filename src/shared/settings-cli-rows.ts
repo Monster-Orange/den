@@ -31,9 +31,6 @@
  *                                     (issue 1299)
  *   agents_list: { host_timeout_seconds?, refresh_timeout_seconds? }
  *                                     user.yml agents_list.* (den#156)
- *   agents_rotation: { defer_max_hours? }
- *                                     user.yml agents.rotation_defer_max_hours
- *                                     (issue 765)
  *   agents_resume: { batch?, gap_seconds?, load_ceiling?, max_wait_seconds? }
  *                                     user.yml agents.resume.* (issue 1129:
  *                                     the restart queue)
