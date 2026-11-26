@@ -660,8 +660,12 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
                 else held.push({ k, f });
               });
             }
+            const was = Object.getOwnPropertyDescriptor(this, "readyState");
+            let written: number | undefined = was?.value;
             Object.defineProperty(this, "readyState", {
-              get: () => (go.has("open") ? super.readyState : W.CONNECTING),
+              get: () =>
+                go.has("open") ? (written ?? super.readyState) : W.CONNECTING,
+              set: (v: number) => (written = v),
             });
           }
         }
