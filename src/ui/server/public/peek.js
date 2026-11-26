@@ -449,6 +449,7 @@ async function switchTo(st, target) {
 
 async function attach(st) {
   const r = st.row;
+  const gen = (st.gen = (st.gen ?? 0) + 1);
   const d = st.dialog;
   if (st.closed || !d) return;
   if (!r || r.attachable === false) {
@@ -468,7 +469,7 @@ async function attach(st) {
   const [{ termPane, paneSettings }] = await Promise.all([
     import("/term-pane.js"),
   ]);
-  if (st.closed || st.row !== r) return;
+  if (st.closed || st.gen !== gen || st.row?.id !== r.id) return;
   const box = d.querySelector(".den-peek-tbox");
   const term = new lib.Terminal({
     fontFamily: cssVar("--mono") ?? "monospace",
@@ -527,7 +528,7 @@ async function attach(st) {
   });
   // Closed while the settings loaded: no socket may open after it.
   const settings = await paneSettings();
-  if (st.closed || st.row !== r) return;
+  if (st.closed || st.gen !== gen || st.row?.id !== r.id) return;
   st.pane = termPane({
     id: r.id,
     term: () => st.term,

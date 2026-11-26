@@ -366,6 +366,29 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
     await p.context().close();
   }, 90_000);
 
+  it("a bell update while the terminal loads: it still goes live", async () => {
+    if (skip()) return;
+    const p = await open(1280);
+    let release = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    await p.route("**/vendor/xterm.mjs*", async (r) => {
+      await held;
+      await r.continue();
+    });
+    let lists = 0;
+    p.on("response", (r) => {
+      if (new URL(r.url()).pathname === "/api/sessions") lists += 1;
+    });
+    await peek(p);
+    const from = lists;
+    await eventually(() => lists >= from + 2, 15_000);
+    release();
+    await p
+      .locator('dialog#den-peek[data-conn="live"]')
+      .waitFor({ timeout: 15_000 });
+    await p.context().close();
+  }, 60_000);
+
   it("raised no page errors", () => {
     if (skip()) return;
     expect(errors).toEqual([]);
