@@ -216,6 +216,21 @@ export async function run(ctx, s) {
   const warm = await timedList(d2);
   r.warmMs = warm.ms;
   r.helperRows = helperRows(warm.body);
+  const seen = (
+    Array.isArray(warm.body?.sessions) ? warm.body.sessions : []
+  ).filter((x) => String(x?.agent ?? "").startsWith(PREFIX));
+  r.listed = seen.length;
+  r.listRows = Array.isArray(warm.body?.sessions)
+    ? warm.body.sessions.length
+    : null;
+  r.sample = seen[0]
+    ? {
+        keys: Object.keys(seen[0]).sort(),
+        helpers: seen[0].helpers ?? null,
+        state: seen[0].state ?? null,
+      }
+    : null;
+  r.seedDir = s.dir;
   const info = async () => {
     const pt = Date.now();
     const p = await d2
@@ -285,7 +300,7 @@ export function expect(cells) {
     throw new Error(`1668 not measured: seed ${JSON.stringify(r.seed)}`);
   if (r.helperRows !== SEED_AGENTS)
     throw new Error(
-      `1668 not measured: the list showed helpers on ${r.helperRows} of ${SEED_AGENTS} seeded agents`,
+      `1668 not measured: the list showed helpers on ${r.helperRows} of ${SEED_AGENTS} seeded agents (it listed ${r.listed ?? "?"} of them, ${r.listRows ?? "?"} rows in all)`,
     );
   const seedLine = `seeded ${SEED_AGENTS} agents in ${r.seedMs} ms, rows with helpers ${r.helperRows}; ${SEED_WAY}`;
   const few = (r.inFlight ?? 0) < IN_FLIGHT_MIN;
