@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.90] - unreleased
 
+### Added
+
+- An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
+
 ### Fixed
 
 - A message waiting for an agent that was then removed no longer retries forever. Den keeps it as not delivered, with the time, and the bell says once "Not delivered: <agent> was removed". A restart keeps it and doesn't ring again. Before, each such message was held as busy and retried at every poll. (issue 1673)

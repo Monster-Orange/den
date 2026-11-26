@@ -11,11 +11,19 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import { AGENTS_ENTRY, agentsSource } from "../server/helpers/agents-source.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const CLI = path.join(process.cwd(), "src", "ui", "cli");
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (dir: string, f: string) =>
   fs.readFileSync(path.join(dir, f), "utf-8");
+const pageText = (f: string) =>
+  f === "settings-registry.js"
+    ? readSettingsSources()
+    : f === AGENTS_ENTRY
+      ? agentsSource()
+      : read(PUBLIC, f);
 
 type Entry =
   | { read: true }
@@ -330,7 +338,7 @@ describe("MODE-5: every CLI command has its page control listed", () => {
       .filter(
         (e): e is [string, { page: string; marker: string }] => "page" in e[1],
       )
-      .filter(([, e]) => !read(PUBLIC, e.page).includes(e.marker))
+      .filter(([, e]) => !pageText(e.page).includes(e.marker))
       .map(([c, e]) => `${c}: ${e.page} has no ${e.marker}`);
     expect(missing).toEqual([]);
   });
