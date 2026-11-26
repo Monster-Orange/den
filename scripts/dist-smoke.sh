@@ -282,9 +282,13 @@ else bad "GET /api/changelog failed"; fi
 if curl -fsS "http://localhost:$PORT/vendor/elk.bundled.js" -o "$WORK/elk.js"; then
   expect_in "GET /vendor/elk.bundled.js serves elkjs from the install" "$WORK/elk.js" "ELK"
 else bad "GET /vendor/elk.bundled.js failed"; fi
-for m in graph.js graph-model.js panel.js graph.css; do
+for m in graph.js graph-model.js panel.js graph.css health-rollup.js; do
   curl -fsS "http://localhost:$PORT/$m" -o /dev/null && ok "GET /$m" || bad "GET /$m failed"
 done
+if curl -fsS "http://localhost:$PORT/health-rollup.js" -o "$WORK/rollup.js" &&
+  cmp -s "$WORK/rollup.js" "$ENGINE/src/shared/health/rollup-rule.js"; then
+  ok "GET /health-rollup.js is src/shared/health/rollup-rule.js, byte for byte"
+else bad "GET /health-rollup.js is not src/shared/health/rollup-rule.js"; fi
 # The Agents tab (AG-4a-term): its page and xterm.js from the install (no
 # CDN); its list answers with or without the PTY module (without it,
 # backend.available is false and the page says so).
