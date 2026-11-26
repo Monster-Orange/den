@@ -467,6 +467,11 @@
     "tests/unit/server/host-refresh-web.integration.test.ts": [
       "src/shared/sessions/host-refresh.ts"
     ],
+    "tests/unit/server/hub-agent-tokens-security.integration.test.ts": [
+      "src/shared/hub-agent-tokens.ts",
+      "src/ui/server/hub-proxy-routes.ts",
+      "src/ui/server/hub-connect.ts"
+    ],
     "tests/unit/server/hub-editions-den-yml.integration.test.ts": [
       "src/shared/hub-editions.ts"
     ],
@@ -925,6 +930,8 @@
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-recent.browser.test.ts",
+        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -1412,6 +1419,8 @@
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-recent.browser.test.ts",
+        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -1634,6 +1643,8 @@
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-recent.browser.test.ts",
+        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
         "tests/unit/server/workspace-delete-agents.browser.test.ts",
@@ -1760,6 +1771,8 @@
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
+        "tests/unit/server/terminal-recent.browser.test.ts",
+        "tests/unit/server/terminal-reuse.browser.test.ts",
         "tests/unit/server/time-zone.browser.test.ts",
         "tests/unit/server/toast-hold.browser.test.ts",
         "tests/unit/server/update-pill.browser.test.ts",
@@ -2233,6 +2246,7 @@
         "tests/unit/mcp/approval-tools.test.ts",
         "tests/unit/plugins/plugin-command.test.ts",
         "tests/unit/review/review-rules-798.test.ts",
+        "tests/unit/scripts/changelog-line-1611.test.ts",
         "tests/unit/scripts/docs-links.test.ts",
         "tests/unit/scripts/pw-server-635.test.ts",
         "tests/unit/security/auto-targets.test.ts",
@@ -2261,6 +2275,7 @@
       "run": [
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/gates/pw-guard-export-1010.test.ts",
+        "tests/unit/scripts/changelog-line-1611.test.ts",
         "tests/unit/scripts/release-dry-run.test.ts",
         "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/hub-editions-den-yml.integration.test.ts",
@@ -2312,6 +2327,11 @@
       "when": ["scripts/build-sketch-theme.ts"],
       "run": ["tests/unit/den-ui/sketch-theme-788.test.ts"],
       "why": "tests that run scripts/build-sketch-theme.ts"
+    },
+    {
+      "when": ["scripts/changelog-line.mjs"],
+      "run": ["tests/unit/scripts/changelog-line-1611.test.ts"],
+      "why": "tests that run scripts/changelog-line.mjs"
     },
     {
       "when": ["scripts/ci-force-all.mjs"],
@@ -2527,6 +2547,7 @@
     {
       "when": ["scripts/words-gate.mjs"],
       "run": [
+        "tests/unit/scripts/words-gate-moves.test.ts",
         "tests/unit/scripts/words-gate-vendored.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts",
         "tests/unit/test-infra/shard-plan.test.ts"
@@ -2540,6 +2561,7 @@
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
+        "tests/unit/scripts/words-gate-moves.test.ts",
         "tests/unit/scripts/words-gate-vendored.test.ts",
         "tests/unit/scripts/words.test.ts",
         "tests/unit/server/i18n-171-values.test.ts",
@@ -3433,6 +3455,17 @@
     {
       "when": ["src/shared/sessions/host-refresh.ts"],
       "run": ["tests/unit/server/host-refresh-web.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/hub-agent-tokens.ts",
+        "src/ui/server/hub-connect.ts",
+        "src/ui/server/hub-proxy-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/hub-agent-tokens-security.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {

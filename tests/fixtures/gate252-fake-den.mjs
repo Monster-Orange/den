@@ -13,7 +13,8 @@
 //   "oldAudit":   an old run's restart rows are in the audit, none new;
 //   "noOwnWords": the row's tag says data-mode-source="own" but not the words;
 //   "noSession":  the agent has no session at run time, though started;
-//   "startsOwn":  the agent already has a mode of its own at the start.
+//   "startsOwn":  the agent already has a mode of its own at the start;
+//   "noOpenWords": the page's catalog has no "ag.openName", so t gives the key.
 // Invented names only.
 const ID = "gate-252-mode";
 const WS = "north";
@@ -21,6 +22,7 @@ const ORDER = ["ask", "edits", "auto", "all"];
 // The page's catalog, as denShell.t gives it (the words the check looks for).
 const CATALOG = {
   "ag.more": "More for {id}",
+  "ag.openName": "Open {id} in Agents",
   "ag.mode.item": "Mode: {m}",
   "ag.mode.follow": "Follow project",
   "ag.mode.setS":
@@ -42,6 +44,7 @@ const t = (k, v = {}) =>
     v[x] != null ? String(v[x]) : m,
   );
 const SOURCE = { own: "its own setting", install: "the Den-wide default" };
+const ROW_NAME = `${t("ag.openName", { id: `${WS} / tester` })} · idle`;
 
 export function fakeBed({ den = "good" } = {}) {
   const st = {
@@ -109,11 +112,28 @@ export function fakeBed({ den = "good" } = {}) {
 
   const page = {
     async waitForSelector() {}, // the row's mode tag (read by evaluate)
-    locator() {
-      // The agent's row.
+    locator(sel) {
+      if (sel !== `[data-agent="${ID}"]`)
+        return {
+          async waitFor() {
+            fail(sel);
+          },
+        };
       return {
-        async waitFor() {},
-        async click() {},
+        getByRole(role, o = {}) {
+          const found =
+            role === "button" &&
+            o.name instanceof RegExp &&
+            o.name.test(ROW_NAME);
+          return {
+            async waitFor() {
+              if (!found) fail(String(o.name));
+            },
+            async click() {
+              if (!found) fail(String(o.name));
+            },
+          };
+        },
       };
     },
     getByRole(role, o = {}) {
@@ -164,7 +184,10 @@ export function fakeBed({ den = "good" } = {}) {
       };
     },
     async evaluate(fn, arg) {
-      if (Array.isArray(arg) && arg.length === 2) return t(arg[0], arg[1]); // denShell.t
+      if (Array.isArray(arg) && arg.length === 2)
+        return den === "noOpenWords" && arg[0] === "ag.openName"
+          ? arg[0]
+          : t(arg[0], arg[1]); // denShell.t
       if (typeof arg === "string") return tagShown; // the row's tag
       if (String(fn).includes("disconnect"))
         return busyOn === "more" && watching === t("ag.more", { id: ID }); // busy read

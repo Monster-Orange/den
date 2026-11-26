@@ -82,7 +82,14 @@ async function openMode(ctx, ws, mode) {
     p,
     `/agents?project=${encodeURIComponent(ws)}&agent=${encodeURIComponent(ID)}`,
   );
-  const row = p.locator(`[data-agent="${ID}"] > button[data-kind="agent"]`);
+  const open = await words(p, "ag.openName", { id: "\u0000" });
+  const [pre, post, extra] = open.split("\u0000");
+  if (post === undefined || extra !== undefined)
+    throw new Error(`the page's "ag.openName" has no one {id}: "${open}"`);
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const row = p.locator(`[data-agent="${ID}"]`).getByRole("button", {
+    name: new RegExp(`^${esc(pre)}${esc(ws)} / .+${esc(post)}`),
+  });
   await row.waitFor({ timeout: 20000 });
   const more = p.getByRole("button", {
     name: await words(p, "ag.more", { id: ID }),
