@@ -250,6 +250,7 @@ import {
 import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   notAPersonOf,
   fixturePersonOf,
@@ -3260,7 +3261,11 @@ async function staleRoute(
     "1";
   if (!post) {
     try {
-      sendJson(res, { agents: await staleAgents(d, { fresh }) });
+      const rows = await staleAgents(d, { fresh });
+      const keep = agentRowFilter(req);
+      sendJson(res, {
+        agents: keep ? rows.filter((r) => keep(r.workspace)) : rows,
+      });
     } catch (e) {
       sendError(res, e);
     }
