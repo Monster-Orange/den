@@ -26,6 +26,7 @@ const SOURCE_WORDS = {
 };
 
 export async function setup(ctx) {
+  throw new Error("planted break: a gate-only change must turn CI red");
   const a = ctx.agent(ID);
   a.start("tester");
   const runMs = await a.running(20000);
