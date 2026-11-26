@@ -86,7 +86,15 @@ function call(
   });
 }
 const bearer = () => denAuth(home);
-const marked = () => (fs.existsSync(marks) ? fs.readdirSync(marks).sort() : []);
+const SWEEP = /^ps (-a --filter label=|--format \{\{\.Names\}\}$)/;
+const marked = () =>
+  (fs.existsSync(marks) ? fs.readdirSync(marks).sort() : [])
+    .map((f) => ({
+      f,
+      args: fs.readFileSync(path.join(marks, f), "utf-8"),
+    }))
+    .filter(({ f, args }) => !(f.startsWith("docker-") && SWEEP.test(args)))
+    .map(({ f, args }) => (args ? `${f}: ${args}` : f));
 
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-methods-")));
@@ -99,7 +107,7 @@ beforeAll(async () => {
   for (const tool of ["git", "docker", "aws", "gh", "tail", "npx", "k6"])
     write(
       path.join(bin, tool),
-      `#!/bin/sh\ntouch "${marks}/${tool}-$$"\nexit 0\n`,
+      `#!/bin/sh\nprintf '%s' "$*" > "${marks}/${tool}-$$"\nexit 0\n`,
       0o755,
     );
   write(path.join(root, "den.yml"), "product:\n  name: den\n");
