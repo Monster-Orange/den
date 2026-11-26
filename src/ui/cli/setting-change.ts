@@ -36,6 +36,7 @@ import {
   limitInForce,
   readMcpConfig,
   USER_ONLY_WIDENING,
+  AGENTS_RESERVED_KEYS,
   type DenConfig,
   type InstallMode,
   type UserConfig,
@@ -940,6 +941,12 @@ function patchKey(
   const field = FIELD_KEYS.find((f) => matchesSetting(f.key, key));
   if (field) return field.patch(user, value);
   if (configKeyNames().includes(key)) return patchConfigKey(user, key, value);
+  const agentKey = /^agents\.([^.]+)\./.exec(key)?.[1];
+  if (agentKey && AGENTS_RESERVED_KEYS.includes(agentKey))
+    return {
+      ok: false,
+      error: `${key}: agents.${agentKey} is one of Den's own settings, not an agent's id`,
+    };
   const entry = SETTING_KEYS.find((e) => matchesSetting(e.key, key));
   if (!entry)
     return { ok: false, unknown: true, error: `unknown setting ${key}` };

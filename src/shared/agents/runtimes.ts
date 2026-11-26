@@ -21,6 +21,7 @@ import { sessionPath, type RuntimeFind } from "./runtime-search.js";
 import { ACTOR_TOKEN_FILE_ENV } from "../actor-token.js";
 import { installLocationEnv } from "../product.js";
 import { AGENT_ACTOR_ENV, buildSessionEnv } from "../sessions/env.js";
+import { applyEnvHold, DEFAULT_ENV_HOLD } from "./env-hold.js";
 
 registerRuntime(denClaude);
 for (const e of BUILTIN_CATALOG)
@@ -96,9 +97,18 @@ export function agentSessionEnv(
   declared: Record<string, string> = {},
   /** Issue 163 (b): the sign-in token's env (the always-on service only). */
   signIn: Record<string, string> = {},
+  hold: { hold: readonly string[]; allow: readonly string[] } = {
+    hold: DEFAULT_ENV_HOLD,
+    allow: [],
+  },
 ): Record<string, string> {
+  const from = withSessionPath(caller, extraDirs);
+  const defined: Record<string, string> = {};
+  for (const [k, v] of Object.entries(from))
+    if (v !== undefined) defined[k] = v;
   return buildSessionEnv({
-    caller: withSessionPath(caller, extraDirs),
+    caller: applyEnvHold(defined, hold.hold, hold.allow),
+    keep: hold.allow,
     passthrough: rt.envPassthrough,
     launch,
     // The distribution's declared env (agents.git's GIT_CONFIG_*).
