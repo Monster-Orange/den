@@ -1433,6 +1433,9 @@
     "set.agents.max_concurrent": "Agentes a la vez",
     "set.agents.max_concurrent.d":
       "Cuántos agentes pueden funcionar a la vez en esta máquina. Las terminales simples nunca cuentan. Un inicio por encima de esto se rechaza, y lo dice. Esto prevalece sobre el valor de la distribución. __DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "Agentes por proyecto",
+    "set.agents.max_per_project.d":
+      "Cuántos agentes puede tener funcionando a la vez un proyecto. 0 significa sin límite más allá de Agentes a la vez. Un proyecto puede fijar un valor propio más bajo (agents.max_per_project en su entrada de workspaces.yml). Un inicio por encima de esto se rechaza, y dice qué límite lo frena. __DEN_CLI__ config agents.max_per_project=10",
     "set.server.sessions_max": "Terminales a la vez",
     "set.server.sessions_max.d":
       "Cuántas terminales simples pueden funcionar a la vez. Los agentes nunca cuentan. Una nueva por encima de esto se rechaza, y lo dice. __DEN_CLI__ config sessions.max_concurrent=8",

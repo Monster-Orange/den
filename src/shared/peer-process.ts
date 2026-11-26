@@ -17,11 +17,7 @@
  */
 import * as fs from "fs";
 import { execFile, spawnSync } from "child_process";
-import {
-  lookup,
-  lookupTimeouts,
-  LookupTimeoutError,
-} from "../ui/cli/proc-lookup.js";
+import { lookup, lookupTimeouts, LookupTimeoutError } from "./proc-lookup.js";
 
 /**
  * By path: a service's PATH (launchd's, a test server's) may not have

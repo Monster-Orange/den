@@ -584,7 +584,7 @@ export interface UserConfig {
   /**
    * Issue 609: how long Den's process lookups (lsof, ps) wait:
    * first_seconds (5) the first try, retry_seconds (20) the one after
-   * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
+   * (shared/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
    */
   process_lookup?: {
     first_seconds?: unknown;
@@ -2041,6 +2041,7 @@ export function readMcpConfig(
 export interface AgentsConfig {
   /** Agents that may run at once (default 4); plain sessions never count. */
   max_concurrent?: number;
+  max_per_project?: number;
   /**
    * Persona packs (AG-2a): directories of persona files, relative to the
    * distribution root. Den's default pack is always read first; a pack's
@@ -2130,6 +2131,7 @@ export interface PersonaPackConfig {
 }
 
 export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
+export const DEFAULT_AGENTS_MAX_PER_PROJECT = 0;
 
 /** The keys of `agents:` that are not an agent id. */
 /** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
@@ -2184,6 +2186,7 @@ export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
 
 export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
+  "max_per_project",
   // #70: an agent's token only from its own processes.
   "token_binding",
   // Issue 242: how long an agent's call waits for Den to find its process.
@@ -2326,6 +2329,7 @@ export function readInstallMode(
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  maxPerProject: number;
   /** Issue 1391: the install's mode (resolveInstallMode). */
   mode?: InstallMode;
   /** Issue 1391: which file set it. */
@@ -2637,6 +2641,7 @@ function userJudgeEnabled(u: UserConfig): boolean {
  */
 export const AGENTS_USER_LIMIT_KEYS = [
   "max_concurrent",
+  "max_per_project",
   "token_peer_wait_ms",
   "turn_read_max_mb",
   "restart_wait_minutes",
@@ -2692,6 +2697,7 @@ const AGENT_LIMIT_DEFAULTS: Readonly<
   Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number>
 > = {
   max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+  max_per_project: DEFAULT_AGENTS_MAX_PER_PROJECT,
   token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
   turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
   restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
@@ -2908,6 +2914,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     );
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+    maxPerProject: DEFAULT_AGENTS_MAX_PER_PROJECT,
     restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
     rotationWaitMs: ROTATION_WAIT_MINUTES_DEFAULT * 60_000,
     unaskedExitWindowMs: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000,
@@ -3029,6 +3036,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.maxConcurrent = max;
   }
+  const per = raw.max_per_project;
+  if (per !== undefined) {
+    if (typeof per !== "number" || !Number.isInteger(per) || per < 0)
+      throw new Error(
+        `agents.max_per_project: must be a whole number, 0 or more (0: no limit) (got ${JSON.stringify(per)})`,
+      );
+    out.maxPerProject = per;
+  }
   const packs = raw.persona_packs;
   if (packs !== undefined && packs !== null) {
     if (!Array.isArray(packs))
@@ -3054,7 +3069,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
+        `${where}: unknown key (agents: takes max_concurrent, max_per_project, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

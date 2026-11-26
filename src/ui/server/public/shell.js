@@ -2633,6 +2633,9 @@
     "set.agents.max_concurrent": "Agents at once",
     "set.agents.max_concurrent.d":
       "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "Agents per project",
+    "set.agents.max_per_project.d":
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
