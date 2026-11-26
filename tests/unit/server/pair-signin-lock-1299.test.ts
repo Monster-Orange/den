@@ -18,7 +18,7 @@ import { handleGithubRoutes } from "../../../src/ui/server/github-routes.js";
 import { handlePairRoutes } from "../../../src/ui/server/pair-routes.js";
 import { PairRequests } from "../../../src/ui/server/pair-requests.js";
 import { mayWriteSessions } from "../../../src/ui/server/session-writes.js";
-import { SessionStoreUnreadable } from "../../../src/shared/web-session.js";
+import { SessionStoreUnreadable } from "../../../src/shared/web/web-session.js";
 
 function harness(signIn: () => { cookie: string; approveKey: string }) {
   const pairs = new PairRequests();

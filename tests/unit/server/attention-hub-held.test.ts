@@ -10,7 +10,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { NotificationStore } from "../../../src/shared/notifications";
 import { Attention } from "../../../src/ui/server/attention";
-import { HELD_CODES } from "../../../src/shared/hub-delivery-loop";
+import { HELD_CODES } from "../../../src/shared/hub/hub-delivery-loop";
 import { heldBell } from "../../../src/ui/server/hub-delivery-service";
 import type { AgentRecord } from "../../../src/shared/agents/records";
 

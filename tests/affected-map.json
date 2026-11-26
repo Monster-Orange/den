@@ -7,7 +7,7 @@
     "A rule may also name `importers` (helper files: the tests that import them, by jest import graph, run too) and `mentions` (the browser specs that name a changed catalog key or its English text run too).",
     "tests/fixtures/ci-replay-cases.json holds the real CI failures of the replay (scripts/ci-replay.mjs); tests/unit/test-infra/affected-tests.test.ts fails if this map stops catching one.",
     "Issue 708: a test that starts Den as a process (bin/den, tsx on an entry, startDenServer) runs when its subject changes: the src files named like it, the src files it names, and the globs `subjects` gives it ({test: [globs]}). `subjectless` lists the ones with none yet; it only shrinks, and the selector test fails on a new one.",
-    "subjects: web-log-1344.integration names src/shared/web-log-file.ts only (the cap on tests a change to src/ui/server/index.ts runs). A change to serverLog in index.ts relies on the full run (ci:full) to run it."
+    "subjects: web-log-1344.integration names src/shared/web/web-log-file.ts only (the cap on tests a change to src/ui/server/index.ts runs). A change to serverLog in index.ts relies on the full run (ci:full) to run it."
   ],
   "everything": [
     "src/ui/server/public/shell.js",
@@ -48,7 +48,7 @@
       "src/ui/server/public/shell.js"
     ],
     "tests/unit/server/web-log-1344.integration.test.ts": [
-      "src/shared/web-log-file.ts"
+      "src/shared/web/web-log-file.ts"
     ],
     "tests/unit/server/hub-groups-settings-750.integration.test.ts": [
       "src/shared/hub.ts",
@@ -316,7 +316,7 @@
       "src/ui/server/asset-stamp.ts"
     ],
     "tests/unit/server/agents-project-names.browser.test.ts": [
-      "src/shared/hub-project-names.ts",
+      "src/shared/hub/hub-project-names.ts",
       "src/ui/server/hub-names-routes.ts"
     ],
     "tests/unit/server/agents-project-view.browser.test.ts": [
@@ -473,14 +473,14 @@
       "src/ui/server/hub-connect.ts"
     ],
     "tests/unit/server/hub-editions-den-yml.integration.test.ts": [
-      "src/shared/hub-editions.ts"
+      "src/shared/hub/hub-editions.ts"
     ],
     "tests/unit/server/hub-tools-restart.integration.test.ts": [
-      "src/shared/hub-tools.ts",
+      "src/shared/hub/hub-tools.ts",
       "src/ui/server/hub-tools-service.ts"
     ],
     "tests/unit/server/hub-tools-slow-stop.integration.test.ts": [
-      "src/shared/hub-tools.ts",
+      "src/shared/hub/hub-tools.ts",
       "src/ui/server/hub-tools-service.ts"
     ],
     "tests/unit/server/i18n-layout.browser.test.ts": [
@@ -667,7 +667,7 @@
       "src/ui/server/edge-up-routes.ts"
     ],
     "tests/unit/server/settings-hub-github.browser.test.ts": [
-      "src/shared/hub-github.ts",
+      "src/shared/hub/hub-github.ts",
       "src/ui/server/hub-proxy-routes.ts"
     ],
     "tests/unit/server/settings-hub-link-all.browser.test.ts": [
@@ -675,7 +675,7 @@
     ],
     "tests/unit/server/settings-hub-project.browser.test.ts": [
       "src/ui/server/hub-project-routes.ts",
-      "src/shared/hub-project-link.ts"
+      "src/shared/hub/hub-project-link.ts"
     ],
     "tests/unit/server/settings-hub.browser.test.ts": [
       "src/ui/server/hub-connect.ts",
@@ -689,7 +689,7 @@
     ],
     "tests/unit/server/settings-project-name.browser.test.ts": [
       "src/ui/server/hub-names-routes.ts",
-      "src/shared/hub-project-names.ts"
+      "src/shared/hub/hub-project-names.ts"
     ],
     "tests/unit/server/settings-signin.browser.test.ts": [
       "src/ui/server/session-routes.ts",
@@ -850,6 +850,13 @@
     "tests/unit/server/agents-tab-strip.browser.test.ts": [
       "src/ui/server/public/agents.html",
       "src/ui/server/public/agents-page.js"
+    ],
+    "tests/unit/server/agent-scope-server.integration.test.ts": [
+      "src/shared/agents/scope-rule.ts",
+      "src/ui/server/request-guard.ts",
+      "src/ui/server/session-routes.ts",
+      "src/ui/server/workspace-routes.ts",
+      "src/ui/server/agent-routes.ts"
     ]
   },
   "subjectless": [],
@@ -2194,6 +2201,18 @@
       "why": "the UI catalogs"
     },
     {
+      "when": [
+        "src/ui/server/public/settings-registry.js",
+        "src/ui/server/public/settings-common.js",
+        "src/ui/server/public/settings-ui-*.js",
+        "src/ui/server/public/settings-rows-*.js",
+        "tests/fixtures/settings-registry-order.json"
+      ],
+      "run": ["tests/unit/server/settings-registry-order.test.ts"],
+      "importers": ["tests/unit/server/helpers/settings-sources.ts"],
+      "why": "the Settings rows: their pin and the tests that read them"
+    },
+    {
       "when": ["src/ui/server/public/**"],
       "run": [
         "tests/unit/agents/quarantined-launch.test.ts",
@@ -2372,7 +2391,8 @@
       "when": ["scripts/affected-tests.mjs"],
       "run": [
         "tests/unit/scripts/node22-tests.test.ts",
-        "tests/unit/test-infra/fast-checks.test.ts"
+        "tests/unit/test-infra/fast-checks.test.ts",
+        "tests/unit/test-infra/queue-merge-tests.test.ts"
       ],
       "why": "tests that run scripts/affected-tests.mjs"
     },
@@ -2532,6 +2552,11 @@
       "when": ["scripts/pw-server.mjs"],
       "run": ["tests/unit/scripts/pw-server-635.test.ts"],
       "why": "tests that run scripts/pw-server.mjs"
+    },
+    {
+      "when": ["scripts/queue-merge-tests.mjs"],
+      "run": ["tests/unit/test-infra/queue-merge-tests.test.ts"],
+      "why": "tests that run scripts/queue-merge-tests.mjs"
     },
     {
       "when": ["scripts/release-ancestry.sh"],
@@ -3162,6 +3187,17 @@
     },
     {
       "when": [
+        "src/shared/agents/scope-rule.ts",
+        "src/ui/server/agent-routes.ts",
+        "src/ui/server/request-guard.ts",
+        "src/ui/server/session-routes.ts",
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": ["tests/unit/server/agent-scope-server.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
         "src/shared/agents/runtime-search.ts",
         "src/ui/server/agent-routes.ts"
       ],
@@ -3284,7 +3320,7 @@
     },
     {
       "when": [
-        "src/shared/hub-project-names.ts",
+        "src/shared/hub/hub-project-names.ts",
         "src/ui/server/hub-names-routes.ts"
       ],
       "run": ["tests/unit/server/agents-project-names.browser.test.ts"],
@@ -3727,21 +3763,21 @@
     },
     {
       "when": [
-        "src/shared/hub-delivery-journal.ts",
-        "src/shared/hub-delivery-loop.ts",
-        "src/shared/hub-delivery.ts",
+        "src/shared/hub/hub-delivery-journal.ts",
+        "src/shared/hub/hub-delivery-loop.ts",
+        "src/shared/hub/hub-delivery.ts",
         "src/ui/server/hub-delivery-service.ts"
       ],
       "run": ["tests/unit/server/hub-delivery.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-editions.ts"],
+      "when": ["src/shared/hub/hub-editions.ts"],
       "run": ["tests/unit/server/hub-editions-den-yml.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-editions.ts"],
+      "when": ["src/shared/hub/hub-editions.ts"],
       "run": ["tests/unit/server/hub-editions.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3755,7 +3791,7 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-loop.ts"],
+      "when": ["src/shared/hub/hub-loop.ts"],
       "run": ["tests/unit/server/hub-loop-settings.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3765,17 +3801,26 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
+      "when": [
+        "src/shared/hub/hub-tools.ts",
+        "src/ui/server/hub-tools-service.ts"
+      ],
       "run": ["tests/unit/server/hub-tools-restart.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
+      "when": [
+        "src/shared/hub/hub-tools.ts",
+        "src/ui/server/hub-tools-service.ts"
+      ],
       "run": ["tests/unit/server/hub-tools-slow-stop.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-tools.ts", "src/ui/server/hub-tools-service.ts"],
+      "when": [
+        "src/shared/hub/hub-tools.ts",
+        "src/ui/server/hub-tools-service.ts"
+      ],
       "run": ["tests/unit/server/hub-tools.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3785,7 +3830,7 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/web-session.ts"],
+      "when": ["src/shared/web/web-session.ts"],
       "run": ["tests/unit/server/i18n-pages.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -4265,7 +4310,10 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/hub-github.ts", "src/ui/server/hub-proxy-routes.ts"],
+      "when": [
+        "src/shared/hub/hub-github.ts",
+        "src/ui/server/hub-proxy-routes.ts"
+      ],
       "run": ["tests/unit/server/settings-hub-github.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -4276,7 +4324,7 @@
     },
     {
       "when": [
-        "src/shared/hub-project-link.ts",
+        "src/shared/hub/hub-project-link.ts",
         "src/ui/server/hub-project-routes.ts"
       ],
       "run": ["tests/unit/server/settings-hub-project.browser.test.ts"],
@@ -4304,7 +4352,7 @@
     },
     {
       "when": [
-        "src/shared/hub-project-names.ts",
+        "src/shared/hub/hub-project-names.ts",
         "src/ui/server/hub-names-routes.ts"
       ],
       "run": ["tests/unit/server/settings-project-name.browser.test.ts"],
@@ -4529,7 +4577,7 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/shared/web-log-file.ts"],
+      "when": ["src/shared/web/web-log-file.ts"],
       "run": ["tests/unit/server/web-log-1344.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },

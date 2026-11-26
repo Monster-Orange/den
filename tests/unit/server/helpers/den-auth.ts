@@ -7,11 +7,11 @@
 import {
   cliAuthHeaders,
   readWebSecret,
-} from "../../../../src/shared/web-secret.js";
+} from "../../../../src/shared/web/web-secret.js";
 import {
   loginLink,
   mintLoginCode,
-} from "../../../../src/shared/web-session.js";
+} from "../../../../src/shared/web/web-session.js";
 
 /**
  * SEC-1b: a one-time sign-in link for the server whose state dir is

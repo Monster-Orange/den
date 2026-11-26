@@ -42,7 +42,7 @@ import {
   resetAddressCache,
   type AddressRouteDeps,
 } from "../../../src/ui/server/address-routes.js";
-import { denWebBase } from "../../../src/shared/web-dial.js";
+import { denWebBase } from "../../../src/shared/web/web-dial.js";
 
 const KEY = identityKey(Buffer.alloc(32, 1));
 

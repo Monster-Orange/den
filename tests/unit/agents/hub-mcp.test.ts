@@ -14,7 +14,7 @@ import type { AddressInfo } from "net";
 import * as path from "path";
 import { readRecord } from "../../../src/shared/agents/records.js";
 import { HUB_PROMPT_LINE, HUB_SERVER } from "../../../src/shared/hub.js";
-import { HUB_DELIVERY_LOOP } from "../../../src/shared/hub-loop.js";
+import { HUB_DELIVERY_LOOP } from "../../../src/shared/hub/hub-loop.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { hubLines } from "../../../src/ui/cli/doctor-command.js";
 import { handleAgentRoutes } from "../../../src/ui/server/agent-routes.js";

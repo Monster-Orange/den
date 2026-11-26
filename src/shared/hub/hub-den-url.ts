@@ -16,8 +16,8 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { auditConfig } from "./config-audit.js";
-import { writeFileAtomic } from "./atomic-write.js";
+import { auditConfig } from "../config-audit.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export const DEN_URL_TELL_FILE = "hub-den-url.json";
 
