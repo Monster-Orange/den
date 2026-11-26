@@ -3,9 +3,10 @@
 //
 // A stub in the bed's workspace linked to Hub's e2e project ends its turn,
 // then gets the stub's `/bg <secs>` verb (typed straight into the stub,
-// as 1407 does: the fixture person may not use Den's /say): it forks a detached shell under the stub's own process that
-// sources a file under shell-snapshots/ and sleeps, as Claude Code's
-// background shells look to Den.
+// as live check 1407 does: the fixture person may not use Den's /say).
+// It forks a detached shell under the stub's own process that sources a
+// file under shell-snapshots/ and sleeps, as Claude Code's background
+// shells look to Den.
 //
 // First, whether Den sees that job at all: a Restart after its turn, as
 // the Agents page asks it, must answer 409 job_running with the job's
