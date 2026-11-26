@@ -290,12 +290,6 @@ function keep<V>(m: Map<string, V>, k: string, v: V): void {
   if (m.size > MAX_FACTS) m.delete(m.keys().next().value as string);
 }
 
-/**
- * The facts from the agent's transcript. D76: never more than `maxBytes`
- * of it per read: the first read starts that far from its end, and a read
- * that falls further behind skips ahead to that far from the end. So a
- * 4 GB transcript costs what a 64 MB one does.
- */
 function factsBytes(c: { rest: string; facts: ParentFacts }): number {
   let n = 64 + 2 * c.rest.length;
   for (const k of c.facts.notified.keys()) n += 2 * k.length + 48;
@@ -310,6 +304,12 @@ function forget(file: string): void {
   parentCache.delete(file);
 }
 
+/**
+ * The facts from the agent's transcript. D76: never more than `maxBytes`
+ * of it per read: the first read starts that far from its end, and a read
+ * that falls further behind skips ahead to that far from the end. So a
+ * 4 GB transcript costs what a 64 MB one does.
+ */
 function parentFacts(
   file: string,
   maxBytes: number,

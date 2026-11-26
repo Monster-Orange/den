@@ -4718,10 +4718,10 @@ transcript's end, then only what is added, so a transcript of gigabytes
 costs what a 64 MB one does. A helper whose notification is further back
 gets its state from its own files.
 
-`facts_cache_mb` (0.4.91): what Den keeps from every agent's transcript
+`facts_cache_mb` (0.4.90): what Den keeps from every agent's transcript
 between reads, so that each look at the agents list reads only what was
 added since the last. When it's full, the agent looked at least recently
-is dropped first. Before 0.4.91 Den kept 64 agents' facts. With more
+is dropped first. Before 0.4.90 Den kept 64 agents' facts. With more
 agents than that, each look at the list read every transcript again, and
 Den's pages and tools stalled for seconds. The facts are small, about 0.1
 MB for a busy agent, so the default holds thousands of agents.
