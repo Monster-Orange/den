@@ -176,6 +176,25 @@ describe("issue 1724: the server remembers which view holds the size", () => {
     }
   });
 
+  it("the grace lowered while a session's holder is away: the view left still takes it, at the new grace", async () => {
+    await setGrace(60);
+    try {
+      const [info, i] = await session("lowered");
+      const a = await attach(info, "view-l-000001");
+      resize(a, 120, 40, true);
+      const b = await attach(info, "view-l-000002");
+      await setGrace(1);
+      a.close();
+      await b.until(() => leadFrames(b).some((f) => f.yours), 4000);
+      resize(b, 80, 30);
+      await settle();
+      expect(lastResize(i)).toEqual([80, 30]);
+      b.close();
+    } finally {
+      await setGrace(30);
+    }
+  });
+
   it("a bad grace is refused naming its key", async () => {
     const r = await fetch(`${s.base}/api/settings`, {
       method: "POST",

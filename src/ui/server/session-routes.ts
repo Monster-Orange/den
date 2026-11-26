@@ -1686,7 +1686,7 @@ export async function handleSessionUpgrade(
   const asView = asked && VIEW_ID.test(asked) ? asked : `~${++unnamedViews}`;
   const lead =
     LEADS.get(s.ref.id) ??
-    new SizeLead<string>({ graceMs: d.sizeClaimGraceMs() });
+    new SizeLead<string>({ graceMs: d.sizeClaimGraceMs });
   LEADS.set(s.ref.id, lead);
   for (const v of set)
     if (v !== ws && VIEW_IDS.get(v) === asView) {
@@ -1825,12 +1825,18 @@ export async function handleSessionUpgrade(
     if (viewing?.size) tellViewers(s.ref.id);
     else VIEWERS.delete(s.ref.id);
     if (!lead.held()) LEADS.delete(s.ref.id);
-    else if (held && lead.holds(view()))
-      setTimeout(() => {
-        if (lead.expire()) tellLead(s.ref.id);
-        if (!lead.held() && LEADS.get(s.ref.id) === lead)
-          LEADS.delete(s.ref.id);
-      }, d.sizeClaimGraceMs() + 50).unref?.();
+    else if (held && lead.holds(view())) {
+      const arm = (ms: number): void => {
+        setTimeout(() => {
+          const left = lead.left();
+          if (left !== null && left > 0) return arm(left + 50);
+          if (lead.expire()) tellLead(s.ref.id);
+          if (!lead.held() && LEADS.get(s.ref.id) === lead)
+            LEADS.delete(s.ref.id);
+        }, ms).unref?.();
+      };
+      arm((lead.left() ?? 0) + 50);
+    }
     // Detach only: the session keeps running in the host.
     att.detach();
     client.close();

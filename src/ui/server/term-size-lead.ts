@@ -10,11 +10,14 @@ export class SizeLead<V> {
   private goneAt: number | null = null;
   private readonly viewers = new Set<V>();
   private readonly seen = new Set<V>();
-  private readonly graceMs: number;
+  private readonly grace: () => number;
   private readonly now: () => number;
 
-  constructor(o: { graceMs?: number; now?: () => number } = {}) {
-    this.graceMs = Math.max(0, o.graceMs ?? 0);
+  constructor(
+    o: { graceMs?: number | (() => number); now?: () => number } = {},
+  ) {
+    const g = o.graceMs ?? 0;
+    this.grace = () => Math.max(0, typeof g === "function" ? g() : g);
     this.now = o.now ?? Date.now;
   }
 
@@ -45,7 +48,7 @@ export class SizeLead<V> {
   detach(v: V, keep = true): void {
     this.viewers.delete(v);
     if (this.lead !== v) return;
-    if (keep && this.graceMs > 0) {
+    if (keep && this.grace() > 0) {
       this.goneAt = this.now();
       return;
     }
@@ -53,10 +56,15 @@ export class SizeLead<V> {
   }
 
   expire(): boolean {
-    if (this.goneAt === null || this.now() - this.goneAt < this.graceMs)
-      return false;
+    const left = this.left();
+    if (left === null || left > 0) return false;
     this.handOff();
     return true;
+  }
+
+  left(): number | null {
+    if (this.goneAt === null) return null;
+    return Math.max(0, this.grace() - (this.now() - this.goneAt));
   }
 
   resize(v: V, size: TermSize, claim = false): TermSize | null {

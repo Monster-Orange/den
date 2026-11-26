@@ -78,6 +78,23 @@ describe("issue 1724: the view that holds the size keeps it through a blip", () 
     expect(l.resize("C", T)).toBeNull();
   });
 
+  it("the grace is read when it is used: lowered while the holder is away, the view left takes it at the new grace, and left() says when", () => {
+    let t = 0;
+    let grace = 60_000;
+    const l = new SizeLead<string>({ graceMs: () => grace, now: () => t });
+    l.attach("A");
+    l.attach("B");
+    l.resize("A", S, true);
+    expect(l.left()).toBeNull();
+    l.detach("A");
+    grace = 30_000;
+    t = 10_000;
+    expect(l.left()).toBe(20_000);
+    t = 30_000;
+    expect(l.expire()).toBe(true);
+    expect(l.leader()).toBe("B");
+  });
+
   it("a pane closed on purpose hands it on at once, grace or not", () => {
     const { l } = lead(30_000);
     l.attach("A");
