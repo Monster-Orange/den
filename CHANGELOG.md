@@ -8,6 +8,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- When a request is slow, the server's log now says which route, who asked and how long it took, and a blocked server logs how long it was stuck. Both thresholds are in Settings › Server (`server_log.slow_request_ms`, 3 s, and `server_log.event_loop_lag_ms`, 1 s). The lines never include the address, query, headers or body, and each is written at most once a minute.
+
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
 
 ### Fixed
