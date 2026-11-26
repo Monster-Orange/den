@@ -64,9 +64,11 @@ A new key on the Settings page has three touch points beyond the page:
 
 1. The server must accept it: `tests/unit/server/settings-inventory.test.ts`
    keeps its own list of the keys `POST /api/settings` accepts. Add the key.
-2. The row order is pinned in `tests/fixtures/settings-registry-order.json`.
-   Write it with `node scripts/settings-pin.mjs --write` in the same PR,
-   never by hand.
+   A key inside a block (such as `agents_limits.max_per_project`) goes under
+   that block in its `BLOCKS` map, not in the top list.
+2. The rows, their categories, the category order and the module's exports
+   are pinned in `tests/fixtures/settings-registry-order.json`. Write it with
+   `node scripts/settings-pin.mjs --write` in the same PR, never by hand.
 3. Run `node scripts/fast-checks.mjs` before the push.
 
 Two PRs that each pass alone can still fail together, when one adds a row
