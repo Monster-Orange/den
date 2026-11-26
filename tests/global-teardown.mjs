@@ -14,7 +14,7 @@ import homeStraysModule from "./home-strays.cjs";
 import tmpLeaksModule from "./tmp-leaks.cjs";
 
 const { homeStrays } = homeStraysModule;
-const { leaksIn } = tmpLeaksModule;
+const { leaksIn, judge } = tmpLeaksModule;
 import { reap } from "./child-reaper.mjs";
 
 export default function globalTeardown() {
@@ -86,13 +86,19 @@ export default function globalTeardown() {
     process.stderr.write(msg + "\n");
     throw new Error(msg);
   }
-  const known = tmpLeakBaseline();
-  const newLeaks = tmp.leaks.filter((l) => !known.has(l.file));
-  if (newLeaks.length) {
+  const { over, under } = judge(tmp.leaks, tmpLeakBaseline());
+  if (under.length)
+    process.stderr.write(
+      [
+        `[jest] ${under.length} test file(s) left fewer den-* folders than tests/fixtures/tmp-leak-baseline.json allows: lower their counts (0 removes the line).`,
+        ...under.map((u) => `  ${u.file}: ${u.allowed} -> ${u.now}`),
+      ].join("\n") + "\n",
+    );
+  if (over.length) {
     const msg = [
-      `[jest] ${newLeaks.length} test file(s) left den-* folders in the temp folder (issue 1830): remove what a test makes in its afterAll, or make it in beforeAll. Removed now:`,
-      ...newLeaks.flatMap((l) => [
-        `  ${l.file}`,
+      `[jest] ${over.length} test file(s) left den-* folders in the temp folder (issue 1830): remove what a test makes in its afterAll, or make it in beforeAll. Removed now:`,
+      ...over.flatMap((l) => [
+        `  ${l.file} (${l.dirs.length}; the baseline allows ${l.allowed})`,
         ...l.dirs.map((d) => `    ${d}`),
       ]),
     ].join("\n");
@@ -116,8 +122,8 @@ function tmpLeakBaseline() {
     "tmp-leak-baseline.json",
   );
   try {
-    return new Set(JSON.parse(fs.readFileSync(file, "utf-8")));
+    return JSON.parse(fs.readFileSync(file, "utf-8"));
   } catch {
-    return new Set();
+    return {};
   }
 }

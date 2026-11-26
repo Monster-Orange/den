@@ -107,7 +107,25 @@ function leaksIn(globalDir, fsObj = fs) {
   return { leaks, own: [...own].sort() };
 }
 
+function judge(leaks, baseline) {
+  const allowed = (file) =>
+    Number.isInteger(baseline[file]) ? baseline[file] : 0;
+  return {
+    over: leaks
+      .filter((l) => l.dirs.length > allowed(l.file))
+      .map((l) => ({ ...l, allowed: allowed(l.file) })),
+    under: leaks
+      .filter((l) => l.dirs.length < allowed(l.file))
+      .map((l) => ({
+        file: l.file,
+        allowed: allowed(l.file),
+        now: l.dirs.length,
+      })),
+  };
+}
+
 module.exports = {
+  judge,
   tempRoots,
   isTempDen,
   listFile,
