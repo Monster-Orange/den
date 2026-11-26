@@ -72,8 +72,7 @@ async function api(r: Rig) {
   };
 }
 
-/** Two running agents on an older Den's tools; planner is the bed's own. */
-async function twoStale() {
+async function twoAgentsOnOlderTools() {
   const r = await rig();
   for (const id of ["planner", "reviewer"]) {
     const code = await cmdAgents(
@@ -189,7 +188,7 @@ describe("the live run a page shows while a bulk restart goes", () => {
 
 describe("pressing Restart all again while a wave runs adds nothing", () => {
   it("a second and a third press queue no agent twice", async () => {
-    const r = await twoStale();
+    const r = await twoAgentsOnOlderTools();
     for (const id of ["planner", "reviewer"])
       midTurn(r, readRecord(r.stateDir, id)!.resumeToken!);
     const call = await api(r);
