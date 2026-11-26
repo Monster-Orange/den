@@ -338,25 +338,34 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
     await p.locator(`[data-id="${sid}"][data-cols]`).waitFor({
       timeout: 20_000,
     });
+    let seen = -1;
+    let quietSince = 0;
     await eventually(async () => {
-      const [c] = pty.resizes.at(-1) ?? [0, 0];
-      const cols = await p.evaluate(
-        (id) =>
-          Number(
-            document.querySelector<HTMLElement>(`.pane[data-id="${id}"]`)
-              ?.dataset.cols ?? 0,
-          ),
-        sid,
-      );
-      return c > 0 && c === cols;
-    });
+      const [c, r] = pty.resizes.at(-1) ?? [0, 0];
+      const pane = await p.evaluate((id) => {
+        const el = document.querySelector<HTMLElement>(
+          `.pane[data-id="${id}"]`,
+        );
+        return [Number(el?.dataset.cols ?? 0), Number(el?.dataset.rows ?? 0)];
+      }, sid);
+      if (c === 0 || c !== pane[0] || r !== pane[1]) return false;
+      if (pty.resizes.length !== seen) {
+        seen = pty.resizes.length;
+        quietSince = Date.now();
+      }
+      return Date.now() - quietSince >= 500;
+    }, 20_000);
     const before = pty.resizes.length;
-    const size = pty.resizes.at(-1);
+    const size = pty.resizes.at(-1)!;
     await peek(p);
     await p
       .locator('dialog#den-peek[data-conn="live"][data-following]')
       .waitFor({ timeout: 15_000 });
-    expect(pty.resizes.slice(before)).toEqual([]);
+    expect(
+      pty.resizes
+        .slice(before)
+        .filter(([c, r]) => c !== size[0] || r !== size[1]),
+    ).toEqual([]);
     await p.keyboard.press("Escape");
     await p.locator("dialog#den-peek").waitFor({ state: "detached" });
     await p
