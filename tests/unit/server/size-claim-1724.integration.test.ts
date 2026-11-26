@@ -70,7 +70,7 @@ const leadFrames = (w: TestWs) =>
     held: boolean;
   }[];
 
-async function setGrace(seconds: number): Promise<void> {
+async function setSessions(sessions: Record<string, number>): Promise<void> {
   const r = await fetch(`${s.base}/api/settings`, {
     method: "POST",
     headers: {
@@ -79,12 +79,14 @@ async function setGrace(seconds: number): Promise<void> {
       cookie,
       "x-den-csrf": csrf,
     },
-    body: JSON.stringify({
-      sessions: { size_claim_grace_seconds: seconds },
-    }),
+    body: JSON.stringify({ sessions }),
   });
   if (r.status !== 200) throw new Error(`settings: ${r.status}`);
 }
+const setGrace = (seconds: number) =>
+  setSessions({ size_claim_grace_seconds: seconds });
+const setLeave = (seconds: number) =>
+  setSessions({ size_leave_grace_seconds: seconds });
 
 describe("issue 1724: the server remembers which view holds the size", () => {
   it("a page with no view id (an older page) has no hold to keep: the first leads, another's refit is ignored, a claim moves it", async () => {
@@ -192,6 +194,37 @@ describe("issue 1724: the server remembers which view holds the size", () => {
       b.close();
     } finally {
       await setGrace(30);
+    }
+  });
+
+  it("a page going away (1001) hands the size on after the short hold; coming back within the grace takes it back, unless the other view typed", async () => {
+    await setLeave(1);
+    try {
+      const [info, i] = await session("leave");
+      const a = await attach(info, "view-v-000001");
+      resize(a, 120, 40, true);
+      const b = await attach(info, "view-v-000002");
+      a.close(1001);
+      await b.until(() => leadFrames(b).some((f) => f.yours), 4000);
+      resize(b, 80, 30);
+      await settle();
+      expect(lastResize(i)).toEqual([80, 30]);
+      const a2 = await attach(info, "view-v-000001");
+      expect(sessionFrame(a2)).toMatchObject({ lead: true });
+      await b.until(() => leadFrames(b).at(-1)?.yours === false, 2000);
+      resize(a2, 120, 40);
+      await settle();
+      expect(lastResize(i)).toEqual([120, 40]);
+      a2.close(1001);
+      await b.until(() => leadFrames(b).at(-1)?.yours === true, 4000);
+      b.sendText(JSON.stringify({ type: "input", data: "x" }));
+      await settle();
+      const a3 = await attach(info, "view-v-000001");
+      expect(sessionFrame(a3)).toMatchObject({ lead: false, held: true });
+      a3.close();
+      b.close();
+    } finally {
+      await setLeave(3);
     }
   });
 

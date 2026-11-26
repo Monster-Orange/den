@@ -220,6 +220,7 @@ export interface SessionRouteDeps {
   /** sessions.close_grace_seconds: Close's wait between HUP and KILL. */
   closeGrace?: () => number;
   sizeClaimGraceMs?: () => number;
+  sizeLeaveGraceMs?: () => number;
   /** D65 v2: workspace `ws`'s repo names (null: it can't be read). */
   repoNames?: (ws: string) => ReadonlySet<string> | null;
   now?: () => Date;
@@ -257,6 +258,7 @@ interface Resolved {
   uploadSettings: () => UploadSettings;
   closeGrace: () => number;
   sizeClaimGraceMs: () => number;
+  sizeLeaveGraceMs: () => number;
   repoNames: (ws: string) => ReadonlySet<string> | null;
   now: () => Date;
   listWaits: () => ListWaits;
@@ -325,6 +327,9 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     sizeClaimGraceMs:
       d.sizeClaimGraceMs ??
       (() => readSessionsConfig().sizeClaimGraceSeconds * 1000),
+    sizeLeaveGraceMs:
+      d.sizeLeaveGraceMs ??
+      (() => readSessionsConfig().sizeLeaveGraceSeconds * 1000),
     uploadSettings:
       d.uploadSettings ??
       (() => readAgentsConfig().uploads ?? { ...UPLOAD_DEFAULTS }),
@@ -381,6 +386,7 @@ const LEADS = new Map<string, SizeLead<string>>();
 const VIEW_IDS = new WeakMap<object, string>();
 const VIEW_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const PANE_CLOSED = 4000;
+const GOING_AWAY = 1001;
 let unnamedViews = 0;
 
 function tellLead(id: string): void {
@@ -1686,7 +1692,10 @@ export async function handleSessionUpgrade(
   const asView = asked && VIEW_ID.test(asked) ? asked : `~${++unnamedViews}`;
   const lead =
     LEADS.get(s.ref.id) ??
-    new SizeLead<string>({ graceMs: d.sizeClaimGraceMs });
+    new SizeLead<string>({
+      graceMs: d.sizeClaimGraceMs,
+      leaveMs: d.sizeLeaveGraceMs,
+    });
   LEADS.set(s.ref.id, lead);
   for (const v of set)
     if (v !== ws && VIEW_IDS.get(v) === asView) {
@@ -1696,6 +1705,7 @@ export async function handleSessionUpgrade(
     }
   VIEW_IDS.set(ws, asView);
   const view = () => VIEW_IDS.get(ws) ?? asView;
+  const ledBefore = lead.leader();
   lead.attach(asView);
   const relead = (f: () => void) => {
     const was = lead.leader();
@@ -1722,6 +1732,7 @@ export async function handleSessionUpgrade(
   );
   // The others hear there's one more (it follows: D54).
   tellViewers(s.ref.id);
+  if (lead.leader() !== ledBefore) tellLead(s.ref.id);
   let exited = s.exited === true;
   const att = client.attach(s.ref.id, {
     onData: (data) => ws.send(data),
@@ -1821,7 +1832,9 @@ export async function handleSessionUpgrade(
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
     const held = lead.holds(view());
-    relead(() => lead.detach(view(), code !== PANE_CLOSED));
+    relead(() =>
+      lead.detach(view(), code !== PANE_CLOSED, code === GOING_AWAY),
+    );
     if (viewing?.size) tellViewers(s.ref.id);
     else VIEWERS.delete(s.ref.id);
     if (!lead.held()) LEADS.delete(s.ref.id);

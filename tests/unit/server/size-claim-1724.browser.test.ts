@@ -11,7 +11,7 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
-import { signIn } from "./helpers/signed-in.js";
+import { signIn, signedIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
@@ -370,7 +370,170 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
     await shut(laptop);
   }, 120_000);
 
+  describe("when the window that holds the size goes", () => {
+    async function holding(): Promise<{
+      sid: string;
+      pty: ScriptedPty;
+      ipad: View;
+      line: Line;
+      laptop: View;
+      ipadSize: [number, number];
+      laptopTakes: (ms?: number) => Promise<[number, number]>;
+    }> {
+      const [sid, pty] = await session(`gone-${++goneN}`);
+      const [ipad, line] = await openCuttable(sid, IPAD, true);
+      const ipadSize = await termSize(ipad);
+      await eventually(() => same(last(pty), ipadSize));
+      const laptop = await openByUrl(sid, LAPTOP);
+      await eventually(async () => (await following(laptop, sid)) === 1);
+      return {
+        sid,
+        pty,
+        ipad,
+        line,
+        laptop,
+        ipadSize,
+        laptopTakes: async (ms = 15_000) => {
+          await eventually(
+            async () =>
+              (await following(laptop, sid)) === 0 &&
+              !same(last(pty), ipadSize),
+            ms,
+          );
+          const own = await termSize(laptop);
+          await eventually(() => same(last(pty), own));
+          return own;
+        },
+      };
+    }
+
+    it("(a) WebKit at an iPad's size: its connection drops and stays away past the short hold; the laptop never takes the size, and the iPad keeps it when it comes back", async () => {
+      if (skip()) return;
+      const h = await holding();
+      step = "ipad drops";
+      await h.line.cut();
+      await settle(5_000);
+      expect(last(h.pty)).toEqual(h.ipadSize);
+      expect(await following(h.laptop, h.sid)).toBe(1);
+      step = "ipad back";
+      h.line.letBack();
+      await eventually(async () => (await following(h.ipad, h.sid)) === 0);
+      await settle();
+      expect(last(h.pty)).toEqual(h.ipadSize);
+      expect(await following(h.laptop, h.sid)).toBe(1);
+      await shut(h.ipad);
+      await shut(h.laptop);
+    }, 120_000);
+
+    it("(b) the iPad's page closes: the laptop takes the size after the short hold, not before", async () => {
+      if (skip()) return;
+      const h = await holding();
+      step = "ipad closes";
+      const at = Date.now();
+      leaving.add(h.ipad.p);
+      await h.ipad.p.close();
+      await h.laptopTakes();
+      expect(Date.now() - at).toBeGreaterThanOrEqual(2_500);
+      await shut(h.ipad);
+      await shut(h.laptop);
+    }, 120_000);
+
+    it("(c) the iPad's connection drops and doesn't come back: the laptop takes the size once the hold ends", async () => {
+      if (skip()) return;
+      await setGrace(2);
+      try {
+        const h = await holding();
+        step = "ipad gone";
+        await h.line.cut();
+        await h.laptopTakes();
+        await shut(h.ipad);
+        await shut(h.laptop);
+      } finally {
+        await setGrace(30);
+      }
+    }, 120_000);
+
+    for (const typed of [false, true])
+      it(`(${typed ? "e" : "d"}) the iPad's page goes away and the laptop takes the size; the iPad comes back within the hold and ${typed ? "the laptop, typed in meanwhile, keeps it" : "takes it back"}`, async () => {
+        if (skip()) return;
+        const h = await holding();
+        step = "ipad leaves";
+        leaving.add(h.ipad.p);
+        await h.ipad.p.goto("about:blank");
+        const laptopSize = await h.laptopTakes();
+        if (typed) await type(h.laptop, "x");
+        await settle(5_000);
+        step = "ipad returns";
+        await h.ipad.p.goBack();
+        await terms(h.ipad);
+        leaving.delete(h.ipad.p);
+        const want = typed ? laptopSize : h.ipadSize;
+        await eventually(() => same(last(h.pty), want));
+        await settle();
+        expect(last(h.pty)).toEqual(want);
+        expect(await following(typed ? h.ipad : h.laptop, h.sid)).toBe(1);
+        await shut(h.ipad);
+        await shut(h.laptop);
+      }, 120_000);
+  });
+
   it("raised no page errors", () => {
     expect(errors).toEqual([]);
   });
 });
+
+let goneN = 0;
+const same = (a: readonly number[], b: readonly number[]) =>
+  a[0] === b[0] && a[1] === b[1];
+
+interface Line {
+  cut(): Promise<void>;
+  letBack(): void;
+}
+
+async function openCuttable(
+  sid: string,
+  size: { width: number; height: number },
+  touch = false,
+): Promise<[View, Line]> {
+  const v = await browserWindow(size, touch);
+  let hold = false;
+  const servers: { close(o?: { code?: number }): Promise<void> }[] = [];
+  const held: (() => void)[] = [];
+  await v.ctx.routeWebSocket(/\/api\/sessions\/[^/]+\/io/, (ws) => {
+    const go = () => void servers.push(ws.connectToServer());
+    if (hold) held.push(go);
+    else go();
+  });
+  await v.p.goto(`${s!.base}/terminals?open=${sid}`);
+  await terms(v);
+  return [
+    v,
+    {
+      cut: async () => {
+        hold = true;
+        for (const sv of servers.splice(0))
+          await sv.close({ code: 1000 }).catch(() => undefined);
+      },
+      letBack: () => {
+        hold = false;
+        for (const go of held.splice(0)) go();
+      },
+    },
+  ];
+}
+
+async function setGrace(seconds: number): Promise<void> {
+  const { csrf, cookie } = await signedIn(s!.stateDir, s!.base);
+  const r = await fetch(`${s!.base}/api/settings`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      origin: s!.base,
+      cookie,
+      "x-den-csrf": csrf,
+    },
+    body: JSON.stringify({ sessions: { size_claim_grace_seconds: seconds } }),
+  });
+  if (r.status !== 200) throw new Error(`settings: ${r.status}`);
+}

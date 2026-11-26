@@ -95,6 +95,86 @@ describe("issue 1724: the view that holds the size keeps it through a blip", () 
     expect(l.leader()).toBe("B");
   });
 
+  function leaving(leaveMs = 3_000, graceMs = 30_000) {
+    let t = 0;
+    const l = new SizeLead<string>({ graceMs, leaveMs, now: () => t });
+    l.attach("A");
+    l.attach("B");
+    l.resize("A", S, true);
+    return { l, at: (ms: number) => (t = ms) };
+  }
+
+  it("a page going away (a closed tab or a reload) holds only for the short hold; a reload back within it still holds the size", () => {
+    const { l, at } = leaving();
+    l.detach("A", true, true);
+    at(2_000);
+    expect(l.left()).toBe(1_000);
+    expect(l.resize("B", T)).toBeNull();
+    l.attach("A");
+    expect(l.leader()).toBe("A");
+    l.detach("A", true, true);
+    at(5_001);
+    expect(l.expire()).toBe(true);
+    expect(l.leader()).toBe("B");
+    expect(l.resize("B", T)).toEqual(T);
+  });
+
+  it("a page gone past the short hold that comes back within the grace takes the size back, unless a person claimed it meanwhile", () => {
+    const back = leaving();
+    back.l.detach("A", true, true);
+    back.at(3_000);
+    expect(back.l.expire()).toBe(true);
+    expect(back.l.resize("B", T)).toEqual(T);
+    back.at(10_000);
+    back.l.attach("A");
+    expect(back.l.leader()).toBe("A");
+
+    const typed = leaving();
+    typed.l.detach("A", true, true);
+    typed.at(3_000);
+    typed.l.expire();
+    typed.l.input("B");
+    typed.at(10_000);
+    typed.l.attach("A");
+    expect(typed.l.leader()).toBe("B");
+
+    const late = leaving();
+    late.l.detach("A", true, true);
+    late.at(3_000);
+    late.l.expire();
+    late.at(30_001);
+    late.l.attach("A");
+    expect(late.l.leader()).toBe("B");
+  });
+
+  it("the short hold is read when it is used: lowered while a page that went away is gone, the view left takes it at the new hold", () => {
+    let t = 0;
+    let leave = 10_000;
+    const l = new SizeLead<string>({
+      graceMs: 30_000,
+      leaveMs: () => leave,
+      now: () => t,
+    });
+    l.attach("A");
+    l.attach("B");
+    l.resize("A", S, true);
+    l.detach("A", true, true);
+    leave = 2_000;
+    t = 1_000;
+    expect(l.left()).toBe(1_000);
+    t = 2_000;
+    expect(l.expire()).toBe(true);
+    expect(l.leader()).toBe("B");
+  });
+
+  it("a drop that isn't a page going away still holds for the whole grace", () => {
+    const { l, at } = leaving();
+    l.detach("A");
+    at(3_000);
+    expect(l.expire()).toBe(false);
+    expect(l.leader()).toBe("A");
+  });
+
   it("a pane closed on purpose hands it on at once, grace or not", () => {
     const { l } = lead(30_000);
     l.attach("A");
