@@ -2436,6 +2436,7 @@
       ],
       "run": [
         "tests/unit/test-infra/gate-1217-clauses.test.ts",
+        "tests/unit/test-infra/gate-1380-clauses.test.ts",
         "tests/unit/test-infra/gate-1381.test.ts",
         "tests/unit/test-infra/gate-1407-clauses.test.ts",
         "tests/unit/test-infra/gate-142-runner.test.ts",
@@ -2912,6 +2913,15 @@
         "tests/unit/test-infra/gate-1217-clauses.test.ts"
       ],
       "why": "tests that load gate/1217.mjs"
+    },
+    {
+      "when": [
+        "gate/1380.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/gate-1380-clauses.test.ts"
+      ],
+      "why": "tests that load gate/1380.mjs"
     },
     {
       "when": [
@@ -4880,8 +4890,12 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/workspace-routes.ts"],
-      "run": ["tests/unit/server/project-agent-cap-1634.integration.test.ts"],
+      "when": [
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/project-agent-cap-1634.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5517,7 +5531,9 @@
         "src/ui/server/public/agents-page.js",
         "src/ui/server/term-size-lead.ts"
       ],
-      "run": ["tests/unit/server/size-claim-1724.browser.test.ts"],
+      "run": [
+        "tests/unit/server/size-claim-1724.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5525,7 +5541,9 @@
         "src/ui/server/session-routes.ts",
         "src/ui/server/term-size-lead.ts"
       ],
-      "run": ["tests/unit/server/size-claim-1724.integration.test.ts"],
+      "run": [
+        "tests/unit/server/size-claim-1724.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
