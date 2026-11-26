@@ -2361,7 +2361,8 @@
       "when": ["scripts/affected-tests.mjs"],
       "run": [
         "tests/unit/scripts/node22-tests.test.ts",
-        "tests/unit/test-infra/fast-checks.test.ts"
+        "tests/unit/test-infra/fast-checks.test.ts",
+        "tests/unit/test-infra/queue-merge-tests.test.ts"
       ],
       "why": "tests that run scripts/affected-tests.mjs"
     },
@@ -2512,6 +2513,11 @@
       "when": ["scripts/pw-server.mjs"],
       "run": ["tests/unit/scripts/pw-server-635.test.ts"],
       "why": "tests that run scripts/pw-server.mjs"
+    },
+    {
+      "when": ["scripts/queue-merge-tests.mjs"],
+      "run": ["tests/unit/test-infra/queue-merge-tests.test.ts"],
+      "why": "tests that run scripts/queue-merge-tests.mjs"
     },
     {
       "when": ["scripts/release-ancestry.sh"],
