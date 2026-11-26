@@ -113,7 +113,6 @@ if (!q.has("bare")) {
     document.documentElement.lang = "ja";
     document.documentElement.dataset.mode = "dark";
   }
-  // ?long64: the current project's name is 64 characters (issue 898).
   if (q.has("long64")) {
     projects.splice(0, 1, {
       label: "Gate 898 a project whose name runs well past the row on any iPad",
@@ -1731,9 +1730,6 @@ for (const engine of ["chromium", "webkit"]) {
       }
     });
 
-    // Issue 898: a menu is as wide as its longest name only up to a cap
-    // (a sister app's menu: min(320px, 100vw - 16px)); past it the name is cut
-    // with an ellipsis and the ✓ stays at the end of the line.
     it("a 64-character name is cut with an ellipsis in a capped menu, ✓ on its line (issue 898)", async () => {
       const b = browsers[engine];
       if (!b) return;
@@ -1779,8 +1775,6 @@ for (const engine of ["chromium", "webkit"]) {
       }
     });
 
-    // Issue 898: the cap is a picker's (a crumb's menu, .den-pick). A
-    // pop-over with a width of its own (a host's 420px panel) keeps it.
     it("a pop-over with its own width keeps it; only a picker's menu is capped (issue 898)", async () => {
       const b = browsers[engine];
       if (!b) return;
@@ -1800,9 +1794,6 @@ for (const engine of ["chromium", "webkit"]) {
       await t.context().close();
     });
 
-    // Issue 898: on a short window (an iPad with its keyboard up) a menu
-    // is at most 70% of the window's height and scrolls inside, as
-    // a sister app's menu does.
     it("on a short window a menu is at most 70% of its height and scrolls inside (issue 898)", async () => {
       const b = browsers[engine];
       if (!b) return;

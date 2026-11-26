@@ -337,8 +337,6 @@ describe.each([
           expect(part.h).toBeLessThan(row.line * 1.5);
         // The mark has room at the right of the label.
         expect(row.labelRight).toBeLessThan(row.rowRight - 8);
-        // Issue 898: the menu stops at 320px; a longer name ends in an
-        // ellipsis instead of widening it.
         if (name === LONG && zoom === 1) {
           const cap = await p.$eval(
             '[role="menuitemradio"][aria-checked="true"]',
