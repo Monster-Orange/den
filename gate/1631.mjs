@@ -1,8 +1,3 @@
-/* eslint-env browser */
-// Live check for #1631: Den's agents get the pstack skill pack by default, and one agent's off switch takes it away.
-// One bed stub agent, made as gate-1631-packs and removed in teardown, with agents.gate-1631-packs.skill_packs set
-// through the bed's CLI and removed in teardown. What an agent was given is read from the settings file Den wrote
-// for its start (an Edit deny on the pack folder it passed), and the folder's own skills from the state folder.
 export const issue = 1631;
 export const clauses = [
   "a fresh Claude Code agent starts with Den's pinned pstack folder, and that folder holds pstack's skills",
@@ -28,7 +23,6 @@ const cut = (s, n = 200) =>
     .trim()
     .slice(0, n);
 
-/** The pack folders Den passed this agent's start: its settings file's Edit denies on a skill-packs folder. */
 function packDirs(ctx) {
   const s = parse(ctx.readBed(`state:agent-files/${ID}/settings.json`));
   if (!s) return null;
@@ -43,7 +37,6 @@ function packDirs(ctx) {
     .filter(Boolean);
 }
 
-/** The skills in the built folder Den shares between agents, read from the state folder. */
 function builtSkills(ctx, dir) {
   const rel = /\/(skill-packs\/[^/]+@[^/]+\/[^/]+)$/.exec(dir)?.[1];
   return rel ? (ctx.listBed(`state:${rel}/skills`) ?? []) : [];
@@ -86,7 +79,6 @@ export async function run(ctx, state) {
   return r;
 }
 
-/** The pstack row in Settings: its pin link (the commit) and its licence link, from the bed's own data. */
 async function settingsRow(ctx) {
   const out = {};
   const data = await ctx.api("/api/settings");
@@ -95,18 +87,29 @@ async function settingsRow(ctx) {
   if (!pack) return out;
   const p = ctx.page;
   await ctx.goto(p, "/settings?category=agents&q=pstack");
-  const tree = p.locator(`a[href$="/tree/${pack.commit}/${pack.path}"]`);
-  const licence = p.locator(
-    `a[href$="/blob/${pack.commit}/${pack.path}/LICENSE"]`,
+  const tree = p.getByRole("link", {
+    name: pack.commit.slice(0, 7),
+    exact: true,
+  });
+  const licenceWord = await p.evaluate(() =>
+    globalThis.denShell.t("set.ui.skillPackLicence"),
   );
-  await tree
-    .first()
-    .waitFor({ timeout: 20000 })
-    .catch(() => undefined);
-  out.treeText = (await tree.count())
-    ? cut(await tree.first().textContent())
-    : null;
-  out.licence = await licence.count();
+  const licence = p.getByRole("link", { name: licenceWord, exact: true });
+  await tree.waitFor({ timeout: 20000 }).catch(() => undefined);
+  out.treeText =
+    (await tree.count()) === 1 &&
+    (await tree.getAttribute("href"))?.endsWith(
+      `/tree/${pack.commit}/${pack.path}`,
+    )
+      ? cut(await tree.textContent())
+      : null;
+  out.licence =
+    (await licence.count()) === 1 &&
+    (await licence.getAttribute("href"))?.endsWith(
+      `/blob/${pack.commit}/${pack.path}/LICENSE`,
+    )
+      ? 1
+      : 0;
   out.license = pack.license;
   out.skillBoxes = await p.locator("input[data-skill]").count();
   out.skills = pack.skills?.length ?? 0;
@@ -124,10 +127,7 @@ export async function teardown(ctx) {
 }
 
 export function expect(cells) {
-  const main =
-    cells.find((c) => c.cell?.browser === "chromium")?.result ??
-    cells[0]?.result ??
-    {};
+  const main = cells.find((c) => c.cell?.browser === "chromium")?.result ?? {};
   const pages = cells.map((c) => ({
     cell: c.cell,
     page: c.result?.page ?? {},
