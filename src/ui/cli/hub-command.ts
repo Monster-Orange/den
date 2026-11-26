@@ -47,8 +47,14 @@ import {
 } from "../../shared/hub-files.js";
 
 export const HUB_HELP = {
-  usage: "hub <put|pull|push|link> …",
+  usage: "hub <put|pull|push|link|groups> …",
   lines: [
+    "{cli} hub groups [--fresh]",
+    "    Your Hub's groups as the Agents page reads them (hub.groups: auto,",
+    "    on or off), as one line of JSON: state, and each group with its",
+    "    lead and members, this Den's own marked here. --fresh reads Hub",
+    "    now. Off never asks Hub.",
+    "",
     "{cli} hub link -p <project> [<hub project> | --none] [--json]",
     "    The Hub project this project works on: Hub files its agents' work",
     "    there. With no Hub project named, shows the link and Hub's",
@@ -93,6 +99,10 @@ export interface HubCommandDeps {
   parallel?: number;
   /** Whose server answers at the base (den#182). Default identifyServer. */
   identify?: (base: string) => Promise<ServerIdentity>;
+  /** Issue 750: the groups read's deps (default: this install's). */
+  groupsDeps?: () => Promise<
+    import("../../shared/hub-groups-view.js").HubGroupsDeps
+  >;
 }
 
 function identifyBase(base: string): Promise<ServerIdentity> {
@@ -154,6 +164,15 @@ export async function cmdHub(
   if (args[0] === "link") {
     const { cmdHubLink } = await import("./hub-link-command.js");
     return cmdHubLink(args.slice(1), { env, out, err });
+  }
+  // Issue 750: the groups read, as the Agents page reads it.
+  if (args[0] === "groups") {
+    const rest = args.slice(1);
+    if (rest.some((a) => a !== "--fresh")) return usage();
+    const r = await import("../../shared/hub-groups-view.js");
+    const d = await (deps.groupsDeps ?? r.defaultHubGroupsDeps)();
+    out(JSON.stringify(await r.groupsView(d, { fresh: rest.length > 0 })));
+    return 0;
   }
   if (args[0] === "put" || args[0] === "pull")
     return cmdHubFiles(args[0], args.slice(1), deps, { out, err, usage });

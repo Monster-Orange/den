@@ -7,6 +7,12 @@
  * person's own Allow, and no setting lowers it. Every other held write is
  * routine: it follows the policy, one of
  *
+ * Issue 1391's rule (Den Builder): a check that says personOnly ("this one
+ * is the person's") always asks, on every install mode, kept or not, and
+ * whatever the policy. A check that should be routine on a personal
+ * install stops saying personOnly there itself (newAgentSandboxOff,
+ * settingKind); the ask path never drops it (criticalWhy).
+ *
  *   auto    runs at once; the activity trail has it
  *   notify  runs at once; the trail has it, and the person's updates say
  *           what ran (the default)
@@ -39,6 +45,8 @@
  * why): it then waits for the Allow whatever the policy says.
  */
 
+import type { InstallMode } from "./den-config.js";
+
 export type PolicyKind = "auto" | "notify" | "ask";
 export const POLICY_KINDS: readonly PolicyKind[] = ["auto", "notify", "ask"];
 
@@ -57,7 +65,9 @@ export type HeldWriteRisk = "critical" | "widens" | "routine";
 /**
  * Issue 160: what makes a write critical by what it touches, whatever its
  * placement: secrets, deletes of data, money. A held write's check may say
- * so (`areas`), and a write's own name does (`areasOf`).
+ * so (`areas`), and so do its placement and its own name (`areasOf`). A
+ * placed write leaves a name's area only by declaring it (`notAreas`,
+ * issue 1403): project_mcp_remove's "remove" deletes no data.
  */
 export type CriticalArea = "secrets" | "deletes" | "money";
 export const CRITICAL_AREAS: Readonly<
@@ -98,66 +108,111 @@ export const HELD_WRITE_RISK: Readonly<
       /** What it touches (CRITICAL_AREAS): critical whatever `risk` says. */
       areas?: CriticalArea[];
       /**
+       * Issue 1403 (Reviewer D): an area its name says that it doesn't
+       * touch, declared here, on its own entry (project_mcp_remove takes
+       * tools away; it deletes no data). Without it the name's area holds.
+       */
+      notAreas?: CriticalArea[];
+      /**
        * Issue 160: the kind it follows when no setting names it. Ask is
        * stricter than any `policy`; only `writes.<it>` lowers it. A looser
        * one gives way to a stricter `policy`.
        */
       kind?: PolicyKind;
+      /**
+       * Issue 1391: "keep" when it still asks on a personal install, as on a
+       * strict one: real security (the sandbox, approvals, credentials,
+       * who may sign in, exposure) or acting on others. Every other placed
+       * write is routine on a personal install; secrets, deletes and money
+       * (its areas) are critical on both.
+       */
+      personal?: "keep";
     }
   >
 > = {
   project_mode: {
+    personal: "keep",
     risk: "widens",
     why: "a looser mode lets agents act without asking; a stricter one only narrows",
   },
   agent_mode: {
+    personal: "keep",
     risk: "widens",
     why: "following a looser project mode widens the agent; a stricter one narrows",
   },
+  setting_change: {
+    personal: "keep",
+    risk: "widens",
+    kind: "ask",
+    why: "a setting that widens what agents can do needs the person's own Allow (issue 1371); every other one asks until the person chooses per category",
+  },
+  gate_settings_set: {
+    risk: "widens",
+    why: "the gate's settings are scheduling on the person's own machine: routine limits, so they follow the person's choice for Limits and performance (issue 1395)",
+  },
+  agent_sandbox_set: {
+    personal: "keep",
+    risk: "widens",
+    why: "an agent out of the sandbox can write Den's own files (issue 1328); back in only narrows",
+  },
   project_mcp_add: {
+    personal: "keep",
     risk: "critical",
     why: "gives a project's agents new tools, and sends a bearer to a new address",
   },
   project_mcp_remove: {
     risk: "critical",
-    why: "takes tools away from a project's agents at their next start (issue 352: the person's own Allow)",
+    notAreas: ["deletes"],
+    why: "takes tools away from a project's agents at their next start (issue 352: the person's own Allow); it narrows, so routine on a personal install (issue 1403)",
   },
   project_mcp_update: {
+    personal: "keep",
     risk: "critical",
     why: "sends a project's agents' calls, and maybe a bearer, to another address",
   },
+  project_event_feed_add: {
+    risk: "critical",
+    why: "has Den open an app's stream for one of a project's agents, a bearer read by its secrets.refs name; routine on a personal install, with Undo (issue 1480)",
+  },
+  project_event_feed_remove: {
+    risk: "critical",
+    notAreas: ["deletes"],
+    why: "stops an app's events reaching a project's agent; it deletes no events; routine on a personal install, with Undo (issue 1480)",
+  },
   persona_create: {
     risk: "critical",
-    why: "a persona carries a mode and commands it may run: new tool access",
+    why: "a persona carries a mode and commands it may run: new tool access; on a personal install with nothing sandboxed, routine (issue 1403)",
   },
   persona_update: {
     risk: "critical",
-    why: "a persona carries a mode and commands it may run: new tool access",
+    why: "a persona carries a mode and commands it may run: new tool access; on a personal install with nothing sandboxed, routine (issue 1403)",
   },
   hub_connect: {
+    personal: "keep",
     risk: "critical",
     why: "points Den at another Hub, or none: where agents publish and read",
   },
   den_update: {
     risk: "critical",
-    why: "installs another Den version (a release)",
+    why: "installs another Den version (a release); on a personal install routine unless server_agent.self_update: ask (issue 1403)",
   },
   den_restart: {
     risk: "critical",
     why: "restarts Den for every project; server_agent.self_update decides for Den's own agent",
   },
   hub_project_create: {
+    personal: "keep",
     risk: "routine",
     why: "asks Hub for a new project; an owner decides it in Hub, and the link only files work",
   },
   hub_link: {
     risk: "routine",
     kind: "ask",
-    why: "moves where a project's agents file their Hub work: asks unless the person lowers it",
+    why: "moves where a project's agents file their Hub work: asks unless the person lowers it; routine on a personal install (issue 1403)",
   },
   agent_create: {
-    risk: "routine",
-    why: "starts an agent in the project's mode or a stricter one",
+    risk: "widens",
+    why: "starts an agent in the project's mode or a stricter one; one that would start outside the sandbox is the person's (issue 1328)",
   },
   agent_folder: { risk: "routine", why: "moves an agent within its project" },
   workspace_create: { risk: "routine", why: "adds an empty project" },
@@ -176,53 +231,72 @@ export const HELD_WRITE_RISK: Readonly<
   },
   service_try: { risk: "routine", why: "starts a service locally" },
   verify_run: {
+    personal: "keep",
     risk: "critical",
     why: "runs checks against a shared environment (CRITICAL_HELD_ACTIONS)",
   },
   embed_key_create: {
+    personal: "keep",
     risk: "critical",
     why: "lets a web app message an agent and read its state; a person's own ask",
   },
   embed_key_revoke: {
+    personal: "keep",
     risk: "critical",
     why: "a person's own ask, from Settings › Embedding",
   },
   gate_runner_token_create: {
+    personal: "keep",
     risk: "critical",
     areas: ["secrets"],
     why: "makes a token a CI runner uses to take gate slots on this machine",
   },
   gate_box_set: {
+    personal: "keep",
     risk: "critical",
     why: "adds or changes a test box whose browsers take agents' gate runs (CRITICAL_HELD_ACTIONS)",
   },
   gate_box_remove: {
     risk: "critical",
-    why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS)",
+    notAreas: ["deletes"],
+    why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS); on a personal install routine, since a box can be added back (issue 1403)",
   },
   web_url_set: {
+    personal: "keep",
     risk: "critical",
     why: "changes the address every link, sign-in and Hub uses for this Den: a person's own Allow",
+  },
+  gate_runner_entry_set: {
+    risk: "critical",
+    why: "lets a repo's CI jobs run on a test box: it widens what runs there",
   },
   host_restart: {
     risk: "critical",
     why: "restarts the terminal host every agent runs in; a turn still going when the wait runs out is cut",
   },
+  test_person_setup: {
+    personal: "keep",
+    risk: "critical",
+    why: "gives a test install on this computer its test person, which its live checks sign in as: a person's own Allow (CRITICAL_HELD_ACTIONS)",
+  },
   approval_policy: {
+    personal: "keep",
     risk: "critical",
     why: "changes the approval policy itself: a person's only",
   },
   agent_import: {
-    risk: "routine",
+    risk: "widens",
     kind: "ask",
-    why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it",
+    why: "brings a conversation started outside Den in as an agent: asks unless the person lowers it; one that would start outside the sandbox is the person's (issue 1328)",
   },
   pr_close: {
+    personal: "keep",
     risk: "routine",
     kind: "auto",
     why: "closes a stale or superseded PR after a Hub note: runs unless watched",
   },
   report: {
+    personal: "keep",
     risk: "widens",
     why: "files a report on GitHub as the person: to a public (or not known) repository it is visible to everyone, so the person's own Allow; to a private one the policy",
   },
@@ -231,24 +305,36 @@ export const HELD_WRITE_RISK: Readonly<
 /**
  * Why held write `action` is critical ("critical", or "critical: <area>"),
  * or null when it is routine: it touches secrets, deletes or money (its
- * name, its placement or its check's `areas` say so), it is named
- * critical, or it widens and its check says this ask widens. Unknown
+ * name, its placement or its check's `areas` say so; a placed write may
+ * opt out of its name's area with `notAreas`), it is named critical, or it widens and its check says this ask widens. Unknown
  * writes are critical.
  */
 export function criticalWhy(
   action: string,
   widens: boolean,
   areas: readonly CriticalArea[] = [],
+  /** Issue 1391: the install's mode; strict when not given. */
+  mode: InstallMode = "strict",
 ): string | null {
   const placed = Object.hasOwn(HELD_WRITE_RISK, action)
     ? HELD_WRITE_RISK[action]
     : undefined;
   const touches = [
-    ...new Set([...areasOf(action), ...(placed?.areas ?? []), ...areas]),
+    ...new Set([
+      ...areasOf(action).filter((a) => !placed?.notAreas?.includes(a)),
+      ...(placed?.areas ?? []),
+      ...areas,
+    ]),
   ].filter((a) => Object.hasOwn(CRITICAL_AREAS, a));
   if (touches.length) return `critical: ${touches.join(", ")}`;
+  // Issue 1391's rule: the check said personOnly, so the person's, on
+  // every mode (see the header).
+  if (widens) return "critical";
+  // Issue 1391: a placed write is routine on a personal install unless it
+  // is real security or acts on others. One no one placed still asks.
+  if (mode === "personal" && placed && placed.personal !== "keep") return null;
   const r = placed ? placed.risk : "critical";
-  return r === "critical" || (r === "widens" && widens) ? "critical" : null;
+  return r === "critical" ? "critical" : null;
 }
 
 /** Whether held write `action` is critical (criticalWhy). */
@@ -256,12 +342,83 @@ export function isCriticalWrite(
   action: string,
   widens: boolean,
   areas: readonly CriticalArea[] = [],
+  mode: InstallMode = "strict",
 ): boolean {
-  return criticalWhy(action, widens, areas) !== null;
+  return criticalWhy(action, widens, areas, mode) !== null;
+}
+
+/**
+ * Issue 1371 Part 2: the kinds of setting an agent may ask to change
+ * (setting_change), each with its severity. setting-change.ts settingKind
+ * places each key.
+ */
+export type SettingCategory =
+  | "limits"
+  | "look"
+  | "integrations"
+  | "network"
+  | "agent_powers";
+export const SETTING_CATEGORIES: readonly SettingCategory[] = [
+  "limits",
+  "look",
+  "integrations",
+  "network",
+  "agent_powers",
+];
+/**
+ * The person's choice per category, Settings › Approvals › Agents changing
+ * settings: auto (change without asking, and tell me), ask, or never.
+ */
+export type SettingChoice = "auto" | "ask" | "never";
+export const SETTING_CHOICES: readonly SettingChoice[] = [
+  "auto",
+  "ask",
+  "never",
+];
+
+/**
+ * The choice when the person made none. Limits and look change without
+ * asking; network and agent powers ask. Integrations (editors, runtimes,
+ * Hub, GitHub) ask on a strict install and change at once on a personal
+ * one (issue 1391).
+ */
+export function settingChoiceDefault(
+  category: SettingCategory,
+  mode: InstallMode = "strict",
+): SettingChoice {
+  // Den Builder's ruling: strict keeps today's asks for every category
+  // (a person may set one to auto); change-and-tell is personal's default.
+  if (mode !== "personal") return "ask";
+  if (category === "limits" || category === "look") return "auto";
+  if (category === "integrations") return "auto";
+  return "ask";
+}
+
+/**
+ * The choice that applies to a category: the person's (approvals.settings),
+ * else the default for the install's mode, with where it came from. Agent
+ * powers never change without asking.
+ */
+export function settingChoice(
+  category: SettingCategory,
+  mode: InstallMode = "strict",
+  set?: PolicySetting["settings"],
+): { choice: SettingChoice; from: string } {
+  const mine = set && Object.hasOwn(set, category) ? set[category] : undefined;
+  if (mine) return { choice: mine, from: `approvals.settings.${category}` };
+  return {
+    choice: settingChoiceDefault(category, mode),
+    from: `${mode} install's default for ${category}`,
+  };
 }
 
 /** One level's setting (`approvals:`), checked. */
 export interface PolicySetting {
+  /**
+   * Issue 1371 Part 2: per category, whether an agent's setting_change runs
+   * without asking, asks, or is refused. agent_powers: ask or never.
+   */
+  settings?: Partial<Record<SettingCategory, SettingChoice>>;
   policy?: PolicyKind;
   writes?: Record<string, PolicyKind>;
   /** Issue 160: what the person watches (WATCH_RE): a write on it asks. */
@@ -320,7 +477,7 @@ export function readPolicySetting(
     throw new Error(`${key}: a mapping with policy and writes`);
   const r = raw as Record<string, unknown>;
   const extra = Object.keys(r).filter(
-    (k) => !["policy", "writes", "watch", "critical"].includes(k),
+    (k) => !["policy", "writes", "watch", "critical", "settings"].includes(k),
   );
   if (extra.length) throw new Error(`${key}: unknown key ${extra.join(", ")}`);
   const out: PolicySetting = {};
@@ -340,6 +497,26 @@ export function readPolicySetting(
       WATCH_RE,
       "a watched item (project:, repo:, service:, persona:, agent: or a name)",
     );
+  if (r.settings !== undefined && r.settings !== null) {
+    if (typeof r.settings !== "object" || Array.isArray(r.settings))
+      throw new Error(`${key}.settings: a mapping of category to choice`);
+    out.settings = {};
+    for (const [c, v] of Object.entries(
+      r.settings as Record<string, unknown>,
+    )) {
+      if (!(SETTING_CATEGORIES as string[]).includes(c))
+        throw new Error(
+          `${key}.settings: ${JSON.stringify(c)} is not a category (${SETTING_CATEGORIES.join(", ")})`,
+        );
+      const ok: readonly string[] =
+        c === "agent_powers" ? ["ask", "never"] : SETTING_CHOICES;
+      if (typeof v !== "string" || !ok.includes(v))
+        throw new Error(
+          `${key}.settings.${c}: ${ok.join(", ")}, not ${JSON.stringify(v) ?? "nothing"}`,
+        );
+      out.settings[c as SettingCategory] = v as SettingChoice;
+    }
+  }
   if (r.critical !== undefined && r.critical !== null)
     out.critical = listOf(
       r.critical,
@@ -438,9 +615,14 @@ export function policyFor(
     targets?: readonly string[];
     /** The person's rail pins (their favorites), as watched items. */
     pins?: readonly string[];
+    /** Issue 1391: the install's mode; strict when not given. */
+    mode?: InstallMode;
+    /** Issue 1371 Part 2: a setting write's category (its check says). */
+    setting?: { category: SettingCategory };
   },
 ): { kind: PolicyKind; from: string } {
-  const why = criticalWhy(action, o.widens === true, o.areas);
+  const mode = o.mode ?? "strict";
+  const why = criticalWhy(action, o.widens === true, o.areas, mode);
   if (why) return { kind: "ask", from: why };
   if (o.project?.critical?.includes(action))
     return { kind: "ask", from: "project approvals.critical" };
@@ -454,11 +636,25 @@ export function policyFor(
   if (watched) return { kind: "ask", from: `watched ${watched}` };
   const pinned = watchedTarget(targets, o.pins ?? []);
   if (pinned) return { kind: "ask", from: `favorited ${pinned}` };
+  // Issue 1371 Part 2: a setting follows the person's choice for its
+  // category (one setting for the install), else the mode's default.
+  // Any held write whose check names a category (setting_change, issue
+  // 1395's gate_settings_set) follows it.
+  if (o.setting) {
+    const c = settingChoice(o.setting.category, mode, o.install?.settings);
+    return c.choice === "auto"
+      ? { kind: "notify", from: c.from }
+      : { kind: "ask", from: c.from };
+  }
   const own = (s: PolicySetting | undefined) =>
     s?.writes && Object.hasOwn(s.writes, action) ? s.writes[action] : undefined;
-  const placed = Object.hasOwn(HELD_WRITE_RISK, action)
-    ? HELD_WRITE_RISK[action].kind
+  const entry = Object.hasOwn(HELD_WRITE_RISK, action)
+    ? HELD_WRITE_RISK[action]
     : undefined;
+  // Issue 1391: on a personal install a routine write's own ask gives way
+  // to the policy, as the rest of it does.
+  const placed =
+    mode === "personal" && entry?.personal !== "keep" ? undefined : entry?.kind;
   const withOwn = (k: PolicyKind, from: string) =>
     placed && stricter(placed, k) !== k
       ? { kind: placed, from: `${action}'s own kind` }
@@ -483,7 +679,13 @@ export function policyFor(
  */
 export function patchApprovals(
   current: unknown,
-  patch: { policy?: unknown; watch?: unknown; critical?: unknown },
+  patch: {
+    policy?: unknown;
+    watch?: unknown;
+    critical?: unknown;
+    /** Issue 1371 Part 2: { <category>: auto | ask | never | null }. */
+    settings?: unknown;
+  },
   key = "approvals",
 ):
   | { ok: true; value: PolicySetting | undefined }
@@ -509,6 +711,22 @@ export function patchApprovals(
       if (checked.length) cur[k] = checked;
       else delete cur[k];
     }
+    if (patch.settings !== undefined) {
+      if (patch.settings === null) delete cur.settings;
+      else {
+        if (typeof patch.settings !== "object" || Array.isArray(patch.settings))
+          throw new Error(`${key}_settings: a mapping of category to choice`);
+        const next: Record<string, unknown> = { ...(cur.settings ?? {}) };
+        for (const [c, v] of Object.entries(
+          patch.settings as Record<string, unknown>,
+        ))
+          if (v === null) delete next[c];
+          else next[c] = v;
+        const checked = readPolicySetting({ settings: next }, key)?.settings;
+        if (checked && Object.keys(checked).length) cur.settings = checked;
+        else delete cur.settings;
+      }
+    }
     return {
       ok: true,
       value: Object.keys(cur).length ? cur : undefined,
@@ -519,10 +737,15 @@ export function patchApprovals(
 }
 
 /** Issue 160: what Settings shows for one level's policy. */
-export function approvalsView(raw: unknown): {
+export function approvalsView(
+  raw: unknown,
+  mode: InstallMode = "strict",
+): {
   policy: PolicyKind | null;
   watch: string[];
   critical: string[];
+  /** Issue 1371 Part 2: each category's choice in force, and whether set. */
+  settings: Record<SettingCategory, { choice: SettingChoice; set: boolean }>;
 } {
   let s: PolicySetting | undefined;
   try {
@@ -534,5 +757,14 @@ export function approvalsView(raw: unknown): {
     policy: s?.policy ?? null,
     watch: s?.watch ?? [],
     critical: s?.critical ?? [],
+    settings: Object.fromEntries(
+      SETTING_CATEGORIES.map((c) => [
+        c,
+        {
+          choice: settingChoice(c, mode, s?.settings).choice,
+          set: !!s?.settings && Object.hasOwn(s.settings, c),
+        },
+      ]),
+    ) as Record<SettingCategory, { choice: SettingChoice; set: boolean }>,
   };
 }

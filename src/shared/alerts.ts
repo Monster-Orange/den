@@ -22,7 +22,7 @@
  *                                  # (0..2419200); both Settings rows (#367)
  */
 import type { UserConfig } from "./den-config.js";
-import type { UiLanguage } from "../ui/server/ui-language.js";
+import type { UiLanguage } from "./ui-language.js";
 
 /** What the agent waits on. */
 export type AlertWhy = "permission" | "asked" | "allow";

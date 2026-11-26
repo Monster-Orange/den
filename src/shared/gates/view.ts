@@ -5,15 +5,19 @@
 import {
   expectedStart,
   loadHold,
+  memoryHold,
+  swapHold,
   overrun,
   priorityIds,
   queueEnd,
   queueMinOf,
   yieldedTo,
   type EstimateSource,
+  type MachineReading,
 } from "./rules.js";
 import { boxEndpoints, boxSkipReason, type GateBox } from "./boxes.js";
 import { classOf, windowHeld } from "./classes.js";
+import { vmOvercommit } from "./vms.js";
 import type { GateStore } from "./store.js";
 
 export interface GateSlotView {
@@ -74,6 +78,25 @@ export interface GateSlotView {
     perCore?: number;
     cores?: number;
   };
+  /** Issue 1274: a run here waiting on low memory: free and the setting, %. */
+  memoryHold?: { free: number | null; limit: number; unavailable?: true };
+  /** Issue 1274: a run here waiting on swap: in use and the setting, GB. */
+  swapHold?: { usedGb: number | null; limitGb: number; unavailable?: true };
+  /**
+   * Issue 1132: granted, but its command waits for the machine's load to
+   * drop under gates.max_start_load: the load seen, the ceiling, since.
+   */
+  startHold?: { load: number; limit: number; since: string };
+}
+
+/** Issue 1132: what was stopped of an ended run (the last hour). */
+export interface GateLeftoverView {
+  at: string;
+  id: string;
+  label: string;
+  cmd: string;
+  count: number;
+  reason: string;
 }
 
 /**
@@ -157,7 +180,12 @@ export function gateBoxesView(
   });
 }
 
-export function gateView(store: GateStore, now = Date.now()) {
+export function gateView(
+  store: GateStore,
+  now = Date.now(),
+  /** Issue 1274: read the VMs now (gate status), not the last reading. */
+  o: { vmsNow?: boolean } = {},
+) {
   const all = store.list();
   const settings = store.settings();
   const pri = priorityIds(all, settings);
@@ -178,6 +206,11 @@ export function gateView(store: GateStore, now = Date.now()) {
   };
   const held = windowHeld(all, settings.classes, now);
   const hold = loadHold(all, settings, store.load(), store.cores());
+  // Issue 1274: free memory here, and a run here held by it.
+  const freeMem = store.freeMemory();
+  const memHold = memoryHold(all, settings, freeMem);
+  const swapGb = store.swapUsedGb();
+  const swHold = swapHold(all, settings, swapGb);
   const slots: GateSlotView[] = all.map((e) => ({
     id: e.id,
     kind: e.kind,
@@ -219,6 +252,30 @@ export function gateView(store: GateStore, now = Date.now()) {
           },
         }
       : {}),
+    ...(e.grantedAt && e.startHold ? { startHold: e.startHold } : {}),
+    ...(memHold &&
+    !e.grantedAt &&
+    (!e.where || e.where === "local" || e.where === "any")
+      ? {
+          // Issue 1349: an unknown reading holds, and says so.
+          memoryHold: memHold.unavailable
+            ? { free: null, limit: memHold.limit, unavailable: true as const }
+            : { free: Math.round(memHold.free), limit: memHold.limit },
+        }
+      : {}),
+    ...(swHold &&
+    !e.grantedAt &&
+    (!e.where || e.where === "local" || e.where === "any")
+      ? {
+          swapHold: swHold.unavailable
+            ? {
+                usedGb: null,
+                limitGb: swHold.limitGb,
+                unavailable: true as const,
+              }
+            : { usedGb: swHold.usedGb, limitGb: swHold.limitGb },
+        }
+      : {}),
     ...(e.grantedAt
       ? {
           grantedAt: e.grantedAt,
@@ -233,5 +290,118 @@ export function gateView(store: GateStore, now = Date.now()) {
           ).toISOString(),
         }),
   }));
-  return { settings, slots, boxes: gateBoxesView(store, slots) };
+  // Issue 1132: leftovers stopped in the last hour (the TERM row: KILL
+  // after it is the same run's).
+  const leftovers: GateLeftoverView[] = store
+    .stoppedLeftovers(now - 60 * 60_000)
+    .filter((r) => r.signal !== "KILL")
+    .map((r) => ({
+      at: r.at,
+      id: r.id,
+      label: r.label,
+      cmd: r.cmd ?? "",
+      count: r.count ?? 0,
+      reason: r.reason ?? "ended",
+    }));
+  return {
+    settings,
+    slots,
+    boxes: gateBoxesView(store, slots),
+    leftovers,
+    // Issue 1264: agents' heavy runs that ran outside the gate today.
+    outsideToday: store.outsideToday(),
+    machine: machineView(store, freeMem, swapGb, !!o.vmsNow),
+    removed: removedView(store, now),
+  };
+}
+
+/**
+ * Issue 1274: this machine's free memory (percent, when read) and, when
+ * the VMs here were read, what the running ones reserve against
+ * vm_memory_share × its RAM. Only names, memory and cpus.
+ */
+export interface GateMachineView {
+  /**
+   * Issue 1349: this platform has no memory reading: memory holds don't
+   * apply (MEMORY_NOT_MEASURED_WORDS).
+   */
+  notMeasured?: true;
+  /** Issue 1349: a reading should be here and couldn't be taken: it holds. */
+  unavailable?: true;
+  freeMemory?: number;
+  /** Swap in use, GB (left out at 0 or unread). */
+  swapUsedGb?: number;
+  ramBytes?: number;
+  share?: number;
+  promisedBytes?: number;
+  over?: boolean;
+  vms?: { runtime: string; name: string; memBytes: number; cpus: number }[];
+  notCounted?: string[];
+}
+
+function machineView(
+  store: GateStore,
+  freeMem: MachineReading,
+  swapGb: MachineReading,
+  now: boolean,
+): GateMachineView {
+  const known = (v: MachineReading): v is number =>
+    v !== null && Number.isFinite(v);
+  const out: GateMachineView = {
+    ...(freeMem === null && swapGb === null
+      ? { notMeasured: true as const }
+      : {}),
+    ...((freeMem !== null && !known(freeMem)) ||
+    (swapGb !== null && !known(swapGb))
+      ? { unavailable: true as const }
+      : {}),
+    ...(known(freeMem) ? { freeMemory: Math.round(freeMem) } : {}),
+    ...(known(swapGb) && swapGb > 0 ? { swapUsedGb: swapGb } : {}),
+  };
+  const r = now ? store.vmsNow() : store.vms();
+  if (!r) return out;
+  const o = vmOvercommit(r.vms, r.ramBytes, r.share);
+  return {
+    ...out,
+    ramBytes: r.ramBytes,
+    share: r.share,
+    promisedBytes: o.promised,
+    over: o.over,
+    vms: r.vms
+      .filter((v) => v.running)
+      .map((v) => ({
+        runtime: v.runtime,
+        name: v.name,
+        memBytes: v.memBytes,
+        cpus: v.cpus,
+      })),
+    notCounted: r.notCounted,
+  };
+}
+
+/** Issue 1263: how far back gate status shows removed containers. */
+const REMOVED_SHOWN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Issue 1263: throwaway containers removed after their run's slot ended, in
+ * the last day (the newest 20, oldest first): the run, how many, and their
+ * image names.
+ */
+export function removedView(store: GateStore, now = Date.now()) {
+  return store
+    .events()
+    .filter(
+      (r) =>
+        r.event === "containers-removed" &&
+        now - Date.parse(r.at) <= REMOVED_SHOWN_MS,
+    )
+    .slice(-20)
+    .map((r) => ({
+      at: r.at,
+      id: r.id,
+      kind: r.kind,
+      label: r.label,
+      count: r.count ?? 0,
+      images: r.images ?? [],
+    }));
 }

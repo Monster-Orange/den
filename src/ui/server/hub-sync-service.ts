@@ -55,12 +55,31 @@ export function projectSync(): ProjectSync {
  * the same beat reads a new Hub project asked of Hub (only when one
  * waits), so a project links on its own once an owner allows it.
  */
+export async function retryDenUrlTellNow(): Promise<void> {
+  try {
+    const [{ retryDenUrlTell }, { readWebUrl }, hub] = await Promise.all([
+      import("../../shared/hub-den-url.js"),
+      import("../../shared/web-url.js"),
+      import("../../shared/hub.js"),
+    ]);
+    await retryDenUrlTell({
+      hub: hubAndToken,
+      put: hub.hubPutDenUrl,
+      stateDir: getStateDir(),
+      denUrl: () => readWebUrl()?.url ?? null,
+    });
+  } catch {
+    return;
+  }
+}
+
 export function startProjectSync(checkSeconds: number): void {
   const s = projectSync();
   s.request();
   const ms = Math.max(5, checkSeconds) * 1000;
   setInterval(() => {
     s.check();
+    void retryDenUrlTellNow();
     void import("./hub-create-routes.js")
       .then((m) => m.settleAllHubCreates())
       .catch(() => undefined);

@@ -13,6 +13,7 @@
  *     default).
  */
 import { describe, expect, it } from "@jest/globals";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import {
@@ -40,6 +41,37 @@ const ids = (s: NavSnapshot, ref: NavSnapshot) =>
     .map((d) => `${d.key} ${d.property}`)
     .sort();
 
+/** A job's block in the workflow: its key line up to the next job's. */
+function jobBlock(ci: string, name: string): string {
+  const at = ci.search(new RegExp(`^ {2}${name}:\\s*$`, "m"));
+  if (at < 0) return "";
+  const rest = ci.slice(at + 1);
+  const next = rest.search(/^ {2}[\w-]+:\s*$/m);
+  return ci.slice(at, next < 0 ? ci.length : at + 1 + next);
+}
+
+/**
+ * Issue 1527: what CI's den-ui-nav job (the visual job) lacks, read from
+ * that job's own block: the pinned image, its run-server, the
+ * connection, the switch, and the list of tagged tests.
+ */
+function navJobMisses(ci: string): string[] {
+  const job = jobBlock(ci, "den-ui-nav");
+  if (!job) return ["the den-ui-nav job"];
+  const v = NAV_BROWSER_IMAGE.match(/:v([\d.]+)-/)![1];
+  const want: [string, string][] = [
+    [`NAV_IMAGE: ${NAV_BROWSER_IMAGE}`, "pins NAV_BROWSER_IMAGE"],
+    [`playwright@${v} run-server`, "serves the image's Playwright"],
+    ["DEN_PW_WS: ws://localhost:3921/", "connects to it"],
+    [
+      "node scripts/visual-tests.mjs)",
+      "runs the list from scripts/visual-tests.mjs",
+    ],
+    ['DEN_VISUAL_JOB: "1"', 'sets DEN_VISUAL_JOB: "1"'],
+  ];
+  return want.filter(([line]) => !job.includes(line)).map(([, why]) => why);
+}
+
 describe("nav inventory: the pinned browser and theme", () => {
   it("CI's den-ui-nav job runs the test on NAV_BROWSER_IMAGE", () => {
     const ci = fs.readFileSync(
@@ -47,12 +79,39 @@ describe("nav inventory: the pinned browser and theme", () => {
       "utf-8",
     );
     expect(NAV_BROWSER_IMAGE).toMatch(/:v[\d.]+-\w+@sha256:[0-9a-f]{64}$/);
-    expect(ci).toContain(`NAV_IMAGE: ${NAV_BROWSER_IMAGE}`);
-    expect(ci).toContain("DEN_PW_WS: ws://localhost:3921/");
-    expect(ci).toContain("tests/unit/den-ui/nav-inventory.browser.test.ts");
-    // The run-server's Playwright is the one the image is named for.
-    const v = NAV_BROWSER_IMAGE.match(/:v([\d.]+)-/)![1];
-    expect(ci).toContain(`playwright@${v} run-server`);
+    expect(navJobMisses(ci)).toEqual([]);
+    const listed = execFileSync("node", ["scripts/visual-tests.mjs"], {
+      cwd: ROOT,
+      encoding: "utf-8",
+    }).split("\n");
+    expect(listed).toContain("tests/unit/den-ui/nav-inventory.browser.test.ts");
+  });
+
+  it("the check reads the den-ui-nav job only: the same lines in another job don't count", () => {
+    const ci = fs.readFileSync(
+      path.join(ROOT, ".github/workflows/ci.yml"),
+      "utf-8",
+    );
+    const block = jobBlock(ci, "den-ui-nav");
+    expect(block).not.toBe("");
+    // The job's steps moved to a job of another name.
+    const moved = ci.replace(
+      block,
+      block.replace(/^ {2}den-ui-nav:/m, "  den-ui-other:"),
+    );
+    expect(moved).not.toBe(ci);
+    expect(navJobMisses(moved)).toEqual(["the den-ui-nav job"]);
+    // The job stays, but runs the nav test by name, not the list.
+    const named = ci.replace(
+      block,
+      block
+        .replace("node scripts/visual-tests.mjs)", "echo nav)")
+        .replace('DEN_VISUAL_JOB: "1"', "DEN_OTHER: x"),
+    );
+    expect(navJobMisses(named)).toEqual([
+      "runs the list from scripts/visual-tests.mjs",
+      'sets DEN_VISUAL_JOB: "1"',
+    ]);
   });
 
   it("NAV_THEME is Den's default theme as shipped", () => {
@@ -240,6 +299,40 @@ describe("nav inventory: red cases on the reference", () => {
     // A name alone (no login), or name and login on one line.
     expect(ids(withShape("name", 1), r)).toEqual([`${ACCT} shape`]);
     expect(ids(withShape("name,login", 1), r)).toEqual([`${ACCT} shape`]);
+  });
+
+  // Issue 1341: the rail's foot is one .den-rail-foot holding the account
+  // entry. An entry of another line count than the reference's makes the
+  // foot taller or shorter by exactly its own change, and no more.
+  const FOOT = "#den-rail > div.den-rail-foot";
+  const oneLine = (extra = 0) => {
+    const s = withShape("login", 1);
+    const a = at(s, ACCT);
+    const d = 16;
+    a.box.h -= d;
+    a.box.y += d;
+    a.style.height = `${parseFloat(a.style.height) - d}px`;
+    const f = at(s, FOOT);
+    f.box.h -= d + extra;
+    f.box.y += d + extra;
+    f.style.height = `${parseFloat(f.style.height) - d - extra}px`;
+    return s;
+  };
+  it("issue 1341: the foot follows the account entry's own height change", () => {
+    const r = withShape("name,login", 2);
+    expect(ids(oneLine(), r).filter((x) => x.startsWith(FOOT + " "))).toEqual(
+      [],
+    );
+  });
+  it("issue 1341: a foot that changes by more than the account entry fails", () => {
+    const r = withShape("name,login", 2);
+    expect(ids(oneLine(8), r)).toContain(`${FOOT} style.height`);
+  });
+  it("issue 1341: the foot's height still holds when the account's line count matches", () => {
+    const r = withShape("name,login", 2);
+    const s = withShape("name,login", 2);
+    at(s, FOOT).style.height = `${parseFloat(at(s, FOOT).style.height) - 16}px`;
+    expect(ids(s, r)).toContain(`${FOOT} style.height`);
   });
 
   it("an account given the old label/detail fails: flagged as deprecated", () => {
