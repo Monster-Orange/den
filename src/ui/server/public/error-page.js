@@ -573,7 +573,7 @@ function wireGithub(root, t, s, attest = "") {
  * live countdown runs out at 10 minutes: "This code expired", and a new
  * one is a click away. Denied, likewise.
  */
-function wirePair(root, t, s) {
+export function wirePair(root, t, s) {
   const box = root.querySelector("#den-pair");
   if (!box) return;
   const host = s.machine || "";
@@ -644,10 +644,23 @@ function wirePair(root, t, s) {
     stop();
     return withdraw();
   };
-  // Back from the back-forward cache: its request is gone, so a new one.
+  // Issue 1333: back from the back-forward cache, its request is gone,
+  // and no new one is asked for by itself: the button again.
   window.addEventListener("pageshow", (e) => {
-    if (e.persisted) begin();
+    if (!e.persisted) return;
+    stop();
+    withdraw();
+    offer();
   });
+  // Issue 1333: no request until the person asks for one. A signed-out
+  // tab nobody is looking at (restored, reloaded, in the background) never
+  // raises "Allow this computer?" on a signed-in browser.
+  function offer() {
+    box.innerHTML =
+      `<p id="den-pair-start-lead">${withHost(t, "err.signin.pairStartLead", { host, name: s.name })}</p>` +
+      `<div class="acts" style="margin-top:0"><button type="button" class="den-btn primary" id="den-pair-start">${esc(t("err.signin.pairStart"))}</button></div>`;
+    box.querySelector("#den-pair-start").addEventListener("click", begin);
+  }
   const ended = (key) => {
     stop();
     box.innerHTML =
@@ -744,9 +757,14 @@ function wirePair(root, t, s) {
               // Issue 320: gone (the server ended it: this page went
               // unheard, as a background tab may) is no dead end: a fresh
               // code, by itself.
+              // Issue 1333: the server ended it (its page went unheard,
+              // or the server restarted): the button again, never a new
+              // request by itself, even with the page in front and nobody
+              // at it.
               if (p.state === "gone") {
                 mine = null;
-                return begin();
+                stop();
+                return offer();
               }
               ended(
                 p.state === "denied"
@@ -770,7 +788,10 @@ function wirePair(root, t, s) {
         if (now === gen) failed();
       });
   }
-  begin();
+  // Issue 1333: a sign-in link's own request opens at once; otherwise
+  // the button.
+  if (given) begin();
+  else offer();
 }
 
 /**

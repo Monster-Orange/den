@@ -189,13 +189,36 @@ function holdFor(b) {
     const r = hook.hold(b);
     if (typeof r === "function") return r;
   }
-  b.disabled = true;
+  // Issue 1434: held, not disabled, so it keeps focus; its clicks stop
+  // at the window (below).
+  const own = b.getAttribute("aria-disabled") !== "true";
   b.setAttribute("aria-busy", "true");
+  b.setAttribute("aria-disabled", "true");
   return () => {
-    b.disabled = false;
     b.removeAttribute("aria-busy");
+    if (own) b.removeAttribute("aria-disabled");
   };
 }
+
+/**
+ * Issue 1434: a click on a held button (aria-busy with aria-disabled, as
+ * busy.js holds) stops at the window, before the page's own listeners.
+ */
+globalThis.window?.addEventListener?.(
+  "click",
+  (e) => {
+    for (let n = e.target; n; n = n.parentNode)
+      if (
+        n.getAttribute?.("aria-busy") === "true" &&
+        n.getAttribute("aria-disabled") === "true"
+      ) {
+        e.preventDefault?.();
+        e.stopImmediatePropagation?.();
+        return;
+      }
+  },
+  true,
+);
 
 /** The product's language, words and Report (see the top of this file). */
 export function configureDialog(h) {
@@ -670,6 +693,18 @@ export function mountDialog(target, o = {}) {
   return handle;
 }
 
+/**
+ * Issue 864: one pop-up at a time. A pop-up that may give way to the
+ * person's question (What's new) asks to hear of each question here;
+ * `fn(dialog)` runs just before the question shows, with its dialog.
+ * Returns a function that stops it.
+ */
+const asking = new Set();
+export function onAsk(fn) {
+  asking.add(fn);
+  return () => asking.delete(fn);
+}
+
 /** askConfirm, askText and tell, on the frame. */
 function open(kind, opts = {}) {
   const id = `dk-q-${++seq}`;
@@ -686,6 +721,7 @@ function open(kind, opts = {}) {
         : undefined,
     show: false,
   });
+  for (const fn of asking) fn(h.dialog);
   h.show(opts.opener);
   return h.closed.then((v) => answerOf(kind, v === "ok", text));
 }

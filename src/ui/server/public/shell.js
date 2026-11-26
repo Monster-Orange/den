@@ -502,6 +502,11 @@
     "ws.all": "All active",
     "ws.focus": "CLI default",
     "ws.hubChip": "Hub: {name}",
+    "ws.hubChipCo": "{company} · {name}",
+    "ws.hubChipTip": "Connected to {company} ({host}). This project: {name}.",
+    "ws.hubAway": "Another Hub",
+    "ws.hubAwayTip":
+      "This project's link points at another Hub, so it doesn't count here. Relink it in Project setup.",
     "ws.hubUnseen": "Den Hub can't see {n} repos",
     "ws.hubTip":
       "This project's agents file their Hub work in this Hub project. Change it in Project setup.",
@@ -973,6 +978,21 @@
     "set.ui.boxIsOff": "turned off",
     "set.ui.boxTurnOn": "Turn on",
     "set.ui.boxTurnOff": "Turn off",
+    "set.ui.reRepo": "Repo (owner/name)",
+    "set.ui.reBox": "Test box",
+    "set.ui.reLabels": "Runner labels (comma-separated)",
+    "set.ui.reVar": "Routing variable",
+    "set.ui.reSlots": "At a time",
+    "set.ui.reHeavy": "Takes the box's heavy slot",
+    "set.ui.reOwner": "Who answers for it",
+    "set.ui.reSave": "Save entry",
+    "set.ui.reNone": "No runner entries. CI jobs use hosted runners.",
+    "set.ui.reNoBox": "Set a test box first, under Test boxes.",
+    "set.ui.reHeavyIs": "heavy",
+    "set.ui.reLightIs": "light",
+    "set.ui.reSlotsN": "{n} at a time",
+    "set.ui.reVarIs": "variable {v}",
+    "set.ui.reOwnerIs": "owner {who}",
     "set.ui.appKeyOnce":
       "Copy this key into the web app's backend now. It is not shown again.",
     "set.ui.appKeyNew": "New app key",
@@ -991,6 +1011,11 @@
       "Not a test install. Live checks can't sign in here. A person marks a test install by hand in the distribution config (web.test_install: true).",
     "set.ui.testPersonReady": "The test person is set up.",
     "set.ui.testPersonMissing": "The test person isn't set up yet.",
+    "set.ui.testInstallsNone":
+      "No test install on this computer is waiting for its test person.",
+    "set.ui.testInstallsOne": "{where} (test install {id})",
+    "set.ui.testInstallsSignedIn":
+      "Only the signed-in person sees the test installs on this computer.",
     "set.ui.testPersonSetUp": "Set up test person",
     "set.ui.testInstallSignedIn":
       "The test install can only be read signed in, or on this machine.",
@@ -1070,7 +1095,7 @@
     "set.ui.hub.address": "Hub's address",
     "set.ui.hub.connect": "Connect",
     "set.ui.hub.connectLinks":
-      "Connect also links each project here to its Hub project. Where Den can't tell which fits, it asks you.",
+      "After Connect, each project here shows its suggested Hub project. Check them, then press Connect and link all.",
     "set.ui.hub.connectNote":
       "Connect opens Hub. Sign in there and approve this install; you come back here connected. The token is kept in this install's secrets store, never shown.",
     "set.ui.hub.teams": "a shared Hub at {host}.",
@@ -1259,6 +1284,10 @@
     "set.agents.layout.o.focus": "Focus",
     "set.agents.layout.o.tabs": "Tabs",
     "set.agents.layout.o.tile": "Tile",
+    "set.agents.coach_counts.d":
+      "Total shows the window's counts; Per day divides them by its days. Percents and averages stay the same. The Coach tab's switch sets it too.",
+    "set.agents.coach_counts.o.total": "Total",
+    "set.agents.coach_counts.o.per_day": "Per day",
     "set.agents.helpers_shown": "Show up to this many helpers under an agent",
     "set.agents.helpers_shown.d":
       "More open in Show all. The badge always counts every running helper.",
@@ -1395,6 +1424,8 @@
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+    "set.access.test_installs_here.d":
+      "Test installs on this computer whose launcher announces them and that wait for their test person. Set up test person sets it up from here, in any browser, on your own Allow.",
     "set.access.test_install.d":
       "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
     "set.distribution.brand.d":
@@ -1962,6 +1993,9 @@
     "err.signin.codeExpired": "This code expired.",
     "err.signin.codeDenied": "This computer was denied on {host}.",
     "err.signin.codeFailed": "{name} didn't give this page a code. Try again.",
+    "err.signin.pairStartLead":
+      "Sign in with a code from a browser already signed in to {name}, on {host} or another computer.",
+    "err.signin.pairStart": "Sign in from another computer",
     "err.signin.newCode": "Get a new code",
     "err.signin.youreIn": "You're in.",
     "err.signin.expiredLead":
@@ -2072,6 +2106,9 @@
     "hubp.whyRepo": "has these repos",
     "hubp.whyName": "same name",
     "hubp.link": "Link",
+    "hubp.elsewhere":
+      "{project} points at “{name}” on another Hub ({host}, {company}). This Den is connected to {nowHost} ({nowCompany}), so the link doesn’t count. Relink it here, or unlink it.",
+    "hubp.relink": "Relink",
     "hubp.unlink": "Unlink",
     "hubp.none": "Your company has no Hub projects yet.",
     "hubp.noOther": "Your company has no other Hub projects to switch to.",
@@ -2130,7 +2167,50 @@
     "hubp.createF": "Hub didn't take the ask. Nothing was created.",
     "hub.legacy":
       "This install is on an older Hub token, kept where Den can't replace it. Reconnect to move it to a new one.",
+    "hub.addressMore": "Hub address…",
+    "hub.justConnected":
+      "Connected to {company} ({host}). Not the company you meant?",
+    "hub.switching":
+      "Switching to {to}: sign in there to finish. __DEN_TITLE__ stays on {from} until then.",
+    "hub.switchEnded":
+      "The switch to {to} waited too long for a sign-in and has ended. __DEN_TITLE__ stays on {from}.",
+    "hub.switchSignin": "Sign in to the new Hub",
     "hub.reconnect": "Reconnect",
+    "hub.cw.done": "Connected to Hub ({company}).",
+    "hub.cw.doneNoCo": "Connected to Hub.",
+    "hub.cw.linked": "Linked {n} projects in the same approval.",
+    "hub.cw.linked.one": "Linked {n} project in the same approval.",
+    "hub.cw.linkedNew":
+      "Linked {n} projects in the same approval ({made} new).",
+    "hub.cw.linkedNew.one":
+      "Linked {n} project in the same approval ({made} new).",
+    "hub.cw.notCreated": "{key}: not created.",
+    "hub.cw.notCreatedWhy": "{key}: not created ({detail}).",
+    "hub.cw.notDone": "{key}: not done on Hub.",
+    "hub.cw.notDoneWhy": "{key}: not done on Hub ({detail}).",
+    "hub.cw.later": "{key}: waits for your review.",
+    "hub.cw.fb.oldHub":
+      "This Hub doesn't link projects in Connect yet, so they wait for your review here.",
+    "hub.cw.fb.otherList":
+      "Hub's answer is for another list of projects, so they wait for your review here.",
+    "hub.cw.fb.badAnswer":
+      "Den couldn't read Hub's answer about the projects, so they wait for your review here.",
+    "hub.cw.fb.rebind":
+      "Den couldn't move its Hub records to this Hub, so the projects wait for your review here.",
+    "hub.cw.fb.tooMany":
+      "Connect sends at most 50 projects to Hub, so they wait for your review here.",
+    "hub.cw.fb.tooBig":
+      "The list of projects was over 6 KB, so they wait for your review here.",
+    "hub.cw.fb.badKey":
+      "A project's name has letters Hub can't match, so they wait for your review here.",
+    "hub.cw.fb.twice":
+      "A project was listed twice, so they wait for your review here.",
+    "hub.cw.review":
+      "Review {n} projects below, then press Connect and link all.",
+    "hub.cw.review.one":
+      "Review {n} project below, then press Connect and link all.",
+    "hub.cw.cannot":
+      "Hub can't list its projects yet: link them in Settings › Hub when it can.",
     "hubgh.offline": "This install isn't connected to Hub yet.",
     "hubgh.failed": "Den couldn't ask Hub about GitHub access.",
     "hubgh.noOrgs": "No repos sent to Hub yet.",
@@ -2152,18 +2232,88 @@
     "hubla.linked": "Linked {n} projects.",
     "hubla.failed": "{n} couldn't be linked: {names}. Try again.",
     "hubla.failedAll": "Couldn't link {names}. Try again.",
+    "hubrv.title": "Connect this Den to {company}",
+    "hubrv.titleNo": "Link this Den's projects to Hub",
+    "hubrv.offline":
+      "Hub didn't answer. The company is known, but its projects can't be listed. Nothing was changed.",
+    "hubrv.youAre": "you are {role}",
+    "hubrv.signedAs": "signed in as {login}",
+    "hubrv.role.owner": "owner",
+    "hubrv.role.member": "member",
+    "hubrv.retry": "Try again",
+    "hubrv.allMatch.one": "{n} project matches. Nothing to pick.",
+    "hubrv.allMatch": "All {n} projects match. Nothing to pick.",
+    "hubrv.why.repo": "same repo",
+    "hubrv.why.name": "same name",
+    "hubrv.why.picked": "your pick",
+    "hubrv.why.linked": "linked",
+    "hubrv.why.new": "no Hub project fits: a new one",
+    "hubrv.why.pick": "two Hub projects fit: choose one",
+    "hubrv.waiting": "a new Hub project, waiting for an owner's Apply in Hub",
+    "hubrv.was": "was linked to “{name}” on {host}; {why} here",
+    "hubrv.wasCo":
+      "was linked to “{name}” on {host} (company {company}); {why} here",
+    "hubrv.offlineRow": "Hub didn't answer for the project list",
+    "hubrv.create": "Create “{name}”",
+    "hubrv.suggested": "Suggested",
+    "hubrv.choose": "Choose a Hub project for “{project}”",
+    "hubrv.search.one": "Search {n} project",
+    "hubrv.search": "Search {n} projects",
+    "hubrv.noMatch": "No Hub project matches.",
+    "hubrv.noProjects": "Hub has no projects in this company yet.",
+    "hubrv.use": "Use {name}",
+    "hubrv.createInstead": "Create “{name}” instead",
+    "hubrv.cancel": "Cancel",
+    "hubrv.change": "Change",
+    "hubrv.openPlan": "Open Hub's plan page",
+    "hubrv.apply": "Connect and link all",
+    "hubrv.applyNote":
+      "Links apply at once. Any new projects open Hub's plan page: one Apply there creates them all.",
+    "hubrv.member.one":
+      "{n} new project goes to an owner for approval. You are a member, so Hub asks an owner to Apply it. The links apply at once.",
+    "hubrv.member":
+      "These {n} new projects go to an owner for approval. You are a member, so Hub asks an owner to Apply them. The links apply at once.",
+    "hubrv.doneTitle": "Connected to {company}",
+    "hubrv.doneTitleNo": "Done",
+    "hubrv.linkedLine": "{project} → {name} ({why})",
+    "hubrv.creatingLine":
+      "{project}: a new Hub project, {name}, waiting for an Apply in Hub. It links when it is applied.",
+    "hubrv.skip.duplicate": "{project}: listed twice; done once.",
+    "hubrv.skip.unknown": "{project}: not done: there is no such project here.",
+    "hubrv.skip.offline": "{project}: not done: Hub didn't answer. Try again.",
+    "hubrv.skip.stale":
+      "{project}: not done: that isn't one of the company's Hub projects any more.",
+    "hubrv.skip.waiting":
+      "{project}: not done: a new Hub project is already waiting for an owner.",
+    "hubrv.skip.hub": "{project}: not done: Hub said: {why}",
+    "hubrv.skip.name":
+      "{project}: not done: the name must be 1 to 80 characters.",
+    "hubrv.asked": "Asked Hub for the new projects.",
+    "hubrv.switch": "Switch company",
     "set.agents.hub_link_all": "Unclear matches",
     "set.agents.hub_link_all.d":
       "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
     "set.agents.hub_delivery_loop": "Hub delivery loop",
     "set.agents.hub_delivery_loop.d":
       "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+    "set.agents.hub_groups": "Groups from Hub",
+    "set.agents.hub_groups.d":
+      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+    "set.agents.hub_groups.o.auto": "Auto",
+    "set.agents.hub_groups.o.on": "On",
+    "set.agents.hub_groups.o.off": "Off",
+    "set.agents.hub_groups_cache": "Groups kept for",
+    "set.agents.hub_groups_cache.d":
+      "How long Den keeps a copy of Hub's groups in memory before it asks Hub again: 5 to 3600 seconds. Try again on the Agents page asks Hub now. __DEN_CLI__ config hub.groups_cache_seconds=30",
     "set.workspace.hub_delivery_loop": "Hub delivery loop: this project",
     "set.workspace.hub_delivery_loop.d":
       "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
     "set.workspace.hub_delivery_loop.o.install": "As everywhere",
     "set.workspace.hub_delivery_loop.o.on": "On",
     "set.workspace.hub_delivery_loop.o.off": "Off",
+    "set.workspace.agents_max_per_project": "Agents per project: this project",
+    "set.workspace.agents_max_per_project.d":
+      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
     "set.workspace.hub_delivery_loop_extra": "Added to the Hub delivery loop",
     "set.workspace.hub_delivery_loop_extra.d":
       "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
@@ -2261,13 +2411,26 @@
       "Below this many GitHub API calls left this hour, the GitHub watcher asks GitHub nothing and refuses new watches until GitHub's reset, and says so with the reset time. __DEN_CLI__ config github.api_budget_floor=500",
     "set.server.github_watches_max": "GitHub watch: watches at once",
     "set.server.github_watches_max.d":
-      "How many pull requests and runs the GitHub watcher watches at once, for every agent here together. One more is refused, saying why. __DEN_CLI__ config github.watches_max=50",
+      "How many pull requests and runs the GitHub watcher watches at once, at least, for every agent here together. When GitHub's API budget has room, it watches more. Past that, a new watch waits in a queue and starts when one finishes. __DEN_CLI__ config github.watches_max=50",
+    "set.server.github_watch_stale": "GitHub watch: minutes with no progress",
+    "set.server.github_watch_stale.d":
+      "A watch with no progress for this many minutes ends, and its agent is told why. A check still queued or running counts as progress, up to 4 times this long with nothing changed. The bound is never shorter than twice the watch interval. A watch also ends when its pull request merges or closes, or a newer push replaces its head. __DEN_CLI__ config github.watch_stale_minutes=60",
+    "set.server.github_watch_max_open": "GitHub watch: most hours open",
+    "set.server.github_watch_max_open.d":
+      "Any watch open this many hours ends, whatever its checks say, and its agent is told why. This catches a check that never reports. __DEN_CLI__ config github.watch_max_open_hours=24",
+    "set.server.github_rerun_look":
+      "GitHub watch: minutes between re-run looks",
+    "set.server.github_rerun_look.d":
+      "For an hour after a run's result is told, the GitHub watcher looks this often for a re-run of it, and a re-run opens the watch again. Fewer looks spend less of GitHub's hourly budget. __DEN_CLI__ config github.rerun_look_minutes=5",
     "set.server.ready_probe": "Readiness check, in seconds",
     "set.server.ready_probe.d":
       "How long one check that __DEN_TITLE__ is up waits for its answer. A busy machine answers late; a late answer still counts. __DEN_CLI__ config web.ready_probe_seconds=10",
     "set.server.start_wait": "Start wait, in seconds",
     "set.server.start_wait.d":
       "How long `web up` waits for __DEN_TITLE__ to be ready before it says it didn't start. A start that fails ends the wait at once. __DEN_CLI__ config web.start_wait_seconds=120",
+    "set.server.tools_probe": "Den tools' check of this install, in seconds",
+    "set.server.tools_probe.d":
+      "How long an agent's Den tools wait for __DEN_TITLE__ to say it is this install before a call is refused. A busy __DEN_TITLE__ answers late; a late answer still counts. The next call checks again. __DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.gate_cpu": "Unit test runs at once, on this machine",
     "set.server.gate_cpu.d":
       "How many unit-test runs (`gate run --kind cpu`) share this machine. Unit and browser test runs wait in separate lines. Every install and repo here shares the same queue. __DEN_CLI__ gate settings --cpu-slots 2",
@@ -2282,10 +2445,37 @@
       "Hold new unit test runs over this load per core",
     "set.server.gate_load_hold_per_core.d":
       "New unit-test runs wait while this machine's 5-minute load average is over this many times its cores, but only while another unit-test run is going: with none going, the next one starts whatever the load. Release runs and runs already going never wait. Each unit-test run also gets its share of the cores in DEN_GATE_WORKERS. 0 turns the hold off. __DEN_CLI__ gate settings --load-hold-per-core 3",
+    "set.server.gate_memory_free_min_percent":
+      "Hold new runs here under this much free memory (%)",
+    "set.server.gate_memory_free_min_percent.d":
+      "New test runs on this machine (unit and browser, release ones too) wait while its free memory is under this percent, but only while another run here is going: with none going, the next one starts. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --memory-free-min-percent 10",
+    "set.server.gate_swap_hold_gb":
+      "Hold new runs here over this much swap in use (GB)",
+    "set.server.gate_swap_hold_gb.d":
+      "New test runs on this machine wait while the swap in use is over this many GB, but only while another run here is going: with none going, the next one starts. A machine can show plenty of free memory while swap fills. Test boxes still take their runs. 0 turns the hold off. __DEN_CLI__ gate settings --swap-hold-gb 8",
+    "set.server.gate_memory_reading_keep_seconds":
+      "If a memory reading fails, keep the last one for (seconds)",
+    "set.server.gate_memory_reading_keep_seconds.d":
+      "When free memory or swap can't be read, the last good reading stands this many seconds. After that the reading is unknown, and an unknown reading holds new runs here while another run here is going. 0 holds at once. __DEN_CLI__ gate settings --memory-reading-keep-seconds 30",
+    "set.server.gate_vm_memory_share":
+      "Warn when VMs promise more than this share of memory",
+    "set.server.gate_vm_memory_share.d":
+      "Doctor warns when the memory that running VMs (OrbStack machines, Docker's VM) have reserved adds up to more than this share of the machine's RAM. 1 is all of it; under 1 warns sooner. __DEN_CLI__ gate settings --vm-memory-share 1",
     "set.server.gate_cpu_hold_load":
       "Machine load that holds unit test runs during a release browser run",
     "set.server.gate_cpu_hold_load.d":
       "While this machine's 5-minute load average is at or above this, and a release-priority browser test run holds a browser slot, unit-test runs wait. Runs already going are never stopped. The default is the machine's cores × 4 / 3. 0 turns it off. __DEN_CLI__ gate settings --cpu-hold-load 24",
+    "set.server.gate_max_start_load":
+      "Machine load at which no test run starts",
+    "set.server.gate_max_start_load.d":
+      "While this machine's 5-minute load average is at or above this (the total, not per core), a test run that has its slot waits before it starts its command, and says why. It stays under where the machine stalls: the default is the machine's cores × 1.5. 0 turns it off. __DEN_CLI__ gate settings --max-start-load 27",
+    "set.server.gate_max_start_wait_minutes":
+      "Minutes a run waits for the load",
+    "set.server.gate_max_start_wait_minutes.d":
+      "A run held by the load starts anyway after this many minutes, and its record says it started on a busy machine. The default is 10. 0 means it waits however long. __DEN_CLI__ gate settings --max-start-wait-minutes 10",
+    "set.server.gate_reap_grace_seconds": "Seconds before leftovers are killed",
+    "set.server.gate_reap_grace_seconds.d":
+      "When a test run ends, or its folder is deleted, whatever it started that is still running is asked to stop, then killed after this many seconds. Nothing outside the run is touched. The default is 10. __DEN_CLI__ gate settings --reap-grace-seconds 10",
     "set.server.gate_local_browser": "Browser runs at once on this machine",
     "set.server.gate_local_browser.d":
       "How many browser test runs may run on this machine at once, each in its own container. A browser run on a test box doesn't count. 1: one at a time. __DEN_CLI__ gate settings --local-browser-slots 1",
@@ -2318,6 +2508,10 @@
       "Waiting this long, a marked release run is never passed, in minutes",
     "set.server.gate_priority_pass.d":
       "A release run with priority goes ahead of every other waiting run of its kind. Among runs marked for release priority, it never passes one that has waited this long. 0: it never passes another marked run. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
+    "set.server.gate_release_pass_other":
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes",
+    "set.server.gate_release_pass_other.d":
+      "While a release run with priority waits, a cpu or browser run of the other kind asked before it doesn't start in a slot it needs, unless it has waited longer than this. It never stops a running one. 0: it passes none of them. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
     "set.server.gate_priority_agents": "Agents may ask for release priority",
     "set.server.gate_priority_agents.d":
       "On, an agent may mark a release run for an issue you reported. Off, only you can. Every jump is in the slot log, with who and why. __DEN_CLI__ gate settings --priority-agents 1",
@@ -2367,6 +2561,9 @@
       "How long Den waits for a test box to answer when a slot on it is about to be given. No answer: the box is skipped. __DEN_CLI__ gate settings --box-check-timeout-seconds 8",
     "set.server.gate_box_recheck":
       "A skipped test box is checked again after, in seconds",
+    "set.server.gate_runner_entries": "CI runner entries",
+    "set.server.gate_runner_entries.d":
+      "Which repos' CI jobs may run on which test box: the runner labels the jobs ask for, the repo variable that routes them, how many at a time, whether each takes the box's heavy slot, and who answers for it. For now these are settings only: Den doesn't start runners yet. An agent asks to add one and you allow it. __DEN_CLI__ gate runner add <owner/repo> --box <name> --labels self-hosted --routing-variable CI_RUNNER --owner <who>",
     "set.server.gate_box_recheck.d":
       "A box that was held or didn't answer is passed over this long, then checked again the next time a slot on it is wanted. Never on a timer. __DEN_CLI__ gate settings --box-recheck-seconds 30",
     "set.server.gate_box_default": "Browser runs go to",
@@ -2377,6 +2574,22 @@
     "set.server.gate_host_only": "Browser runs kept here",
     "set.server.gate_host_only.d":
       "Comma-separated: <project>, label:<pattern> (* matches any text). These browser runs never go to a test box, for example layout suites or WebKit on macOS. Empty: none. __DEN_CLI__ gate settings --browser-host-only den,label:*webkit*",
+    "set.server.gate_route_agents": "Agents' heavy runs go through the gate",
+    "set.server.gate_route_agents.d":
+      "On, an agent's single test, typecheck or browser run takes a gate slot like any other. Off, it runs as written and is counted below. __DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_throwaway_sweep": "Remove throwaway test containers",
+    "set.server.gate_throwaway_sweep.d":
+      "On, Den removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
+    "set.server.gate_route_commands": "Programs sent through the gate",
+    "set.server.gate_route_commands.d":
+      'Comma-separated program names, or npm test and npm run test* (* matches any end). Empty: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
+    "set.server.gate_outside": "Runs outside the gate today",
+    "set.server.gate_outside.d":
+      "Agents' test, typecheck and browser runs that didn't take a gate slot today: a command with more than one part, or routing off. The program and the agent are recorded, never the arguments.",
+    "set.ui.outsideNone": "None today.",
+    "set.ui.outsideRuns": "{n} runs",
+    "set.ui.outsideRuns.one": "{n} run",
+    "set.ui.outsideFailed": "Couldn't read the gate's log.",
     "set.server.crash_loop_wait": "Restart guard's longest wait",
     "set.server.crash_loop_wait.d":
       "The longest the next start waits. 0 never waits. __DEN_CLI__ config web.crash_loop_max_wait_seconds=300",
@@ -2386,6 +2599,12 @@
     "set.server.server_log_max": "Warnings log, largest size",
     "set.server.server_log_max.d":
       "While __DEN_TITLE__ runs as a service, its warnings also go to logs/server.log in its state folder, so they are still there after a restart. At this size it moves to server.log.1 (once) and starts again. __DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "Slow request, log after",
+    "set.server.slow_request_ms.d":
+      "When a request takes longer than this, __DEN_TITLE__'s log gets one line with its route, who asked, and how long it took. Never its address, query, headers or body. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "Stall, log after",
+    "set.server.event_loop_lag_ms.d":
+      "When __DEN_TITLE__ is busy and runs nothing else for longer than this, its log gets one line saying how long. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max": "Report screenshots, largest kept",
     "set.server.report_screenshot_max.d":
       "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
@@ -2418,6 +2637,15 @@
     "set.agents.shell_path_wait": "Shell PATH wait",
     "set.agents.shell_path_wait.d":
       "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+    "set.agents.draft_hold_max": "Draft hold before the bell",
+    "set.agents.draft_hold_max.d":
+      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    "set.agents.max_concurrent": "Agents at once",
+    "set.agents.max_concurrent.d":
+      "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+    "set.agents.max_per_project": "Agents per project",
+    "set.agents.max_per_project.d":
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
       "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
@@ -2427,6 +2655,13 @@
     "set.server.sessions_close_grace": "Terminal close grace",
     "set.server.sessions_close_grace.d":
       "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_size_claim_grace": "Terminal size hold",
+    "set.server.sessions_size_claim_grace.d":
+      "How long the window that last set a terminal's size keeps it after its connection drops, so a brief drop or a reload does not hand the size to another window. 0 hands it on at once. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    "set.server.sessions_size_leave_grace":
+      "Terminal size hold after a page closes",
+    "set.server.sessions_size_leave_grace.d":
+      "How long the window that last set a terminal's size keeps it after its page closes or reloads, so a reload keeps the size while a closed page hands it to another window. Within the terminal size hold, that window takes the size back when it returns, unless someone typed or took over in another window meanwhile. 0 hands it on at once. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
     "set.server.sessions_pty_close": "Terminal close after exit",
     "set.server.sessions_pty_close.d":
       "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -2509,15 +2744,79 @@
     "set.server.health_poll_hidden": "Health checks in a hidden tab",
     "set.server.health_poll_hidden.d":
       "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "Git reads at once",
+    "set.server.git_reads.d":
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+    "set.server.install_mode": "This install is",
+    "set.server.install_mode.d":
+      "Personal: one person's own machine. Agents run outside the sandbox, so Docker, sockets and your tools work, and they change settings without asking, except money, deleting, security and acting on others. Strict: for a company's install or a shared machine. The sandbox is on, and agents' writes follow your approval policy. A setting you made yourself stays as you set it. __DEN_CLI__ config install_mode=strict",
+    "set.server.install_mode.o.personal": "Personal",
+    "set.server.install_mode.o.strict": "Strict",
+    "set.agents.settings_limits":
+      "Agents changing settings: Limits and performance",
+    "set.agents.settings_limits.d":
+      "Caps, timeouts and intervals: how many agents at once, how long Den waits. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_limits.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_limits.o.ask": "Ask me",
+    "set.agents.settings_limits.o.never": "Never",
+    "set.agents.settings_look": "Agents changing settings: Look and layout",
+    "set.agents.settings_look.d":
+      "How Den looks and tells you: tabs, the rail, alerts and quiet hours. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_look.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_look.o.ask": "Ask me",
+    "set.agents.settings_look.o.never": "Never",
+    "set.agents.settings_integrations":
+      "Agents changing settings: Integrations",
+    "set.agents.settings_integrations.d":
+      "Editors, terminals, runtimes, Hub and GitHub. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_integrations.o.auto":
+      "Change without asking (tell me)",
+    "set.agents.settings_integrations.o.ask": "Ask me",
+    "set.agents.settings_integrations.o.never": "Never",
+    "set.agents.settings_network":
+      "Agents changing settings: Network and access",
+    "set.agents.settings_network.d":
+      "Den's address, the edge, sign-in limits and embedding. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_network.o.auto": "Change without asking (tell me)",
+    "set.agents.settings_network.o.ask": "Ask me",
+    "set.agents.settings_network.o.never": "Never",
+    "set.agents.settings_agent_powers":
+      "Agents changing settings: Agent powers",
+    "set.agents.settings_agent_powers.d":
+      "The sandbox, grants, approvals, secrets and the install's mode. These always ask you, or are refused. A change made without asking is noted in the audit, and your updates say so.",
+    "set.agents.settings_agent_powers.o.ask": "Ask me",
+    "set.agents.settings_agent_powers.o.never": "Never",
+    "set.server.restore_services": "Bring back services after a restart",
+    "set.server.restore_services.d":
+      "On, after the machine or __DEN_TITLE__ restarts, the services that were up come back by themselves, a few at a time. A service you stopped stays stopped. The bell says what came back. __DEN_CLI__ config services.restore_on_boot=true",
+    "set.agents.resume_batch": "Agents restarted at a time",
+    "set.agents.resume_batch.d":
+      "After a restart, or when Hub's tools change, agents restart this many at a time; the ones that were working go first. 0 restarts every agent at once. __DEN_CLI__ config agents.resume.batch=4",
+    "set.agents.resume_gap": "Wait between restart batches",
+    "set.agents.resume_gap.d":
+      "How long the next batch of agent restarts waits after one starts. __DEN_CLI__ config agents.resume.gap_seconds=30",
+    "set.agents.resume_load": "Load that holds restarts",
+    "set.agents.resume_load.d":
+      "While the machine's 1-minute load is over this, the next batch of agent restarts waits. 0: no limit. The default is the number of cores × 2. __DEN_CLI__ config agents.resume.load_ceiling=16",
+    "set.agents.resume_max_wait": "Longest a restart waits for the load",
+    "set.agents.resume_max_wait.d":
+      "Once an agent has waited this long, its batch restarts even if the load is still high, a few at a time as before. 0: the load may hold restarts as long as it stays high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "Who writes GitHub issues",
     "set.agents.issue_writes.d":
       "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
     "set.agents.issue_writes_per_hour": "GitHub issue writes an hour",
     "set.agents.issue_writes_per_hour.d":
       "How many issue writes all agents together may make in an hour. Past it, an agent is told how long to wait. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+    "set.agents.issue_writes_visibility_minutes":
+      "Recheck a repo's visibility after",
+    "set.agents.issue_writes_visibility_minutes.d":
+      "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    "set.agents.issue_writes_public": "Agents write issues in public repos",
+    "set.agents.issue_writes_public.d":
+      "On, agents may create issues and comments in public repos. Their text is first checked for listed names, and the footer names no agent or install. Off, a write to a public repo is refused. Turning it on needs your Allow. __DEN_CLI__ config agents.issue_writes_public=false",
     "ap.do.agent_import":
       'Bring in conversation {session} as a {persona} agent of project "{project}"',
     "ap.do.approval_policy":
@@ -2534,6 +2833,7 @@
     "set.agents.default_mode.o.auto": "Auto mode",
     "set.agents.default_mode.o.all": "Auto-approve all",
     "set.agents.layout": "Agents tab layout",
+    "set.agents.coach_counts": "Coach tab: show counts as",
     "set.agents.keep_running": "Keep agents running after logout",
     "set.cli.local_dev": "Local environment",
     "set.cli.cli_tabs": "Terminal tabs",
@@ -2580,6 +2880,11 @@
     "set.access.agent_view_minutes": "An agent's view lasts, in minutes",
     "set.access.agent_view_minutes.d":
       "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
+    "set.access.sessions_lock_wait":
+      "Sign-in waits for the sign-ins file, in ms",
+    "set.access.sessions_lock_wait.d":
+      "How long a sign-in waits while another command changes the sign-ins file, then it asks to try again. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
+    "set.access.test_installs_here": "Test installs on this computer",
     "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
     "set.distribution.github_org": "GitHub org",
@@ -2862,8 +3167,31 @@
     "ag.mcp.failed": "Hub's tools didn't load",
     "ag.mcp.failedTip":
       "This agent couldn't load Hub's tools when it started ({error}), so it can't be reached on Hub. Restart keeps its conversation and waits for its turn to end.",
+    "ag.mcp.den": "Den {to}'s tools arrive on restart",
+    "ag.mcp.denTip":
+      "Den was updated to {to} after this agent started, so its Den tools still run {from}'s code. Restart loads {to}'s, at its next idle, on the same conversation.",
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
+    "ag.by.label": "Show the list",
+    "ag.by.need": "By need",
+    "ag.by.project": "By project",
+    "ag.by.group": "By group",
+    "ag.grp.noHub": "Groups come with Den Hub.",
+    "ag.grp.connect": "Connect Den Hub",
+    "ag.grp.notInPlan": "Groups aren't in this company's Den Hub plan.",
+    "ag.grp.openHub": "Open Hub",
+    "ag.grp.guest":
+      "You're a guest in this Hub company, so its groups aren't shown here.",
+    "ag.grp.unreachable": "Can't reach Den Hub, so groups aren't shown.",
+    "ag.grp.retry": "Try again",
+    "ag.grp.noGroups": "No groups yet",
+    "ag.grp.openGroups": "Open Groups in Hub",
+    "ag.grp.lead": "Lead: {name}",
+    "ag.grp.open": "Open {group} in Hub",
+    "ag.grp.message": "Message group",
+    "ag.grp.messageName": "Message {group} in Hub",
+    "ag.grp.empty": "None of its members run on this Den.",
+    "ag.grp.notIn": "Not in a group",
     "ag.mcp.restarting":
       "{id} restarts at its next idle, in the same conversation.",
     "ag.det.label": "Details for {id}",
@@ -2897,14 +3225,20 @@
     "pair.aDevice": "A browser",
     "pair.local": "on this computer, via localhost",
     "pair.help":
-      "Type the code shown on that computer's screen. Allow only a computer you are signing in yourself.",
+      "Typing it proves you are at that computer. Allow only a computer you are signing in yourself.",
     "pair.allow": "Allow",
     "pair.allowed": "That computer is signed in.",
     "pair.ended":
       "That request has ended: that computer closed its page or is already signed in. Nothing was allowed.",
     "pair.expired": "That code expired. Nothing was allowed.",
     "pair.close": "Close",
-    "pair.codeLabel": "Code on that computer's screen",
+    "pair.from": "From {client}, asking for {host}, at {time}.",
+    "pair.fromNamed":
+      "From {client} (it calls itself {name}), asking for {host}, at {time}.",
+    "pair.unknownAddr": "an address Den couldn't see",
+    "pair.unexpected":
+      "If you didn't just try to sign in on another computer, Deny.",
+    "pair.codeLabel": "Type the code that computer shows",
     "pair.age": "Asked {n} min ago.",
     "pair.ageNow": "Asked just now.",
     "pair.fromLogin": "From the web login run at {time}.",
@@ -2935,6 +3269,9 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
+    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.det.project_agent_cap.now": "Now: {v}",
+    "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
     "ap.do.embed_key_create":
@@ -2975,6 +3312,11 @@
     "ap.det.gate_box_set.playwright_endpoints": "Playwright by version: {v}",
     "ap.det.gate_box_remove.what":
       "Removes the test box {name}. Runs on it now finish; no new run goes there.",
+    "ap.do.test_person_setup": "Set up the test person on test install {id}",
+    "ap.det.test_person_setup.which":
+      "Test install {id}, state folder {where}, on this computer.",
+    "ap.det.test_person_setup.what":
+      "Its live checks can then sign in there as its test person. It can't sign in anywhere else.",
     "ap.do.web_url_set": "Make {url} this Den's address",
     "ap.det.web_url_set.newHost":
       "New host: {host} isn't this machine or an address Den serves. Sign-in and every link will go through it.",
@@ -2987,6 +3329,22 @@
       "Saved as confirmed, the same way Settings saves the address; it takes effect without a restart, and Den tells the connected Hub.",
     "set.ui.hub.denUrlRefused":
       "Hub didn't take this Den's address ({url}): {why}",
+    "ap.do.gate_runner_entry_set":
+      "Let {repo}'s CI jobs run on the test box {box}",
+    "ap.det.gate_runner_entry_set.reach":
+      "Lets {repo}'s CI jobs with the labels {labels} run on the test box {box}, at most {n} at a time.",
+    "ap.det.gate_runner_entry_set.change":
+      "Changes the entry that lets {repo}'s CI jobs with the labels {labels} run on the test box {box}, at most {n} at a time.",
+    "ap.det.gate_runner_entry_set.heavy":
+      "Each job takes one of {box}'s gate slots, so it never runs beside another heavy job there.",
+    "ap.det.gate_runner_entry_set.light":
+      "Its jobs are light: they take no gate slot on {box}.",
+    "ap.det.gate_runner_entry_set.route":
+      "The repo variable {variable} sends its jobs to the box, or back to hosted runners. {owner} answers for it.",
+    "ap.det.gate_runner_entry_set.private":
+      "Box runners start only for a private repo: if {repo} is public, none starts unless a person allows public repos for this project.",
+    "ap.det.gate_runner_entry_set.remove":
+      "You can remove it any time in Settings, under CI runner entries.",
     "ap.do.host_restart": "Restart the terminal host when agents are idle",
     "ap.det.host_restart.wait":
       "Waits until no agent is mid-turn (at most {min} min), then restarts the terminal host on the installed Den.",
@@ -3018,6 +3376,7 @@
       'Activates the project "{project}" first, so it can run.',
     "ap.det.service_try.up":
       "Runs the service's local \"up\", as the Services page's Start does.",
+    "ap.det.service_try.command": "Command: {command}",
     "ap.det.service_try.reports":
       "Den reports the exit code and the last lines of its output.",
     "ap.det.den_restart.restart":
@@ -3066,6 +3425,10 @@
       "Then Den restarts, and agents get Hub's tools when they next restart.",
     "ap.det.hub_connect.connect":
       "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
+    "ap.det.hub_connect.keep":
+      "Den stays on {was} with its key until you sign in to {url}.",
+    "ap.det.hub_connect.signin":
+      "After your Allow, {url}'s sign-in opens. Once that Hub answers, Den switches to it and {was} revokes its key; if it fails, Den stays on {was} and says why.",
     "ap.det.den_pin_commit.pr":
       "Den commits package.json and package-lock.json on the branch den/pin-{version} and opens a pull request.",
     "ap.det.den_pin_commit.push":
@@ -3098,6 +3461,10 @@
     "ap.det.agent_create.runtime": "Runtime: {v}",
     "ap.det.agent_create.mode": "Mode: {mode} (the project's: {cap})",
     "ap.det.agent.who": "Agent: {agent}, project {project}",
+    "ap.det.agent.sandboxOff":
+      "{id} starts outside the sandbox: agents.{id}.sandbox is off in config/local/user.yml.",
+    "ap.det.agent.sandboxOffAll":
+      "Agents here start outside the sandbox (agents.sandbox: off), and so would this one.",
     "ap.det.agent.whoId": "Agent: {agent} ({id}), project {project}",
     "ap.det.agent_folder.from": "From: {v}",
     "ap.det.agent_folder.to": "To: {v}",
@@ -3113,6 +3480,45 @@
     "ap.det.agent_mode.running":
       "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
     "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
+    "ap.det.agent_sandbox_set.self":
+      "{agent} is asking for this itself: it wants its own sandbox {value}.",
+    "ap.det.agent_sandbox_set.on":
+      "This puts {agent} back in the sandbox: Den's own files are read-only to it again.",
+    "ap.det.agent_sandbox_set.off":
+      "This takes {agent} out of the sandbox: it can then write Den's own files and reach what the sandbox blocks.",
+    "ap.det.agent_sandbox_set.why": "Why: {why}",
+    "ap.det.agent_sandbox_set.writes":
+      "Den writes agents.{id}.sandbox: {value} in config/local/user.yml, and nothing else there.",
+    "ap.det.agent_sandbox_set.running":
+      "It is running: Den restarts it after its turn, on the same conversation, with the change.",
+    "ap.det.agent_sandbox_set.stopped":
+      "It is stopped: its next start has the change.",
+    "ap.do.agent_sandbox_set": "{agent}: back in the sandbox",
+    "ap.do.agent_sandbox_set.loosens": "This takes {agent} out of the sandbox",
+    "ap.det.setting_change.widens":
+      "This widens what agents can do: only your own Allow runs it.",
+    "ap.det.setting_change.key": "Setting: {key}",
+    "ap.det.setting_change.now": "Now: {value}",
+    "ap.det.setting_change.nowDefault": "Now: {value} (Den's default)",
+    "ap.det.setting_change.nowDen": "Now: {value} (from den.yml)",
+    "ap.det.setting_change.new": "New: {value}",
+    "ap.det.setting_change.why": "Why: {why}",
+    "ap.det.gate_settings_set.change": "{key}: {from} → {to}",
+    "ap.det.gate_settings_set.why": "Why: {why}",
+    "ap.det.gate_settings_set.writes":
+      "Den writes these in the gates folder's settings.json, under the gate's lock, and nothing else there.",
+    "ap.det.setting_change.by": "Asked by {agent}",
+    "ap.det.setting_change.writes":
+      "Den writes only {key} in config/local/user.yml, keeps a copy of the file first, and notes the change in the audit.",
+    "ap.det.setting_change.restart":
+      "Den reads it when it starts: it applies after a restart of Den (den_restart_server).",
+    "ap.det.setting_change.atOnce": "It applies at once.",
+    "ap.do.setting_change": "Change {key}: {now} → {value}",
+    "ap.do.setting_change.loosens":
+      "This widens what agents can do: {key}: {now} → {value}",
+    "ap.do.gate_settings_set": "Change gate settings: {keys}",
+    "ap.do.gate_settings_set.loosens":
+      "This widens what agents can do: gate settings {keys}",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
@@ -3132,6 +3538,20 @@
     "ap.hl.nowNone": "Now: not linked to a Hub project",
     "ap.hl.then": "Then: {hub}",
     "ap.hl.filed": "Its agents' Hub work is filed there from their next call.",
+    "ap.do.state_folder_own": "Give this install its own state folder",
+    "ap.sf.new":
+      "A new, empty state folder for this install, beside the shared one.",
+    "ap.sf.empty":
+      "Nothing is copied or moved: its agents, sign-ins and history stay with the other copy, and you sign in to this Den again.",
+    "ap.sf.other": "The other copy keeps the shared folder as it is.",
+    "ap.sf.restart":
+      "Den restarts on its own folder, then carries on with Connect to {hub}.",
+    "ap.sf.restartNone": "Den restarts on its own folder.",
+    "hub.sf.shared":
+      "Another copy of Den on this computer shares this install's state folder, and it is on another Hub.",
+    "hub.sf.offer": "Give this install its own state folder",
+    "hub.sf.allow":
+      "Allow it in the dialog. Den restarts, then carries on with Connect.",
     "ap.pm.now": "Now: {mode}",
     "ap.pm.then": "Then: {mode}",
     "ap.pm.thenNone":
@@ -3237,7 +3657,7 @@
     "pmcp.none": "No extra MCP servers for this project's agents.",
     "set.workspace.event_feeds": "App event feeds: this project",
     "set.workspace.event_feeds.d":
-      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add one in agents.event_feeds; a bearer is a secrets.refs name.",
+      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add or remove one here; an agent asks with project_event_feed_add or project_event_feed_remove. A bearer is a secrets.refs name, never a value.",
     "set.embed.feed_max_streams": "App feeds read at once",
     "set.embed.feed_max_streams.d":
       "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",
@@ -3269,6 +3689,38 @@
     "feed.unread": "Unread: {n}.",
     "bell.m.appFeed.dropped":
       "App feed {name} for {agent}: unread events went because the feed keeps at most its limit.",
+    "feed.add": "Add feed",
+    "feed.name": "Name",
+    "feed.agent": "Agent",
+    "feed.url": "Stream address",
+    "feed.bearer": "Bearer (a secrets.refs name)",
+    "feed.bearerNone": "none",
+    "feed.noAgents":
+      "This project has no agents yet. Start one, then add its feed.",
+    "feed.addW": "Adding the feed…",
+    "feed.addS": "Added.",
+    "feed.addF": "Couldn't add the feed.",
+    "feed.remove": "Remove",
+    "feed.removeL": "Remove feed {name}",
+    "feed.rmT": "Remove the feed?",
+    "feed.rmAsk":
+      "Remove feed {name} from project {project}? Den closes its stream, and {agent} gets no more lines from it.",
+    "feed.rmW": "Removing the feed…",
+    "feed.rmS": "Removed.",
+    "feed.rmF": "Couldn't remove the feed.",
+    "ap.do.project_event_feed_add":
+      "Add event feed {name} ({url}) for {agent} in project {project}",
+    "ap.do.project_event_feed_remove":
+      "Remove event feed {name} from project {project}",
+    "ap.feed.warn":
+      "Den opens {url} and types {agent} a short line when its events are unread.",
+    "ap.feed.feed": "Feed: {name}, for {agent}",
+    "ap.feed.bearer":
+      "Bearer: read from secrets.refs.{ref} at each connect; never shown or written to the agent's files.",
+    "ap.feed.noBearer":
+      "No bearer: the stream is opened with no Authorization header.",
+    "ap.feed.removeWarn":
+      "Den closes feed {name}; its agent gets no more lines from it.",
     "feed.problems": "Entries in agents.event_feeds that can't be read: {n}.",
     "feed.failed": "Couldn't read this project's app event feeds.",
     "feed.st.connecting": "Connecting",
@@ -3471,7 +3923,6 @@
     "ag.sub.agent": "{n} agent",
     "ag.sub.shells": "{n} shells",
     "ag.sub.shell": "{n} shell",
-    "ag.sub.waiting": "{w} waiting",
     "ag.all": "all projects",
     "ag.waiting": "waiting",
     "ag.waiting.approval": "needs your Allow",
@@ -3479,6 +3930,41 @@
     "ag.waiting.input": "waiting for you",
     "ag.waiting.asked": "asked you",
     "ag.waiting.trust": "Waiting: trust this folder?",
+    "ag.band.needs": "Needs you",
+    "ag.band.done": "Done, not seen",
+    "ag.band.working": "Working",
+    "ag.band.idle": "Idle",
+    "ag.chip.needs": "Needs you",
+    "ag.chip.needsWhy": "Needs you · {why}",
+    "ag.chip.done": "Done",
+    "ag.chip.working": "Working",
+    "ag.chip.idle": "Idle",
+    "ag.why.permission": "permission",
+    "ag.why.asked": "question",
+    "ag.why.approval": "Allow",
+    "ag.why.trust": "folder trust",
+    "ag.whyLong.permission": "asks for your permission",
+    "ag.whyLong.asked": "asked you a question",
+    "ag.whyLong.approval": "waits for your Allow",
+    "ag.whyLong.trust": "asks to trust its folder",
+    "ag.tag.server": "Server",
+    "ag.sub.needs": "{n} need you",
+    "ag.sub.needsOne": "{n} needs you",
+    "ag.sub.done": "{n} done, not seen",
+    "ag.sub.doneOne": "{n} done, not seen",
+    "ag.sub.working": "{n} working",
+    "ag.sub.idle": "{n} idle",
+    "ag.sub.idleOne": "{n} idle",
+    "ag.meta.finished": "finished {ago}",
+    "ag.whyLong.command": "asks to run a command",
+    "ag.whyLong.tool": "asks to use {tool}",
+    "ag.meta.seen": "seen just now",
+    "ag.list.failed": "The list could not load.",
+    "ag.list.retry": "Retry",
+    "ag.list.keepRunning": "Your agents keep running.",
+    "ag.list.loading": "Loading the agents",
+    "bell.doneRow": "{name} finished",
+    "bell.seenSub": "{where} · seen",
     "bell.title": "Notifications",
     "bell.n": "Notifications: {n} unread",
     "bell.n.one": "Notifications: {n} unread",
@@ -3514,7 +4000,16 @@
       "You withdrew {name}'s question, settled: {reason} ({text})",
     "bell.m.settledLate":
       "{name}'s question was settled: {reason}; your answer came after it and was passed on ({text})",
+    "bell.m.hubSwitchWaits":
+      "Sign in to {to} to finish switching Hubs; __DEN_TITLE__ stays on {from} until then",
+    "bell.m.hubSwitchExpired":
+      "The switch to {to} waited {days} days for a sign-in and has ended. __DEN_TITLE__ stays on {from}; ask again to switch",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ couldn't switch to {to}: {why}. It stays on {from}; sign in again in Settings › Hub",
+    "ap.hubSwitchSignin": "Opening {url}'s sign-in…",
     "bell.m.pick": "{n} projects need your pick",
+    "bell.m.hubMoved":
+      "Project {project} moved to {hub}. Switch this install to that Hub to keep it linked.",
     "bell.pickBody":
       "Den can't tell which Hub project fits them. Click to choose. Nothing is filed for them until then.",
     "bell.pickBody.one":
@@ -3532,6 +4027,11 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. Terminals that ended: {terminals}. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
+    "bell.m.rsTimedOut":
+      "{id} was not restarted: still working after {min} min",
+    "bell.m.rsJob":
+      "{id} was not restarted: a background job is running ({cmd}, {min} min)",
+    "bell.m.rsFailed": "{id} was not restarted",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
@@ -3541,6 +4041,8 @@
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} withdrew its request: {what}. Withdrawn: {reason}",
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.vschedPass": "Scheduled run on {env}: {n} checks passed.",
@@ -3554,6 +4056,8 @@
     "bell.m.vschedExpire.one":
       'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.heldAllowClaimed":
+      "Waiting for your Allow: {what}. You asked, as {name} (not verified).",
     "bell.m.shared": "{actor} shared {title} with you",
     "bell.m.sharedNote": "{actor} shared {title} with you: {note}",
     "bell.m.sharedAgent": "The agent {actor} shared {title} with you",
@@ -3566,6 +4070,9 @@
       "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
     "bell.m.heldLostAsk":
       "A request was lost at a restart: {what}. Nothing ran from it.",
+    "bell.m.capHeld":
+      "{name} didn't start: {n} of {limit} agents are running ({key}). Stop one, or raise {key}.",
+    "bell.m.restartsWaiting": "{n} agents waiting to restart, a few at a time",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
     "bell.go.h": "Test slots past their estimate",
@@ -3576,10 +4083,27 @@
     "bell.ap.h": "Waiting for your Allow",
     "bell.ap.row": "{name} asks: {what}",
     "bell.ap.rowAsk": "Asked: {what}",
+    "bell.ap.rowClaimed": "You asked, as {name} (not verified): {what}",
     "bell.ap.waits": "Waiting {ago} · expires {time}",
     "bell.ap.allow": "Allow",
     "bell.ap.deny": "Deny",
     "bell.ap.done": "Allowed: {what}",
+    "rs.now": "{id}: restarting now, in the same conversation.",
+    "rs.turn": "{id}: restarts when its turn ends, in the same conversation.",
+    "rs.job": "{id}: waiting: a background job ({cmd}, {min} min).",
+    "rs.unknown":
+      "{id}: Den can't tell when its turn ends, so it isn't restarted yet.",
+    "rs.nowJob": "Restart now (ends the job)",
+    "rs.nowBtn": "Restart now",
+    "rs.all": "Restart all {n} now",
+    "rs.none": "No agents need a restart.",
+    "rs.bar": "{n} agents need a restart to load their tools.",
+    "rs.barBtn": "Restart all {n} at their next idle",
+    "rs.allName": "the agents",
+    "rs.done": "{id}: restarted, in the same conversation.",
+    "rs.timedOut":
+      "{id}: not restarted, still working after {min} min. Restart now ends its turn.",
+    "rs.failed": "{id}: not restarted. Restart it from the Agents page.",
     "bell.ap.denied": "Denied: {what}",
     "bell.ap.failed": "That didn't work: {error}",
     "bell.m.ranAway":
@@ -3592,6 +4116,14 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
+    "bell.m.deliveryFileBad":
+      "Den couldn't read {n} held deliveries; kept the file as {moved}.",
+    "bell.m.deliveryFileBad.one":
+      "Den couldn't read {n} held delivery; kept the file as {moved}.",
+    "bell.m.deliveryFileBadUncounted":
+      "Den couldn't read {file} or count its held deliveries; kept the file as {moved}.",
+    "bell.m.deliveryFileBadKept":
+      "Den couldn't read {file} and couldn't move it aside; delivery goes on without what it held.",
     "bell.m.notAtPrompt":
       "{name}: {n} messages wait for {m} min. Waiting: the agent isn't at its prompt",
     "bell.m.notAtPrompt.one":
@@ -3628,6 +4160,14 @@
       "{name}: {n} messages wait for {m} min. Waiting: Den couldn't read the agent's state in time",
     "bell.m.held.unread.one":
       "{name}: {n} message waits for {m} min. Waiting: Den couldn't read the agent's state in time",
+    "bell.m.held.draft":
+      "{name}: {n} messages wait for {m} min. Waiting: you're typing a message to it; they go once you send or clear it",
+    "bell.m.held.draft.one":
+      "{name}: {n} message waits for {m} min. Waiting: you're typing a message to it; it goes once you send or clear yours",
+    "bell.m.held.hub_tools":
+      "{name}: {n} messages wait for {m} min. Waiting: its Hub tools didn't load; restart it",
+    "bell.m.held.hub_tools.one":
+      "{name}: {n} message waits for {m} min. Waiting: its Hub tools didn't load; restart it",
     "bell.m.hubNoAnswer":
       "{name}: {n} Hub comments typed in, no answer yet after {m} min",
     "bell.m.hubNoAnswer.one":
@@ -3636,15 +4176,25 @@
       "__DEN_TITLE__'s web app stopped {n} times in {m} minutes without a clean stop; it waited {s} s before starting again",
     "bell.m.updateOut":
       "__DEN_TITLE__ {v} is out. Allow the update when it suits you (this install runs {have})",
+    "bell.m.updateRollbackFailed":
+      "__DEN_TITLE__ couldn't update to {v}, and the rollback failed too: __DEN_TITLE__ {from} may not start. Put the pin back on {from} in {root} and run npm install there. Why: {why}",
     "bell.m.updateFailed": "__DEN_TITLE__ couldn't update to {v}: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow",
+    "bell.m.hubAgentsReconnect":
+      "Reconnect to Hub so your agents sign their own work",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
     "bell.m.updateWaitsWhat":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow: {what} (since {since})",
     "bell.m.updatedSecurity":
       "__DEN_TITLE__ updated for a security fix while {agent} was waiting on you; its question is still open",
+    "bell.m.serviceBack": "Brought back 1 service after the restart.",
+    "bell.m.servicesBack": "Brought back {n} services after the restart.",
+    "bell.m.serviceBackFailed":
+      "Brought back 1 service after the restart. Not brought back: {failed}.",
+    "bell.m.servicesBackFailed":
+      "Brought back {n} services after the restart. Not brought back: {failed}.",
     "bell.m.toolsNoteHeld":
       "__DEN_TITLE__ reconnected Hub's tools for {agent}; its note waits until you answer {agent} in its terminal",
     "bell.m.toolsListFailed":
@@ -3663,8 +4213,18 @@
       "__DEN_TITLE__ {v}: its pin is committed ({sha}) but the push failed: {why}. __DEN_TITLE__ tries again at the next update check",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
+    "bell.m.pinPrRenamed":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request on {branch}, since {why}",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch}), not pushed: the branch requires signed commits and no agents' signing key is set (doctor says how)",
+    "bell.m.pinPushedBehind":
+      "__DEN_TITLE__ updated to {v}: its pin is pushed ({sha}), but the checkout is behind and has local changes, so pull to get the pin",
+    "bell.m.pinPrAhead":
+      "__DEN_TITLE__ updated to {v}: the checkout has commits not pushed, so its pin went to a pull request; opened #{n} ({branch})",
+    "bell.m.pinPrFallback":
+      "__DEN_TITLE__ updated to {v}: the branch needs a pull request; opened #{n} for its pin ({branch})",
     "bell.m.pinBranchPushed":
       "__DEN_TITLE__ {v}: the pin branch {branch} is pushed; open a pull request for it ({why})",
     "bell.m.pinHeld":
@@ -3683,6 +4243,8 @@
       "Hub comments aren't arriving: Hub keeps closing the comment stream",
     "bell.m.hubCommentsSilent":
       "Hub comments aren't arriving: the comment stream went silent",
+    "bell.m.hubCommentsStale":
+      "Hub comments aren't arriving: the comment stream is open, but Hub lists comments it hasn't sent",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",
@@ -3714,6 +4276,10 @@
       "Its instruction files are {size}: more than {share}% of its context. The largest is {path} ({big}).",
     "ag.hub.queued": "{n} Hub comments wait for it",
     "ag.hub.notAtPrompt": "Waiting: the agent isn't at its prompt",
+    "ag.draftWaiting": "{n} messages waiting: sent after your draft",
+    "ag.draftWaiting.one": "{n} message waiting: sent after your draft",
+    "ag.draftWaitingTip":
+      "Den holds these while you type here. Send or clear your message, and they go in, in order.",
     "tx.asked": "Asked",
     "tx.result": "Result",
     "tx.error": "Error",
@@ -3862,6 +4428,194 @@
     "sa.runsOn": "Runs on",
     "sa.openAgents": "Open in Agents",
     "sa.saved": "Saved. The agent uses it from its next start.",
+    // Issue 52: the Coach tab (mock v2).
+    "co.tabs": "Agent views",
+    "co.tab.terminal": "Terminal",
+    "co.tab.coach": "Coach",
+    "co.run": "Run now",
+    "co.runAgain": "Run again",
+    "co.running": "Running…",
+    "co.running.sub": "Reading transcripts: {done} of {total} agents.",
+    "co.running.start": "Starting the run.",
+    "co.running.h": "Reading this __DEN_TITLE__'s agents",
+    "co.running.p":
+      "The tab fills in when the run ends. You can leave this page.",
+    "co.failed": "Last run failed: {when}",
+    "co.failed.before": "Nothing was saved. Showing the run before: {when}.",
+    "co.failed.none": "Nothing was saved.",
+    "co.failed.table": "The table below is the {when} report, unchanged.",
+    "co.none.h": "Not run yet",
+    "co.none.sub":
+      "Run it by hand. It reads this __DEN_TITLE__'s agents and changes nothing.",
+    "co.empty.h": "No report yet",
+    "co.empty.p": "Press Run now. A run takes a minute or two.",
+    "co.last": "Last run: {when}",
+    "co.cost": "It cost {tokens} tokens on {model}. It read {n} agents.",
+    "co.cost.one": "It cost {tokens} tokens on {model}. It read {n} agent.",
+    "co.costNone": "It used no model. It read {n} agents.",
+    "co.costNone.one": "It used no model. It read {n} agent.",
+    "co.off.h": "Coach is off",
+    "co.off.sub": "Turn Coach on to run it.",
+    "co.off.p":
+      "Coach reads how this __DEN_TITLE__'s agents use tokens and writes a report. It reads only this __DEN_TITLE__'s own agents, sends nothing off this machine and changes nothing.",
+    "co.off.how":
+      "To turn it on: Settings → Agents → Coach → turn on. Or set agents.coach.enabled: true.",
+    "co.openSettings": "Open Settings",
+    "co.tile.window": "Window",
+    "co.days": "{n} days",
+    "co.days.one": "{n} day",
+    "co.perDayShort": "{v} / day",
+    "co.range": "Window: {from} – {to}, {days} days",
+    "co.showAs": "Show counts as",
+    "co.total": "Total",
+    "co.perDay": "Per day",
+    "co.col.agent": "Agent",
+    "co.col.calls": "Calls",
+    "co.col.output_M": "Output tokens",
+    "co.col.cache_read_B": "Cache reads",
+    "co.col.avg_context_k_main": "Avg context / call",
+    "co.col.compactions": "Compactions",
+    "co.col.rotations": "Rotations",
+    "co.col.conversations": "Conversations",
+    "co.col.polls": "Polls",
+    "co.col.denials": "Denials",
+    "co.col.tool_error_pct": "Tool errors",
+    "co.col.correction_pct": "Corrections",
+    "co.card.calls": "Calls",
+    "co.card.output": "Output",
+    "co.noNumbers": "no numbers in this window",
+    "co.foot": "Only agents this __DEN_TITLE__ started or brought in.",
+    "co.detail.sub": "{range} · {n} conversations",
+    "co.detail.sub.one": "{range} · {n} conversation",
+    "co.close": "Close",
+    "co.conv.h": "Conversations (newest first)",
+    "co.noConv": "No conversation in this window.",
+    "co.kind.start": "start",
+    "co.kind.fresh": "fresh",
+    "co.kind.rotation": "rotation",
+    "co.kind.bring-in": "bring-in",
+    "co.why.start": "its first launch",
+    "co.why.fresh": "a new conversation: Start fresh or a relaunch",
+    "co.why.rotation": "relaunched from its handoff",
+    "co.why.bring-in": "brought in from outside __DEN_TITLE__",
+    "co.approx": "(time approximate)",
+    "co.mix.h": "Model mix, by calls",
+    "co.mix.main": "Main calls",
+    "co.mix.sub": "Subagent calls",
+    "co.mix.none": "No calls",
+    "co.mix.opus": "Opus",
+    "co.mix.sonnet": "Sonnet",
+    "co.mix.haiku": "Haiku",
+    "co.mix.other": "Other",
+    "co.mix.part": "{model} {pct}",
+    "co.mix.flagged": "{pct} on Opus; the Coach flags this below",
+    "co.perDayH": "Per day",
+    "co.perDayLine":
+      "Calls {calls}/day · output {output}/day · {compactions} compactions/day · {rotations} rotations/day",
+    "co.run.w": "Running the Coach…",
+    "co.run.done": "Done: the Coach's report is ready.",
+    "co.run.fail": "The Coach run failed.",
+    "co.dis.w": "Dismissing…",
+    "co.dis.done": "Dismissed.",
+    "co.dis.fail": "Couldn't dismiss it.",
+    "co.ap.busy.w": "Asking for Allow…",
+    "co.ap.busy.done": "Sent to the bell for Allow.",
+    "co.ap.busy.fail": "Couldn't ask for Allow.",
+    "co.undo.w": "Taking it back…",
+    "co.undo.done": "Back in the list.",
+    "co.undo.fail": "Couldn't take the dismissal back.",
+    "co.counts.w": "Saving…",
+    "co.counts.done": "Saved.",
+    "co.counts.fail": "Couldn't save how counts show.",
+    "co.off.status": "Off",
+    "co.f.h": "Findings",
+    "co.f.count":
+      "{n} from this run. Coach only reads and reports: it changes nothing.",
+    "co.f.count.one":
+      "{n} from this run. Coach only reads and reports: it changes nothing.",
+    "co.f.col.finding": "Finding",
+    "co.f.col.agent": "Agent",
+    "co.f.col.why": "Why Coach says so",
+    "co.ap.apply": "Apply",
+    "co.ap.proposed": "Proposed change: {change}",
+    "co.ap.change.subagent_opus": "Set {persona}’s subagent model to Sonnet.",
+    "co.ap.rev.subagent_opus": "Yes: set it back in {persona}’s persona.",
+    "co.ap.now.subagent_opus": "{persona}’s subagent model is now Sonnet.",
+    "co.ap.none": "Coach has no change to propose for this one.",
+    "co.ap.waiting": "Waiting for Allow",
+    "co.ap.waiting.line":
+      "Nothing has changed yet. A person must allow this in the bell.",
+    "co.ap.openBell": "Open the bell",
+    "co.ap.applied": "Applied",
+    "co.ap.applied.by":
+      "Allowed by {by}, {when}. {now} Coach will check it in the next run.",
+    "co.ap.applied.at":
+      "Allowed {when}. {now} Coach will check it in the next run.",
+    "co.ap.denied": "Denied",
+    "co.ap.denied.by":
+      "Denied by {by}, {when}. Nothing was changed. The finding stays.",
+    "co.ap.denied.at": "Denied {when}. Nothing was changed. The finding stays.",
+    "co.ap.failed": "Failed",
+    "co.ap.failed.line": "Could not apply: {reason}. Nothing was changed.",
+    "co.ap.failed.none": "Could not apply. Nothing was changed.",
+    "co.ap.again": "Apply again",
+    "co.ap.retry": "Try again",
+    "co.ap.fail": "Could not ask to apply “{title}”. Try again.",
+    "co.ap.live.waiting": "“{title}”: waiting for Allow.",
+    "co.ap.live.applied": "“{title}”: applied.",
+    "co.ap.live.denied": "“{title}”: denied. Nothing was changed.",
+    "co.ap.live.failed": "“{title}”: failed. Nothing was changed.",
+    "bell.coach.asks": "The __DEN_TITLE__ agent asks to change {persona}",
+    "bell.coach.from": "From the Coach finding “{title}”.",
+    "bell.coach.change": "Change",
+    "bell.coach.why": "Why",
+    "bell.coach.rev": "Reversible",
+    "co.f.dismiss": "Dismiss",
+    "co.f.undo": "Undo",
+    "co.f.toast": "Dismissed “{title}”.",
+    "co.f.fail": "Could not dismiss “{title}”. Try again.",
+    "co.f.none": "Nothing stood out this week. No agent is past a line.",
+    "co.f.dismissedN": "{n} dismissed",
+    "co.f.dismissedN.one": "{n} dismissed",
+    "co.f.show": "Show",
+    "co.f.hide": "Hide",
+    "co.f.dismissedAt": "Dismissed {when}",
+    "co.f.subagent_opus.t": "{agent} runs its subagents on Opus",
+    "co.f.subagent_opus.why":
+      "{n}% of {calls} subagent calls ran on Opus, past the line of {line}%. Setting its persona's subagent model to Sonnet runs exploring and checking on the cheaper model.",
+    "co.f.polling.t": "{agent} polls a lot",
+    "co.f.polling.why":
+      "{n} polls a day, past the line of {line}. Waiting on a long run by polling costs a call each time; running it in the background and waiting to be told costs none.",
+    "co.f.no_rotation.t": "{agent} hasn't rotated",
+    "co.f.no_rotation.why":
+      "{n} compactions in this conversation, past its limit of {line}. Each one drops context the agent then reads again. Relaunching it from its handoff starts it smaller.",
+    "co.f.denials.t": "{agent} is refused often",
+    "co.f.denials.why":
+      "{n} refusals a day, past the line of {line}. Check what it keeps asking for: an allow rule for you to approve, or a change to how it works.",
+    "co.f.transcript_size.t": "{agent} has large transcripts",
+    "co.f.transcript_size.why":
+      "{n} MB of transcripts in this window, past the line of {line} MB. Rotating it, or saving screenshots to files, keeps them smaller.",
+    "co.f.ask_r12.t": "{agent} asks you unclear questions",
+    "co.f.ask_r12.why":
+      "{pct}% of its {n} asks to you were plain, under the line of {line}%. Short sentences, every ID explained and each decision a numbered yes/no question make them plain.",
+    "co.f.ask_wait.t": "{agent}'s asks wait long",
+    "co.f.ask_wait.why":
+      "Its asks waited {n} minutes for an answer, at the median, past the line of {line}. Another agent may own these answers, or the asks could be batched.",
+    "co.f.msg_repeat.t": "{agent} sends the same message again",
+    "co.f.msg_repeat.why":
+      "It sent other agents the same text again {n} times, at or past the line of {line}. A missed reply or a loop: saying it once and waiting to be told is enough.",
+    "co.f.msg_no_reply.t": "{agent}'s messages get no reply",
+    "co.f.msg_no_reply.why":
+      "{pct}% of its {n} messages to other agents got no reply, past the line of {line}%. Check it sends to the agent that owns the answer, and that the other agent reads its messages.",
+    "co.f.repeat_ask.t": "{agent} left you asking again",
+    "co.f.repeat_ask.why":
+      "{n} of your prompts asked again for something asked before, as the cheap model judged them. Something you asked for may not have been done.",
+    "co.f.trivial_ask.t": "{agent} asks what it could decide",
+    "co.f.trivial_ask.why":
+      "{n} of its asks to you were ones it could have decided itself, as the cheap model judged them.",
+    "co.f.relay.t": "{agent} passes your requests on as its own",
+    "co.f.relay.why":
+      "{n} of its messages passed a request of yours to another agent as its own, as the cheap model judged them.",
     "ag.cap": "Up to 4 panes: {id}'s closed to make room (it keeps running)",
     // AG-4b: the Agents tab's layouts and named tabs.
     "ag.layout": "Layout",
@@ -3889,6 +4643,12 @@
     "ag.signIn": "on {label}",
     "ag.signIn.tip":
       "It signs in with {label}, whose token is in this install's secrets store, so it keeps running after logout.",
+    "ag.hub.bound": "Verified on Hub",
+    "ag.hub.bound.tip":
+      "It calls Hub with its own token, so Hub counts its work and approvals as its own.",
+    "ag.hub.unbound": "Not verified on Hub",
+    "ag.hub.unbound.tip":
+      "It calls Hub with this install's token for now, so Hub can't tell its approvals from the install's. Den asks Hub for its own token when it next calls Hub.",
     "ag.tabs": "Open terminals",
     "ag.hint.focus":
       "Click shows one terminal. Shift- or ⌘-click adds it alongside.",
@@ -3917,7 +4677,7 @@
     "ag.ord.upOne": "Move {id} up",
     "ag.ord.downOne": "Move {id} down",
     "ag.ord.reorder": "Reorder",
-    "ag.ord.reorderOne": "Reorder the agents of {ws}",
+    "ag.ord.reorderBand": "Reorder the {band} agents",
     "ag.ord.reorderStopped": "Reorder the stopped agents",
     "ag.ord.done": "Done",
     "ag.ord.grip": "Drag to move it in its project's order",
@@ -3958,6 +4718,21 @@
     "gate.onBox": "on box {box}",
     "gate.anyBox": "here or on a test box",
     "gate.boxesH": "Test boxes",
+    "gate.swapHold":
+      "waiting: this machine has {used} GB of swap in use, over {limit} GB, while another run here is going; it starts once swap drops or that run ends",
+    "gate.swapUsed": "Swap in use: {used} GB",
+    "gate.memoryHold":
+      "waiting: this machine has {free}% of its memory free, under {limit}%, while another run here is going; it starts once memory frees or that run ends",
+    "gate.memoryUnavailableHold":
+      "waiting: memory reading unavailable, while another run here is going; it starts once a reading comes back or that run ends",
+    "gate.memoryUnavailable": "This machine: memory reading unavailable",
+    "gate.memoryNotMeasured":
+      "This machine: memory isn't measured on this platform: memory holds don't apply",
+    "gate.freeMemory": "This machine: {free}% of memory free",
+    "gate.vms": "VMs here promise {promised} GB of {limit} GB allowed",
+    "gate.vmsOver":
+      "VMs here promise {promised} GB, over the {limit} GB allowed: the machine can run out of memory",
+    "gate.vmsNotCounted": "{runtime}: not counted (couldn't read it)",
     "gate.boxSlots": "{box}: {held} of {n} browser slots in use",
     "gate.boxHeld": "{box}: skipped, held ({reason})",
     "gate.boxDown": "{box}: skipped, doesn't answer ({reason})",
@@ -3974,9 +4749,28 @@
       "waiting: this machine's load is {load}, over {perCore} × {cores} cores ({limit}), while another unit test run is going; it starts once the load drops or that run ends",
     "gate.loadHold":
       "waiting: load {load} ≥ {limit} while a release run holds the browser slot",
+    "gate.startHold":
+      "holds its slot; waiting for the load ({load}) to drop under {limit} before it starts",
+    "gate.leftoversH": "Stopped after their run ended",
+    "gate.leftovers": "{n} leftover processes of {label} ({cmd})",
+    "gate.leftovers.one": "{n} leftover process of {label} ({cmd})",
+    "gate.removedH": "Throwaway containers removed after their run",
+    "gate.removed": "{n} containers of {label} ({images})",
+    "gate.removed.one": "{n} container of {label} ({images})",
+    "gate.removedBare": "{n} containers of {label}",
+    "gate.removedBare.one": "{n} container of {label}",
+    "busy.setUndoW": "Putting the setting back…",
+    "busy.setUndoS": "The setting is back as it was.",
+    "busy.setUndoF": "Couldn't put the setting back.",
     "busy.gateEndW": "Ending the slot for {name}…",
     "busy.gateEndS": "The slot for {name} ended.",
     "busy.gateEndF": "Couldn't end the slot for {name}.",
+    "busy.allowW": "Allowing…",
+    "busy.allowS": "Allowed.",
+    "busy.allowF": "Couldn't allow it.",
+    "busy.denyW": "Denying…",
+    "busy.denyS": "Denied.",
+    "busy.denyF": "Couldn't deny it.",
     "busy.rmSvcW": "Removing {name}…",
     "busy.rmSvcS": "Removed {name}.",
     "busy.rmSvcF": "Couldn't remove {name}.",
@@ -4223,6 +5017,9 @@
     "env.run.title": "The deploy run on GitHub",
     "env.run": "run",
     "env.timedOut": "timed out after {s} s",
+    "env.fetchFailed": "No answer: is it running?",
+    "env.fetchFailedWhy":
+      "{url} didn't answer. Check that it is running and that this computer can reach it.",
     "env.up": "up",
     "env.down": "down",
     "env.service": "Service",
@@ -4973,12 +5770,15 @@
     down: 0,
     openLogs: 0,
     helpersRunning: 0,
+    agentsNeedYou: 0,
     // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
     hub: null,
     pins: [],
     collapsed: false,
     hidden: [],
     order: [],
+    // Issue 1444: the rail sections this person folded (group ids).
+    folded: [],
     // The runs dock (R16a): open or collapsed to its bar, and its height
     // (0: the prototype's 170px). User prefs, like the pins.
     dock: false,
@@ -5021,6 +5821,7 @@
     state.collapsed = cached.collapsed === true;
     if (Array.isArray(cached.hidden)) state.hidden = cached.hidden;
     if (Array.isArray(cached.order)) state.order = cached.order;
+    if (Array.isArray(cached.folded)) state.folded = cached.folded;
     state.dock = cached.dock === true;
     if (typeof cached.dockHeight === "number")
       state.dockHeight = cached.dockHeight;
@@ -5036,6 +5837,7 @@
           collapsed: state.collapsed,
           hidden: state.hidden,
           order: state.order,
+          folded: state.folded,
           dock: state.dock,
           dockHeight: state.dockHeight,
           edge: state.edge,
@@ -5365,12 +6167,16 @@
     var el = document.createElement("div");
     el.className = "den-toast den-toast-act";
     el.setAttribute("role", "status");
+    // Hooks for tests (issue 839: never a styling class).
+    el.setAttribute("data-toast", "action");
     var text = document.createElement("span");
     text.className = "den-tmsg";
+    text.setAttribute("data-toast-msg", "");
     text.textContent = msg;
     var b = document.createElement("button");
     b.type = "button";
     b.className = "den-tbtn";
+    b.setAttribute("data-toast-btn", "");
     b.textContent = label;
     var done = false;
     b.addEventListener("click", function () {
@@ -5396,11 +6202,35 @@
     el.appendChild(acts);
     document.body.appendChild(el);
     clearOfMarked(el);
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () {
-      done = true;
-      if (el.remove) el.remove();
-    }, ms || 10000);
+    // Issue 52: it stays while the pointer or focus is on it, then runs
+    // out what was left, so an Undo is never pulled from under a hand.
+    var left = ms || 10000;
+    var since = Date.now();
+    var held = 0;
+    var go = function () {
+      clearTimeout(toastTimer);
+      since = Date.now();
+      toastTimer = setTimeout(function () {
+        done = true;
+        if (el.remove) el.remove();
+      }, left);
+    };
+    var hold = function () {
+      if (held++ === 0) {
+        clearTimeout(toastTimer);
+        left = Math.max(1000, left - (Date.now() - since));
+      }
+    };
+    var letGo = function () {
+      if (held > 0 && --held === 0 && !done) go();
+    };
+    if (el.addEventListener) {
+      el.addEventListener("mouseenter", hold);
+      el.addEventListener("mouseleave", letGo);
+      el.addEventListener("focusin", hold);
+      el.addEventListener("focusout", letGo);
+    }
+    go();
     return el;
   }
 
@@ -5794,8 +6624,9 @@
       order: 17,
       href: "/agents",
       keywords: ["sessions", "terminal"],
-      // D32: helpers the agents started that run now.
       badge: function (s) {
+        if (s.agentsNeedYou > 0)
+          return { n: s.agentsNeedYou, what: "waiting", warn: true };
         return s.helpersRunning > 0
           ? { n: s.helpersRunning, what: "running" }
           : null;
@@ -6426,6 +7257,7 @@
       account: accountModel(),
       lang: lang,
       collapsed: state.collapsed,
+      folded: state.folded,
     };
   }
 
@@ -6543,9 +7375,14 @@
           ? id.owner
           : null;
     // Issue 406: GitHub has no name: Hub's, when Hub's login is the same one.
+    // Issue 1210: never for the fixture person (via "fixture"): its login is
+    // invented, and a match would show a real person's name on a test
+    // install. kind "github" with via "fixture" is display only: no
+    // decision anywhere reads this identity as a GitHub sign-in.
     var h = state.hub;
     var hubName =
       gh &&
+      id.via !== "fixture" &&
       h &&
       h.state === "connected" &&
       typeof h.name === "string" &&
@@ -6602,6 +7439,16 @@
     },
     onUnpin: function (id) {
       unpin(id);
+    },
+    // Issue 1444: the folded sections are this person's shell setting.
+    folds: {
+      get: function () {
+        return state.folded;
+      },
+      set: function (ids) {
+        state.folded = ids;
+        saveShell({ folded: ids });
+      },
     },
     inert: function () {
       return [
@@ -8087,6 +8934,32 @@
     if (ban && ban.action) ban.action.run();
   });
 
+  document.addEventListener(
+    "click",
+    function (e) {
+      if (!e.isTrusted) return;
+      var a = e.target && e.target.closest && e.target.closest("a[href]");
+      if (!a) return;
+      var u;
+      try {
+        u = new URL(a.href, location.href);
+      } catch (_) {
+        return;
+      }
+      if (u.origin !== location.origin) return;
+      var deep = /^\/p\/[^/]+\/agents\/[^/]+\/?$/.test(u.pathname);
+      var page = /^\/(agents|terminals)\/?$/.test(u.pathname);
+      if (
+        !deep &&
+        !(page && (u.searchParams.get("open") || u.searchParams.get("agent")))
+      )
+        return;
+      u.searchParams.set("claim", "1");
+      a.href = u.href;
+    },
+    true,
+  );
+
   // MD-2: the engine on disk is not the one this server runs: a new
   // version of Den is installed. The shared update pill (den-ui,
   // /kit/update-pill.js) offers it over the top bar. Reload restarts Den's
@@ -8150,7 +9023,7 @@
   function updReload() {
     import("/restart-den.js")
       .then(function (m) {
-        return m.restartDen({ confirm: false });
+        return m.restartDen({ confirm: false, from: "update-pill" });
       })
       .then(function (info) {
         if (info) location.reload();
@@ -8345,7 +9218,14 @@
   }
 
   // R26d: the server unreachable.
-  var server = { up: true, delay: 0, timer: null, tick: null, nextAt: 0 };
+  var server = {
+    up: true,
+    downs: 0,
+    delay: 0,
+    timer: null,
+    tick: null,
+    nextAt: 0,
+  };
   var baseFetch =
     typeof window.fetch === "function" ? window.fetch.bind(window) : null;
   // A same-origin refusal or error (4xx, 5xx) is read in full here and
@@ -8425,6 +9305,7 @@
   }
   function serverUnreachable() {
     if (!server.up) return;
+    server.downs++;
     serverState(false);
     server.delay = 1000;
     scheduleProbe();
@@ -8502,7 +9383,9 @@
     if (fresh) csrf.token = null;
     if (csrf.token) return Promise.resolve(csrf.token);
     if (!csrf.pending)
-      csrf.pending = rawFetch("/api/session", {
+      // ?welcome=1: this request alone spends the after-sign-in welcome
+      // (the toast below); every other /api/session caller only reads.
+      csrf.pending = rawFetch("/api/session?welcome=1", {
         cache: "no-store",
         credentials: "same-origin",
       })
@@ -8662,6 +9545,7 @@
   }
   if (rawFetch && !window.fetch.__denShell) {
     var wrapped = function (input, init) {
+      var sentDown = server.up ? -1 : server.downs;
       var p =
         CSRF_METHODS[methodOf(input, init)] && sameOrigin(input)
           ? csrfFetch(input, init)
@@ -8669,7 +9553,8 @@
       if (!p || typeof p.then !== "function") return p;
       return p.then(
         function (r) {
-          if (!server.up && sameOrigin(input)) serverBack();
+          if (!server.up && sentDown === server.downs && sameOrigin(input))
+            serverBack();
           if (r && r.status === 422 && !configBad && sameOrigin(input))
             r.clone()
               .json()
@@ -8975,6 +9860,40 @@
               f({ confirm: false, post: false });
             });
             return;
+          } else if (
+            decision === "allow" &&
+            res &&
+            res.connect === true &&
+            a.action === "hub_connect"
+          ) {
+            toast(t("ap.hubSwitchSignin", { url: res.url || "" }));
+            window.denShell
+              .busyAction(
+                "connect",
+                function (headers) {
+                  return api(
+                    "POST",
+                    "/api/hub/connect",
+                    { switch: true },
+                    { headers },
+                  );
+                },
+                {
+                  button: pressed,
+                  onDone: function (r) {
+                    location.assign(r.location);
+                  },
+                  onFail: function (e) {
+                    apClose();
+                    toast(t("ap.failed", { error: (e && e.message) || "?" }));
+                  },
+                },
+              )
+              .catch(function (e) {
+                apClose();
+                toast(t("ap.failed", { error: (e && e.message) || "?" }));
+              });
+            return;
           } else if (decision === "allow") toast(apDoneWords(a, res));
           // Issue 334: the page that asked hears what ran (a new app key,
           // in it once: the server forgets it after this answer).
@@ -9126,10 +10045,14 @@
       '<form method="dialog" autocomplete="off">' +
       '<h2 id="den-pair-h"></h2>' +
       '<p class="den-ap-what" id="den-pair-what"></p>' +
+      '<p class="help" id="den-pair-from"></p>' +
       '<p class="help" id="den-pair-when"></p>' +
-      '<label for="den-pair-code-in" id="den-pair-code-label"></label>' +
-      '<input id="den-pair-code-in" class="den-pair-code" autofocus autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" placeholder="K7Q-42M" ' +
-      'style="display:block;font:600 22px var(--mono);letter-spacing:.08em;width:10ch;margin:4px 0 0;padding:4px 8px">' +
+      '<p class="help den-ap-who" id="den-pair-unexpected"></p>' +
+      // Issue 1333: an empty box with a visible edge, and no example code
+      // in it (a grey "K7Q-42M" read as the code itself).
+      '<label for="den-pair-code-in" id="den-pair-code-label" style="display:block;font-weight:600;margin-top:8px"></label>' +
+      '<input id="den-pair-code-in" class="den-pair-code" autocomplete="off" spellcheck="false" autocapitalize="characters" maxlength="12" ' +
+      'style="display:block;font:600 22px var(--mono);letter-spacing:.08em;width:10ch;margin:4px 0 0;padding:4px 8px;border:1px solid var(--line-strong, var(--line, currentColor));border-radius:6px;background:var(--bg, transparent);color:inherit">' +
       '<p class="help" id="den-pair-help"></p>' +
       '<p class="err" id="den-pair-err" role="alert" hidden></p>' +
       '<div class="btns">' +
@@ -9254,6 +10177,23 @@
         ? t("pair.local")
         : w.client || "",
     });
+    // Issue 1333: where it came from (its address, and mesh name when it
+    // has one), the Den address it opened, and when.
+    var addr = w.client || t("pair.unknownAddr");
+    var time = localTime(w.createdAt) || "";
+    $("den-pair-from").textContent = w.clientName
+      ? t("pair.fromNamed", {
+          name: w.clientName,
+          client: addr,
+          host: w.host || location.host,
+          time: time,
+        })
+      : t("pair.from", {
+          client: addr,
+          host: w.host || location.host,
+          time: time,
+        });
+    $("den-pair-unexpected").textContent = t("pair.unexpected");
     $("den-pair-when").textContent = prWhen(w);
     $("den-pair-code-label").textContent = t("pair.codeLabel");
     $("den-pair-code-label").hidden = false;
@@ -9268,7 +10208,8 @@
     $("den-pair-allow").hidden = false;
     $("den-pair-allow").disabled = true;
     if (!d.open) d.showModal();
-    $("den-pair-code-in").focus();
+    // Issue 1333: Deny first; Allow waits for a typed code.
+    $("den-pair-deny").focus();
   }
   function prPoll() {
     // One ask at a time; refused once (a session that may not read it, as
@@ -9394,6 +10335,8 @@
           function (b) {
             var n = b && typeof b.running === "number" ? b.running : 0;
             if (n !== state.helpersRunning) setState({ helpersRunning: n });
+            var w = b && typeof b.needs === "number" ? b.needs : 0;
+            if (w !== state.agentsNeedYou) setState({ agentsNeedYou: w });
           },
           function () {},
         )
@@ -9441,6 +10384,13 @@
             if (k !== last) {
               last = k;
               setState({ hub: h });
+              // Issue 646: pages that name the company (a project's Hub
+              // chip) redraw from it.
+              try {
+                window.dispatchEvent(new CustomEvent("den:hub", { detail: h }));
+              } catch (e) {
+                /* none */
+              }
             }
           },
           function () {},
@@ -9474,6 +10424,33 @@
    * download; a failed load is tried again on the next action.
    */
   var busyMod = null;
+  /**
+   * Issue 1434: hold a button at once, as the kit does (aria-busy and
+   * aria-disabled, never disabled, which drops focus to <body>). True when
+   * the aria-disabled is the hold's own.
+   */
+  function preHold(b) {
+    var own = b.getAttribute("aria-disabled") !== "true";
+    b.setAttribute("aria-busy", "true");
+    b.setAttribute("aria-disabled", "true");
+    return own;
+  }
+  /** Issue 1434: a click on a held button stops here, before the page's. */
+  window.addEventListener(
+    "click",
+    function (e) {
+      for (var n = e.target; n && n.getAttribute; n = n.parentNode)
+        if (
+          n.getAttribute("aria-busy") === "true" &&
+          n.getAttribute("aria-disabled") === "true"
+        ) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          return;
+        }
+    },
+    true,
+  );
   function loadBusy() {
     if (!busyMod)
       busyMod = import("/busy-den.js").catch(function (err) {
@@ -9556,6 +10533,10 @@
   });
 
   window.denShell = {
+    /** Issue 646: the rail's Hub status (team, url, state), or null. */
+    hub: function () {
+      return state.hub;
+    },
     /** FB (den#81): opens Report an issue (opts.draft: one to finish). */
     report: openReport,
     /** FB: My reports (the person's reports and the drafts). */
@@ -9572,15 +10553,23 @@
      * names Den's actions): busyAction(name, run(headers), opts).
      */
     busyAction: function (name, run, opts) {
-      // The button disables at once, before the kit has loaded.
+      // Held at once, before the kit has loaded (issue 1434: aria-disabled,
+      // not disabled, so it keeps focus; the click guard stops its clicks).
       var b = opts && opts.button;
-      if (b) {
-        b.disabled = true;
-        b.setAttribute("aria-busy", "true");
-      }
-      return loadBusy().then(function (m) {
-        return m.busyAction(name, run, opts);
-      });
+      var own = b ? preHold(b) : false;
+      return loadBusy().then(
+        function (m) {
+          return m.busyAction(name, run, opts);
+        },
+        function (err) {
+          // The kit didn't load: let the button go, then fail as before.
+          if (b) {
+            b.removeAttribute("aria-busy");
+            if (own) b.removeAttribute("aria-disabled");
+          }
+          throw err;
+        },
+      );
     },
     /**
      * Issue 698: the kit's pulsing dots alone, no pop-up, for a wait that
@@ -9590,8 +10579,7 @@
      */
     holdDots: function (button) {
       if (!button) return function () {};
-      button.disabled = true;
-      button.setAttribute("aria-busy", "true");
+      var own = preHold(button);
       var held = loadBusy()
         .then(function (m) {
           m.holdDots(button, true);
@@ -9607,8 +10595,8 @@
         return held.then(function (m) {
           if (m) m.holdDots(button, false);
           else {
-            button.disabled = false;
             button.removeAttribute("aria-busy");
+            if (own) button.removeAttribute("aria-disabled");
           }
         });
       };
@@ -9818,6 +10806,7 @@
           collapsed: s.shell.collapsed === true,
           hidden: Array.isArray(s.shell.hidden) ? s.shell.hidden : [],
           order: Array.isArray(s.shell.order) ? s.shell.order : [],
+          folded: Array.isArray(s.shell.folded) ? s.shell.folded : [],
           dock: s.shell.dock === true,
           dockHeight:
             typeof s.shell.dockHeight === "number" ? s.shell.dockHeight : 0,
@@ -9884,8 +10873,11 @@
     ".den-pop .den-hr { height: 1px; background: var(--border); margin: 6px 0; }",
     // The page's one main landmark (#den-content) holds all its content
     // and lays it out as the body did (a column), so pages keep their look.
+    // Issue 283: positioned, so what a page places absolutely inside it
+    // (a visually hidden label, .den-sr) stays in it rather than
+    // stretching the document past the window.
     "body.den-has-shell > #den-content { display: flex; flex-direction: column; flex: 1 1 auto;",
-    "  min-height: 0; min-width: 0; }",
+    "  min-height: 0; min-width: 0; position: relative; }",
     "body.den-has-shell > #den-content:focus { outline: none; }",
     // The page header (.ph, R20, 0.3.0-dev.32), the prototype's sizes: it
     // sits in .main's 20px/24px inset (pages keep their own content
@@ -9938,6 +10930,16 @@
     // on a phone too (the kit centers a phone's rows).
     ".den-bell-row.den-bell-allow { align-items: flex-start; }",
     ".den-bell-detl { overflow-wrap: anywhere; }",
+    // Issue 110 (mock v3): a Coach Apply's card: Change, Why, Reversible,
+    // then Allow and Deny; on a phone they are full width, 44 px, stacked.
+    ".den-bell-cdl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 8px 0 0; font-size: 12.5px; }",
+    ".den-bell-cr { display: contents; }",
+    ".den-bell-cdl dt { color: var(--muted); }",
+    ".den-bell-cdl dd { margin: 0; overflow-wrap: anywhere; }",
+    ".den-bell-cb { display: flex; gap: 6px; flex-shrink: 0; }",
+    "@media (max-width: 600px) { .den-bell-row.den-bell-coach { flex-wrap: wrap; }",
+    "  .den-bell-coach .den-bell-cb { flex-direction: column; width: 100%; }",
+    "  .den-bell-coach .den-bell-cb .den-btn { width: 100%; min-height: 44px; } }",
     // A phone's finger needs 44 px to hit Review.
     "@media (max-width: 600px) { .den-bell-rv { display: inline-flex; align-items: center; min-height: 44px; padding: 0 4px 0 0; } }",
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",

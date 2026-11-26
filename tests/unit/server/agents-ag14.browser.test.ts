@@ -575,9 +575,9 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
     /**
      * #143: open the details with their answer `delay` ms late; every place
      * and size they have while seen, and every time they are placed (a
-     * write of their top edge).
+     * write of their top edge). `inTime` holds the page's own OPEN_MS wait.
      */
-    async function openLate(delay: number) {
+    async function openLate(delay: number, inTime = false) {
       const p = await open("north");
       await shown(p);
       // A long last ask: the details change size when it comes.
@@ -599,60 +599,86 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
           });
         },
       );
-      await p.evaluate((delay) => {
-        const w = window as unknown as {
-          __rects: string[];
-          __tops: number[];
-          __placed: number;
-        };
-        w.__rects = [];
-        w.__tops = [];
-        w.__placed = 0;
-        const set = CSSStyleDeclaration.prototype.setProperty;
-        CSSStyleDeclaration.prototype.setProperty = function (
-          this: CSSStyleDeclaration,
-          k: string,
-          ...rest: [string | null, string?]
-        ) {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (k === "top" && g && g.style === this) w.__placed++;
-          return set.call(this, k, ...rest);
-        };
-        // The moment they turn ready (before the next frame): their box,
-        // and whether their Report button is already in them.
-        const w2 = w as unknown as {
-          __atReady: { h: number; y: number; report: boolean } | null;
-        };
-        w2.__atReady = null;
-        new MutationObserver(() => {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (!g || g.dataset.state !== "ready" || w2.__atReady) return;
-          const b = g.getBoundingClientRect();
-          w2.__atReady = {
-            h: Math.round(b.height),
-            y: Math.round(b.y),
-            report: !!g.querySelector("[data-den-report]"),
+      await p.evaluate(
+        ([delay, inTime]) => {
+          const w = window as unknown as {
+            __rects: string[];
+            __tops: number[];
+            __placed: number;
           };
-        }).observe(document.body, {
-          subtree: true,
-          attributes: true,
-          attributeFilter: ["data-state"],
-        });
-        const t0 = performance.now();
-        const look = () => {
-          const g = document.querySelector(".den-agd") as HTMLElement | null;
-          if (g && getComputedStyle(g).visibility !== "hidden") {
-            const b = g.getBoundingClientRect();
-            const k = [b.x, b.y, b.width, b.height].map(Math.round).join(",");
-            if (w.__rects.at(-1) !== k) w.__rects.push(k);
-            if (w.__tops.at(-1) !== Math.round(b.y))
-              w.__tops.push(Math.round(b.y));
+          if (inTime) {
+            const real = window.setTimeout;
+            window.setTimeout = ((
+              f: TimerHandler,
+              ms?: number,
+              ...a: unknown[]
+            ) => {
+              if (
+                !document.querySelector('[role="dialog"][data-state="loading"]')
+              )
+                return real(f, ms, ...a);
+              window.setTimeout = real;
+              (window as unknown as { __heldOpen: number }).__heldOpen =
+                ms ?? 0;
+              return real(() => {}, 2 ** 31 - 1);
+            }) as typeof window.setTimeout;
           }
-          if (performance.now() - t0 < delay + 1500)
-            requestAnimationFrame(look);
-        };
-        requestAnimationFrame(look);
-      }, delay);
+          w.__rects = [];
+          w.__tops = [];
+          w.__placed = 0;
+          const set = CSSStyleDeclaration.prototype.setProperty;
+          CSSStyleDeclaration.prototype.setProperty = function (
+            this: CSSStyleDeclaration,
+            k: string,
+            ...rest: [string | null, string?]
+          ) {
+            const g = document.querySelector(
+              '[role="dialog"][data-state]',
+            ) as HTMLElement | null;
+            if (k === "top" && g && g.style === this) w.__placed++;
+            return set.call(this, k, ...rest);
+          };
+          // The moment they turn ready (before the next frame): their box,
+          // and whether their Report button is already in them.
+          const w2 = w as unknown as {
+            __atReady: { h: number; y: number; report: boolean } | null;
+          };
+          w2.__atReady = null;
+          new MutationObserver(() => {
+            const g = document.querySelector(
+              '[role="dialog"][data-state]',
+            ) as HTMLElement | null;
+            if (!g || g.dataset.state !== "ready" || w2.__atReady) return;
+            const b = g.getBoundingClientRect();
+            w2.__atReady = {
+              h: Math.round(b.height),
+              y: Math.round(b.y),
+              report: !!g.querySelector("[data-den-report]"),
+            };
+          }).observe(document.body, {
+            subtree: true,
+            attributes: true,
+            attributeFilter: ["data-state"],
+          });
+          const t0 = performance.now();
+          const look = () => {
+            const g = document.querySelector(
+              '[role="dialog"][data-state]',
+            ) as HTMLElement | null;
+            if (g && getComputedStyle(g).visibility !== "hidden") {
+              const b = g.getBoundingClientRect();
+              const k = [b.x, b.y, b.width, b.height].map(Math.round).join(",");
+              if (w.__rects.at(-1) !== k) w.__rects.push(k);
+              if (w.__tops.at(-1) !== Math.round(b.y))
+                w.__tops.push(Math.round(b.y));
+            }
+            if (performance.now() - t0 < delay + 1500)
+              requestAnimationFrame(look);
+          };
+          requestAnimationFrame(look);
+        },
+        [delay, inTime] as const,
+      );
       await btn(p, "scout").click();
       await p.locator('.den-agd[data-state="ready"]').waitFor();
       await p.waitForTimeout(delay + 1600);
@@ -674,14 +700,22 @@ describe("stopped agents on the Agents page (AG-14, D37)", () => {
             }
           ).__atReady,
           last: { h: Math.round(b.height), y: Math.round(b.y) },
+          heldOpen:
+            (w as unknown as { __heldOpen?: number }).__heldOpen ?? null,
         };
       });
-      return { p, ...seen };
+      const openMs = (await p.evaluate(
+        'import("/kit/busy.js").then((m) => m.OPEN_MS)',
+      )) as number;
+      return { p, openMs, ...seen };
     }
 
     it("#143: they open where they stay: shown once their details are in, never growing or moving after", async () => {
       if (skip()) return;
-      const { p, rects, placed, atReady, last } = await openLate(150);
+      const { p, rects, placed, atReady, last, heldOpen, openMs } =
+        await openLate(150, true);
+      expect(openMs).toBeGreaterThan(0);
+      expect(heldOpen).toBe(openMs);
       // Whole when shown: its Report button in, and the same box after.
       expect(atReady?.report).toBe(true);
       expect(last).toEqual({ h: atReady?.h, y: atReady?.y });
@@ -1239,7 +1273,6 @@ describe("D37: Stopped (n), one line each, at the bottom", () => {
     expect((await group(p).locator("summary").textContent())?.trim()).toBe(
       "Stopped (3)",
     );
-    // Last in the list, after every workspace's running ones.
     expect(
       await p.evaluate(() => {
         const g = document.querySelector("#agl details[data-stopped]")!;

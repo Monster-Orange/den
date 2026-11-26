@@ -80,7 +80,7 @@ export const SECRET_PATTERNS: readonly Pattern[] = [
   },
   {
     name: "well-known token prefix",
-    re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|[sr]k_(?:live|test)_[A-Za-z0-9]{10,}|sk-[A-Za-z0-9_-]{20,})/g,
+    re: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|[sr]k_(?:live|test)_[A-Za-z0-9]{10,}|sk-[A-Za-z0-9_-]{20,}|den_[a-z]{2}_[A-Za-z0-9_-]{20,})/g,
     replace: REDACTED,
   },
   {
@@ -102,6 +102,18 @@ export function redactSecrets(text: string): string {
   for (const p of SECRET_PATTERNS) {
     const r = p.replace;
     out = typeof r === "string" ? out.replace(p.re, r) : out.replace(p.re, r);
+  }
+  return out;
+}
+
+export function safeLine(text: string): string {
+  let out = "";
+  for (const c of redactSecrets(text)) {
+    const n = c.charCodeAt(0);
+    out +=
+      n < 32 || (n >= 127 && n <= 159) || n === 0x2028 || n === 0x2029
+        ? " "
+        : c;
   }
   return out;
 }

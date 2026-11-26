@@ -54,7 +54,12 @@ export interface NavItem {
    * A count. `what` (0.7.3): what it counts; the kit words it with the
    * name ("North · Den, 3 waiting"). Hosts pass data, never the words.
    */
-  badge?: { n: number | string; bad?: boolean; what?: BadgeWhat } | null;
+  badge?: {
+    n: number | string;
+    bad?: boolean;
+    warn?: boolean;
+    what?: BadgeWhat;
+  } | null;
   /** HTML in place of the icon (a status dot). */
   lead?: string;
   mono?: boolean;
@@ -104,6 +109,8 @@ export interface RailModel {
   account?: Account | null;
   lang?: string;
   collapsed?: boolean;
+  /** Issue 1444: the folded sections' ids; never the current page's. */
+  folded?: string[];
 }
 export interface ShellModel extends RailModel {
   product?: Product;
@@ -141,6 +148,8 @@ export declare function railGroupHtml(
   g: NavGroup,
   body: string,
   lang?: string,
+  /** Issue 1444: drawn data-folded (hydrateRailFolds hides its entries). */
+  folded?: boolean,
 ): string;
 export declare function railHtml(model?: RailModel): string;
 export declare function versionChipHtml(o?: {
@@ -209,6 +218,8 @@ export interface SearchOptions {
   /** false: no ⌘K inside, and no aria-keyshortcuts. */
   shortcut?: boolean;
   lang?: string;
+  /** The host's placeholder: one word, or words per locale ({ en, es, ja }). */
+  placeholder?: string | Readonly<Record<string, string>>;
 }
 export interface BellButtonOptions {
   count?: number;
@@ -241,7 +252,7 @@ export interface BellPanelOptions {
    * Issue 101: the rows of the panel's two sections, in place of rows:
    * the kit heads them "Needs you" (always first) and "Earlier".
    */
-  sections?: { needs: string; earlier?: string };
+  sections?: { needs: string; done?: string; earlier?: string };
   /** The empty state: its words, and HTML under them. */
   empty?: { text?: string; more?: string };
   after?: string;

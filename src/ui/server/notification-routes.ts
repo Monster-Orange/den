@@ -10,6 +10,8 @@
  *                                     the person's kinds that are on;
  *                                     items older than foldDays in
  *                                     `older`; unread counts what is shown.
+ *                                     `done`, the agents that
+ *                                     finished since this person looked.
  *   POST /api/notifications/read     {id} | {subject} | {scope} | {all: true}
  *                                     (all: what is shown only)
  *   POST /api/notifications/clear    the read ones ({scope} or all).
@@ -17,6 +19,8 @@
  *                                     unmutes.
  *   POST /api/notifications/looking  NT-2: a page shows these agents now,
  *                                     visible and focused: {agents: [...]}.
+ *                                     The person has seen their
+ *                                     finished work (the seen mark).
  *   GET  /api/alerts?after=<seq>     issue 172: the alerts after `after`
  *                                     for an open tab to show (alert-feed.ts),
  *                                     {seq, alerts}; the person's only.
@@ -48,6 +52,7 @@ import {
   bellView,
   needsYou,
   groupNotifications,
+  type Notification,
   type NotificationStore,
   type Which,
 } from "../../shared/notifications.js";
@@ -68,9 +73,14 @@ import {
 import { readBody, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   principalOf,
 } from "./request-guard.js";
+import type { SeenMarks } from "../../shared/seen-mark.js";
+import { agentSubject, personKey, type DoneAgent } from "./agent-state.js";
+import { listRecords } from "../../shared/agents/records.js";
+import { getStateDir } from "../../shared/paths.js";
 
 /** Issue 1008: a withdraw's reason, one line. */
 export const WITHDRAW_REASON_MAX = 200;
@@ -96,6 +106,7 @@ export const isNotificationPath = (p: string) =>
   (NOTIFICATION_PATHS as readonly string[]).includes(p);
 
 export interface NotificationRouteDeps {
+  agentProjects?: () => ReadonlyMap<string, string>;
   store: NotificationStore;
   attention: Attention;
   /** ask_human's limit (notifications.asks_per_hour); absent, none. */
@@ -121,6 +132,9 @@ export interface NotificationRouteDeps {
    * estimate; they follow the held writes in `waiting`, kind gate_overrun.
    */
   gateOverruns?: () => readonly GateOverrunWaiting[];
+  seen?: SeenMarks;
+  doneAgents?: (person: string) => DoneAgent[];
+  seenDone?: (person: string) => DoneAgent[];
 }
 
 /** A device as a page sees it: no endpoint, no keys. */
@@ -437,10 +451,36 @@ export async function handleNotificationRoutes(
   if (pathname === "/api/notifications") {
     if (method !== "GET" && method !== "HEAD")
       return (refuse(res, 405, "method", "GET only."), true);
-    const v = bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null));
-    sendJson(res, {
+    const prefs = (deps.prefs ?? bellPrefs)(null);
+    const all = bellView(deps.store.list(), prefs);
+    let done: DoneAgent[] = [];
+    if (!prefs.finishedChosenOff)
+      try {
+        done = deps.doneAgents?.(personKey(req)) ?? [];
+      } catch {
+        /* the bell is best effort: no Done section this time */
+      }
+    let seenDone: DoneAgent[] = [];
+    if (!prefs.finishedChosenOff)
+      try {
+        seenDone = deps.seenDone?.(personKey(req)) ?? [];
+      } catch {
+        /* best effort: no seen rows this time */
+      }
+    const inDone = new Set(
+      [...done, ...seenDone].map((d) => agentSubject(d.agent)),
+    );
+    const once = (ns: Notification[]) =>
+      ns.filter((n) => !(n.kind === "finished" && inDone.has(n.subject)));
+    const v = { ...all, updates: once(all.updates), older: once(all.older) };
+    const keep = agentRowFilter(req);
+    const mine = (ds: DoneAgent[]) =>
+      keep ? ds.filter((d) => keep(d.workspace)) : ds;
+    const bell = {
       ok: true,
       unread: v.unread,
+      done: mine(done),
+      seenDone: mine(seenDone),
       // Issue 746: a held write waiting for the person's Allow first,
       // then (issue 327) each agent waiting, what on, since when.
       waiting: [
@@ -467,7 +507,8 @@ export async function handleNotificationRoutes(
       off: v.off,
       foldDays: v.foldDays,
       mutes: deps.store.mutes(),
-    });
+    };
+    sendJson(res, keep ? narrowBell(bell, keep, deps) : bell);
     return true;
   }
 
@@ -536,6 +577,11 @@ export async function handleNotificationRoutes(
       ? b.agents.filter((x): x is string => typeof x === "string").slice(0, 16)
       : [];
     deps.attention.lookingAt(agents);
+    if (deps.seen) {
+      const person = personKey(req);
+      for (const a of agents)
+        deps.seen.markSeen({ subject: agentSubject(a), person });
+    }
     // ATTN-5 (den#142): opening an agent clears its updates (they leave
     // the list, and its count drops); what needs you stays until answered.
     const opened = new Set(agents.map((a) => `agent:${a}`));
@@ -574,26 +620,80 @@ export async function handleNotificationRoutes(
     return true;
   }
   // Bell v6: Mark all read marks what is shown (kinds off stay unread).
-  const shownAll =
+  // Issue 1339: one view build, one write for the whole set.
+  const prefs = (deps.prefs ?? bellPrefs)(null);
+  const n =
     pathname === "/api/notifications/read" && "all" in which
       ? (() => {
-          const v = bellView(
-            deps.store.list(),
-            (deps.prefs ?? bellPrefs)(null),
+          const v = bellView(deps.store.list(), prefs);
+          return deps.store.markReadMany(
+            [...v.recent, ...v.updates, ...v.older]
+              .filter((x) => !x.read)
+              .map((x) => x.id),
           );
-          return [...v.recent, ...v.updates, ...v.older].filter((x) => !x.read);
         })()
-      : null;
-  const n = shownAll
-    ? shownAll.reduce((k, x) => k + deps.store.markRead({ id: x.id }), 0)
-    : pathname === "/api/notifications/read"
-      ? deps.store.markRead(which)
-      : deps.store.clearRead(which);
+      : pathname === "/api/notifications/read"
+        ? deps.store.markRead(which)
+        : deps.store.clearRead(which);
   sendJson(res, {
     ok: true,
     changed: n,
     // The badge's number: what is shown.
-    unread: bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null)).unread,
+    unread: bellView(deps.store.list(), prefs).unread,
   });
   return true;
+}
+
+type BellGroups = ReturnType<typeof groupNotifications>;
+
+function recordProjects(): ReadonlyMap<string, string> {
+  const m = new Map<string, string>();
+  for (const r of listRecords(getStateDir())) {
+    m.set(r.id, r.workspace);
+    m.set(`agent:${r.id}`, r.workspace);
+    if (r.sessionName) m.set(r.sessionName, r.workspace);
+  }
+  return m;
+}
+
+export function narrowBell<
+  T extends {
+    unread: number;
+    waiting: { agent?: string }[];
+    groups: BellGroups;
+    updates: { count: number; unread: number; groups: BellGroups };
+    older: { count: number; groups: BellGroups };
+    mutes: readonly { target: string }[];
+  },
+>(
+  bell: T,
+  keep: (ws: string) => boolean,
+  deps: Pick<NotificationRouteDeps, "agentProjects">,
+): T {
+  const projects = (deps.agentProjects ?? recordProjects)();
+  const reach = (target: string | undefined): boolean => {
+    if (!target) return false;
+    if (target.startsWith("workspace/")) return keep(target.slice(10));
+    const ws = projects.get(target);
+    return ws !== undefined && keep(ws);
+  };
+  const groups = (g: BellGroups) => g.filter((x) => reach(x.scope));
+  const items = (g: BellGroups) =>
+    g.flatMap((x) => x.subjects.flatMap((s) => s.items));
+  const recent = groups(bell.groups);
+  const updates = groups(bell.updates.groups);
+  const older = groups(bell.older.groups);
+  return {
+    ...bell,
+    unread: items(recent).filter((n) => !n.read).length,
+    waiting: bell.waiting.filter((w) => reach(w.agent)),
+    groups: recent,
+    updates: {
+      count: items(updates).length,
+      unread: items(updates).filter((n) => !n.read).length,
+      groups: updates,
+    },
+    older: { count: items(older).length, groups: older },
+    mutes: bell.mutes.filter((m) => reach(m.target)),
+  };
 }

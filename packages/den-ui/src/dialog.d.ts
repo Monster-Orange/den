@@ -131,6 +131,10 @@ export declare function answerOf(
   ok: boolean,
   text?: string | null,
 ): boolean | string | null | undefined;
+/** Issue 864: hear of each kit question just before it shows. */
+export declare function onAsk(
+  fn: (dialog: HTMLDialogElement) => void,
+): () => void;
 export declare function askConfirm(opts: DialogOptions): Promise<boolean>;
 export declare function askText(opts: DialogOptions): Promise<string | null>;
 export declare function tell(opts: DialogOptions): Promise<void>;

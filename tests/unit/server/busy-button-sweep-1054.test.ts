@@ -24,13 +24,14 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import { agentsSource } from "./helpers/agents-source.js";
 import { busyCalls } from "./busy-dots-sweep.test.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const NO_SHELL = new Set(["embed-page.js"]);
 
 const WRITE =
-  /api\(\s*"(?:POST|PUT|PATCH|DELETE)"|method:\s*"(?:POST|PUT|PATCH|DELETE)"/g;
+  /api\??\.?\(\s*"(?:POST|PUT|PATCH|DELETE)"|method:\s*"(?:POST|PUT|PATCH|DELETE)"/g;
 const BUSY_HEADERS = /\{\s*headers\s*,?\s*\}/;
 /** How far above a write its handler's holdDots(button) may be. */
 const HOLD_SPAN = 40;
@@ -80,6 +81,10 @@ describe("issue 1054: every write shows its wait on its button", () => {
         'const release = window.denShell?.holdDots?.(btn) ?? (async () => {});\napi("POST", "/x", {});',
       ),
     ).toEqual([]);
+    // A write through an optional call is a write too.
+    expect(
+      unheldWrites('await window.denShell?.api?.("POST", "/api/x", {});'),
+    ).toEqual(['1: await window.denShell?.api?.("POST", "/api/x", {});']);
     // A reason must say something.
     expect(unheldWrites('// busy-ok: x\napi("POST", "/x", {});')).toHaveLength(
       1,
@@ -99,7 +104,6 @@ describe("issue 1054: every write shows its wait on its button", () => {
   });
 });
 
-// Den Builder's rulings on the writes that had no button (issue 1054).
 describe("issue 1054: the waits with no button of their own", () => {
   const read = (f: string) => fs.readFileSync(path.join(PUBLIC, f), "utf-8");
   /** The text of `name`'s body, from its declaration to the next one. */
@@ -110,7 +114,7 @@ describe("issue 1054: the waits with no button of their own", () => {
   };
 
   it("a drag's save holds the moved row (holdRow) and names a refusal inline, with no pop-up", () => {
-    const fn = body(read("agents-page.js"), "async function moveOrder(");
+    const fn = body(agentsSource(), "async function moveOrder(");
     expect(fn).toMatch(/denShell\.holdRow\?\.\(row\)/);
     expect(fn).not.toMatch(/busyAction\(/);
     expect(fn).toMatch(/#ag-order-err/);

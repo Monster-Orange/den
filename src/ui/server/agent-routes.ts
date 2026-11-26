@@ -121,9 +121,13 @@ import {
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
-import { rememberOperatorShell } from "../../shared/test-operator.js";
+import {
+  rememberOperatorShell,
+  testBedOnly,
+} from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import { FIXTURE_MODES } from "../../shared/fixture-person.js";
 import {
   readWorkspacesFile,
   conversationFolders,
@@ -145,7 +149,11 @@ import {
   agentDetails,
   agentTools,
   restartAgent,
-  askAboutJob,
+  restartMany,
+  restartOutcomeOf,
+  restartWaitOf,
+  type RestartOutcome,
+  restartStateOf,
   staleAgents,
   agentHelpers,
   agentHelperTranscript,
@@ -187,6 +195,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  setAgentFolder,
   setAgentPermission,
   setAgentResumeOnRestart,
   clearAgentHelpers,
@@ -215,10 +224,17 @@ import {
   projectMcpView,
   checkProjectMcpRemove,
   runProjectMcpRemove,
+  checkEventFeedAdd,
+  runEventFeedAdd,
+  checkEventFeedRemove,
+  runEventFeedRemove,
+  projectAgentIds,
   checkProjectMcpUpdate,
   runProjectMcpUpdate,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
+import type { NotificationStore } from "../../shared/notifications.js";
+import { RestartLive } from "./restart-live.js";
 import { recordAction } from "./audit.js";
 import {
   agentFile,
@@ -235,8 +251,11 @@ import {
 import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   notAPersonOf,
+  fixturePersonOf,
+  provenPersonOf,
   operatorActOf,
   personOrOperator,
   principalOf,
@@ -250,6 +269,7 @@ import { readBody, sendJson } from "./http-helpers.js";
 import { sitePage } from "./ui-assets.js";
 import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
+import { noteCapsHeld } from "./cap-bell.js";
 import {
   HOST_RESTART_ACTION,
   HOST_RESTART_TITLE,
@@ -268,11 +288,11 @@ export interface AgentRouteDeps {
   hubStatus?: () => Promise<import("../../shared/hub.js").HubStatus>;
   /** H5 (tests): Den Hub's GitHub coverage, and the project sync. */
   hubGithub?: () => Promise<
-    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { orgs: import("../../shared/hub/hub-project-sync.js").OrgCoverage[] }
     | { error: string }
     | null
   >;
-  projectSync?: import("../../shared/hub-project-sync.js").ProjectSync;
+  projectSync?: import("../../shared/hub/hub-project-sync.js").ProjectSync;
   /** 0.4.40 (tests): comment delivery, restarted on connect, stopped on disconnect. */
   hubDeliveries?: { restart(): void; stop(): void };
   /** HUB-1.7: Connect to Hub's state (tests: fake Hub calls and store). */
@@ -282,13 +302,15 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|file|say|order))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|folder|file|say|order))?$/;
 
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
 /** Issue 459: GET a project's app event feeds and their state. */
 const EVENT_FEEDS_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds$/;
+/** Issue 1480: one of them, removed by a person. */
+const EVENT_FEED_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds\/([^/]+)$/;
 /** Issue 352: one of them, changed or removed by a person. */
 const MCP_SERVER_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers\/([^/]+)$/;
 
@@ -620,6 +642,9 @@ export async function handleAgentRoutes(
   if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
   const efp = EVENT_FEEDS_PATH.exec(pathname);
   if (efp) return eventFeedsRoute(req, res, efp[1], webDeps(deps.agents));
+  const ef1 = EVENT_FEED_PATH.exec(pathname);
+  if (ef1)
+    return eventFeedRoute(req, res, ef1[1], ef1[2], webDeps(deps.agents));
   const mcp1 = MCP_SERVER_PATH.exec(pathname);
   if (mcp1)
     return mcpServerRoute(req, res, mcp1[1], mcp1[2], webDeps(deps.agents));
@@ -629,6 +654,8 @@ export async function handleAgentRoutes(
   if (dp) return detailsRoute(req, res, dp, webDeps(deps.agents));
   const tp = TOOLS_PATH.exec(pathname);
   if (tp) return toolsRoute(req, res, tp, webDeps(deps.agents));
+  if (pathname === "/api/agents/restart-status")
+    return restartStatusRoute(req, res);
   if (
     pathname === "/api/agents/stale" ||
     pathname === "/api/agents/restart-stale"
@@ -676,6 +703,31 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 750: this install's groups from Hub, for the By group view.
+  if (pathname === "/api/hub/groups") {
+    const m = await import("./hub-groups-routes.js");
+    return m.hubGroupsRoute(req, res, await m.defaultHubGroupsDeps());
+  }
+  // Issue 646: Connect's one review: a row per project, Connect and link all.
+  if (pathname === "/api/hub/connect-review") {
+    const [rv, audit, guard] = await Promise.all([
+      import("./hub-connect-review.js"),
+      import("./audit.js"),
+      import("./request-guard.js"),
+    ]);
+    return rv.hubReviewRoute(
+      req,
+      res,
+      await rv.defaultHubReviewDeps((line) =>
+        audit.recordAction(
+          guard.auditActorOf(req),
+          { verb: "hub-link", detail: line.slice(0, 400) },
+          guard.principalOf(req),
+        ),
+      ),
+      `Settings › Hub, Connect's review (${guard.principalOf(req) ?? "person"})`,
+    );
+  }
   // Issue 167: when Hub last answered a check of its names; Try again.
   if (pathname === "/api/hub/names-check") {
     const m = await import("./hub-names-routes.js");
@@ -721,7 +773,7 @@ export async function handleAgentRoutes(
       ? null
       : (deps.hubConnect ?? defaultConnect)?.lastResult();
     // 0.4.45: the editions Settings names under Connect (den.yml).
-    const { hubEditions } = await import("../../shared/hub-editions.js");
+    const { hubEditions } = await import("../../shared/hub/hub-editions.js");
     const { readDenConfig } = await import("../../shared/den-config.js");
     let editions = null;
     try {
@@ -730,12 +782,25 @@ export async function handleAgentRoutes(
       editions = null;
     }
     // Issue 869: Hub refused this Den's address when it was last told.
-    const tell = await import("../../shared/hub-den-url.js");
+    const tell = await import("../../shared/hub/hub-den-url.js");
     const denUrl = tell.denUrlTellProblem(tell.readDenUrlTell(getStateDir()));
+    const hs = await import("./hub-switch.js");
+    const { readUserConfig } = await import("../../shared/den-config.js");
+    const swDeps = await hs.hubSwitchDeps();
+    const was = hs.readHubSwitch(swDeps.stateDir);
+    const sw = hs.liveHubSwitch({
+      ...swDeps,
+      days: hs.switchDays((readUserConfig() as Record<string, unknown>).hub),
+    });
+    const sf = await import("../../shared/state-folder.js");
+    const next = rail ? null : sf.takeConnectNext(getStateDir());
     const out = {
       ...st,
+      ...(next ? { connectNext: next } : {}),
       ...(editions ? { editions } : {}),
       ...(denUrl ? { denUrl } : {}),
+      ...(sw ? { switching: { to: sw.to, from: sw.from } } : {}),
+      ...(was && !sw ? { switchEnded: { to: was.to } } : {}),
     };
     sendJson(res, last ? { ...out, connect: last } : out);
     return true;
@@ -845,6 +910,7 @@ export async function handleAgentRoutes(
     | "compacting-clear"
     | "link"
     | "move"
+    | "folder"
     | "restart"
     | "file"
     | "say"
@@ -1001,24 +1067,47 @@ export async function handleAgentRoutes(
     );
   let what = `${verb} ${id ?? "?"} in ${ws}`;
   try {
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Issue 1407: its restart too, and a
+    // test install's fixture person's restart. Any other agent: refused,
+    // as a person-only act is. Checked before the 404 below, so an id
+    // that doesn't exist answers the same 403: they can't learn which
+    // agents are there. Never the server agent's.
+    const opAct = operatorActOf(req);
+    const fixtureRestart = verb === "restart" && !opAct && fixturePersonOf(req);
+    const fixtureMode = verb === "mode" && !opAct && fixturePersonOf(req);
+    if (
+      opAct === "agent-say" ||
+      opAct === "agent-relaunch" ||
+      opAct === "agent-restart" ||
+      fixtureRestart ||
+      fixtureMode
+    ) {
+      let marked = false;
+      try {
+        marked =
+          id !== undefined &&
+          !isServerScope(ws) &&
+          agentRecord(d, id, ws).testBed === true;
+      } catch {
+        marked = false;
+      }
+      if (!marked)
+        throw new AgentError(
+          opAct === "agent-say"
+            ? "only a person can send an agent a message"
+            : opAct === "agent-relaunch"
+              ? "only a person can relaunch an agent"
+              : fixtureMode
+                ? "only a person can change an agent's mode"
+                : "only a person can restart an agent",
+          { status: 403 },
+        );
+    }
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
-    // Issue 956: the test operator's message and relaunch reach only the
-    // bed's own agents, those Den marked when it started them on the
-    // test-person path (issue 943). Any other agent: refused, as a
-    // person-only act is.
-    const opAct = operatorActOf(req);
-    if (
-      (opAct === "agent-say" || opAct === "agent-relaunch") &&
-      (id === undefined || agentRecord(d, id, ws).testBed !== true)
-    )
-      throw new AgentError(
-        opAct === "agent-say"
-          ? "only a person can send an agent a message"
-          : "only a person can relaunch an agent",
-        { status: 403 },
-      );
     // AG-14.4: MCP agent_resume may resume another agent of its scope.
     const agent = agentPrincipalOf(req);
     // AG-18: a persona is the person's choice: an agent could widen its
@@ -1041,13 +1130,18 @@ export async function handleAgentRoutes(
       });
     // Issue 199: an agent's mode is what it may do without asking: a
     // person's (an agent asks through the held write agent_mode).
-    if (verb === "mode" && (agent || actor))
+    if (verb === "mode" && (agent || actor) && !fixtureMode)
       throw new AgentError(
         "only a person can change an agent's mode (an agent asks with agent_mode)",
         { status: 403 },
       );
-    // D44: a restart is the person's (it stops a session).
-    if (verb === "restart" && (agent || actor))
+    // D44: a restart is the person's (it stops a session). Issue 1407: and
+    // the test operator's, for the bed's own agents only (checked above).
+    if (
+      verb === "restart" &&
+      !fixtureRestart &&
+      !personOrOperator(req, "agent-restart")
+    )
       throw new AgentError("only a person can restart an agent", {
         status: 403,
       });
@@ -1056,6 +1150,13 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can move an agent", {
         status: 403,
       });
+    // Issue 1182: an agent asks for a folder with the held write
+    // agent_folder; this route is the person's.
+    if (verb === "folder" && (agent || actor))
+      throw new AgentError(
+        "only a person can change an agent's folder (an agent asks with agent_folder)",
+        { status: 403 },
+      );
     // Issue 103: what a person sends from a composer; an agent never
     // types into another agent's session.
     if (verb === "say" && !personOrOperator(req, "agent-say"))
@@ -1223,6 +1324,15 @@ export async function handleAgentRoutes(
           throw new AgentError(`${k}: unknown field (mode takes mode)`, {
             usage: true,
           });
+      if (
+        fixtureMode &&
+        body.mode !== null &&
+        !FIXTURE_MODES.includes(String(body.mode))
+      )
+        throw new AgentError(
+          `only a person can choose ${String(body.mode)}: a live check may pick ${FIXTURE_MODES.join(" or ")}`,
+          { status: 403 },
+        );
       let intent: PermissionIntent | null = null;
       if (body.mode !== null) {
         if (typeof body.mode !== "string")
@@ -1444,28 +1554,74 @@ export async function handleAgentRoutes(
         });
       what = `restart ${id} in ${ws} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
       if (when === "after-turn") {
-        // 0.4.48: a job it left running is asked about first (job_running).
-        await askAboutJob(d, id!, ws);
+        // Issue 1407: where it stands first, never a silent wait. A job it
+        // left running (job_running, with what it runs and how long) or a
+        // turn Den can't read (turn_unknown) is the person's: Restart now.
+        const plan = await restartStateOf(d, id!, ws);
+        // Part 2: the page and the bell follow it live, like a bulk one
+        // (a job or an unknown turn waits on the person's Restart now).
+        const live = await restartLive();
+        live.begin([plan]);
+        if (plan.state === "job")
+          throw new AgentError(
+            `agent ${id}: a background job it started is still running (${plan.job?.command ?? "?"}, ${plan.job?.minutes ?? 0} min). Restart now ends the job.`,
+            { status: 409, code: "job_running", job: plan.job },
+          );
+        if (plan.state === "unknown")
+          throw new AgentError(
+            `agent ${id}: Den can't tell when its turn ends, so it can't wait for it. Restart it now instead.`,
+            { status: 409, code: "turn_unknown" },
+          );
         // It may wait for a long turn: answer now, audit when it's done.
-        void restartAgent(
-          d,
-          id!,
-          ws,
-          "after-turn",
-          deps.personaWait ?? {},
-        ).then(
-          (s) =>
+        void restartAgent(d, id!, ws, "after-turn", {
+          ...(deps.personaWait ?? {}),
+          jobStops: true,
+        }).then(
+          async (s) => {
+            (await restartLive()).done({
+              id: id!,
+              workspace: ws,
+              outcome: "restarted",
+            });
             audit(
               restarted(what, s) + onSignIn(s.rec),
               s.early ? "exited at once" : undefined,
-            ),
-          (e: unknown) =>
-            audit(what, e instanceof Error ? e.message : String(e)),
+            );
+          },
+          (e: unknown) => {
+            live.done(
+              restartOutcomeOf(
+                id!,
+                ws,
+                e,
+                deps.personaWait?.maxMs ?? restartWaitOf(d),
+              ),
+            );
+            audit(what, e instanceof Error ? e.message : String(e));
+          },
         );
-        sendJson(res, { ok: true, agent: id, pending: true }, 202);
+        sendJson(
+          res,
+          { ok: true, agent: id, pending: true, state: plan.state },
+          202,
+        );
         return true;
       }
-      const s = await restartAgent(d, id!, ws, "now");
+      const live = await restartLive();
+      const s = await restartAgent(d, id!, ws, "now").catch((e: unknown) => {
+        live.done({
+          id: id!,
+          workspace: ws,
+          outcome: "failed",
+          error: e instanceof Error ? e.message : String(e),
+        });
+        throw e;
+      });
+      live.done({
+        id: id!,
+        workspace: ws,
+        outcome: "restarted",
+      });
       audit(
         restarted(what, s) + onSignIn(s.rec),
         s.early ? "exited at once" : undefined,
@@ -1480,6 +1636,33 @@ export async function handleAgentRoutes(
             ? { note: FRESH_NOTE }
             : {},
       );
+    } else if (verb === "folder") {
+      // Issue 1182: {repo} or {folder}: a stopped agent's folder.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "repo" && k !== "folder")
+          throw new AgentError(
+            `${k}: unknown field (folder takes repo or folder)`,
+            { usage: true },
+          );
+      const repo = typeof body.repo === "string" ? body.repo : undefined;
+      const folder = typeof body.folder === "string" ? body.folder : undefined;
+      if ((repo === undefined) === (folder === undefined))
+        throw new AgentError("folder takes repo or folder, one of them", {
+          usage: true,
+        });
+      const rec = setAgentFolder(d, id!, ws, {
+        ...(repo !== undefined ? { repo } : {}),
+        ...(folder !== undefined ? { folder } : {}),
+      });
+      what = `set ${rec.id}'s folder to ${rec.cwd} in ${ws}`;
+      audit(what);
+      sendJson(res, {
+        ok: true,
+        agent: rec.id,
+        cwd: rec.cwd,
+        ...(rec.repo ? { repo: rec.repo, project: rec.project } : {}),
+      });
     } else if (verb === "move") {
       // D72: {to, when}: to another workspace, same conversation.
       const body = await jsonBody(req);
@@ -1530,7 +1713,13 @@ export async function handleAgentRoutes(
       sendJson(res, { ok: true, removed });
     } else {
       // D28: a due agent under auto relaunches from its handoff instead.
-      const r = await resumeOrRelaunch(d, id!, ws);
+      // Issue 1129: one waiting in the restart queue leaves it and starts
+      // now, ahead of the rest (a person opened it); never twice.
+      const run = () => resumeOrRelaunch(d, id!, ws);
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const r = (await (restartQueue().openNow(id!, run) ?? run())) as Awaited<
+        ReturnType<typeof resumeOrRelaunch>
+      >;
       if (r.kind === "relaunched") {
         what = `relaunch ${r.s.rec.id} from its handoff (${r.s.why}) in ${ws}, on Resume`;
         audit(what, r.s.early ? "exited at once" : undefined);
@@ -2178,6 +2367,8 @@ export async function refreshTerminalHost(
   d: AgentsResolved,
   log: (line: string) => void,
   by: "start" | "held" = "start",
+  /** Issue 1403: a routine host_restart: never wait and cut a turn. */
+  o: { idleOnly?: boolean } = {},
 ): Promise<
   import("../../shared/sessions/host-refresh.js").RefreshResult | null
 > {
@@ -2198,7 +2389,13 @@ export async function refreshTerminalHost(
   if (hostRefreshing) return null; // Issue 731: one at a time
   hostRefreshing = true;
   try {
-    return await refreshAndReport(d, log, { waitS, note, checkS, by });
+    return await refreshAndReport(d, log, {
+      waitS,
+      note,
+      checkS,
+      by,
+      idleOnly: o.idleOnly === true,
+    });
   } finally {
     hostRefreshing = false;
   }
@@ -2224,7 +2421,13 @@ export function hostRefreshFailedLine(why: string): string {
 async function refreshAndReport(
   d: AgentsResolved,
   log: (line: string) => void,
-  o: { waitS: number; note: boolean; checkS: number; by: "start" | "held" },
+  o: {
+    waitS: number;
+    note: boolean;
+    checkS: number;
+    by: "start" | "held";
+    idleOnly?: boolean;
+  },
 ): Promise<import("../../shared/sessions/host-refresh.js").RefreshResult> {
   const { refreshSessionHost, HOST_RESTART_NOTE } =
     await import("../../shared/sessions/host-refresh.js");
@@ -2287,6 +2490,7 @@ async function refreshAndReport(
     ended: (ids) => endedAfterHostRestart(d, ids),
     checkMs: checkS * 1000,
     log: (l) => log(`  ${l}`),
+    ...(o.idleOnly ? { idleOnly: true } : {}),
   });
   const endedAt = new Date().toISOString();
   if (r.did === "failed") {
@@ -2609,9 +2813,15 @@ export function startAgentUpkeep(
         log(`  ⚠ ${(e as Error).message}`);
       }
       const hubUp = await hubAnswers();
+      // Issue 1129: a batch at a time (agents.resume), never all at once.
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const { notificationDeps: bell } =
+        await import("./notification-service.js");
+      const queue = restartQueue({ log, store: () => bell().store });
       const f = await markInterrupted(d, {
         restoreAll,
         ...(hubUp ? { hubUp, hubWaitMs: waitS * 1000 } : {}),
+        queue,
       });
       if (f.withoutHub.length) {
         log(
@@ -2653,6 +2863,7 @@ export function startAgentUpkeep(
         );
       for (const x of f.failed)
         log(`  ⚠ agent ${x.agent} did not resume: ${x.why}`);
+      if (f.failed.length) await noteCapsHeld(d.stateDir(), f.failed);
     } catch (e) {
       log(`  ⚠ agents after the restart: ${(e as Error).message}`);
     }
@@ -2836,6 +3047,11 @@ async function rotationRoute(
           { usage: true },
         );
     const out = setRotationSetting(d, body);
+    // Issue 1391: agents may read the trail, and this row holds no free
+    // text. setRotationSetting throws before it on anything unchecked: a
+    // scope from OVERRIDE_SCOPES or install, a name-shaped target, a key
+    // from ROTATE_KEYS, and a value checkRotateValue takes (1–100,
+    // "never", auto, ask, off, true, false) or null.
     recordAction(
       null,
       {
@@ -2920,7 +3136,7 @@ async function hubConnectRoute(
       );
       return true;
     }
-    const r = hc.start(origin, body.url);
+    const r = hc.start(origin, body.url, { switch: body.switch === true });
     sendJson(res, r, r.ok ? 200 : 400);
     return true;
   }
@@ -2982,6 +3198,53 @@ async function toolsRoute(
   return true;
 }
 
+/** This server's live restart status (one per server). */
+let LIVE: RestartLive | null = null;
+async function restartLive(): Promise<RestartLive> {
+  if (LIVE) return LIVE;
+  let store: Pick<NotificationStore, "add" | "remove"> | null = null;
+  try {
+    store = (await import("./notification-service.js")).notificationDeps()
+      .store;
+  } catch {
+    /* no bell here: the page still has it */
+  }
+  LIVE ??= new RestartLive({ store });
+  return LIVE;
+}
+
+/**
+ * GET /api/agents/restart-status: each agent of a bulk
+ * restart, live (its state, and why it waits); a signed-in person's read
+ * only (provenPersonOf). Restarted ones clear after a
+ * moment; none, an empty list. The page polls it while it shows a run.
+ */
+async function restartStatusRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  // Every project's restarts (job commands, why one failed): a person's
+  // read only. An agent's token or view, the fixture, or a caller that
+  // proved nothing is refused.
+  if (!provenPersonOf(req)) {
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "person_only",
+        error: "only a signed-in person can read the agents' restart status",
+      },
+      403,
+    );
+    return true;
+  }
+  sendJson(res, { agents: (await restartLive()).list() });
+  return true;
+}
+
 /**
  * D44: GET /api/agents/stale: the running agents whose MCP servers are out
  * of date (`?fresh=1` asks Hub's config again, after Connect or
@@ -3004,7 +3267,11 @@ async function staleRoute(
     "1";
   if (!post) {
     try {
-      sendJson(res, { agents: await staleAgents(d, { fresh }) });
+      const rows = await staleAgents(d, { fresh });
+      const keep = agentRowFilter(req);
+      sendJson(res, {
+        agents: keep ? rows.filter((r) => keep(r.workspace)) : rows,
+      });
     } catch (e) {
       sendError(res, e);
     }
@@ -3023,33 +3290,88 @@ async function staleRoute(
       principalOf(req),
     );
   try {
-    if (agentPrincipalOf(req) || actor)
+    // Issue 1407: the test operator too, for the bed's own agents only.
+    const operator = operatorActOf(req) === "agents-restart-stale";
+    if (!personOrOperator(req, "agents-restart-stale"))
       throw new AgentError("only a person can restart agents", {
         status: 403,
       });
-    guard(actor);
+    if (!operator) guard(actor);
     const body = await jsonBody(req);
     for (const k of Object.keys(body))
-      throw new AgentError(`${k}: unknown field (restart-stale takes none)`, {
-        usage: true,
-      });
-    const list = await staleAgents(d, { fresh: true });
+      if (k !== "only")
+        throw new AgentError(
+          `${k}: unknown field (restart-stale takes only: "hub")`,
+          { usage: true },
+        );
+    // Issue 1223: only: "hub", Settings' Hub offer (the Hub-stale only);
+    // none, every stale agent (an older Den's tools too).
+    if (body.only !== undefined && body.only !== "hub")
+      throw new AgentError(
+        `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
+        { usage: true },
+      );
+    const all = (await staleAgents(d, { fresh: true })).filter(
+      (a) =>
+        body.only !== "hub" ||
+        a.stale.adds.length > 0 ||
+        a.stale.drops.length > 0,
+    );
+    // Before anything is restarted, checked or audited by name.
+    const list = operator
+      ? testBedOnly(all, (a) => {
+          try {
+            return agentRecord(d, a.id, a.workspace).testBed === true;
+          } catch {
+            return false;
+          }
+        })
+      : all;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
-    for (const a of list) {
-      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
-      void restartAgent(
-        d,
-        a.id,
-        a.workspace,
-        "after-turn",
-        deps.personaWait ?? {},
-      ).then(
-        (s) => audit(restarted(one, s), s.early ? "exited at once" : undefined),
-        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
-      );
-    }
-    sendJson(res, { ok: true, pending: list }, 202);
+    // Issue 1407: each agent is checked first and answered for: restarting
+    // now, after its turn, a background job (what, how long) or can't
+    // tell. Only the first two restart; the person decides the others
+    // (Restart now). How each restart ended reaches the trail.
+    const one = (id: string, ws: string) =>
+      `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
+    // Part 2: the page and the bell follow each agent live (restartLive).
+    const live = await restartLive();
+    const outcomes: RestartOutcome[] = [];
+    let begun = false;
+    const plan = await restartMany(
+      d,
+      list.map((a) => ({ id: a.id, workspace: a.workspace })),
+      {
+        ...(deps.personaWait ?? {}),
+        onDone: (o) => {
+          if (begun) live.done(o);
+          else outcomes.push(o);
+          if (o.outcome === "restarted") audit(one(o.id, o.workspace));
+          else
+            audit(
+              one(o.id, o.workspace),
+              o.outcome === "job"
+                ? `a background job is still running (${o.job?.command ?? "?"}, ${o.job?.minutes ?? 0} min)`
+                : o.outcome === "timedOut"
+                  ? `still working after ${o.minutes ?? 0} min; not restarted`
+                  : (o.error ?? "not restarted"),
+            );
+        },
+      },
+    );
+    live.begin(plan);
+    begun = true;
+    for (const o of outcomes.splice(0)) live.done(o);
+    for (const p of plan)
+      if (p.state === "job" || p.state === "unknown")
+        audit(
+          one(p.id, p.workspace),
+          p.state === "job"
+            ? `waits for the person: a background job is running (${p.job?.command ?? "?"}, ${p.job?.minutes ?? 0} min)`
+            : "waits for the person: Den can't tell when its turn ends",
+        );
+    sendJson(res, { ok: true, pending: list, agents: plan }, 202);
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
@@ -3096,8 +3418,8 @@ async function eventFeedsRoute(
   d: AgentsResolved,
 ): Promise<true> {
   const method = req.method ?? "GET";
-  if (method !== "GET" && method !== "HEAD")
-    return methodNotAllowed(res, "GET");
+  if (method !== "GET" && method !== "HEAD" && method !== "POST")
+    return methodNotAllowed(res, "GET, POST");
   const ws = safeDecode(rawWs);
   if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
     sendJson(
@@ -3107,8 +3429,114 @@ async function eventFeedsRoute(
     );
     return true;
   }
+  if (method === "POST") return eventFeedWrite(req, res, ws, null, d);
   const { appFeedsView } = await import("./app-feed-service.js");
-  sendJson(res, { ok: true, ...appFeedsView(ws) });
+  // Issue 1480: the project's agents, for the row's Add.
+  sendJson(res, {
+    ok: true,
+    ...appFeedsView(ws),
+    agents: projectAgentIds(d, ws),
+  });
+  return true;
+}
+
+/**
+ * Issue 1480: Settings › Project › App event feeds, a row's actions.
+ * DELETE /api/workspaces/:ws/event-feeds/:name removes one.
+ */
+async function eventFeedRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  rawName: string,
+  d: AgentsResolved,
+): Promise<true> {
+  if ((req.method ?? "GET") !== "DELETE")
+    return methodNotAllowed(res, "DELETE");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  return eventFeedWrite(req, res, ws, safeDecode(rawName), d);
+}
+
+/**
+ * Issue 1480: a person adds a feed (POST { name, agent, url, bearer?,
+ * list_url? }, the bearer a secrets.refs name) or removes one (name).
+ * Checked as the held writes are (agent-ops.ts); a person's only: their
+ * click is the decision. An agent asks with project_event_feed_add or
+ * project_event_feed_remove, which the approval policy places.
+ */
+async function eventFeedWrite(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ws: string,
+  name: string | null,
+  d: AgentsResolved,
+): Promise<true> {
+  const remove = name !== null;
+  const actor = auditActorOf(req);
+  let what = remove
+    ? `remove event feed ${name} from project ${ws}`
+    : `add an event feed to project ${ws}`;
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError(
+        remove
+          ? "only a person can remove a project's event feed here (an agent asks with project_event_feed_remove)"
+          : "only a person can add a project's event feed here (an agent asks with project_event_feed_add)",
+        { status: 403 },
+      );
+    let ask: Record<string, unknown> = { project: ws, name };
+    if (!remove) {
+      const body: unknown = await jsonBody(req);
+      // Reviewer E: a JSON null or a list is a usage error, not a 500.
+      if (!body || typeof body !== "object" || Array.isArray(body))
+        throw new AgentError("send a JSON object", { usage: true });
+      for (const k of Object.keys(body))
+        if (!["name", "agent", "url", "bearer", "list_url"].includes(k))
+          throw new AgentError(
+            `${k}: unknown field (takes name, agent, url, bearer and list_url)`,
+            { usage: true },
+          );
+      ask = { ...body, project: ws };
+    }
+    const c = remove
+      ? checkEventFeedRemove(d, ask)
+      : await checkEventFeedAdd(d, ask);
+    if (!c.ok)
+      throw new AgentError(c.error, {
+        status: c.error.startsWith(`project ${ws} has no event feed`)
+          ? 404
+          : 400,
+        usage: true,
+      });
+    what = c.summary;
+    const r = remove
+      ? await runEventFeedRemove(d, { ...c.args })
+      : await runEventFeedAdd(d, { ...c.args });
+    if (!r.ok) throw new AgentError(r.error, { usage: true });
+    audit(what);
+    sendJson(res, { ok: true, project: r.project, name: r.name });
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
+  }
   return true;
 }
 
