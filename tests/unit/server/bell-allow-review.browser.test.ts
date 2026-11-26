@@ -201,6 +201,7 @@ describe("the bell's Allow row: Review", () => {
       ).resolves.toBe("1px");
       expect(lines.some((l) => l.includes("box1"))).toBe(true);
       // The button keeps focus across the bell's repaint.
+      await dumpTrace(p, "bell-1332 at1440-open");
       await expect(
         p.evaluate(() => (document.activeElement as HTMLElement)?.dataset.bell),
       ).resolves.toBe("review");
