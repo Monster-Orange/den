@@ -3073,6 +3073,8 @@
       "La solicitud de {name} se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella; se le pidió al agente que vuelva a pedirlo.",
     "bell.m.heldLostAsk":
       "Una solicitud se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella.",
+    "bell.m.capHeld":
+      "{name} no se inició: hay {n} de {limit} agentes funcionando ({key}). Detén uno, o sube {key}.",
     "bell.m.restartsWaiting":
       "{n} agentes esperan para reiniciarse, unos pocos a la vez",
     "bell.m.heldLostAll":

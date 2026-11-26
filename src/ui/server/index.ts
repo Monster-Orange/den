@@ -115,6 +115,10 @@ import {
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { userConfigPath } from "../../shared/den-config.js";
+import {
+  ownProjectCap,
+  setProjectCap,
+} from "../../shared/agents/project-cap.js";
 import { readWebSecret } from "../../shared/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
