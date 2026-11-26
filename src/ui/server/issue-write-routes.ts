@@ -29,6 +29,7 @@ import {
   filedTextRefusal,
   filedTextWhere,
   needsFiledCheck,
+  ownNamePatterns,
   type FiledText,
 } from "../../shared/filed-text-check.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
@@ -65,6 +66,7 @@ export interface IssueWriteDeps {
   ) => Promise<{ code: number; stdout: string; stderr: string }>;
   /** This install's label (the footer's). */
   installLabel: () => string;
+  ownNames: () => { always: string[]; named: string[] };
   /**
    * Issue 1127: the listed names (shared/org-names.js orgPatterns; none:
    * nothing refused) and a repo's visibility no older than `maxAgeMs`
@@ -182,6 +184,15 @@ export async function runIssueWrite(
         : op.action === "label"
           ? op.add.map((text) => ({ field: "label" as const, text }))
           : [{ field: "milestone", text: op.milestone }];
+  const vis = await d.visibility(op.repo, settings.visibilityMinutes * 60_000);
+  if (vis === "public" && !settings.publicRepos)
+    return refuse(
+      403,
+      "issue_write_public",
+      `${op.repo} is public, and this Den's agents don't write to public repos (agents.issue_writes_public is off). A person turns it on in Settings › Agents.`,
+      issueNo,
+    );
+
   if (texts.length) {
     let patterns: RegExp[];
     try {
@@ -197,11 +208,15 @@ export async function runIssueWrite(
         issueNo,
       );
     }
+    const listed = patterns.length;
+    if (needsFiledCheck(vis)) {
+      const own = d.ownNames();
+      patterns = [
+        ...patterns,
+        ...ownNamePatterns(own.always, [...own.named, me.name], op.repo),
+      ];
+    }
     if (patterns.length) {
-      const vis = await d.visibility(
-        op.repo,
-        settings.visibilityMinutes * 60_000,
-      );
       if (needsFiledCheck(vis)) {
         const hits = filedTextHits(texts, patterns, op.repo);
         if (hits.length)
@@ -211,7 +226,7 @@ export async function runIssueWrite(
             filedTextRefusal(hits),
             issueNo,
             // Issue 1127: the audit is kept, so never the agent's phrase.
-            `refused for listed names: ${filedTextWhere(hits)}`,
+            `refused for listed names: ${filedTextWhere(hits, listed)}`,
           );
       }
     }
@@ -228,7 +243,7 @@ export async function runIssueWrite(
     );
   }
 
-  const footer = issueWriteFooter(me.name, d.installLabel());
+  const footer = issueWriteFooter(me.name, d.installLabel(), vis);
   const call = ghIssueArgs(op, footer);
   const r = await d.gh(call.args, call.stdin);
   if (r.code !== 0) {
