@@ -11,8 +11,8 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
-import { patchSkillPacksBody, skillPacksData } from "./skill-pack-settings.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
+import { patchSkillPacksBody, skillPacksData } from "./skill-pack-settings.js";
 import {
   COACH_ROUTES,
   handleCoachRoute,
