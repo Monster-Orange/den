@@ -68,6 +68,7 @@ export function fakeBed({ den = "good" } = {}) {
   // closed, "top" (the ⋯ menu) or "mode" (its Mode radios).
   let menuOpen = "closed";
   let said = null;
+  let onPost = null;
   let tagShown = null;
   let busyOn = null; // the element that showed busy: "more", "other" or none
   let watching = null; // the label of the button the check watches
@@ -193,10 +194,33 @@ export function fakeBed({ den = "good" } = {}) {
         },
         async click() {
           if (menuOpen !== "mode" || !m) fail(o.name);
-          setMode(m === "follow" ? null : m);
+          if (den !== "refused") setMode(m === "follow" ? null : m);
           menuOpen = "closed";
+          onPost?.(
+            den === "refused"
+              ? { status: 403, body: { ok: false, code: "fixture_scope" } }
+              : { status: 200, body: { ok: true } },
+          );
         },
       };
+    },
+    waitForResponse(pred, opts = {}) {
+      return new Promise((ok, no) => {
+        setTimeout(
+          () => no(new Error("timeout")),
+          Math.min(opts.timeout ?? 50, 50),
+        );
+        onPost = (x) => {
+          const res = {
+            url: () =>
+              `http://bed.invalid/api/workspaces/${WS}/agents/${ID}/mode`,
+            request: () => ({ method: () => "POST" }),
+            status: () => x.status,
+            json: async () => x.body,
+          };
+          if (pred(res)) ok(res);
+        };
+      });
     },
     getByText(text) {
       return {

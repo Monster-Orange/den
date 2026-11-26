@@ -208,9 +208,24 @@ async function choose(ctx, pick, then) {
     pick === "follow"
       ? await words(p, "ag.mode.follow")
       : await words(p, `pm.${pick}`);
+  const posted = p
+    .waitForResponse(
+      (res) =>
+        res.request().method() === "POST" &&
+        /\/agents\/[^/]+\/mode$/.test(new URL(res.url()).pathname),
+      { timeout: 15000 },
+    )
+    .catch(() => null);
   await p
     .getByRole("menuitemradio", { name, exact: pick !== "follow" })
     .click();
+  const res = await posted;
+  const answer = res
+    ? {
+        status: res.status(),
+        code: (await res.json().catch(() => null))?.code ?? null,
+      }
+    : null;
   const want = await words(
     p,
     pick === "follow" ? "ag.mode.followS" : "ag.mode.setS",
@@ -225,7 +240,7 @@ async function choose(ctx, pick, then) {
     window.__busy252o?.disconnect();
     return window.__busy252 === true;
   });
-  return { busy, said, want };
+  return { busy, said, want, answer };
 }
 
 /** Waits until it runs in `mode` from `source` in a new session; how long, or null. */
@@ -358,6 +373,12 @@ export function expect(cells) {
     "mode-own-row",
     "mode-followed-row",
   ].map((n) => `${n}.png`);
+  const no = [r.set, r.follow].find((x) => x?.answer?.status === 403)?.answer;
+  const refused = no
+    ? `the bed refused the mode write (403 ${no.code ?? "no code"}); `
+    : "";
+  const told = (row) =>
+    row === cli ? row : { ...row, detail: refused + row.detail };
   return [
     {
       clause: clauses[0],
@@ -396,7 +417,7 @@ export function expect(cells) {
         `Follow project: back to ${r.start?.mode} after ${r.back?.ms} ms (${JSON.stringify(r.back?.last)}), row "${r.tagBack?.text}" (${r.tagBack?.source})`,
       evidence: shots.slice(2),
     },
-  ];
+  ].map(told);
 }
 
 export async function teardown(ctx) {
