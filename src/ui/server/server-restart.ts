@@ -162,13 +162,6 @@ export function takeRestartMarker(
 /** At most this many doctor lines go into the line Den types. */
 const DOCTOR_LINES_MAX = 8;
 
-/**
- * #384: what the new Den's doctor found for the update this restart is
- * back from, said in the line itself. The agent reading it runs Den tools
- * that started before the update (its MCP server is a child of its
- * session, which outlives the restart), so the line sends it to no tool
- * for this. One line: what is typed is submitted with Enter.
- */
 const UNPUSHED_PIN = new Set(["push_failed", "commit_failed", "branch_pushed"]);
 
 function pinNews(version: string, update?: LastUpdate | null): string {
@@ -177,6 +170,13 @@ function pinNews(version: string, update?: LastUpdate | null): string {
   return ` Den ${p.version}'s pin was not pushed: ${p.why ?? p.state}. Only the latest pin is kept and tried again: ${version}'s pin replaces it.`;
 }
 
+/**
+ * #384: what the new Den's doctor found for the update this restart is
+ * back from, said in the line itself. The agent reading it runs Den tools
+ * that started before the update (its MCP server is a child of its
+ * session, which outlives the restart), so the line sends it to no tool
+ * for this. One line: what is typed is submitted with Enter.
+ */
 function doctorNews(
   m: RestartMarker,
   version: string,

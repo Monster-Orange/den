@@ -5,6 +5,8 @@ import * as os from "os";
 import * as path from "path";
 import {
   commitPin,
+  ghRepoOf,
+  ghSignaturesRequired,
   pinBellMessage,
   pinGit,
   readPinRecord,
@@ -239,6 +241,52 @@ describe("issue 1745: the pin's branch name never clashes with the remote's bran
     const step = await commitPin("1.1.0", deps(gh.argv, { mode: "pr" }));
     expect(step).toMatchObject({ did: "pr", branch: "den-pin-1.1.0", sha });
     expect(heads()).toContain("refs/heads/den-pin-1.1.0");
+  });
+
+  it("a failed push's output is redacted, with no control characters, in the step and the record", async () => {
+    const token = "ghp_" + "B".repeat(36);
+    const real = pinGit(root, { env });
+    const gh = fakeGh("fail");
+    const step = await commitPin(
+      "1.1.0",
+      deps(gh.argv, {
+        git: (args, e) =>
+          args[0] === "push"
+            ? Promise.resolve({
+                code: 128,
+                out: `fatal: unable to access 'https://x:${token}@github.com/acme/dist.git/':\x1b[31m denied\r\n`,
+              })
+            : real(args, e),
+      }),
+    );
+    expect(step).toMatchObject({ did: "push_failed" });
+    const why = (step as { why: string }).why;
+    const saved = JSON.stringify(readPinRecord(stateDir));
+    for (const text of [why, saved]) {
+      expect(text).not.toContain(token);
+      expect(text).toContain("[REDACTED");
+    }
+    const codes = [...why].map((c) => c.charCodeAt(0));
+    expect(codes.filter((n) => n < 32 || (n >= 127 && n <= 159))).toEqual([]);
+  });
+
+  it("gh is never sent a path with a . or .. segment in the owner, repo or branch", async () => {
+    for (const url of [
+      "https://github.com/../dist.git",
+      "https://github.com/acme/..",
+      "git@github.com:./dist.git",
+      "git@github.com:acme/.",
+      "https://github.com/acme/...git",
+    ])
+      expect(ghRepoOf(url)).toBeNull();
+    const asked: string[][] = [];
+    const check = ghSignaturesRequired(async (argv) => {
+      asked.push(argv);
+      return { code: 0, out: "[]" };
+    });
+    for (const branch of ["../../x", "a/../b", "a/./b", "..", "."])
+      expect(await check("https://github.com/acme/dist", branch)).toBeNull();
+    expect(asked).toEqual([]);
   });
 
   it("a failed pin push rings one bell with its reason (guard)", () => {

@@ -147,4 +147,22 @@ describe("issue 1745: a pin that wasn't pushed is said where the server agent lo
       ),
     ).toBeNull();
   });
+
+  it("the push output in that line is redacted and has no control characters", () => {
+    const token = "ghp_" + "A".repeat(36);
+    const typed = pinAgentLine(
+      {
+        did: "push_failed",
+        version: "0.4.42",
+        sha: stranded.sha,
+        why: `remote: https://x:${token}@github.com\x1b[31m denied\r\nnext`,
+        first: true,
+      },
+      "Den",
+    );
+    expect(typed).not.toContain(token);
+    expect(typed).toContain("[REDACTED");
+    const codes = [...(typed ?? "")].map((c) => c.charCodeAt(0));
+    expect(codes.filter((n) => n < 32 || (n >= 127 && n <= 159))).toEqual([]);
+  });
 });

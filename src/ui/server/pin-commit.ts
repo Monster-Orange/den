@@ -55,6 +55,7 @@ import {
   type PinVia,
 } from "../../shared/pin-record.js";
 import { parseRepoName } from "../../shared/repo-name.js";
+import { redactSecrets } from "../../shared/redact.js";
 
 // Moved to src/shared/pin-record.ts (doctor reads it too); kept here.
 export { pinRecordFile, readPinRecord, type PinRecord, type PinVia };
@@ -129,8 +130,22 @@ function writePinRecord(stateDir: string, r: PinRecord): void {
   writeFileAtomic(p, JSON.stringify(r) + "\n", { mode: 0o600 });
 }
 
+const oneLine = (s: string) =>
+  [...s]
+    .map((c) => {
+      const n = c.charCodeAt(0);
+      return n < 32 || (n >= 127 && n <= 159) || n === 0x2028 || n === 0x2029
+        ? " "
+        : c;
+    })
+    .join("")
+    .trim();
+
 const tail = (s: string) =>
-  s.trim().split("\n").slice(-2).join(" / ").slice(0, 300) || "no output";
+  oneLine(redactSecrets(s.trim()).split("\n").slice(-2).join(" / ")).slice(
+    0,
+    300,
+  ) || "no output";
 
 export interface PinCommitDeps {
   /** The distribution's root (where the pin files are). */
@@ -928,8 +943,11 @@ export function ghRepoOf(remoteUrl: string): string | null {
     .match(
       /github\.com[:/]([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/,
     );
-  return m ? `${m[1]}/${m[2]}` : null;
+  if (!m || [m[1], m[2]].some(dotSegment)) return null;
+  return `${m[1]}/${m[2]}`;
 }
+
+const dotSegment = (seg: string) => seg === "." || seg === "..";
 
 export function ghSignaturesRequired(
   run: (argv: string[], cwd: string) => Promise<Ran>,
@@ -938,7 +956,12 @@ export function ghSignaturesRequired(
 ): (remoteUrl: string, branch: string) => Promise<boolean | null> {
   return async (remoteUrl, branch) => {
     const repo = ghRepoOf(remoteUrl);
-    if (!repo || !/^[A-Za-z0-9._/-]+$/.test(branch)) return null;
+    if (
+      !repo ||
+      !/^[A-Za-z0-9._/-]+$/.test(branch) ||
+      branch.split("/").some(dotSegment)
+    )
+      return null;
     const b = encodeURIComponent(branch);
     const rules = await run(
       [...gh, "api", `repos/${repo}/rules/branches/${b}`],
@@ -1086,5 +1109,6 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
 
 export function pinAgentLine(step: PinStep, t: string): string | null {
   if (step.did !== "push_failed" || !step.first) return null;
-  return `${t} ${step.version}'s pin couldn't be pushed: ${step.why}. ${t} tries again at its next update check; the person has it in the bell.`;
+  const why = oneLine(redactSecrets(step.why));
+  return `${t} ${step.version}'s pin couldn't be pushed: ${why}. ${t} tries again at its next update check; the person has it in the bell.`;
 }
