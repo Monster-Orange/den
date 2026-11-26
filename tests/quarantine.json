@@ -1,21 +1,5 @@
 {
   "//": "Issue 397. Flaky tests with evidence: on a pull request they run in a separate step that does not block; on main and in releases they block as always. See CONTRIBUTING.md, Quarantined tests.",
   "max_age_days": 14,
-  "entries": [
-    {
-      "file": "tests/unit/server/agents-ag14.browser.test.ts",
-      "test": "stopped agents on the Agents page (AG-14, D37) D45: a stopped agent's details, from its row #143: they open where they stay: shown once their details are in, never growing or moving after",
-      "issue": 143,
-      "added": "2026-11-17",
-      "evidence": {
-        "failed_run": 44161015653,
-        "failed_job": 134314526109,
-        "job": "tests (22.13.0, 2)",
-        "sha": "8e71583d9ba204d9cb47f75d24dd76be7eb9f28f",
-        "passed_run": 44161015653,
-        "passed_job": 134314526529,
-        "note": "no other run on this sha; the test passed in the same run's tests (24.13.0, 2) (job 134314526529), same sha, other Node"
-      }
-    }
-  ]
+  "entries": []
 }

@@ -54,6 +54,15 @@ someone else in. Setup closes an open home to 0700, as a step it shows. So
 Den's runtime must live outside the person's home: setup refuses to start, and
 doctor fails, while it is inside.
 
+The agents' login runs Den's runtime, so it must not be able to change any of
+it: node, Den's CLI, every file under Den's engine folder (and the target of
+every link there, such as a linked `node_modules`), and every folder above
+them. A place anyone can write, the login owns, or a group the login is in can
+write, fails doctor and stops setup before it asks. So does a link that points
+at nothing, since the login might make what it points at, and so do groups
+that can't be read. A folder above with the sticky bit, such as `/tmp`, is
+fine.
+
 Root writes the launcher and the rule from stdin, out of Den's memory, then
 reads them back: never from a file anyone else can write. Den's state folder
 stays the person's at 0700.
@@ -86,10 +95,13 @@ name that looks like a secret's is refused before anything is written.
 `agents session <id> <nonce>` runs as the agents user, in this order, so a bad
 launch file never gets a token:
 
-1. the agent's launch files, only if they pass the check;
-2. the sign-in token, on the session's terminal, after Den's nonce marker;
-3. its own temp folder, `<home>/t/den-XXXXXX` at 0700;
-4. the runtime, in the agent sandbox, with the token in its environment only.
+1. the runtime check above, for this login: one place it could change, and no
+   agent starts;
+2. the agent's launch files, only if they pass the check;
+3. the sign-in token, on the session's terminal, after Den's nonce marker;
+4. its own temp folder, `<home>/t/den-XXXXXX` at 0700;
+5. the runtime, in the agent sandbox, with the token on file descriptor 3,
+   never in its environment or arguments.
 
 A sandbox that can't start ends the launch: an agent never runs unsandboxed.
 The temp folder goes when the runtime ends, however it ends.
@@ -121,4 +133,6 @@ These hold before the server starts any agent as the agents' login:
    sandbox denies looking at other processes.
 3. The person's Den never trusts or follows a link in `own/`.
 4. Every launch checks that the agents' login can't write Den's runtime, or
-   any folder above it, before it starts.
+   any folder above it, before it starts. The check reads owners and mode bits
+   only: access control lists (ACLs) aren't checked yet, and that check lands
+   before `agents.os_login` is used to start any agent.
