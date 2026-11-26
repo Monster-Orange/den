@@ -302,8 +302,6 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
-  setUserEnvHoldExisting,
-  addUserEnvAllow,
   setUserAgentSandbox,
   setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
@@ -1582,15 +1580,6 @@ import {
   listRecords as listAgentRecords,
   readRecord as readAgentRecord,
 } from "../../shared/agents/records.js";
-import {
-  askEnvHold,
-  envAllowKeepOp,
-  envHoldOnOp,
-  wouldHold,
-} from "../../shared/agents/env-hold-rollout.js";
-import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
-import { shellEnvNames } from "../cli/doctor-env-hold.js";
-import { workspaceEntryRaw as workspaceEntryOf } from "../../shared/environment-manager/workspaces.js";
 import {
   askSandboxOn,
   legacyAgentIds,
@@ -5703,8 +5692,6 @@ function approvalDeps(): ApprovalDeps {
     gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
-    envHoldOn: envHoldOnOp(envHoldOpDeps()),
-    envAllowKeep: envAllowKeepOp(envHoldOpDeps()),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
     sandboxOn: sandboxOnServerOp(),
     // Issue 208: a Verify run on a shared environment.
@@ -6245,57 +6232,6 @@ async function runPinCommit(
         }
       : {}),
   });
-}
-
-function envHoldOpDeps(): import("../../shared/agents/env-hold-rollout.js").EnvHoldOpDeps {
-  return {
-    rows: () => {
-      const s = readAgentsConfig().envHold;
-      if (!s) return [];
-      return wouldHold(
-        listAgentRecords(getStateDir()),
-        s,
-        shellEnvNames(),
-        (ws) => {
-          try {
-            return checkProjectEnvAllow(
-              ws,
-              (
-                workspaceEntryOf(ws) as
-                  | { agents?: { env_allow?: unknown } }
-                  | undefined
-              )?.agents?.env_allow,
-            );
-          } catch {
-            return [];
-          }
-        },
-      ).filter((r) => r.names.length > 0);
-    },
-    turnOn: () => setUserEnvHoldExisting(),
-    keep: (names) => addUserEnvAllow(names),
-  };
-}
-
-function startEnvHoldAsk(): void {
-  const ask = () => {
-    try {
-      const ap = approvalDeps();
-      const deps = envHoldOpDeps();
-      void askEnvHold(
-        ap.queue,
-        envAllowKeepOp(deps),
-        envHoldOnOp(deps),
-        deps.rows,
-      ).then((asked) => {
-        if (asked) syncHeldWrites();
-      });
-    } catch {
-      return;
-    }
-  };
-  ask();
-  setInterval(ask, 60 * 60_000).unref();
 }
 
 /** #176: den_pin_commit, held for the person when the policy says ask. */
@@ -12500,7 +12436,6 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
-    startEnvHoldAsk();
     void pruneDeadSnapshots()
       .then((n) => {
         if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
