@@ -2309,6 +2309,43 @@
       "why": "tests that read examples/"
     },
     {
+      "when": ["gate/**"],
+      "run": [
+        "tests/unit/test-infra/gate-1217-clauses.test.ts",
+        "tests/unit/test-infra/gate-1381.test.ts",
+        "tests/unit/test-infra/gate-1407-clauses.test.ts",
+        "tests/unit/test-infra/gate-142-runner.test.ts",
+        "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-252-runner.test.ts",
+        "tests/unit/test-infra/gate-380-runner.test.ts",
+        "tests/unit/test-infra/gate-402-clauses.test.ts",
+        "tests/unit/test-infra/gate-415-runner.test.ts",
+        "tests/unit/test-infra/gate-448-clauses.test.ts",
+        "tests/unit/test-infra/gate-448-runner.test.ts",
+        "tests/unit/test-infra/gate-455-runner.test.ts",
+        "tests/unit/test-infra/gate-456-copies.test.ts",
+        "tests/unit/test-infra/gate-459-runner.test.ts",
+        "tests/unit/test-infra/gate-479-quarantined.test.ts",
+        "tests/unit/test-infra/gate-503-runner.test.ts",
+        "tests/unit/test-infra/gate-536-runner.test.ts",
+        "tests/unit/test-infra/gate-563-runner.test.ts",
+        "tests/unit/test-infra/gate-573-runner.test.ts",
+        "tests/unit/test-infra/gate-601-port.test.ts",
+        "tests/unit/test-infra/gate-609.test.ts",
+        "tests/unit/test-infra/gate-629-runner.test.ts",
+        "tests/unit/test-infra/gate-631-runner.test.ts",
+        "tests/unit/test-infra/gate-701-659-runner.test.ts",
+        "tests/unit/test-infra/gate-746-teardown-1293.test.ts",
+        "tests/unit/test-infra/gate-828.test.ts",
+        "tests/unit/test-infra/gate-93-pointer.test.ts",
+        "tests/unit/test-infra/gate-checks.test.ts",
+        "tests/unit/test-infra/gate-expect-shape.test.ts",
+        "tests/unit/test-infra/gate-fixture-project-1215.test.ts",
+        "tests/unit/test-infra/gate-readonly-modules.test.ts"
+      ],
+      "why": "the live checks' own tests (runners, shape, clauses)"
+    },
+    {
       "when": ["scripts/affected-tests.mjs"],
       "run": [
         "tests/unit/scripts/node22-tests.test.ts",
@@ -2574,6 +2611,162 @@
         "tests/unit/server/i18n-pages.browser.test.ts"
       ],
       "why": "tests that run scripts/words.js"
+    },
+    {
+      "when": ["gate/1217.mjs"],
+      "run": ["tests/unit/test-infra/gate-1217-clauses.test.ts"],
+      "why": "tests that load gate/1217.mjs"
+    },
+    {
+      "when": ["gate/1381.mjs"],
+      "run": [
+        "tests/unit/test-infra/gate-1381.test.ts",
+        "tests/unit/test-infra/gate-expect-shape.test.ts"
+      ],
+      "why": "tests that load gate/1381.mjs"
+    },
+    {
+      "when": ["gate/1407.mjs"],
+      "run": ["tests/unit/test-infra/gate-1407-clauses.test.ts"],
+      "why": "tests that load gate/1407.mjs"
+    },
+    {
+      "when": ["gate/142.mjs"],
+      "run": [
+        "tests/unit/test-infra/gate-142-runner.test.ts",
+        "tests/unit/test-infra/gate-142-stubs.test.ts"
+      ],
+      "why": "tests that load gate/142.mjs"
+    },
+    {
+      "when": ["gate/252.mjs"],
+      "run": ["tests/unit/test-infra/gate-252-runner.test.ts"],
+      "why": "tests that load gate/252.mjs"
+    },
+    {
+      "when": ["gate/380.mjs"],
+      "run": ["tests/unit/test-infra/gate-380-runner.test.ts"],
+      "why": "tests that load gate/380.mjs"
+    },
+    {
+      "when": ["gate/402.mjs"],
+      "run": ["tests/unit/test-infra/gate-402-clauses.test.ts"],
+      "why": "tests that load gate/402.mjs"
+    },
+    {
+      "when": ["gate/415.mjs"],
+      "run": ["tests/unit/test-infra/gate-415-runner.test.ts"],
+      "why": "tests that load gate/415.mjs"
+    },
+    {
+      "when": ["gate/448.mjs"],
+      "run": [
+        "tests/unit/test-infra/gate-448-clauses.test.ts",
+        "tests/unit/test-infra/gate-448-runner.test.ts"
+      ],
+      "why": "tests that load gate/448.mjs"
+    },
+    {
+      "when": ["gate/455.mjs"],
+      "run": ["tests/unit/test-infra/gate-455-runner.test.ts"],
+      "why": "tests that load gate/455.mjs"
+    },
+    {
+      "when": ["gate/456.mjs"],
+      "run": ["tests/unit/test-infra/gate-456-copies.test.ts"],
+      "why": "tests that load gate/456.mjs"
+    },
+    {
+      "when": ["gate/459.mjs"],
+      "run": ["tests/unit/test-infra/gate-459-runner.test.ts"],
+      "why": "tests that load gate/459.mjs"
+    },
+    {
+      "when": ["gate/479.mjs"],
+      "run": ["tests/unit/test-infra/gate-479-quarantined.test.ts"],
+      "why": "tests that load gate/479.mjs"
+    },
+    {
+      "when": ["gate/503.mjs"],
+      "run": ["tests/unit/test-infra/gate-503-runner.test.ts"],
+      "why": "tests that load gate/503.mjs"
+    },
+    {
+      "when": ["gate/536.mjs"],
+      "run": ["tests/unit/test-infra/gate-536-runner.test.ts"],
+      "why": "tests that load gate/536.mjs"
+    },
+    {
+      "when": ["gate/563.mjs"],
+      "run": ["tests/unit/test-infra/gate-563-runner.test.ts"],
+      "why": "tests that load gate/563.mjs"
+    },
+    {
+      "when": ["gate/573.mjs"],
+      "run": ["tests/unit/test-infra/gate-573-runner.test.ts"],
+      "why": "tests that load gate/573.mjs"
+    },
+    {
+      "when": ["gate/601.mjs"],
+      "run": ["tests/unit/test-infra/gate-601-port.test.ts"],
+      "why": "tests that load gate/601.mjs"
+    },
+    {
+      "when": ["gate/609.mjs"],
+      "run": ["tests/unit/test-infra/gate-609.test.ts"],
+      "why": "tests that load gate/609.mjs"
+    },
+    {
+      "when": ["gate/629.mjs"],
+      "run": ["tests/unit/test-infra/gate-629-runner.test.ts"],
+      "why": "tests that load gate/629.mjs"
+    },
+    {
+      "when": ["gate/631.mjs"],
+      "run": ["tests/unit/test-infra/gate-631-runner.test.ts"],
+      "why": "tests that load gate/631.mjs"
+    },
+    {
+      "when": ["gate/658.mjs"],
+      "run": ["tests/unit/test-infra/gate-701-659-runner.test.ts"],
+      "why": "tests that load gate/658.mjs"
+    },
+    {
+      "when": ["gate/659.mjs"],
+      "run": ["tests/unit/test-infra/gate-701-659-runner.test.ts"],
+      "why": "tests that load gate/659.mjs"
+    },
+    {
+      "when": ["gate/701.mjs"],
+      "run": ["tests/unit/test-infra/gate-701-659-runner.test.ts"],
+      "why": "tests that load gate/701.mjs"
+    },
+    {
+      "when": ["gate/746.mjs"],
+      "run": ["tests/unit/test-infra/gate-746-teardown-1293.test.ts"],
+      "why": "tests that load gate/746.mjs"
+    },
+    {
+      "when": ["gate/750.mjs"],
+      "run": [
+        "tests/unit/gates/gate-750-hub-leg.test.ts",
+        "tests/unit/gates/gate-750-real-read.test.ts",
+        "tests/unit/server/agent-groups-view.test.ts"
+      ],
+      "why": "tests that load gate/750.mjs"
+    },
+    {
+      "when": ["gate/828.mjs"],
+      "run": ["tests/unit/test-infra/gate-828.test.ts"],
+      "why": "tests that load gate/828.mjs"
+    },
+    {
+      "when": ["gate/93.mjs"],
+      "run": [
+        "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-93-pointer.test.ts"
+      ],
+      "why": "tests that load gate/93.mjs"
     },
     {
       "when": ["src/shared/agents/runtimes.ts"],
