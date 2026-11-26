@@ -15,7 +15,7 @@ import { checkRunnerEntry } from "../../../src/shared/gates/runner-entries.js";
 import {
   projectList,
   readSyncReply,
-} from "../../../src/shared/hub-project-sync.js";
+} from "../../../src/shared/hub/hub-project-sync.js";
 import type { WorkspacesFile } from "../../../src/shared/types/index.js";
 import { checkIssueWrite } from "../../../src/shared/issue-write.js";
 import {

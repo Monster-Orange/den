@@ -514,7 +514,7 @@ export interface ListedSession {
   /** Issue 631: it didn't come back after a restart, and why. */
   restartFailed?: { at: string; why: string };
   /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
-  hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
+  hubWork?: import("../../shared/hub/hub-delivery-loop.js").AgentHubWork;
   /**
    * Session rotation (den#4): why it rotates and its handoff.md. `ready`:
    * Relaunch from handoff is its action, not Resume.
@@ -638,7 +638,7 @@ export function listedSessions(
       /** 0.4.40: an agent's Hub comments (hub-delivery-service.ts). */
       hubWork?: (
         id: string,
-      ) => import("../../shared/hub-delivery-loop.js").AgentHubWork | null;
+      ) => import("../../shared/hub/hub-delivery-loop.js").AgentHubWork | null;
       helpersOf?: HelpersOf;
     },
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
