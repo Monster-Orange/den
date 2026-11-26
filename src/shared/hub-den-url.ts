@@ -38,6 +38,7 @@ export interface DenUrlTell {
   status?: number;
   /** Hub's words for a refusal, or why it didn't answer. */
   error?: string;
+  hub?: string;
 }
 
 export interface DenUrlTellDeps {
@@ -47,6 +48,63 @@ export interface DenUrlTellDeps {
   put: (hubUrl: string, token: string, denUrl: string) => Promise<unknown>;
   stateDir: string;
   now?: () => Date;
+}
+
+const originOf = (u: string | null | undefined): string | null => {
+  try {
+    return u ? new URL(u).origin : null;
+  } catch {
+    return null;
+  }
+};
+
+const OWED = new Set<DenUrlOutcome>([
+  "refused",
+  "unreachable",
+  "not_connected",
+]);
+
+export function denUrlTellDue(
+  t: DenUrlTell | null,
+  denUrl: string | null | undefined,
+  hubUrl: string | null | undefined,
+): boolean {
+  const hub = originOf(hubUrl);
+  if (!denUrl || !hub) return false;
+  if (!t || t.url !== denUrl || originOf(t.hub) !== hub) return true;
+  return OWED.has(t.outcome);
+}
+
+export function denUrlTellRow(
+  t: DenUrlTell | null,
+  denUrl: string | null | undefined,
+  hubUrl: string | null | undefined,
+): { detail: string } | null {
+  if (!denUrlTellDue(t, denUrl, hubUrl)) return null;
+  const last =
+    t && originOf(t.hub) === originOf(hubUrl) && t.url === denUrl
+      ? `; the last try: ${t.outcome}${t.status !== undefined ? ` (${t.status})` : ""}${t.error ? `: ${t.error}` : ""}`
+      : "";
+  return {
+    detail: `Hub doesn't know this Den's address yet (${denUrl}). Den tells it again at the next project sync${last}`,
+  };
+}
+
+export async function retryDenUrlTell(
+  d: DenUrlTellDeps & { denUrl: () => string | null | undefined },
+): Promise<DenUrlTell | null> {
+  const denUrl = d.denUrl();
+  if (!denUrl) return null;
+  let at: { url: string; token: string } | null = null;
+  try {
+    at = await d.hub();
+  } catch {
+    at = null;
+  }
+  if (!at || !denUrlTellDue(readDenUrlTell(d.stateDir), denUrl, at.url))
+    return null;
+  const got = at;
+  return tellHubDenUrl(denUrl, { ...d, hub: async () => got });
 }
 
 export function denUrlTellPath(stateDir: string): string {
@@ -131,6 +189,8 @@ export async function tellHubDenUrl(
               error: message,
             };
   }
+  const told = originOf(at_.url);
+  if (told) tell = { ...tell, hub: told };
   const detail =
     tell.outcome === "changed"
       ? `told Hub this Den's address: ${denUrl}`

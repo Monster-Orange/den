@@ -991,6 +991,25 @@ async function hubDeliveryDoctor(): Promise<
  * built-in `default`) is ✓ "nothing to link", never a warning: an agent
  * reading Doctor would ask the person for a link nobody needs.
  */
+async function hubAddressRows(
+  st: import("../../shared/hub.js").HubStatus,
+): Promise<{ lines: string[]; checks: OnboardCheck[] }> {
+  if (!st.configured || !st.connected) return { lines: [], checks: [] };
+  const [{ readDenUrlTell, denUrlTellRow }, { readWebUrl }] = await Promise.all(
+    [import("../../shared/hub-den-url.js"), import("../../shared/web-url.js")],
+  );
+  const row = denUrlTellRow(
+    readDenUrlTell(getStateDir()),
+    readWebUrl()?.url,
+    st.url,
+  );
+  if (!row) return { lines: [], checks: [] };
+  return {
+    lines: [`  hub address  ⚠  ${row.detail}`],
+    checks: [{ id: "hub:den-url", status: "warn", detail: row.detail }],
+  };
+}
+
 export function hubProjectLines(
   connected: boolean,
   projects: {
@@ -2786,6 +2805,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         const dl = await hubDeliveryDoctor();
         if (dl.check) r.checks.push(dl.check);
       }
+      r.checks.push(...(await hubAddressRows(st)).checks);
       // Issue 726: state and tokens from an earlier Hub.
       r.checks.push(...(await previousHubRows()).checks);
       r.checks.push(
@@ -2954,6 +2974,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
     if (st.configured)
       for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
+    for (const l of (await hubAddressRows(st)).lines) console.log(l);
     // Issue 726: state and tokens from an earlier Hub.
     for (const l of (await previousHubRows()).lines) console.log(l);
     for (const l of hubProjectLines(

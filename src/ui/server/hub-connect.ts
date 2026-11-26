@@ -766,7 +766,7 @@ export class HubConnect {
         () => false,
       );
     if (this.deps.tellDenUrl)
-      await this.deps.tellDenUrl(hubUrl, grant.token).catch(() => undefined);
+      void this.deps.tellDenUrl(hubUrl, grant.token).catch(() => undefined);
     // Issue 648: the links Hub's one approval made. Written only when the
     // rebind resolved and hub/bound.json names this Hub, each stamped with
     // it (else a new company's ids would count as the old Hub's). Only a
