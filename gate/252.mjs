@@ -247,8 +247,8 @@ async function choose(ctx, pick, then) {
 async function restartedIn(ctx, ws, before, mode, source) {
   const a = ctx.agent(ID);
   let last = null;
+  a.idlePrompt();
   const ms = await ctx.until(async () => {
-    a.idlePrompt();
     const w = await whereIs(ctx);
     last = { ...(await modeOf(ctx, ws)), session: w?.session ?? null };
     return (
@@ -322,18 +322,28 @@ export async function run(ctx, s) {
   return r;
 }
 
+function permissionHelp(help) {
+  const ls = String(help || "").split("\n");
+  const at = ls.findIndex((l) => /agents permission <id>/.test(l));
+  if (at < 0) return "";
+  const lead = (l) => l.match(/^\s*/)[0].length;
+  let end = at + 1;
+  while (end < ls.length && lead(ls[end]) > lead(ls[at])) end++;
+  return ls.slice(at, end).join("\n");
+}
+
 export function expect(cells) {
   // One cell (chromium at 1280): the one with a result.
   const r = cells.find((c) => c?.result)?.result ?? {};
+  const said = permissionHelp(r.help);
   const help =
-    /restarts at its next idle/.test(r.help || "") &&
-    !/from its next start/.test(r.help || "");
+    /restarts at its next idle/.test(said) && !/from its next start/.test(said);
   const cli = {
     clause: clauses[2],
     ok: help,
     detail: help
       ? 'agents --help: "restarts at its next idle"'
-      : `agents --help: ${String(r.help || "").slice(0, 200)}`,
+      : `agents --help, its permission <id> part: ${JSON.stringify(said.slice(0, 300))}`,
   };
   // Setup started the agent, so no session now is a failure. Only a
   // runtime without modes (its project lists no mode for it) is skipped.
