@@ -46,7 +46,7 @@
  *            [--class-order <l>] [--class-map <l>] [--class-windows <l>]
  *            [--browser-requires-container 0|1]
  *            [--browser-box-default any|local] [--browser-host-only <l>]
- *            [--route-agents 0|1] [--route-commands <programs>]
+ *            [--route-agents 0|1] [--route-commands <programs>] [--throwaway-sweep 0|1]
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
@@ -211,6 +211,7 @@ export const GATE_HELP = {
     "    [--browser-box-default any|local]   where a browser run with no --box goes",
     '    [--browser-host-only "<project>, label:<pattern>"]   browser runs kept here ("" clears)',
     "    [--route-agents 0|1]   agents' heavy runs go through the gate (0: run as written, counted)",
+    "    [--throwaway-sweep 0|1]   Den's server removes throwaway test containers whose run ended (0: never runs docker for them)",
     '    [--route-commands "jest, vitest, tsc, playwright, npm test, npm run test*"]   the programs routed ("" clears)',
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
@@ -1854,6 +1855,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--browser-box-default": true,
     "--browser-host-only": true,
     "--route-agents": true,
+    "--throwaway-sweep": true,
     "--route-commands": true,
     "--yes": false,
     // Issue 1395: an agent's ask says why.
@@ -1885,6 +1887,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--priority-agents", "priority_agents"],
     // Issue 1264: Den's agent hook routes heavy runs; 1 yes, 0 no.
     ["--route-agents", "route_agents"],
+    ["--throwaway-sweep", "throwaway_sweep"],
     ["--priority-runners", "priority_runners"],
     ["--claim-minutes", "claim_minutes"],
     ["--mcp-renew-minutes", "mcp_renew_minutes"],

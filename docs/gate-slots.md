@@ -403,6 +403,9 @@ Gate keys are Limits and performance in the approval policy:
   a program from `gate.route_commands`, waits for your own Allow,
   whatever you chose: either one lets an agent's heavy runs skip the
   gate. Turning routing on, or adding a program, is a plain limit.
+- On both kinds of install, turning `gate.throwaway_sweep` off waits for
+  your own Allow: left-over test containers then stay. Turning it on is a
+  plain limit.
 
 Den writes the change under the gate's lock (the one a slot decision
 holds), all of it or none, and the slot log names who asked. Every
@@ -907,6 +910,15 @@ Who removes them:
   call has a 5-second limit, and after a failure it waits longer each time.
   A container goes only when two looks at least a minute apart both found
   its run ended, and never when the slots can't be read for sure.
+
+Den's server sweep is a gate setting, `gate.throwaway_sweep`, on (1) by
+default (Settings › Server, "Remove throwaway test containers", or
+`gate settings --throwaway-sweep 0|1`). Off, Den's server never runs
+docker for throwaway containers: they stay until `gate run` or a person
+removes them, and `den doctor` says the sweep is off. Turning it off
+waits for your own Allow on both kinds of install, as turning
+`gate.route_agents` off does. `gate run`'s own cleanup at its end is not
+affected.
 
 Only a container with all three labels, from this machine's slot store, is
 ever removed. One started outside a gate run (no run label) is never

@@ -345,6 +345,7 @@ export interface GateSettings {
   routeAgents: boolean;
   /** Issue 1264: the programs it routes (route_commands). */
   routeCommands: string[];
+  throwawaySweep: boolean;
 }
 
 /**
@@ -400,6 +401,7 @@ export const GATE_DEFAULTS: GateSettings = {
   browserBoxDefault: "any",
   browserHostOnly: "",
   routeAgents: true,
+  throwawaySweep: true,
   // Issue 1264: as the hook's ROUTE_DEFAULT (guardrails/gate-route.mjs).
   routeCommands: [
     "jest",
