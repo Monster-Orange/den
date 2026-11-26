@@ -34,8 +34,6 @@ export const MARKS = 10;
 const MARK_MS = 60000;
 const tool = (i) => `Gate609Tool${i}`;
 
-/** ctx.api's answer as JSON, whether it gives a Response or the body. */
-
 /** Busy node processes, one per two CPUs (at least two), until stopped. */
 function startLoad() {
   const n = Math.max(2, Math.floor(os.cpus().length / 2));
