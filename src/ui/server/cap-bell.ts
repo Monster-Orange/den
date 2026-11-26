@@ -1,5 +1,5 @@
 import { agentPagePath } from "../../shared/agent-links.js";
-import { readRecord } from "../../shared/agents/records.js";
+import { readRecord, writeRecord } from "../../shared/agents/records.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 
 export type CapHeld = {
@@ -54,6 +54,11 @@ export async function noteCapsHeld(
     if (!capHeldOf(x.why)) continue;
     const rec = readRecord(stateDir, x.agent);
     if (!rec) continue;
+    const { stoppedAt: _s, ...rest } = rec;
+    writeRecord(stateDir, {
+      ...rest,
+      restartFailed: { at: new Date().toISOString(), why: x.why },
+    });
     bell ??= (await import("./notification-service.js")).notificationDeps()
       .store;
     if (
