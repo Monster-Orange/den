@@ -143,7 +143,6 @@ describe("issue 943: the mark is Den's own", () => {
       "settings",
       "name",
       "link",
-      "mode",
       "persona",
       "move",
       "order",

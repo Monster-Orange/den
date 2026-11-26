@@ -127,6 +127,15 @@ describe("what Den types: a pointer, never the app's text", () => {
       Date.UTC(2026, 10, 21),
     );
     expect(dv.id).toBe("inbox:embed:feed:north/chat/7");
+    expect(
+      feedPointerDelivery(
+        { ...feed, agent: "north-helper" },
+        7,
+        "",
+        0,
+        "a1b2c3d4",
+      ).id,
+    ).toBe("inbox:embed:feed:north/chat/a1b2c3d4/7");
     expect(dv.author.kind).toBe("agent");
     expect(dv.author.name).toBe("Den");
     expect(dv.text).toBe("Den: x");
