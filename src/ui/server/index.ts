@@ -13,6 +13,7 @@
 // Issue 814: first, before anything writes to the state folder.
 import {
   takeTestInstallLaunchFlag,
+  takeTestResolveLaunch,
   testInstallRestartEnv,
 } from "../../shared/test-install-launch.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
@@ -3779,8 +3780,7 @@ const TEST_INSTALL_LAUNCH_FLAG = takeTestInstallLaunchFlag(getProfile());
  */
 const TEST_RESOLVE = (() => {
   const name = envName(getProfile(), TEST_RESOLVE_ENV_KEY);
-  const raw = readEnv(getProfile(), TEST_RESOLVE_ENV_KEY);
-  delete process.env[name];
+  const raw = takeTestResolveLaunch(getProfile());
   if (raw === undefined || raw.trim() === "") return null;
   const parsed = parseTestResolve(raw);
   if (!parsed.ok) return { name, ignored: parsed.error };
