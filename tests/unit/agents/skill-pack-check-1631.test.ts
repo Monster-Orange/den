@@ -35,7 +35,6 @@ function persona(r: Rig, name: string): void {
   r.config.personaPacks = ["personas"];
 }
 
-/** A turn that ended: its transcript, so after-turn sees it idle. */
 async function endedTurn(r: Rig, id: string): Promise<void> {
   const sid = (record(r, id).session as { id: string }).id;
   const c = await connectHost(sessionPaths(r.stateDir).socket);
@@ -68,7 +67,6 @@ async function endedTurn(r: Rig, id: string): Promise<void> {
   r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: claude };
 }
 
-/** Stop waits for the session to end; each scripted one ends on TERM. */
 function endOnTerm(r: Rig): void {
   r.deps.stopWaitMs = 3_000;
   const made = r.made;
@@ -85,7 +83,6 @@ function endOnTerm(r: Rig): void {
   };
 }
 
-/** Project north on auto; lead runs in it. */
 async function oneAgent(): Promise<Rig> {
   const r = await rig();
   endOnTerm(r);
