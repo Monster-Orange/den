@@ -3042,7 +3042,6 @@ function personTyped(p) {
 function claimSize(p, claim = false) {
   p.following = false;
   if (claim) p.otherHolds = false;
-  // Typed in before the session frame: the claim waits for it.
   if (claim && !p.decided) p.claimLater = true;
   paintFollow(p);
   refit(p);
@@ -3056,6 +3055,14 @@ function follow(p) {
 }
 
 const VIEWS_KEY = "den-views";
+function keepInTab(k, v) {
+  try {
+    sessionStorage.setItem(k, v);
+    return true;
+  } catch {
+    return false;
+  }
+}
 const VIEWS_LIVE = "den-views-live";
 
 function newViewId() {
@@ -3068,11 +3075,7 @@ function paneView(id) {
   st.views ??= {};
   if (!st.views[id]) {
     st.views[id] = newViewId();
-    try {
-      sessionStorage.setItem(VIEWS_KEY, JSON.stringify(st.views));
-    } catch {
-      /* this page keeps it */
-    }
+    keepInTab(VIEWS_KEY, JSON.stringify(st.views));
   }
   return st.views[id];
 }
@@ -3087,11 +3090,7 @@ function loadViews() {
     st.views = {};
   }
   const mark = (on) => {
-    try {
-      sessionStorage.setItem(VIEWS_LIVE, on ? "1" : "0");
-    } catch {
-      /* nothing kept */
-    }
+    keepInTab(VIEWS_LIVE, on ? "1" : "0");
   };
   addEventListener("pagehide", () => mark(false));
   addEventListener("pageshow", () => mark(true));

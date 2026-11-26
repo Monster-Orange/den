@@ -35,12 +35,10 @@ beforeAll(async () => {
   }
   s = await startAgentsPageServer();
   host = await connectHost(sessionPaths(s.stateDir).socket);
-  latest =
-    (
-      (await (await fetch(`${s.base}/api/changelog`)).json()) as {
-        version: string;
-      }[]
-    )[0]?.version ?? "";
+  const [newest] = (await (await fetch(`${s.base}/api/changelog`)).json()) as {
+    version: string;
+  }[];
+  latest = newest?.version ?? "";
 }, 90_000);
 
 afterAll(async () => {
@@ -90,15 +88,15 @@ async function browserWindow(
   );
   await ctx.route("**/vendor/xterm.mjs?real", async (r) =>
     r.fulfill({
-      response: await r.fetch({ url: r.request().url().split("?")[0] }),
+      response: await r.fetch({ url: r.request().url().replace(/\?.*$/, "") }),
     }),
   );
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
         localStorage.setItem(k, v);
-    } catch {
-      /* none */
+    } catch (e) {
+      void e;
     }
     const w = window as unknown as Record<string, unknown>;
     const Real = window.WebSocket;
@@ -340,7 +338,8 @@ describe("issue 1724: an idle browser never takes the size back after Take over"
     const ipad = await openByUrl(sid, IPAD, true);
     await eventually(async () => {
       const [c] = await termSize(ipad);
-      return c === last(pty)[0];
+      const [pc] = last(pty);
+      return c === pc;
     });
     step = "row click";
     const laptop = await browserWindow(LAPTOP);
