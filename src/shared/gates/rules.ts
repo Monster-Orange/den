@@ -299,10 +299,6 @@ export interface GateSettings {
    * passed by another (0: none is). Plain waiters are always passed.
    */
   priorityPassLimitMinutes: number;
-  /**
-   * A waiting release run passes earlier waiters of the other kind that
-   * have waited no longer than this (0: it passes none).
-   */
   releasePassOtherKindMinutes: number;
   /** Issue 715: agents may ask for priority (else people only). */
   priorityAgents: boolean;
@@ -658,7 +654,7 @@ export function yieldedTo(e: GateEntry, entries: GateEntry[]): string[] {
   );
 }
 
-/** Issue 715: the waiters a priority run goes ahead of. */
+/** The waiters a priority run goes ahead of. */
 export function passedBy(
   entries: GateEntry[],
   id: string,

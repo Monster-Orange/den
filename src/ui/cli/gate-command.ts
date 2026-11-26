@@ -38,7 +38,6 @@
  *            [--remote-renew-seconds N] [--remote-lapse-seconds N]
  *            [--remote-max-slots N] [--remote-max-asks N]
  *            [--priority-max N] [--priority-pass-limit-minutes N]
- *            [--release-pass-other-kind-minutes N]
  *            [--priority-agents 0|1] [--priority-runners 0|1]
  *            [--claim-minutes N]
  *            [--mcp-renew-minutes N] [--mcp-lapse-minutes N]
