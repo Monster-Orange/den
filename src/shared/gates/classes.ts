@@ -7,9 +7,7 @@
  *   class_map      which class each project, or label pattern, is in:
  *                  "den=lane, label:release*=release, *=other". The first
  *                  label pattern that matches wins, then the project's
- *                  rule, then `*`, else the last class. A label pattern
- *                  may be for one project only: "den label:release*=P0r"
- *                  (a sub-order inside that project's class).
+ *                  rule, then `*`, else the last class ("<project> label:<pattern>" is for one project).
  *   class_windows  a class's window for its long runs:
  *                  "other=22:00-06:00/30" (local time; runs estimated 30
  *                  min or more; without /N, every run of the class).
@@ -32,7 +30,6 @@ export interface GateClasses {
   /** Highest first. */
   order: string[];
   projects: Record<string, string>;
-  /** A label pattern, for every project or (issue 803) only `project`. */
   labels: { pattern: string; class: string; project?: string }[];
   fallback: string;
   windows: Record<string, GateWindow>;
@@ -79,14 +76,12 @@ export function parseClassMap(s: string): MapRule[] | string {
     const cls = it.slice(at + 1).trim();
     if (at < 1 || !NAME.test(cls))
       return `"${it}" is not <project>=<class>, label:<pattern>=<class>, <project> label:<pattern>=<class> or *=<class>`;
-    // Issue 803: "<project> label:<pattern>" is for that project only.
     const scoped = /^(\S+)\s+label:(.*)$/.exec(key);
     if (scoped) {
       const pattern = scoped[2]!.trim();
       if (!pattern || pattern.length > 120)
         return `"${it}" needs a label pattern`;
       if (scoped[1]!.length > 120) return `"${it}": the project name is long`;
-      // "* label:<pattern>" is every project, as "label:<pattern>" is.
       out.push(
         scoped[1] === "*"
           ? { label: pattern, class: cls }

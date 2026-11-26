@@ -154,9 +154,6 @@ describe("clause 1: a higher class goes first", () => {
 });
 
 describe("the default example (11-20): within P0, release before lane", () => {
-  // P0 for the platform's own project, P1 for the product, P2 the rest;
-  // within P0, release checks go before lane tests. The sub-order is a
-  // label rule scoped to one project: "<project> label:<pattern>=<class>".
   const P = {
     cpu_slots: 1,
     class_order: "p0-release, p0, p1, p2",
