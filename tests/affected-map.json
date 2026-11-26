@@ -35,6 +35,10 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/mcp/tools-handoff-1664.test.ts": [
+      "src/ui/mcp/server.ts",
+      "src/ui/mcp/supervisor.ts"
+    ],
     "tests/unit/cli/repo-add-no-run.integration.test.ts": [
       "src/ui/cli/doctor-command.ts"
     ],
@@ -3126,6 +3130,11 @@
         "src/ui/mcp/server.ts"
       ],
       "run": ["tests/unit/mcp/stdio-scope-workspace.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/mcp/server.ts", "src/ui/mcp/supervisor.ts"],
+      "run": ["tests/unit/mcp/tools-handoff-1664.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
