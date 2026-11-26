@@ -2679,6 +2679,10 @@ export class GateStore {
     }
   }
 
+  savedValue(key: string): unknown {
+    return this.settingsFile()[key];
+  }
+
   /** The test boxes (settings.json `boxes`); none by default. */
   boxes(): GateBox[] {
     return boxesOf(this.settingsFile().boxes);

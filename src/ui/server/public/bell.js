@@ -776,7 +776,9 @@ export function initBell(doc = document) {
     return !a || a === doc.body || a === doc.documentElement;
   };
   doc.addEventListener("focusin", (e) => {
-    if (lost && !pop.contains(e.target)) lost = "";
+    const t = e.target;
+    if (t === doc.body || t === doc.documentElement) return;
+    if (lost && !pop.contains(t)) lost = "";
   });
   const paint = () => {
     const at = doc.activeElement;

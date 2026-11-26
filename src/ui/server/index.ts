@@ -651,6 +651,7 @@ import {
   needsFiledCheck,
   type FiledHit,
   type FiledText,
+  installOwnNames,
 } from "../../shared/filed-text-check.js";
 import {
   feedbackSettings,
@@ -849,6 +850,26 @@ interface HealthResult {
    * drawer count only these, while the pages see every row.
    */
   inView?: boolean;
+}
+
+let gitUserKept: { name?: string; email?: string } | null = null;
+function gitUser(): { name?: string; email?: string } {
+  if (gitUserKept) return gitUserKept;
+  const get = (k: string) => {
+    try {
+      return (
+        execFileSync("git", ["config", "--global", "--get", k], {
+          encoding: "utf-8",
+          timeout: 2000,
+          stdio: ["ignore", "pipe", "ignore"],
+        }).trim() || undefined
+      );
+    } catch {
+      return undefined;
+    }
+  };
+  gitUserKept = { name: get("user.name"), email: get("user.email") };
+  return gitUserKept;
 }
 
 /**
@@ -2770,6 +2791,13 @@ function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
     limit: issueWriteLimit,
     gh: runGh,
     installLabel: () => defaultInstallLabel(),
+    ownNames: () =>
+      installOwnNames({
+        label: defaultInstallLabel(),
+        host: os.hostname(),
+        projects: Object.keys(readWorkspacesFile().workspaces ?? {}),
+        git: gitUser(),
+      }),
     // Issue 1127: the listed names, and the repo's visibility through the
     // cache Report uses (feedback.visibility_timeout_seconds and
     // _retry_seconds), no older than agents.issue_writes_visibility_minutes.
@@ -6593,6 +6621,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
           roles: c.roles,
           per_hour: c.perHour,
           visibility_minutes: c.visibilityMinutes,
+          public: c.publicRepos,
         };
       } catch {
         return null;
