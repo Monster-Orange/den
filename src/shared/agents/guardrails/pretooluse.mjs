@@ -78,23 +78,74 @@ const ENV_VALUE_OPTS = new Set([
   "-P",
 ]);
 
-function envPrintsAll(args) {
+function envCommand(args) {
   for (let j = 0; j < args.length; j++) {
     const a = args[j];
-    if (a === "--") return j + 1 >= args.length;
+    if (a === "--") return args.slice(j + 1);
+    const split =
+      a === "-S" || a === "--split-string"
+        ? [args[j + 1] ?? "", j + 2]
+        : /^(?:-S|--split-string=)/.test(a)
+          ? [a.replace(/^(?:-S|--split-string=)/, ""), j + 1]
+          : null;
+    if (split)
+      return envCommand([
+        ...split[0].split(/\s+/).filter(Boolean),
+        ...args.slice(split[1]),
+      ]);
     if (ENV_VALUE_OPTS.has(a)) {
-      if (a === "-S" || a === "--split-string") return false;
       j++;
       continue;
     }
-    if (a.startsWith("-")) {
-      if (/^(-S|--split-string=)/.test(a)) return false;
-      continue;
-    }
+    if (a.startsWith("-")) continue;
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(a)) continue;
-    return false;
+    return args.slice(j);
   }
-  return true;
+  return [];
+}
+
+const WRAPPER_VALUE_OPTS = {
+  nice: new Set(["-n", "--adjustment"]),
+  timeout: new Set(["-s", "--signal", "-k", "--kill-after"]),
+  stdbuf: new Set(["-i", "-o", "-e", "--input", "--output", "--error"]),
+  xargs: new Set([
+    "-n",
+    "-I",
+    "-i",
+    "-L",
+    "-l",
+    "-P",
+    "-s",
+    "-d",
+    "-E",
+    "-e",
+    "-a",
+    "--max-args",
+    "--replace",
+    "--max-lines",
+    "--max-procs",
+    "--max-chars",
+    "--delimiter",
+    "--eof",
+    "--arg-file",
+  ]),
+};
+
+function unwrapWrapper(w) {
+  const name = base(w[0] ?? "");
+  const opts = WRAPPER_VALUE_OPTS[name];
+  if (!opts) return null;
+  let j = 1;
+  while (j < w.length && w[j].startsWith("-") && w[j] !== "-") {
+    if (w[j] === "--") {
+      j++;
+      break;
+    }
+    if (opts.has(w[j])) j++;
+    j++;
+  }
+  if (name === "timeout") j++;
+  return w.slice(j);
 }
 
 const operands = (args) =>
@@ -107,11 +158,18 @@ function dumpsEnv(words) {
       w = w.slice(1);
       while (w.length && w[0].startsWith("-")) w = w.slice(1);
     } else if (w[0] === "builtin") w = w.slice(1);
-    else break;
+    else {
+      const inner = unwrapWrapper(w);
+      if (!inner) break;
+      w = inner;
+    }
   }
   const cmd = base(w[0] ?? "");
   const args = w.slice(1);
-  if (cmd === "env") return envPrintsAll(args);
+  if (cmd === "env") {
+    const inner = envCommand(args);
+    return inner.length === 0 || dumpsEnv(inner);
+  }
   if (cmd === "printenv") return true;
   if (cmd === "set") return args.length === 0;
   if (cmd === "export") return operands(args).length === 0;
