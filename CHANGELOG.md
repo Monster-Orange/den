@@ -8,6 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- On an install with more than 64 agents, Den's pages and agents' Den tools no longer stall for seconds every few seconds. Each look at the agents list read every agent's transcript again, because Den kept what it had read for only 64 agents. It now keeps it for all of them, up to a new setting, `agents.helpers.facts_cache_mb` (default 256 MB, the agent looked at least recently goes first), and reads only what each transcript added since (issue 1668).
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
 - No page is taller than the window. Settings' hidden labels for screen readers made it 9,000 to 17,000 px taller, and Home's agents table caption up to about 200 px. The wheel couldn't scroll there, but find-in-page or a focus could, showing empty space with no Runs bar. The page's main area now holds them (issue 283).

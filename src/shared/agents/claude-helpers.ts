@@ -259,12 +259,17 @@ interface ParentFacts {
 }
 const parentCache = new Map<
   string,
-  { offset: number; rest: string; facts: ParentFacts; ino: number }
+  {
+    offset: number;
+    rest: string;
+    facts: ParentFacts;
+    ino: number;
+    bytes: number;
+  }
 >();
+let parentCacheBytes = 0;
 /** D76: the most helper ids kept per transcript (the oldest go first). */
 const MAX_FACTS = 50_000;
-/** D76: the most transcripts followed at once (the oldest go first). */
-const MAX_FOLLOWED = 64;
 const READ_CHUNK = 8 * 1024 * 1024;
 
 const NOTE_RE =
@@ -291,7 +296,25 @@ function keep<V>(m: Map<string, V>, k: string, v: V): void {
  * that falls further behind skips ahead to that far from the end. So a
  * 4 GB transcript costs what a 64 MB one does.
  */
-function parentFacts(file: string, maxBytes: number): ParentFacts {
+function factsBytes(c: { rest: string; facts: ParentFacts }): number {
+  let n = 64 + 2 * c.rest.length;
+  for (const k of c.facts.notified.keys()) n += 2 * k.length + 48;
+  for (const k of c.facts.results.keys()) n += 2 * k.length + 48;
+  return n;
+}
+
+function forget(file: string): void {
+  const old = parentCache.get(file);
+  if (!old) return;
+  parentCacheBytes -= old.bytes;
+  parentCache.delete(file);
+}
+
+function parentFacts(
+  file: string,
+  maxBytes: number,
+  budgetBytes: number,
+): ParentFacts {
   let st: fs.Stats;
   try {
     st = fs.statSync(file);
@@ -300,17 +323,18 @@ function parentFacts(file: string, maxBytes: number): ParentFacts {
   }
   let c = parentCache.get(file);
   if (!c || c.ino !== st.ino || st.size < c.offset) {
+    forget(file);
     c = {
       offset: 0,
       rest: "",
       ino: st.ino,
       facts: { notified: new Map(), results: new Map() },
+      bytes: 0,
     };
-    parentCache.delete(file);
-    if (parentCache.size >= MAX_FOLLOWED)
-      parentCache.delete(parentCache.keys().next().value as string);
-    parentCache.set(file, c);
   }
+  // Least recently used out first: a hit moves to the newest end.
+  parentCache.delete(file);
+  parentCache.set(file, c);
   if (st.size === c.offset) return c.facts;
   // Too far behind: only the end; the line cut there is skipped.
   let cut = false;
@@ -349,6 +373,13 @@ function parentFacts(file: string, maxBytes: number): ParentFacts {
   } finally {
     if (fd !== null) fs.closeSync(fd);
   }
+  parentCacheBytes -= c.bytes;
+  c.bytes = factsBytes(c);
+  parentCacheBytes += c.bytes;
+  for (const k of parentCache.keys()) {
+    if (parentCacheBytes <= budgetBytes || k === file) break;
+    forget(k);
+  }
   return c.facts;
 }
 
@@ -376,6 +407,7 @@ function scanParentLine(l: string, f: ParentFacts): void {
 /** Forget what was read of agents' transcripts (tests). */
 export function resetHelperCache(): void {
   parentCache.clear();
+  parentCacheBytes = 0;
   workflowCache.clear();
 }
 
@@ -498,6 +530,7 @@ function readAll(transcript: string, opts: ReadHelpersOptions): Helper[] {
   const facts = parentFacts(
     transcript,
     Math.max(1, Math.round(s.readMaxMb * 1024 * 1024)),
+    s.factsCacheMb * 1024 * 1024,
   );
   const out: Helper[] = [];
   for (const id of ids) {

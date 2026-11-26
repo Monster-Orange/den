@@ -2433,7 +2433,7 @@ export function helpersBlock(v: unknown): HelperSettings {
   if (v === undefined || v === null) return out;
   if (!isMapping(v))
     throw new Error(
-      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb (got ${JSON.stringify(v)})`,
+      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb, facts_cache_mb (got ${JSON.stringify(v)})`,
     );
   for (const [k, x] of Object.entries(v)) {
     if (k === "row_max") {
@@ -2442,6 +2442,14 @@ export function helpersBlock(v: unknown): HelperSettings {
           `agents.helpers.row_max: must be a whole number from 1 to 1000 (got ${JSON.stringify(x)})`,
         );
       out.rowMax = x;
+      continue;
+    }
+    if (k === "facts_cache_mb") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 4096)
+        throw new Error(
+          `agents.helpers.facts_cache_mb: must be a number of MB, above 0 and at most 4096 (got ${JSON.stringify(x)})`,
+        );
+      out.factsCacheMb = x;
       continue;
     }
     if (k === "read_max_mb") {
@@ -2461,7 +2469,7 @@ export function helpersBlock(v: unknown): HelperSettings {
           : null;
     if (!key)
       throw new Error(
-        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb)`,
+        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb)`,
       );
     if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 100_000)
       throw new Error(

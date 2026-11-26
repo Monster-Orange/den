@@ -4700,6 +4700,7 @@ agents:
     active_minutes: 10 # no activity this long, not known done: idle
     row_max: 4 # deprecated (0.4.45): ignored
     read_max_mb: 64 # the most of an agent's transcript read for them
+    facts_cache_mb: 256 # what Den keeps of all agents' transcripts between reads
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
@@ -4708,6 +4709,7 @@ agents:
 | `active_minutes`        | minutes, above 0 to 100000 | 10      |
 | `row_max`               | deprecated, ignored        | 4       |
 | `read_max_mb`           | MB, above 0 to 4096        | 64      |
+| `facts_cache_mb`        | MB, above 0 to 4096        | 256     |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
 
 `read_max_mb` (0.4.36): a helper's state comes partly from its agent's own
@@ -4715,6 +4717,14 @@ transcript (its notification, its result). Den reads only that much of the
 transcript's end, then only what is added, so a transcript of gigabytes
 costs what a 64 MB one does. A helper whose notification is further back
 gets its state from its own files.
+
+`facts_cache_mb` (0.4.91): what Den keeps from every agent's transcript
+between reads, so that each look at the agents list reads only what was
+added since the last. When it's full, the agent looked at least recently
+is dropped first. Before 0.4.91 Den kept 64 agents' facts. With more
+agents than that, each look at the list read every transcript again, and
+Den's pages and tools stalled for seconds. The facts are small, about 0.1
+MB for a busy agent, so the default holds thousands of agents.
 
 `row_max` no longer does anything (0.4.45): how many helpers show under
 an agent is each person's `agents.helpers_shown` (above).
