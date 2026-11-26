@@ -10,6 +10,8 @@ import {
   machineReadDeps,
   osUserCheck,
   runtimeInHome,
+  OS_LOGIN_OWED,
+  OWED_REFUSAL,
   osUserNames,
   osUserPaths,
   readOsUserFacts,
@@ -37,6 +39,7 @@ export interface OsUserCommandDeps {
   confirm: (question: string) => Promise<boolean>;
   sudo: PlanRunner;
   facts: () => OsUserFacts;
+  owed: () => readonly string[];
   setOn: (on: boolean) => void;
   on: () => boolean;
   out: (line: string) => void;
@@ -92,6 +95,13 @@ export async function cmdOsUser(
   const p = osUserPaths(l.root, l.person);
 
   if (sub === "setup") {
+    const owed = d.owed();
+    if (owed.length) {
+      d.err(
+        `✗ ${OWED_REFUSAL}. Still to come: ${owed.join("; ")}. Nothing was changed.`,
+      );
+      return 1;
+    }
     const inHome = runtimeInHome(l);
     if (inHome.length) {
       d.err(
@@ -114,6 +124,13 @@ export async function cmdOsUser(
       sudoers: `${rule}\n`,
     };
     const f = d.facts();
+    if (f.runtime?.length) {
+      for (const r of f.runtime) d.err(`✗ Den's runtime: ${r}`);
+      d.err(
+        "The agents' login would run Den's runtime, so nothing it can change may be in it. Fix the places above, then run setup again. Nothing was changed.",
+      );
+      return 1;
+    }
     const steps = setupPlan(l, text, {
       user: f.user.exists,
       group: f.group.exists,
@@ -252,6 +269,7 @@ export function machineLayout(platform: NodeJS.Platform): OsUserLayout {
     runtime: {
       bin: realOr(process.execPath),
       script: realOr(path.join(getEngineRoot(), "dist/src/ui/cli/index.js")),
+      engineRoot: realOr(getEngineRoot()),
     },
     noLogin,
   };
@@ -300,6 +318,7 @@ export function defaultOsUserDeps(cli: string): OsUserCommandDeps {
         getStateDir(),
         machineReadDeps(),
       ),
+    owed: () => OS_LOGIN_OWED,
     setOn: (on) => setUserOsUser(on),
     on: () => osUserSetting(readUserConfig().agents),
     out: (l) => console.log(l),
