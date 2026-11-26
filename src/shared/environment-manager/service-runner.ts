@@ -246,16 +246,6 @@ function toDaemonRecord(json: DaemonRecordJSON): DaemonRecord {
   };
 }
 
-/**
- * Issue 130: the daemons file, read whole or not at all.
- *  - Missing: no records yet.
- *  - Not JSON, or not the shape Den writes: moved aside to
- *    `<file>.corrupt-<time>` (never overwritten), with a warning naming it;
- *    the records start empty, and the next save writes a fresh file. If it
- *    can't be moved aside, nothing goes on: a save would overwrite it.
- *  - Unreadable for another reason (permissions, not a file): throws, so a
- *    change is refused rather than saved over records Den never saw.
- */
 function readDaemonsFile(filePath: string): Map<string, DaemonRecord> {
   const map = new Map<string, DaemonRecord>();
   let text: string;
@@ -316,8 +306,6 @@ function saveDaemonsFile(filePath: string): void {
     (d) => ({ ...d, startedAt: d.startedAt.toISOString() }),
   );
   const file: DaemonsFile = { denPid: process.pid, daemons: records };
-  // Issue 130: a save that fails says so; a caller (up) must not report a
-  // service as recorded when it isn't.
   try {
     writeFileAtomic(filePath, JSON.stringify(file, null, 2) + "\n");
   } catch (e) {
@@ -381,13 +369,6 @@ export function unregisterDaemon(address: string): void {
   saveDaemonsFile(getDaemonsFile());
 }
 
-/**
- * Issue 130: a record change made from an exit, close or timer handler. The
- * daemons file throws when it can't be read or saved; here that is logged
- * (the message names the file) and the handler carries on, so its onClose,
- * tab cleanup and the rest still run. User-facing up, down and register
- * calls keep the throw.
- */
 function bestEffort(what: string, change: () => void): void {
   try {
     change();
@@ -1037,7 +1018,6 @@ function pruneAgainst(
         onPruned?.(d.address, "dead");
       }
     } catch (e) {
-      // Keep the entry on any error, and go on to the next one.
       console.error(
         `${(e as Error).message} (while checking ${d.address}; its record is kept)`,
       );

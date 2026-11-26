@@ -1,15 +1,3 @@
-/**
- * Issue 130: the daemons file (every service Den started, its process group
- * and owners) never loses records silently.
- *  - A corrupt or wrongly shaped file is moved aside (daemons.json.corrupt-
- *    <time>), never overwritten, with a warning naming where it went; the
- *    next record starts a fresh file.
- *  - A file Den can't read (not missing) refuses the change: a save then
- *    would overwrite records it never saw.
- *  - A save that fails throws, so `up` can't say a service started when its
- *    record wasn't kept.
- * Real files in a temporary folder; invented names.
- */
 import {
   afterEach,
   beforeEach,
@@ -63,11 +51,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   jest.restoreAllMocks();
-  try {
-    fs.chmodSync(dir, 0o700);
-  } catch {
-    /* gone */
-  }
+  if (fs.existsSync(dir)) fs.chmodSync(dir, 0o700);
   fs.rmSync(dir, { recursive: true, force: true });
   if (was === undefined) delete process.env.DEN_DAEMONS_FILE;
   else process.env.DEN_DAEMONS_FILE = was;

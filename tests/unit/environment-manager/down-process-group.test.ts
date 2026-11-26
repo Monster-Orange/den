@@ -319,8 +319,6 @@ describe("down stops what a detached up started", () => {
   });
 });
 
-// Issue 130: a daemons file that can't be saved is logged in exit and close
-// handlers, never thrown there, so down still closes (onClose runs).
 const asRoot = process.getuid?.() === 0;
 (asRoot ? describe.skip : describe)(
   "a failed save in a close handler still closes",
@@ -355,8 +353,6 @@ const asRoot = process.getuid?.() === 0;
     });
 
     it("after a declared down: onClose runs and the error names the file", async () => {
-      // No record: the declared down runs, and its close handler forgets
-      // the address, which saves the file.
       manifestWith({ up: IDLE, down: "true" });
       lock();
 
