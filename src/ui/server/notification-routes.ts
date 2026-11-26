@@ -23,8 +23,7 @@
  *                                     finished work (the seen mark).
  *   GET  /api/alerts?after=<seq>     issue 172: the alerts after `after`
  *                                     for an open tab to show (alert-feed.ts),
- *                                     {seq, alerts, prefs, count: the agents
- *                                     that need the person}; theirs only.
+ *                                     {seq, alerts, prefs, count}; theirs only.
  *   GET  /api/alerts/push-key        S2: this install's VAPID public key.
  *   POST /api/alerts/subscribe       S2: {subscription} (a device's
  *                                     PushSubscription.toJSON()).

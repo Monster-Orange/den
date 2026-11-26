@@ -4,8 +4,6 @@
  * Allow), the person is told on the desktop (an open Den tab shows a
  * browser notification) and on a phone or a closed tab (Web Push).
  *
- * - A new need alerts; a finished turn only with alerts.finished on. A
- *   held write only when the approval policy held it. A mute never alerts.
  * - The words are the bell's own and never the details: who, and what it
  *   waits on. Never the tool line, the question's text or the write's
  *   summary (any of them can hold a secret or a code).

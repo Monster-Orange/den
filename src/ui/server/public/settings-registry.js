@@ -365,7 +365,6 @@ function bellRows() {
  * Issue 172: alerts outside the bell (alerts.js). Desktop alerts is on
  * when the person has it on (user.yml alerts.desktop, default on) and
  * this browser lets the page notify; turning it on asks the browser.
- * Three rows follow it; a browser that can't notify keeps sounds and the count.
  */
 const notifyApi = () =>
   typeof window !== "undefined" && typeof window.Notification === "function"

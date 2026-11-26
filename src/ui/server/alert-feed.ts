@@ -63,8 +63,7 @@ export class AlertFeed {
   }
 
   /**
-   * Agent `agent` in `workspace` began to need its person or finished a
-   * turn. The alert, or null when quiet hours, a mute or a switch hold it.
+   * An agent began to need its person or finished a turn: the alert, or null if held back.
    */
   needs(n: { agent: string; workspace: string; why: AlertWhy }): Alert | null {
     let prefs: AlertPrefs;
@@ -122,8 +121,7 @@ export class AlertFeed {
 
   /**
    * What a tab reads: the alerts after `after` (none on its first read,
-   * `after` null: it starts from now), the number to ask after next, and
-   * the person's switches the tab acts on.
+   * `after` null: it starts from now), the number to ask after next, the switches.
    */
   after(after: number | null): {
     seq: number;

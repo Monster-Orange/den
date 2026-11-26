@@ -1,7 +1,5 @@
 /**
- * Alerts outside the bell, from an open Den tab: a notification when the
- * tab isn't in front, a sound and the count in the tab. One per browser:
- * the tab in front claims at once, a tab behind after a moment. The alert's id
+ * Alerts outside the bell from an open tab; the front tab claims first. The alert's id
  * is the notification's tag. A browser that gets push (a service worker
  * subscription) leaves the notification to the push unless the tab shows.
  */
