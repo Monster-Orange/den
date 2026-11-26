@@ -28,17 +28,19 @@ afterEach(() => {
     fs.rmSync(d, { recursive: true, force: true });
 });
 
+const GIT_ENV = {
+  ...process.env,
+  GIT_AUTHOR_NAME: "t",
+  GIT_AUTHOR_EMAIL: "t@example.com",
+  GIT_COMMITTER_NAME: "t",
+  GIT_COMMITTER_EMAIL: "t@example.com",
+};
+
 function git(dir: string, ...a: string[]) {
   return execFileSync("git", a, {
     cwd: dir,
     encoding: "utf-8",
-    env: {
-      ...process.env,
-      GIT_AUTHOR_NAME: "t",
-      GIT_AUTHOR_EMAIL: "t@example.com",
-      GIT_COMMITTER_NAME: "t",
-      GIT_COMMITTER_EMAIL: "t@example.com",
-    },
+    env: GIT_ENV,
   }).trim();
 }
 
@@ -80,6 +82,7 @@ function merge(
   const r = spawnSync("git", ["merge", "-q", "--no-ff", "--no-edit", "pr"], {
     cwd: dir,
     encoding: "utf-8",
+    env: GIT_ENV,
   });
   if (r.status !== 0) {
     if (!settle) throw new Error(`merge conflicted: ${r.stdout}${r.stderr}`);
