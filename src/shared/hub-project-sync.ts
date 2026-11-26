@@ -19,6 +19,7 @@ import { hubProjectOf } from "./hub-project-link.js";
 import type { WorkspacesFile } from "./types/index.js";
 import { workspaceDisplayName } from "./workspace-name.js";
 import { isRepoName } from "./repo-name.js";
+import { hubUrlProblem } from "./hub-url.js";
 
 /** Hub's limits: more is a 400 with no change. */
 export const SYNC_MAX_PROJECTS = 500;
@@ -125,11 +126,40 @@ export interface Uncovered {
 const plain = (v: unknown, max: number) =>
   typeof v === "string" ? v.replace(/[^\x20-\x7e]/g, "").slice(0, max) : "";
 
+export interface MovedTo {
+  hub: string;
+  hubName: string;
+  company: string;
+  project: string;
+  at: string;
+}
+
+export interface MovedProject {
+  workspace: string;
+  hubProject: string;
+  movedTo: MovedTo;
+}
+
+export function readMovedTo(v: unknown): MovedTo | null {
+  const o = (v ?? {}) as Record<string, unknown>;
+  const hub = plain(o.hub, 200).replace(/\/+$/, "");
+  const project = plain(o.project, 200);
+  if (!hub || hubUrlProblem(hub) || !project) return null;
+  return {
+    hub,
+    hubName: plain(o.hubName, 200).trim(),
+    company: plain(o.company, 200),
+    project,
+    at: plain(o.at, 40),
+  };
+}
+
 /** Hub's sync answer, read defensively. */
 export function readSyncReply(body: unknown): {
   setups: number;
   errors: { workspace: string; error: string }[];
   uncovered: Uncovered[];
+  moved: MovedProject[];
 } {
   const b = (body ?? {}) as Record<string, unknown>;
   const errors = (Array.isArray(b.errors) ? b.errors : []).flatMap((x) => {
@@ -159,7 +189,16 @@ export function readSyncReply(body: unknown): {
     typeof b.setups === "number" && Number.isInteger(b.setups) && b.setups >= 0
       ? b.setups
       : 0;
-  return { setups, errors, uncovered };
+  const moved = (Array.isArray(b.moved) ? b.moved : []).flatMap((x) => {
+    const o = (x ?? {}) as Record<string, unknown>;
+    const workspace = plain(o.workspace, 64);
+    const hubProject = plain(o.hub_project, 200);
+    const movedTo = readMovedTo(o.movedTo);
+    return workspace && hubProject && movedTo
+      ? [{ workspace, hubProject, movedTo }]
+      : [];
+  });
+  return { setups, errors, uncovered, moved };
 }
 
 /**
@@ -265,6 +304,7 @@ export interface SyncResult {
   setups: number;
   errors: { workspace: string; error: string }[];
   uncovered: Uncovered[];
+  moved?: MovedProject[];
   /** Why the last send failed, in words. */
   problem?: string;
 }
@@ -283,6 +323,7 @@ export interface ProjectSyncDeps {
    * lowercase; a repo Hub names is shown with Den's spelling.
    */
   spelling?: (ws: string) => string[];
+  moved?: (m: MovedProject[]) => void;
   now?: () => Date;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (t: unknown) => void;
@@ -397,6 +438,13 @@ export class ProjectSync {
       if (body) {
         this.sentKey = key;
         this.result = { at: now(), ok: true, ...readSyncReply(body) };
+        const moved = this.result.moved ?? [];
+        if (moved.length && this.deps.moved)
+          try {
+            this.deps.moved(moved);
+          } catch {
+            return;
+          }
       }
     } catch (e) {
       const refused = (e as { kind?: string })?.kind === "refused";
