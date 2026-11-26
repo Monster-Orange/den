@@ -337,10 +337,24 @@ describe("the map (tests/affected-map.json)", () => {
       map: MAP,
     });
     const files = Object.keys(s.files);
-    const own = TESTS.filter((t) => t.startsWith("tests/unit/test-infra/gate-"));
+    const own = TESTS.filter((t) =>
+      t.startsWith("tests/unit/test-infra/gate-"),
+    );
     expect(own).toContain("tests/unit/test-infra/gate-252-runner.test.ts");
     expect(own).toContain("tests/unit/test-infra/gate-expect-shape.test.ts");
     for (const t of own) expect([t, files.includes(t)]).toEqual([t, true]);
+  });
+
+  it("a live check's change also runs a test elsewhere that loads it by path", () => {
+    const s = select({
+      changed: ["gate/750.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain("tests/unit/gates/gate-750-hub-leg.test.ts");
+    expect(files).toContain("tests/unit/gates/gate-750-real-read.test.ts");
   });
 });
 

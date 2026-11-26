@@ -382,6 +382,20 @@ export function buildRules(map = readMap()) {
         why: `tests that run scripts/${f}`,
       });
   }
+  for (const f of fs
+    .readdirSync(path.join(ROOT, "gate"))
+    .filter((f) => f.endsWith(".mjs"))
+    .sort()) {
+    const run = tests.filter(
+      (t) => t !== SELF && read(t).includes(`gate/${f}`),
+    );
+    if (run.length)
+      rules.push({
+        when: [`gate/${f}`],
+        run,
+        why: `tests that load gate/${f}`,
+      });
+  }
   // Tests that start Den as a process: each runs when its subject changes.
   const starters = starterSubjects(map, tests);
   for (const [t, subject] of starters)
