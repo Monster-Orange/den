@@ -13,6 +13,10 @@ config and manifest changes a distribution must make to move to it under
 - More of Den's CLI has a `--json` form, for scripts and checks: `agents accounts list --json` (no token or account ref in it), `edge route --for <proxy> --json`, and `sessions start --json`. `doctor --json` also gives a check's notes, the lines the plain doctor marks healthy. The plain text is unchanged.
 - An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
 
+### Changed
+
+- Gate slots: a waiting release run (`gate run --priority release`) now passes earlier waiting runs of the other kind too. While it waits, a cpu run asked before a browser release run (or a browser run asked before a cpu release run) doesn't start in a slot the release run needs, unless it has waited longer than the new setting `release_pass_other_kind_minutes` (default 30). A run that holds a slot is never stopped, and the slot log's `priority` row lists the runs it passed. At 0, the order is as before. `priority_pass_limit_minutes` keeps its meaning and its default of 0. (issue 1648)
+
 ### Fixed
 
 - On a test install, a live check can now set one of the test's own agents to "ask" or "edits", or back to its project's mode, from the agent's row. Before, the request was refused, so the row's mode switch couldn't be checked there. Wider modes, agents the test didn't start and the server agent are still refused.
