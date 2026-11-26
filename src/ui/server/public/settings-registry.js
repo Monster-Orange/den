@@ -3045,6 +3045,32 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ server_log: { max_mb: v } }),
   },
   {
+    id: "server.slow_request_ms",
+    category: "server",
+    label: "Slow request, log after",
+    description:
+      "When a request takes longer than this, __DEN_TITLE__'s log gets one line with its route, who asked, and how long it took. Never its address, query, headers or body. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    keywords: ["log", "slow", "request", "server", "time"],
+    scope: "user",
+    keys: ["server_log.slow_request_ms"],
+    control: { type: "number", min: 100, max: 600000, step: 50, unit: "ms" },
+    read: (ctx) => ctx.data.server_log?.slow_request_ms ?? 3000,
+    write: (v, ctx) => ctx.post({ server_log: { slow_request_ms: v } }),
+  },
+  {
+    id: "server.event_loop_lag_ms",
+    category: "server",
+    label: "Stall, log after",
+    description:
+      "When __DEN_TITLE__ is busy and runs nothing else for longer than this, its log gets one line saying how long. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
+    keywords: ["log", "blocked", "lag", "server", "stall"],
+    scope: "user",
+    keys: ["server_log.event_loop_lag_ms"],
+    control: { type: "number", min: 50, max: 600000, step: 50, unit: "ms" },
+    read: (ctx) => ctx.data.server_log?.event_loop_lag_ms ?? 1000,
+    write: (v, ctx) => ctx.post({ server_log: { event_loop_lag_ms: v } }),
+  },
+  {
     // Issue 403: the largest report screenshot kept here (reports.*).
     id: "server.report_screenshot_max",
     category: "server",
@@ -4806,6 +4832,21 @@ export const DEN_SETTINGS = [
       }),
   },
 
+  {
+    id: "workspace.agents_max_per_project",
+    category: "workspace",
+    label: "Agents per project: this project",
+    description:
+      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
+    keywords: ["agents", "limit", "max_per_project", "project", "cap"],
+    scope: "workspace",
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.wsSettings?.agents_max_per_project ?? 0,
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        agents_max_per_project: Number(v) > 0 ? Number(v) : null,
+      }),
+  },
   {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.

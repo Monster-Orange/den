@@ -346,3 +346,25 @@ export async function heldLost(
     return `not told: ${(e as Error)?.message ?? String(e)}`;
   }
 }
+
+export function noteHeldWithdrawn(
+  store: Pick<NotificationStore, "add" | "markReadMany">,
+  a: Pick<Approval, "id" | "agent" | "actor" | "summary">,
+  reason: string,
+  project: string | undefined,
+): Notification | null {
+  const name = a.agent ?? a.actor;
+  const n = store.add({
+    kind: "service",
+    subject: `record:held-withdrawn-${a.id}`,
+    scope: `workspace/${project || "den-server"}`,
+    text: `${name} withdrew its request: ${a.summary}. Withdrawn: ${reason}`,
+    msg: {
+      key: "bell.m.heldWithdrawn",
+      vars: { name, what: a.summary, reason },
+    },
+    link: "/agents",
+  });
+  if (n) store.markReadMany([n.id]);
+  return n;
+}

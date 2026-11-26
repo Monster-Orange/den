@@ -266,6 +266,7 @@ import { readBody, sendJson } from "./http-helpers.js";
 import { sitePage } from "./ui-assets.js";
 import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
+import { noteCapsHeld } from "./cap-bell.js";
 import {
   HOST_RESTART_ACTION,
   HOST_RESTART_TITLE,
@@ -2855,6 +2856,7 @@ export function startAgentUpkeep(
         );
       for (const x of f.failed)
         log(`  ⚠ agent ${x.agent} did not resume: ${x.why}`);
+      if (f.failed.length) await noteCapsHeld(d.stateDir(), f.failed);
     } catch (e) {
       log(`  ⚠ agents after the restart: ${(e as Error).message}`);
     }

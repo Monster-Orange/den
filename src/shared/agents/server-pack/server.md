@@ -126,7 +126,7 @@ Reads (they change nothing):
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
-- `ask_withdraw`: withdraw your question once it is settled another way.
+- `ask_withdraw`: withdraw your question once it is settled another way, or (with `request`) your own pending write request once it turns out wrong.
 - `page_view`: a one-time link to open this Den's own pages read-only, as
   you, to look, take a screenshot or check a fix. It changes nothing, and
   ends in a few minutes.
@@ -173,6 +173,10 @@ Held (each waits for the person's Allow):
   without asking runs only on the person's own Allow, never by itself.
   Agents with a mode of their own keep it: the Allow names them, and the
   person may make them follow too.
+- `project_agent_cap`: set how many agents one project runs at once
+  (`max`; 0 goes back to the install's cap). It can only be lower than
+  the install's. Lowering it follows the policy; raising it or clearing
+  it runs only on the person's own Allow.
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
