@@ -5,6 +5,7 @@ import * as path from "path";
 import { lastUpdate } from "../../../src/ui/server/den-update.js";
 import {
   backMessage,
+  tellBack,
   type RestartMarker,
 } from "../../../src/ui/server/server-restart.js";
 import { pinAgentLine } from "../../../src/ui/server/pin-commit.js";
@@ -164,5 +165,54 @@ describe("issue 1745: a pin that wasn't pushed is said where the server agent lo
     expect(typed).toContain("[REDACTED");
     const codes = [...(typed ?? "")].map((c) => c.charCodeAt(0));
     expect(codes.filter((n) => n < 32 || (n >= 127 && n <= 159))).toEqual([]);
+  });
+
+  const typedLine = async (text: string) => {
+    const typed: string[] = [];
+    await tellBack(text, {
+      state: async () => "idle",
+      type: async (t) => {
+        typed.push(t);
+        return true;
+      },
+      waitMs: 0,
+    });
+    return typed.join("");
+  };
+  const hostile = (token: string) =>
+    `remote: \x1b[2J\rrm -rf ~ ${token}\x1b[201~\r\n`;
+  const noControls = (t: string) =>
+    [...t]
+      .map((c) => c.charCodeAt(0))
+      .filter((n) => n < 32 || (n >= 127 && n <= 159));
+
+  it("a stored pin record's why from the old Den is typed redacted, with no control characters", async () => {
+    const token = "ghp_" + "C".repeat(36);
+    const update = {
+      state: "good" as const,
+      from: "0.4.41",
+      to: "0.4.42",
+      at: "2026-11-20T11:00:00.000Z",
+      pin: { ...stranded, why: hostile(token) } as never,
+    };
+    for (const m of [marker({ by: "den" }), marker({ agent: "server" })]) {
+      const typed = await typedLine(backMessage(m, "0.4.42", 222, update));
+      expect(typed).toMatch(/pin was not pushed/);
+      expect(typed).not.toContain(token);
+      expect(typed).toContain("[REDACTED]");
+      expect(noControls(typed)).toEqual([]);
+    }
+  });
+
+  it("a rollback reason is typed redacted, with no control characters", async () => {
+    const token = "ghp_" + "D".repeat(36);
+    for (const by of ["den", undefined] as const) {
+      const m = marker({ by, rolledBack: true, reason: hostile(token) });
+      const typed = await typedLine(backMessage(m, "0.4.41", 222, null));
+      expect(typed).toMatch(/rolled back/);
+      expect(typed).not.toContain(token);
+      expect(typed).toContain("[REDACTED]");
+      expect(noControls(typed)).toEqual([]);
+    }
   });
 });

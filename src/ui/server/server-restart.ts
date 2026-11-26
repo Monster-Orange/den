@@ -24,6 +24,7 @@ import {
   isServerScope,
 } from "../../shared/agents/server-agent.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { safeLine } from "../../shared/redact.js";
 
 /**
  * SRV-1a/1b: the setting that runs an agent's den_restart or den_update
@@ -167,7 +168,12 @@ const UNPUSHED_PIN = new Set(["push_failed", "commit_failed", "branch_pushed"]);
 function pinNews(version: string, update?: LastUpdate | null): string {
   const p = update?.pin;
   if (!p || p.version === version || !UNPUSHED_PIN.has(p.state)) return "";
-  return ` Den ${p.version}'s pin was not pushed: ${p.why ?? p.state}. Only the latest pin is kept and tried again: ${version}'s pin replaces it.`;
+  return ` Den ${p.version}'s pin was not pushed: ${safeLine(p.why ?? p.state)
+    .trim()
+    .slice(
+      0,
+      300,
+    )}. Only the latest pin is kept and tried again: ${version}'s pin replaces it.`;
 }
 
 /**
@@ -297,7 +303,7 @@ export async function tellBack(
     // A dialog for its person: never typed into, however long it stays.
     const dialog = d.dialog ? await d.dialog().catch(() => true) : false;
     if (!dialog && (s === "idle" || now() >= until)) {
-      if (await d.type(text)) {
+      if (await d.type(safeLine(text))) {
         clear();
         return "told";
       }

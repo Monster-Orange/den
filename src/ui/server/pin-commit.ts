@@ -55,7 +55,7 @@ import {
   type PinVia,
 } from "../../shared/pin-record.js";
 import { parseRepoName } from "../../shared/repo-name.js";
-import { redactSecrets } from "../../shared/redact.js";
+import { safeLine } from "../../shared/redact.js";
 
 // Moved to src/shared/pin-record.ts (doctor reads it too); kept here.
 export { pinRecordFile, readPinRecord, type PinRecord, type PinVia };
@@ -130,22 +130,9 @@ function writePinRecord(stateDir: string, r: PinRecord): void {
   writeFileAtomic(p, JSON.stringify(r) + "\n", { mode: 0o600 });
 }
 
-const oneLine = (s: string) =>
-  [...s]
-    .map((c) => {
-      const n = c.charCodeAt(0);
-      return n < 32 || (n >= 127 && n <= 159) || n === 0x2028 || n === 0x2029
-        ? " "
-        : c;
-    })
-    .join("")
-    .trim();
-
 const tail = (s: string) =>
-  oneLine(redactSecrets(s.trim()).split("\n").slice(-2).join(" / ")).slice(
-    0,
-    300,
-  ) || "no output";
+  safeLine(s.trim().split("\n").slice(-2).join(" / ")).trim().slice(0, 300) ||
+  "no output";
 
 export interface PinCommitDeps {
   /** The distribution's root (where the pin files are). */
@@ -581,7 +568,9 @@ export async function commitPin(
       at,
     );
   } catch (e) {
-    const why = e instanceof Error ? e.message : String(e);
+    const why = safeLine(e instanceof Error ? e.message : String(e))
+      .trim()
+      .slice(0, 300);
     const first = !(same?.state === "commit_failed" && same.noted);
     writePinRecord(d.stateDir, {
       version,
@@ -1109,6 +1098,6 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
 
 export function pinAgentLine(step: PinStep, t: string): string | null {
   if (step.did !== "push_failed" || !step.first) return null;
-  const why = oneLine(redactSecrets(step.why));
+  const why = safeLine(step.why).trim();
   return `${t} ${step.version}'s pin couldn't be pushed: ${why}. ${t} tries again at its next update check; the person has it in the bell.`;
 }
