@@ -450,8 +450,8 @@ function workflowAgents(dir: string): Map<string, WorkflowAgent> {
       continue;
     }
     let c = workflowCache.get(file);
-    // Issue 1592: kept only while its size and mtime stay the same, and
-    // only once it was written more than a clock tick before it was read.
+    // Kept only while its size and mtime stay the same, and only once its
+    // last write is more than a clock tick older than the read (stat-settled).
     if (
       !c ||
       c.mtime !== st.mtimeMs ||

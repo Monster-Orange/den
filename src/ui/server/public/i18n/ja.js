@@ -1548,6 +1548,10 @@
       "リポジトリの公開範囲を再確認するまでの時間",
     "set.agents.issue_writes_visibility_minutes.d":
       "公開リポジトリ、または公開範囲がわからないリポジトリにエージェントが投稿するテキストは、先にリストの名前が含まれていないか確認されます。これは、リポジトリの公開範囲を GitHub に再確認するまで保持する分数です。公開に変わったリポジトリも、すぐに確認の対象になります。1 から 1440。__DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    "set.agents.issue_writes_public":
+      "公開リポジトリにエージェントが issue を書く",
+    "set.agents.issue_writes_public.d":
+      "オンの場合、エージェントは公開リポジトリに issue とコメントを作成できます。テキストは先にリストの名前がないか確認され、フッターにはエージェント名もインストール名も入りません。オフの場合、公開リポジトリへの書き込みは拒否されます。オンにするにはあなたの許可が必要です。__DEN_CLI__ config agents.issue_writes_public=false",
     "ap.do.agent_import":
       "会話 {session} をプロジェクト「{project}」の {persona} エージェントとして取り込む",
     "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",
