@@ -15,7 +15,7 @@ const me = process.getuid!();
 beforeEach(() => {
   agents = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "d988lf-")));
   fs.chownSync(agents, me, process.getgid!());
-  fs.chmodSync(agents, 0o3770);
+  fs.chmodSync(agents, 0o2750);
 });
 afterEach(() => fs.rmSync(agents, { recursive: true, force: true }));
 

@@ -28,6 +28,7 @@ const LAUNCH_ID_MAX = 64;
 export interface OsUserLayout {
   platform: OsUserPlatform;
   person: string;
+  personHome: string;
   root: string;
   runtime: { bin: string; script: string };
   noLogin: string;
@@ -248,7 +249,10 @@ export function setupPaths(l: OsUserLayout): string[] {
 export function setupPlan(
   l: OsUserLayout,
   text: { launcher: string; sudoers: string },
-  have: { user: boolean; group: boolean } = { user: false, group: false },
+  have: { user: boolean; group: boolean; homeMode?: number } = {
+    user: false,
+    group: false,
+  },
 ): PlanStep[] {
   const n = osUserNames(l.platform, l.person);
   const p = osUserPaths(l.root, l.person);
@@ -399,7 +403,7 @@ export function setupPlan(
       ],
     },
     {
-      say: `Make the agent files folder ${p.agents}: yours and the group's, sticky (nobody removes another's files)`,
+      say: `Make the agent files folder ${p.agents}: yours; the group reads it, and only you add to it`,
       argv: [
         "install",
         "-d",
@@ -408,10 +412,18 @@ export function setupPlan(
         "-g",
         n.group,
         "-m",
-        "3770",
+        "2750",
         p.agents,
       ],
     },
+    ...(have.homeMode !== undefined && (have.homeMode & 0o077) !== 0
+      ? [
+          {
+            say: `Close your home ${l.personHome} to everyone but you (0700), so the agents' login can't read your files`,
+            argv: ["chmod", "0700", l.personHome],
+          },
+        ]
+      : []),
     ...rootWrite("the launcher", p.launcher, text.launcher, rg, "0555"),
     ...rootWrite("the sudo rule", p.sudoers, text.sudoers, rg, "0440", {
       say: "Check the sudo rule with visudo before it is put in place",
@@ -513,6 +525,7 @@ export interface OsUserFacts {
   };
   group: { exists: boolean; members?: string[] };
   personUid: number;
+  personHome: (StatFacts & { acl: string[] }) | null;
   sudoers: StatFacts | null;
   personRules: string[] | null;
   launcher: (StatFacts & { text: string }) | null;
@@ -531,6 +544,38 @@ export interface OsUserCheck {
 
 const octal = (m: number) => (m & 0o7777).toString(8).padStart(4, "0");
 
+const inside = (dir: string, p: string) =>
+  p === dir || p.startsWith(dir.endsWith("/") ? dir : `${dir}/`);
+
+export function homeProblems(l: OsUserLayout, f: OsUserFacts): string[] {
+  const out: string[] = [];
+  const h = f.personHome;
+  if (!h) out.push(`your home ${l.personHome} couldn't be read`);
+  else {
+    if ((h.mode & 0o077) !== 0)
+      out.push(
+        `your home ${l.personHome} is ${octal(h.mode)}: the agents' login could read your files (it should be 0700; \`agents os-login setup\` closes it)`,
+      );
+    for (const e of h.acl)
+      if (/\ballow\b/.test(e) && !e.startsWith(`user:${l.person} `))
+        out.push(
+          `your home ${l.personHome} has the ACL entry "${e}": it lets someone else in`,
+        );
+  }
+  for (const r of [l.runtime.bin, l.runtime.script])
+    if (inside(l.personHome, r))
+      out.push(
+        `Den's runtime ${r} is inside your home, which the agents' login must not read: install Den outside it`,
+      );
+  return out;
+}
+
+export function runtimeInHome(l: OsUserLayout): string[] {
+  return [l.runtime.bin, l.runtime.script].filter((r) =>
+    inside(l.personHome, r),
+  );
+}
+
 export function osUserCheck(
   o: { on: boolean; layout: OsUserLayout; cli?: string },
   f: OsUserFacts,
@@ -544,6 +589,8 @@ export function osUserCheck(
     problems.push(
       `Den's state folder is ${octal(f.stateDir.mode)}: anyone but you could read it (it should be 0700)`,
     );
+
+  if (o.on) problems.push(...homeProblems(l, f));
 
   const present = [
     f.user.exists && `the login ${n.user}`,
@@ -648,10 +695,10 @@ export function osUserCheck(
     problems.push(`the agent files folder ${p.agents} is missing`);
   else if (
     f.agentsDir.uid !== f.personUid ||
-    (f.agentsDir.mode & 0o7777) !== 0o3770
+    (f.agentsDir.mode & 0o7777) !== 0o2750
   )
     problems.push(
-      `${p.agents} is ${octal(f.agentsDir.mode)}, uid ${f.agentsDir.uid}: it should be yours, 3770`,
+      `${p.agents} is ${octal(f.agentsDir.mode)}, uid ${f.agentsDir.uid}: it should be yours, 2750`,
     );
   if (!f.homeDir) problems.push(`${n.user}'s home ${p.home} is missing`);
   else if (f.homeDir.uid !== f.user.uid || (f.homeDir.mode & 0o777) !== 0o700)
@@ -664,12 +711,12 @@ export function osUserCheck(
   if (unknown)
     return {
       status: "warn",
-      detail: `agents run as ${n.user}; your sudo rules couldn't be listed (sudo -n -l asked for a password), so the rule is checked by its file only`,
+      detail: `${n.user} is set up, but not in use yet: agents still run as you; your sudo rules couldn't be listed (sudo -n -l asked for a password), so the rule is checked by its file only`,
       problems,
     };
   return {
     status: "ok",
-    detail: `agents run as ${n.user}: the launcher, its folders and the sudo rule are root's, and Den's state is yours alone`,
+    detail: `${n.user} is set up, but not in use yet: agents still run as you. The launcher, its folders and the sudo rule are root's, and your home and Den's state are yours alone`,
     problems,
   };
 }
@@ -793,9 +840,27 @@ export function readOsUserFacts(
     launcherChain: launcherStat ? d.chain(p.launcher) : [],
     agentsDir: d.stat(p.agents),
     homeDir: d.stat(p.home),
+    personHome: personHomeFacts(l, d, ok),
     stateDir: d.stat(stateDir),
     dir: d.stat(p.dir) !== null,
   };
+}
+
+function personHomeFacts(
+  l: OsUserLayout,
+  d: OsUserReadDeps,
+  ok: (cmd: string, args: string[]) => string | null,
+): OsUserFacts["personHome"] {
+  const st = d.stat(l.personHome);
+  if (!st) return null;
+  const acl =
+    l.platform === "darwin"
+      ? (ok("/bin/ls", ["-led", l.personHome]) ?? "")
+          .split("\n")
+          .map((x) => /^\s*\d+:\s*(.+)$/.exec(x)?.[1]?.trim())
+          .filter((x): x is string => !!x)
+      : [];
+  return { ...st, acl };
 }
 
 export function machineReadDeps(): OsUserReadDeps {

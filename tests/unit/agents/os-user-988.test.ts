@@ -30,6 +30,7 @@ function layout(platform: "darwin" | "linux"): OsUserLayout {
   return {
     platform,
     person: "robin",
+    personHome: "/home/robin",
     root: ROOT,
     runtime: { bin: "/usr/local/bin/node", script: "/srv/den/dist/cli.js" },
     noLogin: platform === "linux" ? "/usr/sbin/nologin" : "/usr/bin/false",
@@ -275,7 +276,7 @@ describe("issue 988 (pins 2 and 4): the setup", () => {
       );
       const n = osUserNames(platform, "robin");
       expect(l).toContain(
-        `install -d -o robin -g ${n.group} -m 3770 /opt/den/robin/agents`,
+        `install -d -o robin -g ${n.group} -m 2750 /opt/den/robin/agents`,
       );
       expect(l).toContain(
         `install -d -o ${n.user} -g ${n.group} -m 0700 /opt/den/robin/home`,
@@ -456,6 +457,7 @@ function goodFacts(): OsUserFacts {
     },
     group: { exists: true, members: ["robin"] },
     personUid: 1000,
+    personHome: { uid: 1000, mode: 0o40700, acl: [] },
     sudoers: { uid: 0, mode: 0o100440 },
     personRules: [`(den-agents-robin) NOPASSWD: ${L}`],
     launcher: {
@@ -475,7 +477,7 @@ function goodFacts(): OsUserFacts {
       { path: "/opt", uid: 0, mode: 0o40755 },
       { path: "/", uid: 0, mode: 0o40755 },
     ],
-    agentsDir: { uid: 1000, mode: 0o43770 },
+    agentsDir: { uid: 1000, mode: 0o42750 },
     homeDir: { uid: 455, mode: 0o40700 },
     stateDir: { uid: 1000, mode: 0o40700 },
     dir: true,
@@ -497,6 +499,7 @@ describe("issue 988: doctor's check", () => {
       user: { exists: false },
       group: { exists: false },
       personUid: 1000,
+      personHome: { uid: 1000, mode: 0o40700, acl: [] },
       sudoers: null,
       personRules: [],
       launcher: null,
@@ -592,6 +595,7 @@ describe("issue 988: doctor's check", () => {
       user: { exists: true, uid: 455 },
       group: { exists: false },
       personUid: 1000,
+      personHome: { uid: 1000, mode: 0o40700, acl: [] },
       sudoers: { uid: 0, mode: 0o100440 },
       personRules: [],
       launcher: null,

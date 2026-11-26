@@ -1,10 +1,16 @@
 # Agents under their own OS login
 
-With `agents.os_login: on` in `config/local/user.yml`, agents run as a second
-OS user, not as the person. That is the boundary between the person and their
-agents: an agent can't read the person's files, keychain or Den's state.
+With `agents.os_login: on` in `config/local/user.yml`, agents are to run as a
+second OS user, not as the person. That is the boundary between the person and
+their agents: an agent can't read the person's files, keychain or Den's state.
 
-It is off by default. The person turns it on once, at setup. Only user.yml
+Not in use yet: setup makes the login and doctor checks it, but Den's server
+doesn't start agents through it until a later slice. Until then agents still
+run as the person, and setup and doctor say so.
+
+It is off by default. The person turns it on once, at setup, by answering yes
+at a terminal: a piped yes is refused. The admin password is asked only when
+the first sudo step runs. `remove` turns it off only once nothing is left. Only user.yml
 holds the setting, which agents can't write: set in the distribution's
 `den.yml`, it is refused. Turning it off through `setting_change` widens what
 agents can do, so it needs the person's Allow.
@@ -26,12 +32,12 @@ login shell and no home outside Den's agent files.
 
 Under `/opt/den/<person>`:
 
-| path                   | owner, mode        | what                                                 |
-| ---------------------- | ------------------ | ---------------------------------------------------- |
-| `bin/`                 | root, 0755         | so is every folder above it                          |
-| `bin/den-agent-launch` | root, 0555         | the only thing the person may run as the agents user |
-| `home/`                | agents user, 0700  | the agents user's home, and its only one             |
-| `agents/`              | person:group, 3770 | the agent files (sticky)                             |
+| path                   | owner, mode        | what                                                   |
+| ---------------------- | ------------------ | ------------------------------------------------------ |
+| `bin/`                 | root, 0755         | so is every folder above it                            |
+| `bin/den-agent-launch` | root, 0555         | the only thing the person may run as the agents user   |
+| `home/`                | agents user, 0700  | the agents user's home, and its only one               |
+| `agents/`              | person:group, 2750 | the agent files: the group reads, only the person adds |
 
 And `/etc/sudoers.d/den-<person>` (root, 0440) holds one rule, with no
 password, no `ALL` and no wildcard in the command:
@@ -39,6 +45,14 @@ password, no `ALL` and no wildcard in the command:
 ```
 <person> ALL=(<agents user>) NOPASSWD: <launcher>
 ```
+
+## The person's home
+
+The agents' login must not read the person's home. Doctor fails when the home
+has any group or other permission bit, or (on macOS) an ACL entry that lets
+someone else in. Setup closes an open home to 0700, as a step it shows. So
+Den's runtime must live outside the person's home: setup refuses to start, and
+doctor fails, while it is inside.
 
 Root writes the launcher and the rule from stdin, out of Den's memory, then
 reads them back: never from a file anyone else can write. Den's state folder
@@ -82,3 +96,13 @@ The temp folder goes when the runtime ends, however it ends.
 
 The agents user's own sandbox policy is not in yet, so for now step 4 always
 refuses and no agent starts this way.
+
+## One login for all of a person's agents
+
+All of one person's agents share the one login. So they can read and write
+each other's `own/` folders and see each other's environment. The boundary is
+between the person and their agents, not between agents.
+
+When Den's server reads an agent's `own/` files (a later slice), it runs as the
+person and reads files the login can write. It opens them with `O_NOFOLLOW`
+and checks them with `lstat`, never following a link.

@@ -44,6 +44,10 @@ function checkSpec(s: AgentLaunchSpec): void {
       throw new Error(
         `launch files: "${k}" is not an env name with a text value`,
       );
+    if (/^(LD_|DYLD_)|^NODE_OPTIONS$/.test(k))
+      throw new Error(
+        `launch files: "${k}" changes what the runtime loads, so it is never set here`,
+      );
     if (SECRETISH.test(k))
       throw new Error(
         `launch files: ${k} looks like a secret, and launch files never hold one (the token comes on the terminal)`,

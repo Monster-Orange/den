@@ -9,6 +9,7 @@ import {
   launcherScript,
   machineReadDeps,
   osUserCheck,
+  runtimeInHome,
   osUserNames,
   osUserPaths,
   readOsUserFacts,
@@ -91,6 +92,13 @@ export async function cmdOsUser(
   const p = osUserPaths(l.root, l.person);
 
   if (sub === "setup") {
+    const inHome = runtimeInHome(l);
+    if (inHome.length) {
+      d.err(
+        `Den's runtime (${inHome.join(", ")}) is inside your home, which the agents' login must not read. Install Den outside your home, then run setup again. Nothing was changed.`,
+      );
+      return 1;
+    }
     const rule = sudoersLine({
       person: l.person,
       user: n.user,
@@ -109,9 +117,10 @@ export async function cmdOsUser(
     const steps = setupPlan(l, text, {
       user: f.user.exists,
       group: f.group.exists,
+      ...(f.personHome ? { homeMode: f.personHome.mode } : {}),
     });
     d.out(
-      `Agents will run as ${n.user}, which can't read Den's state or your files. These ${steps.length} steps run with sudo:`,
+      `This sets up ${n.user}, a login for agents that can't read your home or Den's state. It is not in use yet: agents still run as you. These ${steps.length} steps run with sudo:`,
     );
     show(d, steps);
     d.out(`The sudo rule:`);
@@ -133,7 +142,7 @@ export async function cmdOsUser(
     }
     d.setOn(true);
     d.out(
-      `✓ ${n.user} is set up, and agents.os_login is on. \`${d.cli} agents os-login check\` checks it.`,
+      `✓ ${n.user} is set up, and agents.os_login is on. It is not in use yet: agents still run as you. \`${d.cli} agents os-login check\` checks it.`,
     );
     return 0;
   }
@@ -152,12 +161,13 @@ export async function cmdOsUser(
         `  (${s.argv.join(" ")}: ${r.error ?? "failed"}; it may be gone already)`,
       );
   }
-  d.setOn(false);
   const c = osUserCheck({ on: false, layout: l, cli: d.cli }, d.facts());
   if (c.problems.length) {
     for (const x of c.problems) d.err(`✗ ${x}`);
+    d.err("agents.os_login stays on until nothing is left.");
     return 1;
   }
+  d.setOn(false);
   d.out(
     `✓ Removed: nothing is left (no ${n.user}, no ${n.group}, no sudo rule, no ${p.dir}), and agents.os_login is off.`,
   );
@@ -200,7 +210,32 @@ function freeSystemIds(): { uid: number; gid: number } {
   throw new Error("no free system id between 401 and 499");
 }
 
+export async function terminalConfirm(
+  question: string,
+  io: {
+    stdinIsTTY: boolean;
+    stdoutIsTTY: boolean;
+    ask: (q: string) => Promise<string>;
+  },
+): Promise<boolean> {
+  if (!io.stdinIsTTY || !io.stdoutIsTTY) {
+    console.error(
+      "This asks a person at a terminal, and this isn't one: nothing was changed.",
+    );
+    return false;
+  }
+  return /^y(es)?$/i.test((await io.ask(`${question} [y/N] `)).trim());
+}
+
 export const OS_USER_ROOT = "/opt/den";
+
+function realOr(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
 
 export function machineLayout(platform: NodeJS.Platform): OsUserLayout {
   const plat = platform === "darwin" ? "darwin" : "linux";
@@ -212,10 +247,11 @@ export function machineLayout(platform: NodeJS.Platform): OsUserLayout {
   return {
     platform: plat,
     person: os.userInfo().username,
+    personHome: realOr(os.homedir()),
     root: OS_USER_ROOT,
     runtime: {
-      bin: process.execPath,
-      script: path.join(getEngineRoot(), "dist/src/ui/cli/index.js"),
+      bin: realOr(process.execPath),
+      script: realOr(path.join(getEngineRoot(), "dist/src/ui/cli/index.js")),
     },
     noLogin,
   };
@@ -232,17 +268,22 @@ export function defaultOsUserDeps(cli: string): OsUserCommandDeps {
         ? { ids: macIds(machineLayout(platform).person) }
         : {}),
     }),
-    confirm: async (q) => {
-      const rl = createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      try {
-        return /^y(es)?$/i.test((await rl.question(`${q} [y/N] `)).trim());
-      } finally {
-        rl.close();
-      }
-    },
+    confirm: (q) =>
+      terminalConfirm(q, {
+        stdinIsTTY: process.stdin.isTTY === true,
+        stdoutIsTTY: process.stdout.isTTY === true,
+        ask: async (question) => {
+          const rl = createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
+          try {
+            return await rl.question(question);
+          } finally {
+            rl.close();
+          }
+        },
+      }),
     sudo: (argv, stdin) => {
       const r = spawnSync("sudo", ["--", ...argv], {
         input: stdin ?? "",

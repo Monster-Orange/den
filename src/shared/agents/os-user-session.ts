@@ -19,6 +19,7 @@ export const EXIT_FAILED = 70;
 export interface AgentSessionDeps {
   home: string;
   personUid: number;
+  ownUid: number;
   readToken: (nonce: string) => Promise<string>;
   makeTmp: () => string | undefined;
   removeTmp: (dir: string) => void;
@@ -44,6 +45,12 @@ export async function runAgentSession(
   ) {
     d.err(`${CMD}: give one agent id and Den's launch nonce`);
     return EXIT_USAGE;
+  }
+  if (d.personUid === 0 || d.personUid === d.ownUid) {
+    d.err(
+      `${CMD}: the launch files' owner (uid ${d.personUid}) is this login or root: they must be the person's`,
+    );
+    return EXIT_REFUSED;
   }
   const agentsDir = path.join(path.dirname(d.home), "agents");
   let spec;
@@ -119,6 +126,7 @@ export function defaultAgentSessionDeps(
   return {
     home,
     personUid,
+    ownUid: typeof process.getuid === "function" ? process.getuid() : -1,
     readToken: (nonce) =>
       readTokenLine(process.stdin, (t) => process.stdout.write(t), { nonce }),
     makeTmp: () => makeLoginTmp(home),

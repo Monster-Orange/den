@@ -39,6 +39,7 @@ function deps(over: Partial<AgentSessionDeps> = {}) {
   const d: AgentSessionDeps = {
     home,
     personUid: process.getuid!(),
+    ownUid: -2,
     readToken: async (nonce) => {
       log.push(`token:${nonce}`);
       return "tok-SECRET";

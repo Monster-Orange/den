@@ -14,6 +14,7 @@ import { osUserSetting } from "../../../src/shared/den-config.js";
 const LAYOUT: OsUserLayout = {
   platform: "linux",
   person: "robin",
+  personHome: "/home/robin",
   root: "/opt/den",
   runtime: { bin: "/usr/local/bin/node", script: "/srv/den/dist/cli.js" },
   noLogin: "/usr/sbin/nologin",
@@ -23,6 +24,7 @@ const NONE: OsUserFacts = {
   user: { exists: false },
   group: { exists: false },
   personUid: 1000,
+  personHome: { uid: 1000, mode: 0o40700, acl: [] },
   sudoers: null,
   personRules: [],
   launcher: null,

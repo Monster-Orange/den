@@ -31,6 +31,7 @@ const STATE = `/home/${PERSON}/.den-state`;
 const layout: OsUserLayout = {
   platform: "linux",
   person: PERSON,
+  personHome: `/home/${PERSON}`,
   root: "/opt/den",
   runtime: { bin: "/bin/sh", script: RUNTIME },
   noLogin: fs.existsSync("/usr/sbin/nologin")
@@ -104,10 +105,28 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
       'echo "WHO $(id -un)"; echo "ARGS $*"; echo "HOME $HOME"\n',
       { mode: 0o755 },
     );
-    expect(runPlan(setupPlan(layout, TEXT), rootRun)).toEqual({ ok: true });
+    expect(
+      runPlan(
+        setupPlan(layout, TEXT, {
+          user: false,
+          group: false,
+          homeMode: fs.statSync(layout.personHome).mode,
+        }),
+        rootRun,
+      ),
+    ).toEqual({ ok: true });
+    expect(fs.statSync(layout.personHome).mode & 0o777).toBe(0o700);
     const c = osUserCheck({ on: true, layout }, facts());
     expect(c.problems).toEqual([]);
     expect(c.status).toBe("ok");
+  });
+
+  it("the agents' login can't read a dotfile in the person's home", () => {
+    const dot = path.join(layout.personHome, ".zshenv");
+    fs.writeFileSync(dot, "export STAND_IN=1\n", { mode: 0o644 });
+    const r = as(n.user, ["cat", dot]);
+    expect(r.status).not.toBe(0);
+    expect(r.stdout).not.toContain("STAND_IN");
   });
 
   it("pin 1: the person runs the launcher as the agents' login, and nothing else", () => {
