@@ -174,6 +174,7 @@ export function createApprovalQueue(
 const ONE_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})$/;
 const DECIDE_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})\/decide$/;
 /** Issue 142: the asker takes back its own request. */
+const WITHDRAW_REASON_MAX = 200;
 const WITHDRAW_PATH = /^\/api\/approvals\/([A-Za-z0-9_-]{16})\/withdraw$/;
 
 /** Whether `pathname` is one of the routes above. */
@@ -626,6 +627,7 @@ export async function handleApprovalRoutes(
      * held-write items follow the queue (held-bell.ts).
      */
     changed?: () => void;
+    withdrawn?: (a: Approval, reason: string, by: string) => void;
     /**
      * Issue 1016: the install's address for people (web.url), or null
      * when it isn't set: an agent's pending ask carries its full Allow
@@ -928,6 +930,21 @@ export async function handleApprovalRoutes(
         "not_asker",
         "Only the one that asked may withdraw a request: sign in, or use the asking agent's token.",
       );
+    const body = await jsonBody(req);
+    const given = body?.reason;
+    if (
+      body === null ||
+      (given !== undefined &&
+        (typeof given !== "string" ||
+          /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(given) ||
+          given.trim().length > WITHDRAW_REASON_MAX))
+    )
+      return refused(
+        400,
+        "bad_reason",
+        `A reason is one line, at most ${WITHDRAW_REASON_MAX} characters.`,
+      );
+    const reason = typeof given === "string" ? given.trim() : "";
     const r = deps.queue.withdraw(wd[1], asker);
     if (!r.ok)
       return refused(
@@ -945,11 +962,17 @@ export async function handleApprovalRoutes(
       auditActorOf(req),
       {
         verb: "approval-withdraw",
-        detail: `withdrawn by ${asker}: ${r.approval.action}: ${r.approval.summary} [${wd[1]}]`,
+        detail: `withdrawn by ${asker}: ${r.approval.action}: ${r.approval.summary}${reason ? `: ${reason}` : ""} [${wd[1]}]`,
       },
       principalOf(req),
     );
     changed(deps);
+    if (reason)
+      try {
+        deps.withdrawn?.(r.approval, reason, asker);
+      } catch (bellError) {
+        void bellError;
+      }
     sendJson(res, { ok: true, ...approvalView(r.approval) });
     return true;
   }

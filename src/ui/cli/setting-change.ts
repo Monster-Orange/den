@@ -154,6 +154,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "reports.screenshot_max_mb",
   "reports.hub_timeout_seconds",
   "server_log.max_mb",
+  "server_log.slow_request_ms",
+  "server_log.event_loop_lag_ms",
   "agent_context.compaction_loop_count",
   "agent_context.compaction_loop_minutes",
   "agent_context.pause_after_loop",
@@ -424,6 +426,16 @@ const WIDENS_AT: readonly [
   // Issue 1264 (Reviewer A): a program in effect now and missing after
   // runs outside the gate: widens. Adding one, or reordering, doesn't.
   // With no old value known, judged against the default list.
+  [
+    "gate.throwaway_sweep",
+    (v, before) => {
+      const to = level(v);
+      const from = level(before);
+      if (to === null) return true;
+      return from === null ? to === 0 : to < from;
+    },
+    ["personal", "strict"],
+  ],
   [
     "gate.route_commands",
     (v, before) => {

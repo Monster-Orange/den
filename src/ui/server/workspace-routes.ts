@@ -23,7 +23,11 @@ import {
 } from "../cli/agent-ops.js";
 import { webDeps } from "./agent-routes.js";
 import { readBody, readMethodOnly, sendJson, send400 } from "./http-helpers.js";
-import type { ResolvedService } from "../../shared/types/index.js";
+import type {
+  ResolvedService,
+  WorkspaceConfig,
+} from "../../shared/types/index.js";
+import { projectCapValueError } from "../../shared/agents/project-cap.js";
 import type { EditorManager } from "./editor-manager.js";
 import type { GitHubService } from "./github-service.js";
 import { JETBRAINS_EDITORS } from "./editor-manager.js";
@@ -169,6 +173,11 @@ import { isRepoName } from "../../shared/repo-name.js";
 const hubLoopFields = (ws: unknown) => {
   const l = projectHubLoop(ws);
   return { hub_delivery_loop: l.on, hub_delivery_loop_extra: l.extra };
+};
+
+const ownAgentCap = (ws: WorkspaceConfig | undefined): number | null => {
+  const v = ws?.agents?.max_per_project;
+  return typeof v === "number" ? v : null;
 };
 // Anchored to the den root, NOT process.cwd(): ws.directory values are
 // stored relative to this and written back via path.relative below — a
@@ -1377,6 +1386,7 @@ export async function handleWorkspaceRoutes(
         editor: ws?.editor ?? null,
         ...projectApprovals(ws?.approvals),
         ...hubLoopFields(ws),
+        agents_max_per_project: ownAgentCap(ws),
       });
     }
     if (req.method === "POST") {
@@ -1389,6 +1399,7 @@ export async function handleWorkspaceRoutes(
           approvals_critical?: unknown;
           hub_delivery_loop?: unknown;
           hub_delivery_loop_extra?: unknown;
+          agents_max_per_project?: unknown;
         };
         const wsName = body.workspace ?? getActiveWorkspace()?.name;
         if (!wsName) return send400(res, "a project is required");
@@ -1404,6 +1415,7 @@ export async function handleWorkspaceRoutes(
             "approvals_critical",
             "hub_delivery_loop",
             "hub_delivery_loop_extra",
+            "agents_max_per_project",
           ] as const
         ).filter((k) => body[k] !== undefined);
         // Issue 160: the approval policy is a person's: an agent (or a
@@ -1414,13 +1426,16 @@ export async function handleWorkspaceRoutes(
           const loop = policyKeys.some((k) =>
             k.startsWith("hub_delivery_loop"),
           );
+          const cap = policyKeys.includes("agents_max_per_project");
           return sendJson(
             res,
             {
               ok: false,
               error: loop
                 ? `only a person can change ${policyKeys.join(", ")}, in Project setup`
-                : `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
+                : cap
+                  ? `only a person can change ${policyKeys.join(", ")}: an agent asks with project_agent_cap`
+                  : `only a person can change ${policyKeys.join(", ")}: an agent asks with approval_policy`,
             },
             403,
           );
@@ -1460,12 +1475,23 @@ export async function handleWorkspaceRoutes(
           if (a.value) ws.approvals = a.value;
           else delete ws.approvals;
         }
+        if (body.agents_max_per_project !== undefined) {
+          const v = body.agents_max_per_project;
+          const bad = projectCapValueError(wsName, v);
+          if (bad) return send400(res, bad);
+          const agents = { ...(ws.agents ?? {}) };
+          if (v === null) delete agents.max_per_project;
+          else agents.max_per_project = v;
+          if (Object.keys(agents).length) ws.agents = agents;
+          else delete ws.agents;
+        }
         writeWorkspacesFile(file);
         return sendJson(res, {
           ok: true,
           editor: ws.editor ?? null,
           ...projectApprovals(ws.approvals),
           ...hubLoopFields(ws),
+          agents_max_per_project: ownAgentCap(ws),
         });
       } catch (e) {
         return send400(res, `Invalid request: ${(e as Error).message}`);
