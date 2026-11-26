@@ -125,6 +125,7 @@ export function restartQueue(
   }
   let told = 0;
   let saidBad = "";
+  let writing = false;
   const q: RestartQueue = new RestartQueue({
     config: () =>
       queueConfig(undefined, (line) => {
@@ -141,28 +142,36 @@ export function restartQueue(
     heldBy: capRefusal,
     stillWanted: (id, heldAt) => stillWanted(getStateDir(), id, heldAt),
     changed: () => {
-      const ids = agentsWaitingOf(q.waiting());
-      const n = ids.length;
-      try {
-        const f = restartsWaitingFile(getStateDir());
-        fs.mkdirSync(path.dirname(f), { recursive: true });
-        writeFileAtomic(
-          f,
-          JSON.stringify({ waiting: n, ids, at: new Date().toISOString() }) +
-            "\n",
-        );
-      } catch {
-        /* doctor's line is best effort */
-      }
-      if (n === told) return;
-      told = n;
-      try {
-        if (storeOf) noteRestartsWaiting(storeOf(), n);
-      } catch {
-        /* the bell is best effort */
-      }
+      if (writing) return;
+      writing = true;
+      setImmediate(() => {
+        writing = false;
+        written();
+      });
     },
   });
+  const written = () => {
+    const ids = agentsWaitingOf(q.waiting());
+    const n = ids.length;
+    try {
+      const f = restartsWaitingFile(getStateDir());
+      fs.mkdirSync(path.dirname(f), { recursive: true });
+      writeFileAtomic(
+        f,
+        JSON.stringify({ waiting: n, ids, at: new Date().toISOString() }) +
+          "\n",
+      );
+    } catch {
+      /* doctor's line is best effort */
+    }
+    if (n === told) return;
+    told = n;
+    try {
+      if (storeOf) noteRestartsWaiting(storeOf(), n);
+    } catch {
+      /* the bell is best effort */
+    }
+  };
   queue = q;
   return q;
 }

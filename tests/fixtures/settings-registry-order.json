@@ -52,6 +52,7 @@
     ["server.gate_remote_asks", "server"],
     ["server.gate_priority_max", "server"],
     ["server.gate_priority_pass", "server"],
+    ["server.gate_release_pass_other", "server"],
     ["server.gate_priority_agents", "server"],
     ["server.gate_priority_runners", "server"],
     ["server.gate_browser_container", "server"],

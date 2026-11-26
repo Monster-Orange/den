@@ -29,6 +29,7 @@ interface After {
   ups: number;
   feeds: number;
   gotos: string[];
+  held: unknown;
 }
 
 function runGate(den: string, bed = "file", limitMs = 0) {
@@ -85,10 +86,32 @@ describe("gate/459.mjs as the bed runs it", () => {
     putBack(r);
   });
 
+  it("enterApart: the Enter typed as a key of its own still passes every clause", () => {
+    const r = runGate("enterApart");
+    expect(r.error).toBeUndefined();
+    expect(oks(r)).toEqual([true, true, true, true, true]);
+    putBack(r);
+  });
+
+  it("a held item left for its agent is captured, and Den's held file is never edited", () => {
+    const r = runGate("heldLeft");
+    expect(r.error).toBeUndefined();
+    expect(r.rows?.[1].detail).toContain('"held_reason":"busy"');
+    expect(r.after.held).toEqual({
+      queue: {
+        "gate-459-feed": [{ id: "feed:old", held_reason: "busy" }],
+        "other-agent": [{ id: "hub:keep" }],
+      },
+      active: {},
+    });
+    putBack(r);
+  });
+
   it.each([
     ["wrongAgent", 0, "the view lists the feed for another agent"],
     ["typesBait", 1, "the pointer carries the app's own text"],
     ["redeliver", 2, "the same id is delivered again"],
+    ["logGone", 2, "the stub's log can't be read for the repeat"],
     ["noLastId", 3, "a reconnect sends no Last-Event-ID"],
     ["noFill", 3, "a reconnect never asks the list form"],
     ["rawWords", 4, "Settings shows the state's key, not its words"],
