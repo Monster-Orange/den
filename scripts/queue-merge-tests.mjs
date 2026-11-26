@@ -16,7 +16,7 @@ const USAGE = `The tests a queue merge runs on the merged tree, before it is pus
       test added there runs as a changed test). One pull request, or a
       batch merged in order.
 
-  node scripts/queue-merge-tests.mjs bisect --tests <file> [--run <command>] <merged commit>...
+  node scripts/queue-merge-tests.mjs bisect --tests <file> [--run <command>] [--repo <dir>] <merged commit>...
       The merged commits of a batch, in merge order, and the tests that
       failed on the last one: the first commit they fail on, found by
       halving. Each step runs <command> (default: npx jest --maxWorkers=1)
@@ -25,7 +25,9 @@ const USAGE = `The tests a queue merge runs on the merged tree, before it is pus
       the command through it, for example
       --run "<cli> gate run --kind cpu -- npx jest --maxWorkers=1".
       The worktree uses this checkout's node_modules: a batch that changes
-      dependencies is tested against today's.`;
+      dependencies is tested against today's. It prints the first red
+      commit (exit 1), or "not reproduced" when the last one is green
+      again (exit 3). An every-test plan (ALL) is refused (exit 2).`;
 
 function git(args, cwd = ROOT) {
   const r = spawnSync("git", args, { cwd, encoding: "utf-8" });
@@ -192,14 +194,28 @@ async function bisect(opt, commits) {
     console.error("queue-merge-tests: the test list is empty");
     return 2;
   }
+  if (tests[0].startsWith("ALL")) {
+    console.error(
+      "queue-merge-tests: the plan runs every test, and bisect takes only a list of test files: run the full suite on each merge instead",
+    );
+    return 2;
+  }
   const red = await bisectRun({
     commits,
     tests,
     run: opt.run ?? "npx jest --maxWorkers=1",
+    root: opt.repo ?? ROOT,
     log: (m) => console.error(m),
   });
-  console.log(red ?? "none");
-  return red ? 1 : 0;
+  if (!red) {
+    console.log("not reproduced");
+    console.error(
+      "queue-merge-tests: the last merge is green on this run, so the red did not come back: read the first run's failure before merging",
+    );
+    return 3;
+  }
+  console.log(red);
+  return 1;
 }
 
 export async function main(argv) {

@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from "@jest/globals";
-import { execFileSync } from "child_process";
+import { execFileSync, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -140,7 +140,7 @@ describe("queue-merge-tests: the first red merge of a batch", () => {
     expect(asked.length).toBeLessThanOrEqual(4);
   });
 
-  it("a green last merge needs no bisect", () => {
+  it("a last merge that is green again has no first red", () => {
     const { r, asked } = JSON.parse(firstRed([false, true, false]));
     expect(r).toBeNull();
     expect(asked).toEqual(["c2"]);
@@ -205,6 +205,49 @@ describe("queue-merge-tests: bisect on a real repo", () => {
       { commits: [first, second], tests: ["x.mjs"], run: "node", root: r2 },
     ]);
     expect(red).toBe(second);
+    expect(g("worktree", "list").split("\n")).toHaveLength(1);
+  });
+
+  const cli = (list: string, commits: string[]) => {
+    const f = path.join(
+      os.tmpdir(),
+      `queue-bisect-list-${process.pid}-${Math.random().toString(36).slice(2)}`,
+    );
+    fs.writeFileSync(f, list);
+    const r = spawnSync(
+      process.execPath,
+      [
+        SCRIPT,
+        "bisect",
+        "--tests",
+        f,
+        "--run",
+        "node",
+        "--repo",
+        r2,
+        ...commits,
+      ],
+      { encoding: "utf-8" },
+    );
+    fs.rmSync(f);
+    return r;
+  };
+
+  it("a known-red batch that is green on the re-run says not reproduced, and fails", () => {
+    const r = cli("x.mjs\n", [second, put("x.mjs", "process.exit(0);\n")]);
+    expect(r.stdout.trim()).toBe("not reproduced");
+    expect(r.status).toBe(3);
+    expect(g("worktree", "list").split("\n")).toHaveLength(1);
+  });
+
+  it("an every-test plan is refused, not read as green", () => {
+    const r = cli("ALL  # the queue changed package-lock.json\n", [
+      first,
+      second,
+    ]);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toMatch(/every test/);
     expect(g("worktree", "list").split("\n")).toHaveLength(1);
   });
 });
