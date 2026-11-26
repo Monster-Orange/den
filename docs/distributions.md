@@ -3616,7 +3616,7 @@ and logs to `<stateDir>/logs/<cli>/sessions-host.log`. The state dir is
 the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 
 ```
-<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>
+<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] [--json] -- <argv…>
 <cli> sessions list [-w <ws>] [--json]
 <cli> sessions attach <name|id>          # ctrl-] detaches; the session keeps running
 <cli> sessions kill <name|id> [--signal INT|TERM|HUP|KILL] [--grace <s>]
@@ -4701,6 +4701,7 @@ agents:
     row_max: 4 # deprecated (0.4.45): ignored
     read_max_mb: 64 # the most of an agent's transcript read for them
     facts_cache_mb: 256 # what Den keeps of all agents' transcripts between reads
+    refresh_seconds: 5 # how old a helper row in the agents list may be
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
@@ -4710,6 +4711,7 @@ agents:
 | `row_max`               | deprecated, ignored        | 4       |
 | `read_max_mb`           | MB, above 0 to 4096        | 64      |
 | `facts_cache_mb`        | MB, above 0 to 4096        | 256     |
+| `refresh_seconds`       | seconds, 0 to 3600         | 5       |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
 
 `read_max_mb` (0.4.36): a helper's state comes partly from its agent's own
@@ -4725,6 +4727,14 @@ is dropped first. Before 0.4.90 Den kept 64 agents' facts. With more
 agents than that, each look at the list read every transcript again, and
 Den's pages and tools stalled for seconds. The facts are small, about 0.1
 MB for a busy agent, so the default holds thousands of agents.
+
+`refresh_seconds` (0.4.90): the agents list and the helpers count share
+one set of helper rows. A row is read again in the background once it is
+older than this, and the list shows the last one meanwhile, so a list
+never waits on transcripts. A new agent, or one whose state changed
+(started, stopped, cleared), is read before the list answers. The
+reading yields between agents, so Den keeps answering while it reads.
+At 0, every list reads its rows, as before 0.4.90.
 
 `row_max` no longer does anything (0.4.45): how many helpers show under
 an agent is each person's `agents.helpers_shown` (above).
