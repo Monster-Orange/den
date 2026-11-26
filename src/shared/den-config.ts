@@ -653,6 +653,7 @@ export interface UserConfig {
      * for one agent. Only here: agents can't write this file.
      */
     sandbox?: unknown;
+    os_login?: unknown;
     /**
      * agents.git.signing_key: per machine, so user.yml's wins over the
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
@@ -729,7 +730,7 @@ export interface UserConfig {
     order?: unknown;
   };
   /**
-   * The web server's per-machine keys (src/shared/web-session.ts
+   * The web server's per-machine keys (src/shared/web/web-session.ts
    * readWebAuthConfig): allow_plain_http_remote, edge_unattested,
    * github_client_id, and (SEC-2a) machine_name, the name the signed-out
    * page gives this machine.
@@ -1205,6 +1206,24 @@ export function setUserSandboxOn(): void {
   } as UserConfig);
 }
 
+export function osUserSetting(userAgents: unknown): boolean {
+  if (!isMapping(userAgents)) return false;
+  const v = userAgents.os_login;
+  if (v === undefined || v === null || v === false || v === "off") return false;
+  if (v === true || v === "on") return true;
+  throw new Error(
+    `agents.os_login: must be on or off (got ${JSON.stringify(v)})`,
+  );
+}
+
+export function setUserOsUser(on: boolean): void {
+  const cfg = readUserConfig();
+  writeUserConfig({
+    ...cfg,
+    agents: { ...(cfg.agents ?? {}), os_login: on ? "on" : "off" },
+  } as UserConfig);
+}
+
 /**
  * Issue 1328: `agents.<id>.sandbox: on|off` in user.yml, for the held write
  * agent_sandbox_set. Only that key changes: comments, the order and every
@@ -1291,6 +1310,7 @@ export const USER_ONLY_WIDENING: readonly string[] = [
   "agents.sandbox",
   "agents.*.sandbox",
   "agents.sandbox_sockets",
+  "agents.os_login",
   "web.edge_unattested",
   "web.allow_plain_http_remote",
   "secrets.onepassword.token",
@@ -1535,7 +1555,7 @@ export function readDenConfig(): DenConfig {
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
-      // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
+      // 0.4.45: the Hub editions under Connect (shared/hub/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
       // Issue 1391: the distribution's den.yml, else this file.
@@ -2229,6 +2249,7 @@ export const AGENTS_RESERVED_KEYS = [
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
   "sandbox",
   "sandbox_sockets",
+  "os_login",
 ];
 
 /**
@@ -2437,7 +2458,7 @@ export function helpersBlock(v: unknown): HelperSettings {
   if (v === undefined || v === null) return out;
   if (!isMapping(v))
     throw new Error(
-      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb (got ${JSON.stringify(v)})`,
+      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds (got ${JSON.stringify(v)})`,
     );
   for (const [k, x] of Object.entries(v)) {
     if (k === "row_max") {
@@ -2446,6 +2467,22 @@ export function helpersBlock(v: unknown): HelperSettings {
           `agents.helpers.row_max: must be a whole number from 1 to 1000 (got ${JSON.stringify(x)})`,
         );
       out.rowMax = x;
+      continue;
+    }
+    if (k === "refresh_seconds") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x < 0 || x > 3600)
+        throw new Error(
+          `agents.helpers.refresh_seconds: must be a number of seconds, from 0 to 3600 (got ${JSON.stringify(x)})`,
+        );
+      out.refreshSeconds = x;
+      continue;
+    }
+    if (k === "facts_cache_mb") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 4096)
+        throw new Error(
+          `agents.helpers.facts_cache_mb: must be a number of MB, above 0 and at most 4096 (got ${JSON.stringify(x)})`,
+        );
+      out.factsCacheMb = x;
       continue;
     }
     if (k === "read_max_mb") {
@@ -2465,7 +2502,7 @@ export function helpersBlock(v: unknown): HelperSettings {
           : null;
     if (!key)
       throw new Error(
-        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb)`,
+        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds)`,
       );
     if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 100_000)
       throw new Error(
@@ -2938,6 +2975,8 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
   // read-only to agents; the org config may sit in a repo they edit).
   if (raw.sandbox !== undefined)
     throw new Error(SANDBOX_IN_USER_YML("agents.sandbox"));
+  if (raw.os_login !== undefined)
+    throw new Error(SANDBOX_IN_USER_YML("agents.os_login"));
   out.sandbox = true;
   // agents.git, unless it is an agent called git (a block with grants).
   const gitBlock = isGitSettings(raw.git) ? raw.git : undefined;

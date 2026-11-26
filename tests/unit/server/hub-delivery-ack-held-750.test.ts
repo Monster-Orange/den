@@ -11,7 +11,7 @@ import {
   deliveryAckHeld,
   noteWhoami,
 } from "../../../src/ui/server/hub-delivery-service.js";
-import { ACK_HELD_FEATURE } from "../../../src/shared/hub-delivery.js";
+import { ACK_HELD_FEATURE } from "../../../src/shared/hub/hub-delivery.js";
 
 describe("issue 750 step 4: whoami decides held or queued", () => {
   it("the feature is the one Hub's G1/G2 contract names", () => {

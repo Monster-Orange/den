@@ -13,16 +13,19 @@
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
-import { denWebBase } from "../../shared/web-dial.js";
-import { checkWebUrl, loopbackRefusal } from "../../shared/web-url-check.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
+import {
+  checkWebUrl,
+  loopbackRefusal,
+} from "../../shared/web/web-url-check.js";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import {
   notSetLine,
   readWebUrl,
   setWebUrl,
   type WebUrl,
-} from "../../shared/web-url.js";
+} from "../../shared/web/web-url.js";
 
 interface Io {
   out: (s: string) => void;

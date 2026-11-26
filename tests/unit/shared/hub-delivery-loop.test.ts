@@ -11,12 +11,12 @@ import path from "node:path";
 import {
   SeenDeliveries,
   type DeliveryOwner,
-} from "../../../src/shared/hub-delivery";
+} from "../../../src/shared/hub/hub-delivery";
 import {
   DeliveryLoop,
   type AgentState,
   type DeliveryHub,
-} from "../../../src/shared/hub-delivery-loop";
+} from "../../../src/shared/hub/hub-delivery-loop";
 
 let dir = "";
 beforeEach(() => {

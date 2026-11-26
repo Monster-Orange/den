@@ -771,18 +771,18 @@ export interface WorkspaceConfig {
   /**
    * H5: the Hub project this project works on, as the person linked it
    * (`hub link`, Settings › Project setup): {id, slug, name}. Den sends the
-   * id on every Hub call (X-Den-Project). See shared/hub-project-link.ts.
+   * id on every Hub call (X-Den-Project). See shared/hub/hub-project-link.ts.
    */
   hub_project?: unknown;
   /**
    * Issue 167: a rename asked of Hub, waiting for a person there:
-   * {to, held, url?, askedAt}. See shared/hub-project-link.ts.
+   * {to, held, url?, askedAt}. See shared/hub/hub-project-link.ts.
    */
   hub_rename?: unknown;
   /**
    * Issue 271: a new Hub project asked of Hub for this project, waiting for
    * an owner there (or declined): {held, name, slug, url?, askedAt, by,
-   * agent?, outcome?}. See shared/hub-project-create.ts.
+   * agent?, outcome?}. See shared/hub/hub-project-create.ts.
    */
   hub_create?: unknown;
 }
