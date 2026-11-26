@@ -533,6 +533,41 @@ never converted to HTML and back).
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
 
+## The popover
+
+- `src/popover.js`, `src/popover.css` (exports `./popover`,
+  `./popover.css`): a small non-modal box anchored to what opened it (a
+  button, a link, or a node in an SVG map), for a card or a short set of
+  actions. The host gives it its content and its name; the kit places it
+  and owns its keys and focus.
+
+      import { openPopover } from "@monster-orange/den-ui/popover";
+      // link popover.css after tokens.css
+      const pop = openPopover(node, {
+        content: cardEl,          // a Node, or HTML the host has escaped
+        label: "Item card",       // or labelledBy: an id inside it
+        onClose: () => {},
+      });
+      pop.close();                // focus goes back to the anchor
+
+- It is `role="dialog"` and never `aria-modal`, so there is no focus trap
+  (only the kit's modal dialogs trap focus). Focus moves to its first
+  control. Esc, a press outside it, or Tab out of it closes it. Esc and a
+  press on nothing put focus back on the anchor; a press on a control
+  leaves focus there. Tab past its last control goes on to what follows
+  the anchor, and Shift+Tab before its first goes back to the anchor.
+- A press on the open anchor closes it, and that press's click never
+  reaches the anchor, so a host that opens it on click doesn't open it
+  again, and a link anchor doesn't follow its `href`.
+- A button anchor (an HTML button, or anything with `role="button"`, an
+  SVG node too) says `aria-haspopup="dialog"`, and `aria-expanded` and
+  `aria-controls` while it is open. One is open at a time.
+- It sits below the anchor, or above it when there is no room, always 8px
+  inside the viewport, and moves with scroll and resize. Its look is the
+  menus' (`.den-pop`): `--raised`, `--border-strong`, `--shadow`, 10px
+  corners, in every theme. For a phone-width sheet, use the dialog
+  instead.
+
 ## The panel fold toggle, its edge strip and the switch
 
 - `src/panel-fold.js`, `src/panel-fold.css` (exports `./panel-fold`,
