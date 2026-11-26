@@ -11901,6 +11901,12 @@ void (async () => {
         records: listDaemons(),
         running: await listing().catch(() => null),
       }),
+    health: async (ws, addr) => {
+      const resolved = resolveService(addr, ws);
+      if (!resolved) return null;
+      const h = (await checkServiceHealth(resolved, "local")).health;
+      return h === "ok" || h === "error" ? h : null;
+    },
     log: (line, level) => serverLog(line, level ?? "lifecycle"),
   });
   // Issue 1225: the bell, and doctor's record of the last restore.
