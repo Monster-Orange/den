@@ -919,11 +919,15 @@ function defaultDenBase(): string {
 export async function hubUpstream(
   d: AgentsResolved,
   who: { agentId: string; workspace: string; session: string },
-): Promise<{
-  base: string;
-  mcpUrl: string;
-  headers: Record<string, string>;
-} | null> {
+): Promise<
+  | {
+      base: string;
+      mcpUrl: string;
+      headers: Record<string, string>;
+    }
+  | { refused: "agent_removed" | "agent_unreadable" }
+  | null
+> {
   const h = await d.hub().catch(() => null);
   if (!h) return null;
   const { hubHeaders } = await import("../../shared/hub.js");
@@ -935,12 +939,24 @@ export async function hubUpstream(
   }
   let name = who.agentId;
   let linked: string | undefined;
+  const guarded = who.agentId !== SERVER_AGENT_ID;
+  const check = (): "agent_removed" | "agent_unreadable" | null => {
+    try {
+      return readRecord(d.stateDir(), who.agentId) ? null : "agent_removed";
+    } catch {
+      return "agent_unreadable";
+    }
+  };
   try {
     const rec = readRecord(d.stateDir(), who.agentId);
     name = rec?.displayName || name;
     linked = rec?.project;
   } catch {
     /* the id names it */
+  }
+  if (guarded) {
+    const no = check();
+    if (no) return { refused: no };
   }
   // Which project's Hub link files its work: the agent's own project link
   // (D65 v2) first, then its session's project. The server scope is never
@@ -954,6 +970,10 @@ export async function hubUpstream(
       { id: who.agentId, name, workspace: who.workspace },
     )
     .catch(() => null);
+  if (guarded) {
+    const no = check();
+    if (no) return { refused: no };
+  }
   return {
     base: h.url,
     mcpUrl: h.mcpUrl || `${h.url}/mcp`,
