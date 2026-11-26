@@ -181,6 +181,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // Issue 1022: how often the page polls health, visible and hidden.
   "health_poll.visible_seconds": ["health_poll", "visible_seconds"],
   "health_poll.hidden_seconds": ["health_poll", "hidden_seconds"],
+  "git_reads.at_once": ["git_reads", "at_once"],
 };
 
 /** Issue 532: a terminal limit's effective value (user.yml over den.yml). */

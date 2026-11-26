@@ -252,8 +252,13 @@ export interface GateDeps {
   err: (line: string) => void;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
-  /** Starts the command (issue 625: `env` adds to the environment). */
-  exec: (cmd: string, args: string[], env?: Record<string, string>) => GateRun;
+  /** Starts the command; `env` adds to its environment, `held` holds it until `start()`. */
+  exec: (
+    cmd: string,
+    args: string[],
+    env?: Record<string, string>,
+    opts?: { held?: boolean },
+  ) => GateRun;
   /** Runs `fn` every `ms` until the returned stop is called. */
   every: (ms: number, fn: () => void) => () => void;
   /** Calls `h` on each of GATE_RUN_SIGNALS; returns a stop. */
@@ -435,21 +440,22 @@ const realExec = (
   cmd: string,
   args: string[],
   env?: Record<string, string>,
+  opts?: { held?: boolean },
 ): GateRun => {
   // Issue 1132: in its own process group (it leads it), so what it
   // starts can be stopped with it, and nothing else is. Signals reach it
   // through gate run, which passes them on to the whole group.
-  const held = process.platform !== "win32";
-  const opts = {
+  const held = opts?.held === true && process.platform !== "win32";
+  const how = {
     detached: true,
     ...(env ? { env: { ...process.env, ...env } } : {}),
   };
   const k = held
     ? spawn("/bin/sh", ["-c", GATE_HOLD_SHIM, "den-gate-hold", cmd, ...args], {
-        ...opts,
+        ...how,
         stdio: ["inherit", "inherit", "inherit", "pipe"],
       })
-    : spawn(cmd, args, { ...opts, stdio: "inherit" });
+    : spawn(cmd, args, { ...how, stdio: "inherit" });
   const go = held ? (k.stdio[3] as Writable | null) : null;
   // a write after the shim died is no error of gate run's
   go?.on("error", () => {});
@@ -594,33 +600,50 @@ function repoTop(dir: string): string {
 }
 
 /**
- * Clause 11, issue 1017: the run's exact Playwright client version, from
- * an installed package.json only. First installed for the run's folder:
- * its node_modules, or one above it up to the repo's top folder (a
- * workspace run with Playwright hoisted to the root). Else installed for
- * the nearest package.json below it that depends on Playwright (a repo
- * whose Playwright lives in web/). Nearest is fewest folders down;
- * node_modules and dot folders are never looked in. A range in a
- * package.json is never read as a version: with nothing installed, the
- * version is unknown (undefined).
+ * The run's exact Playwright version, from an installed package only
+ * (a range is never a version). First for the run's folder: node_modules
+ * there or above, up to the repo's top folder. Else for the nearest
+ * package.json below that depends on Playwright, fewest folders down,
+ * skipping node_modules and dot folders. The look below is bounded: none
+ * from the root folder, home or above home (a launchd job starts in /, and
+ * a mount there can block a listing for good), at most PW_DOWN_DEPTH
+ * levels and PW_DOWN_DIRS listings. Nothing found: unknown (undefined).
  */
-export function playwrightVersion(cwd: string): string | undefined {
+function mayLookBelow(cwd: string, home: string): boolean {
+  const here = path.resolve(cwd);
+  if (path.dirname(here) === here) return false;
+  const h = path.resolve(home);
+  return here !== h && !h.startsWith(here + path.sep);
+}
+
+export const PW_DOWN_DEPTH = 4;
+export const PW_DOWN_DIRS = 500;
+export function playwrightVersion(
+  cwd: string,
+  o: { home?: string; list?: (dir: string) => fs.Dirent[] } = {},
+): string | undefined {
+  const list =
+    o.list ?? ((dir: string) => fs.readdirSync(dir, { withFileTypes: true }));
   const top = repoTop(cwd);
   const here = installedPlaywright(cwd, top);
   if (here) return here;
+  if (!mayLookBelow(cwd, o.home ?? os.homedir())) return undefined;
   let level = [cwd];
-  while (level.length) {
+  let listed = 0;
+  for (let depth = 0; level.length && depth <= PW_DOWN_DEPTH; depth++) {
     for (const dir of level) {
       const range = declaredPlaywright(dir);
       if (typeof range !== "string") continue;
       const v = installedPlaywright(dir, cwd);
       if (v) return v;
     }
+    if (depth === PW_DOWN_DEPTH) break;
     const next: string[] = [];
     for (const dir of level) {
+      if (listed++ >= PW_DOWN_DIRS) return undefined;
       let names: fs.Dirent[] = [];
       try {
-        names = fs.readdirSync(dir, { withFileTypes: true });
+        names = list(dir);
       } catch {
         continue;
       }
@@ -993,8 +1016,6 @@ async function run(args: string[], d: GateDeps): Promise<number> {
         `gate: --browser-endpoint is not used inside ${inside.id}: the held slot's browser is`,
       );
     const child = d.exec(pos[0]!, pos.slice(1));
-    // Inside a held slot no group is recorded, so it starts now.
-    child.start?.();
     const off = d.onSignal((sig) => child.kill(sig));
     // Never past its slot: when the outer run gives it back (it ended),
     // this command stops too, so two runs never share a slot unheld.
@@ -1331,20 +1352,28 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       slotEnv[GATE_WORKERS_ENV] = String(
         gateWorkers(d.cores ?? realCores(), s.settings().cpuSlots),
       );
+    const hold = { held: true };
     child = box
-      ? d.exec(pos[0]!, pos.slice(1), {
-          // Issue 1017: the box's endpoint for this run's version.
-          ...boxEnv(box, e.pwVersion),
-          DEN_GATE_ALLOW: allow.join(","),
-          ...slotEnv,
-        })
+      ? d.exec(
+          pos[0]!,
+          pos.slice(1),
+          {
+            // The box's endpoint for this run's version.
+            ...boxEnv(box, e.pwVersion),
+            DEN_GATE_ALLOW: allow.join(","),
+            ...slotEnv,
+          },
+          hold,
+        )
       : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
         ? // The address given on the command line reaches the run.
-          d.exec(pos[0]!, pos.slice(1), {
-            DEN_PW_WS: flagEndpoint,
-            ...slotEnv,
-          })
-        : d.exec(pos[0]!, pos.slice(1), slotEnv);
+          d.exec(
+            pos[0]!,
+            pos.slice(1),
+            { DEN_PW_WS: flagEndpoint, ...slotEnv },
+            hold,
+          )
+        : d.exec(pos[0]!, pos.slice(1), slotEnv, hold);
     if (child.pid !== undefined)
       s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
     // Only now, with its group recorded, may the command run.

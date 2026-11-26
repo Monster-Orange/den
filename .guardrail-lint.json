@@ -1,1 +1,1 @@
-{ "since": "e4d4a5f33c23c2261235b747f7e76ab7ab99c888", "on": ["mo/comment-count"] }
+{"since": "e4d4a5f33c23c2261235b747f7e76ab7ab99c888", "on": ["mo/comment-count"], "exclude": ["skill-packs/pstack/**"]}
