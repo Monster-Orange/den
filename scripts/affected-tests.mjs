@@ -132,13 +132,6 @@ export function ranFirstTests(root = ROOT) {
   return JSON.parse(fs.readFileSync(file, "utf-8")).jest ?? [];
 }
 
-/**
- * Issue 1707: tests that read a changed file as text (no import edge, so
- * jest's related list misses them; 1281 changed index.ts and never ran
- * birth-import-first-814). sources: { test file: its text }. Returns
- * { test file: [the changed repo paths its text names] }; a longer name
- * (index.tsx for index.ts) doesn't count.
- */
 export function testsNamingPaths(changed, sources) {
   const out = {};
   for (const [t, text] of Object.entries(sources))

@@ -240,7 +240,6 @@ describe("queue-merge-tests: bisect on a real repo", () => {
     expect(g("worktree", "list").split("\n")).toHaveLength(1);
   });
 
-  // Issue 1707 (qmerge, Lane 1): check runs the plan on the merged tree before the push, and names the culprit.
   const check = (plan: string, commits: string[], run = "node") => {
     const f = path.join(
       os.tmpdir(),
@@ -297,6 +296,25 @@ describe("queue-merge-tests: bisect on a real repo", () => {
     expect(r.status).toBe(0);
     expect(r.stderr).toMatch(/1 browser test left to CI/);
     expect(r.stderr).toMatch(/no tests to run/);
+  });
+
+  it("--run keeps a quoted part after = as part of its word", () => {
+    expect(
+      call<string[]>(SCRIPT, "splitRun", [`cli --label='a b' -- jest`]),
+    ).toEqual(["cli", "--label=a b", "--", "jest"]);
+  });
+
+  it("check with no --run is refused, so jest never runs outside the caller's queue", () => {
+    const f = path.join(os.tmpdir(), `queue-check-norun-${process.pid}`);
+    fs.writeFileSync(f, "y.mjs\n");
+    const r = spawnSync(
+      process.execPath,
+      [SCRIPT, "check", "--plan", f, "--merged", first, "--repo", r2],
+      { encoding: "utf-8" },
+    );
+    fs.rmSync(f);
+    expect(r.status).toBe(2);
+    expect(r.stderr).not.toMatch(/tests on/);
   });
 
   it("--run keeps a quoted label as one word (the gate's --label)", () => {

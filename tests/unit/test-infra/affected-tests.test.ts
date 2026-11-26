@@ -233,8 +233,6 @@ describe("selectTests (fixtures)", () => {
 });
 
 describe("tests that read a changed file as text (issue 1707)", () => {
-  // PR 1281 changed src/ui/server/index.ts; birth-import-first-814 reads that
-  // file's text (no import edge), so neither its CI nor the queue ran it.
   const naming = (changed: string[], sources: Record<string, string>) =>
     call<Record<string, string[]>>(
       AFFECTED,

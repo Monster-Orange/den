@@ -29,7 +29,7 @@ const USAGE = `The tests a queue merge runs on the merged tree, before it is pus
       commit (exit 1), or "not reproduced" when the last one is green
       again (exit 3). An every-test plan (ALL) is refused (exit 2).
 
-  node scripts/queue-merge-tests.mjs check --merged <commit> [--merged <commit>...] [--run <command>] [--plan <file>] [--repo <dir>]
+  node scripts/queue-merge-tests.mjs check --merged <commit> [--merged <commit>...] --run <command> [--plan <file>] [--repo <dir>]
       Before the queue is pushed (issue 1707): the merged commits of a batch,
       in merge order, with this checkout at the last. Plans the batch's own
       change (the tip before its first merge to its last), runs the tests
@@ -152,11 +152,10 @@ export function tally(list) {
   );
 }
 
-/** A --run command as words: a 'quoted' or "quoted" part stays one word (the gate's --label). */
 export function splitRun(run) {
   const words = [];
-  for (const m of run.matchAll(/'([^']*)'|"([^"]*)"|(\S+)/g))
-    words.push(m[1] ?? m[2] ?? m[3]);
+  for (const m of run.matchAll(/(?:'[^']*'|"[^"]*"|[^\s'"])+/g))
+    words.push(m[0].replace(/'([^']*)'|"([^"]*)"/g, "$1$2"));
   return words;
 }
 
@@ -170,7 +169,6 @@ export async function bisectRun({
   return firstRed(commits, redAt({ tests, run, root, log }));
 }
 
-/** (commit) => red?: runs `run` with those of `tests` that exist there, in a throwaway worktree. */
 export function redAt({ tests, run, root = ROOT, log = () => {} }) {
   const [cmd, ...args] = splitRun(run);
   return (c) => {
@@ -209,17 +207,9 @@ const readList = (file) =>
     .map((l) => l.replace(/\s+#.*$/, "").trim())
     .filter(Boolean);
 
-/**
- * Issue 1707: before qmerge pushes next/queue. The merged commits of a batch,
- * in merge order; the plan is the batch's own change (the tip before its
- * first merge to its last), from affected-tests in this checkout, which must
- * be at the last merge (or --plan <file>). Exit 0 green or nothing to run,
- * 1 red (prints the first red merge), 2 usage, 3 red that did not come back,
- * 4 every test: CI only. Browser files are left to CI.
- */
 async function check(opt, merged) {
   const repo = opt.repo ?? ROOT;
-  if (!merged.length) {
+  if (!merged.length || !opt.run) {
     console.error(USAGE);
     return 2;
   }
@@ -272,7 +262,7 @@ async function check(opt, merged) {
     }
     const isRed = redAt({
       tests,
-      run: opt.run ?? "npx jest --maxWorkers=1",
+      run: opt.run,
       root: repo,
       log: (m) => console.error(m),
     });
