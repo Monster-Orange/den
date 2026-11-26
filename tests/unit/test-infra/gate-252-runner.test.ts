@@ -53,6 +53,16 @@ describe("gate/252.mjs as the bed runs it", () => {
     expect(r.removed).toBe(true);
   });
 
+  it("the bed refuses the mode write (403 fixture_scope): each mode clause fails and says so", () => {
+    const r = runGate("refused");
+    expect(r.error).toBeUndefined();
+    expect([0, 1, 3].map((i) => oks(r)[i])).toEqual([false, false, false]);
+    for (const row of [0, 1, 3])
+      expect(r.rows?.[row].detail).toContain(
+        "the bed refused the mode write (403 fixture_scope)",
+      );
+  });
+
   it("no restart at idle: the live clause fails", () => {
     const r = runGate("noRestart");
     expect(r.rows?.[3].ok).toBe(false);

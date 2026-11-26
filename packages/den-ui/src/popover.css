@@ -1,0 +1,26 @@
+/* The kit's popover (popover.js): the menus' look (.den-pop in shell.css),
+   value for value, so a card and a menu read as one family. A page that
+   doesn't link shell.css gets the same look from here. */
+.den-popover {
+  position: fixed;
+  z-index: 45;
+  background: var(--raised);
+  border: 1px var(--edge-style, solid) var(--border-strong);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 12px;
+  min-width: 220px;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  font: 14px/1.45 var(--sans);
+  color: var(--text);
+}
+.den-popover:focus {
+  outline: none;
+}
+.den-popover :focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
