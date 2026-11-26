@@ -2290,6 +2290,7 @@
         "tests/unit/shared/repo-clone.test.ts",
         "tests/unit/test-infra/brittle-ratchet.test.ts",
         "tests/unit/test-infra/brittle-weekly-841.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/verify/verify-plan.test.ts"
       ],
       "why": "tests that read the docs"
@@ -2359,6 +2360,7 @@
         "tests/unit/test-infra/gate-93-pointer.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
         "tests/unit/test-infra/gate-cli-json-840.test.ts",
+        "tests/unit/test-infra/gate-evidence.test.ts",
         "tests/unit/test-infra/gate-expect-shape.test.ts",
         "tests/unit/test-infra/gate-fixture-project-1215.test.ts",
         "tests/unit/test-infra/gate-json-fail-840.test.ts",
@@ -2464,6 +2466,11 @@
       "when": ["scripts/flake-evidence.mjs"],
       "run": ["tests/unit/test-infra/quarantine.test.ts"],
       "why": "tests that run scripts/flake-evidence.mjs"
+    },
+    {
+      "when": ["scripts/gate-evidence.mjs"],
+      "run": ["tests/unit/test-infra/gate-evidence.test.ts"],
+      "why": "tests that run scripts/gate-evidence.mjs"
     },
     {
       "when": ["scripts/gate-shape.mjs"],
@@ -2606,6 +2613,11 @@
       "when": ["scripts/state-writes-gate.mjs"],
       "run": ["tests/unit/test-infra/state-writes-gate.test.ts"],
       "why": "tests that run scripts/state-writes-gate.mjs"
+    },
+    {
+      "when": ["scripts/test-health.mjs"],
+      "run": ["tests/unit/test-infra/test-health-846.test.ts"],
+      "why": "tests that run scripts/test-health.mjs"
     },
     {
       "when": ["scripts/typecheck-tests.mjs"],
