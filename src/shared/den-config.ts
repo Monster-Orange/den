@@ -45,6 +45,7 @@ import {
 
 import { product } from "./product.js";
 import { auditConfig, type ConfigAuditRow } from "./config-audit.js";
+import { statSettled } from "./stat-settled.js";
 const ROOT = getDistRoot();
 const DEN_CONFIG_PATH = path.join(ROOT, product().configFile);
 const USER_CONFIG_PATH = path.join(ROOT, "config", "local", "user.yml");
@@ -399,6 +400,7 @@ export interface UserConfig {
    * to 300) and hidden (default 60 s, 10 to 3600). health-poll.ts.
    */
   health_poll?: { visible_seconds?: unknown; hidden_seconds?: unknown };
+  git_reads?: { at_once?: unknown };
   /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
@@ -505,7 +507,7 @@ export interface UserConfig {
   appearance?: { theme?: string; mode?: string };
   /**
    * The web UI's language (R19): en (the default, never stored), ja or es.
-   * See src/ui/server/ui-language.ts.
+   * See src/shared/ui-language.ts.
    */
   language?: string;
   /**
@@ -578,7 +580,7 @@ export interface UserConfig {
   /**
    * Issue 609: how long Den's process lookups (lsof, ps) wait:
    * first_seconds (5) the first try, retry_seconds (20) the one after
-   * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
+   * (shared/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
    */
   process_lookup?: {
     first_seconds?: unknown;
@@ -656,6 +658,13 @@ export interface UserConfig {
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
      */
     git?: unknown;
+    /**
+     * Issue 52: agents.coach.judge.enabled is the person's, here only.
+     * Judging sends samples, the person's prompts among them, to the model
+     * provider, so an agent writing the distribution's config can't switch
+     * it on (as issue 1072 does for settings that widen an agent's reach).
+     */
+    coach?: { judge?: { enabled?: unknown } | null } | null;
     /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
     runtime_catalog?: unknown;
     /**
@@ -1418,7 +1427,11 @@ export function sectionConfigError(
   }
 }
 
-let checked: { key: string; error: ConfigError | null } | null = null;
+let checked: {
+  key: string;
+  readAt: number;
+  error: ConfigError | null;
+} | null = null;
 
 /**
  * Throw the config's validation error (a ConfigError naming its keys), if it
@@ -1428,16 +1441,24 @@ let checked: { key: string; error: ConfigError | null } | null = null;
  * validation stops them all, not only those that happen to read `orgs:`.
  * A missing file, or one that does not parse, is left to readDenConfig.
  * Memoised on the file's mtime and size: the server checks per request.
+ * Kept only once the file's mtime is more than a clock tick older than the
+ * read (statSettled), so two same-size edits in one tick can't keep the
+ * first one's verdict.
  */
 export function assertDenConfigValid(): void {
   let key: string;
+  let st: fs.Stats;
   try {
-    const st = fs.statSync(DEN_CONFIG_PATH);
+    st = fs.statSync(DEN_CONFIG_PATH);
     key = `${st.mtimeMs}:${st.size}`;
   } catch {
     return;
   }
-  if (checked?.key !== key) {
+  if (
+    checked?.key !== key ||
+    !statSettled({ mtimeMs: st.mtimeMs }, checked.readAt)
+  ) {
+    const readAt = Date.now();
     let error: ConfigError | null = null;
     try {
       const parsed = yaml.parse(fs.readFileSync(DEN_CONFIG_PATH, "utf-8")) as {
@@ -1448,7 +1469,7 @@ export function assertDenConfigValid(): void {
       if (!isConfigError(e)) return;
       error = e;
     }
-    checked = { key, error };
+    checked = { key, readAt, error };
   }
   if (checked.error) throw new ConfigError(checked.error.issues);
 }
@@ -2016,6 +2037,7 @@ export function readMcpConfig(
 export interface AgentsConfig {
   /** Agents that may run at once (default 4); plain sessions never count. */
   max_concurrent?: number;
+  max_per_project?: number;
   /**
    * Persona packs (AG-2a): directories of persona files, relative to the
    * distribution root. Den's default pack is always read first; a pack's
@@ -2105,6 +2127,7 @@ export interface PersonaPackConfig {
 }
 
 export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
+export const DEFAULT_AGENTS_MAX_PER_PROJECT = 0;
 
 /** The keys of `agents:` that are not an agent id. */
 /** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
@@ -2159,6 +2182,7 @@ export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
 
 export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
+  "max_per_project",
   // #70: an agent's token only from its own processes.
   "token_binding",
   // Issue 242: how long an agent's call waits for Den to find its process.
@@ -2301,6 +2325,7 @@ export function readInstallMode(
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  maxPerProject: number;
   /** Issue 1391: the install's mode (resolveInstallMode). */
   mode?: InstallMode;
   /** Issue 1391: which file set it. */
@@ -2412,7 +2437,7 @@ export function helpersBlock(v: unknown): HelperSettings {
   if (v === undefined || v === null) return out;
   if (!isMapping(v))
     throw new Error(
-      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb (got ${JSON.stringify(v)})`,
+      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds (got ${JSON.stringify(v)})`,
     );
   for (const [k, x] of Object.entries(v)) {
     if (k === "row_max") {
@@ -2421,6 +2446,22 @@ export function helpersBlock(v: unknown): HelperSettings {
           `agents.helpers.row_max: must be a whole number from 1 to 1000 (got ${JSON.stringify(x)})`,
         );
       out.rowMax = x;
+      continue;
+    }
+    if (k === "refresh_seconds") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x < 0 || x > 3600)
+        throw new Error(
+          `agents.helpers.refresh_seconds: must be a number of seconds, from 0 to 3600 (got ${JSON.stringify(x)})`,
+        );
+      out.refreshSeconds = x;
+      continue;
+    }
+    if (k === "facts_cache_mb") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 4096)
+        throw new Error(
+          `agents.helpers.facts_cache_mb: must be a number of MB, above 0 and at most 4096 (got ${JSON.stringify(x)})`,
+        );
+      out.factsCacheMb = x;
       continue;
     }
     if (k === "read_max_mb") {
@@ -2440,7 +2481,7 @@ export function helpersBlock(v: unknown): HelperSettings {
           : null;
     if (!key)
       throw new Error(
-        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb)`,
+        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds)`,
       );
     if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 100_000)
       throw new Error(
@@ -2549,6 +2590,17 @@ export function readAgentsConfig(
       ? { ...c, agents: { ...(theirs ?? {}), ...mine } as DenConfig["agents"] }
       : c;
   const out = asConfigError(() => parseAgentsConfig(merged));
+  // Issue 52: judging sends samples off the machine, so only user.yml
+  // switches it on; the distribution's value is never read (doctor names it).
+  const judgeOn = asConfigError(
+    () => userJudgeEnabled(u),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
+  out.coach = out.coach ?? checkCoachConfig(undefined);
+  out.coach = {
+    ...out.coach,
+    judge: { ...out.coach.judge, enabled: judgeOn === true },
+  };
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
     () => {
@@ -2579,6 +2631,17 @@ export function readAgentsConfig(
   return out;
 }
 
+/** user.yml's agents.coach.judge.enabled: true, false or unset (false). */
+function userJudgeEnabled(u: UserConfig): boolean {
+  const v = u.agents?.coach?.judge?.enabled;
+  if (v === undefined || v === null) return false;
+  if (typeof v !== "boolean")
+    throw new Error(
+      `agents.coach.judge.enabled must be true or false (got ${JSON.stringify(v)})`,
+    );
+  return v;
+}
+
 /**
  * Issue 1373: the agents' limits a person may set in user.yml (Settings,
  * `config`), each winning over the distribution's den.yml. Only limits
@@ -2590,6 +2653,7 @@ export function readAgentsConfig(
  */
 export const AGENTS_USER_LIMIT_KEYS = [
   "max_concurrent",
+  "max_per_project",
   "token_peer_wait_ms",
   "turn_read_max_mb",
   "restart_wait_minutes",
@@ -2645,6 +2709,7 @@ const AGENT_LIMIT_DEFAULTS: Readonly<
   Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number>
 > = {
   max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+  max_per_project: DEFAULT_AGENTS_MAX_PER_PROJECT,
   token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
   turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
   restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
@@ -2861,6 +2926,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     );
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+    maxPerProject: DEFAULT_AGENTS_MAX_PER_PROJECT,
     restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
     rotationWaitMs: ROTATION_WAIT_MINUTES_DEFAULT * 60_000,
     unaskedExitWindowMs: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000,
@@ -2982,6 +3048,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.maxConcurrent = max;
   }
+  const per = raw.max_per_project;
+  if (per !== undefined) {
+    if (typeof per !== "number" || !Number.isInteger(per) || per < 0)
+      throw new Error(
+        `agents.max_per_project: must be a whole number, 0 or more (0: no limit) (got ${JSON.stringify(per)})`,
+      );
+    out.maxPerProject = per;
+  }
   const packs = raw.persona_packs;
   if (packs !== undefined && packs !== null) {
     if (!Array.isArray(packs))
@@ -3007,7 +3081,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
+        `${where}: unknown key (agents: takes max_concurrent, max_per_project, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

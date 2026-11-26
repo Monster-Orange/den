@@ -56,7 +56,54 @@ each file the change touched at its merge base and at HEAD, and fails only
 when a count goes up; files the change didn't touch are never judged, and
 there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
-totals per kind and never fails.
+totals per kind and never fails. `--report --since <ref>` prints each kind
+then and now, and the files that went down or up; the `brittle-weekly`
+workflow posts it each Monday against the week before, in its run summary
+(issue 841).
+
+### Adding a Settings row
+
+A new key on the Settings page has three touch points beyond the page:
+
+1. The server must accept it: `tests/unit/server/settings-inventory.test.ts`
+   keeps its own list of the keys `POST /api/settings` accepts. Add the key.
+   A key inside a block (such as `agents_limits.max_per_project`) goes under
+   that block in its `BLOCKS` map, not in the top list.
+2. The rows, their categories, the category order and the module's exports
+   are pinned in `tests/fixtures/settings-registry-order.json`. Write it with
+   `node scripts/settings-pin.mjs --write` in the same PR, never by hand.
+3. Run `node scripts/fast-checks.mjs` before the push.
+
+Two PRs that each pass alone can still fail together, when one adds a row
+and the other changes the pin, so the PR that adds the row writes the pin.
+
+The shared helpers in `tests/unit/helpers/find.ts` (issue 841) make the
+right way the short way, in Chromium and WebKit alike:
+
+```ts
+import { byLabel, byRole, settled, waitFor } from "../helpers/find.js";
+
+await byLabel(page, "Project name").fill("billing");
+await settled(
+  page,
+  "/api/projects",
+  () => byRole(page, "button", "Add project").click(),
+  { method: "POST" },
+);
+await waitFor(page, { row: "billing" });
+await waitFor(page, { dialog: "Delete project" }); // or { dialogClosed }
+```
+
+`byRole` and `byLabel` match the name exactly. `waitFor` ends as soon as the
+state holds, and one that runs out says which state and how long it waited.
+`{ row }` is ARIA role=row (a table row, or an element with `role="row"`);
+many of Den's list rows are buttons, so `byRole(page, "button", name)` finds
+those. `settled` arms the wait before the action, so a fast response is
+never missed. A string is the exact path (`/api/agents` never matches
+`/api/agents/stale`; the query is ignored), and `method` keeps a background
+poll to the same path from settling it; a RegExp matches the whole URL, for
+anything looser. Timeouts default to the suite's wait
+(`DEN_BROWSER_WAIT_MS`).
 
 ### What runs first
 
@@ -235,6 +282,18 @@ export function expect(cells) {
 
 - `issue` matches the file name. `clauses` names each clause the check
   proves, as the issue words it, and `expect` answers each one once.
+- A check reads Den's CLI through its `--json` form and the fields it
+  names, never by splitting or matching the text a person reads. It hands
+  the whole result to `readJson(r, what)` or `doctorChecks(r)` from
+  `gate/lib/read-json.mjs`, never reads `.out` itself: those throw on
+  output that isn't JSON (or a doctor with no rows), so a clause that
+  proves an absence can't pass on nothing. A throw makes every clause of
+  the check an error, never a pass.
+  A command a check needs without `--json` gets one first. When the words
+  themselves are under test (a refusal an agent is told, what a person
+  reads), the check reads the text whole, with a contains or a regex over
+  all of it, never a line or word by position.
+  `tests/unit/test-infra/gate-cli-json-840.test.ts` enforces all of it.
 - The harness reads a row's `detail:` (what was seen), never `note:`.
 - `ok` is `true`, `false`, or `null` for "not run". `null` always comes
   with `skip`: `"person"` for a person's own act (an Allow, an answer, an

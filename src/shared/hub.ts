@@ -142,6 +142,13 @@ export interface HubConfig {
    */
   deliveryAlertMinutes: number;
   /**
+   * hub.delivery_stale_hours (default 6, 0: off; hours, any
+   * number 0 or more): the comment stream open but no delivery for this
+   * long, with comments waiting in Hub's list, and doctor and the bell say
+   * the cursor is stuck.
+   */
+  deliveryStaleHours: number;
+  /**
    * Issue 703 hub.delivery_stream_silence_seconds (default 75, three of
    * Hub's 25 s keep-alives; 0: off; else at least 5): no bytes on the
    * comment stream this long, and Den reopens it.
@@ -194,6 +201,10 @@ export interface HubConfig {
    * `agents.hub_tools_restart` (workspaces.yml) wins over it.
    */
   toolsRestart: boolean;
+  agentTokens: boolean;
+  agentTokenRetrySeconds: number;
+  agentTokenRevokeRetrySeconds: number;
+  agentTokenMaxAgeDays: number;
   /**
    * Issue 750 hub.groups_cache_seconds (default 30, at least 5): how long
    * the agents page's copy of Hub's groups is kept in memory before Den
@@ -241,6 +252,7 @@ type RawHub =
       delivery_held_bell_minutes?: unknown;
       delivery_answer_minutes?: unknown;
       delivery_alert_minutes?: unknown;
+      delivery_stale_hours?: unknown;
       delivery_stream_silence_seconds?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
@@ -250,6 +262,10 @@ type RawHub =
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
       tools_restart?: unknown;
+      agent_tokens?: unknown;
+      agent_token_retry_seconds?: unknown;
+      agent_token_revoke_retry_seconds?: unknown;
+      agent_token_max_age_days?: unknown;
       groups_cache_seconds?: unknown;
       groups?: unknown;
     }
@@ -261,8 +277,6 @@ function rawHub(den: unknown, user: unknown): RawHub {
   return { ...d, ...u };
 }
 
-// Issue 727: in its own module, so `create` can check it before any
-// distribution exists.
 export { hubUrlProblem };
 
 /**
@@ -380,6 +394,15 @@ export function readHubConfig(
     throw new Error(
       "hub.delivery_alert_minutes must be a number, 0 or more (0: off)",
     );
+  const sh = h.delivery_stale_hours;
+  if (
+    sh !== undefined &&
+    sh !== null &&
+    !(typeof sh === "number" && Number.isFinite(sh) && sh >= 0)
+  )
+    throw new Error(
+      "hub.delivery_stale_hours must be a number of hours, 0 or more (0: off)",
+    );
   const sil = h.delivery_stream_silence_seconds;
   if (
     sil !== undefined &&
@@ -419,6 +442,32 @@ export function readHubConfig(
   const tr = h.tools_restart;
   if (tr !== undefined && tr !== null && typeof tr !== "boolean")
     throw new Error("hub.tools_restart must be true or false");
+  const agentTok = h.agent_tokens;
+  if (
+    agentTok !== undefined &&
+    agentTok !== null &&
+    typeof agentTok !== "boolean"
+  )
+    throw new Error("hub.agent_tokens must be true or false");
+  const agentRetry = secs(
+    h.agent_token_retry_seconds,
+    "agent_token_retry_seconds",
+    600,
+  );
+  const revokeRetry = secs(
+    h.agent_token_revoke_retry_seconds,
+    "agent_token_revoke_retry_seconds",
+    600,
+  );
+  const maxAge = h.agent_token_max_age_days;
+  if (
+    maxAge !== undefined &&
+    maxAge !== null &&
+    !(typeof maxAge === "number" && Number.isFinite(maxAge) && maxAge >= 0)
+  )
+    throw new Error(
+      "hub.agent_token_max_age_days must be a number, 0 or more (0: never)",
+    );
   const tries = h.mcp_retry_attempts;
   if (
     tries !== undefined &&
@@ -448,6 +497,7 @@ export function readHubConfig(
     deliveryHeldBellMinutes: heldBell,
     deliveryAnswerMinutes: answer,
     deliveryAlertMinutes: typeof am === "number" ? am : 15,
+    deliveryStaleHours: typeof sh === "number" ? sh : 6,
     deliveryStreamSilenceSeconds: typeof sil === "number" ? sil : 75,
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
@@ -457,6 +507,10 @@ export function readHubConfig(
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
     toolsRestart: tr !== false,
+    agentTokens: agentTok !== false,
+    agentTokenRetrySeconds: agentRetry,
+    agentTokenRevokeRetrySeconds: revokeRetry,
+    agentTokenMaxAgeDays: typeof maxAge === "number" ? maxAge : 30,
     groupsCacheSeconds: groupsCache,
     groups: groupsMode,
   };
@@ -1002,6 +1056,8 @@ export async function hubCall(
   throw new HubCallError(
     "unreachable",
     `Hub answered ${res.status}${said ? `: ${said}` : ""}`,
+    str(body.error),
+    res.status,
   );
 }
 
@@ -1735,6 +1791,66 @@ export async function hubRevoke(
     return true;
   } catch (e) {
     if (e instanceof HubCallError && e.kind === "rejected") return false;
+    throw e;
+  }
+}
+
+export async function hubMintAgentToken(
+  url: string,
+  installToken: string,
+  agent: { id: string; name: string },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{ token: string; tokenId: string }> {
+  const b = await hubCall(
+    `${url}/connect/agent`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(installToken),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ agent_id: agent.id, agent_name: agent.name }),
+    },
+    { timeoutMs: 15_000, ...opts },
+  );
+  const token = str(b.token);
+  const tokenId = str(b.token_id);
+  if (!token || !/^\S{8,}$/.test(token) || !tokenId)
+    throw new HubCallError("refused", "Hub's answer had no agent token");
+  const for_ = (b.agent as { id?: unknown } | null | undefined)?.id;
+  if (for_ !== undefined && for_ !== agent.id)
+    throw new HubCallError(
+      "refused",
+      "Hub's answer was a token for another agent",
+    );
+  return { token, tokenId };
+}
+
+export async function hubRevokeAgentToken(
+  url: string,
+  installToken: string,
+  tokenId: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<boolean> {
+  try {
+    await hubCall(
+      `${url}/connect/revoke`,
+      {
+        method: "POST",
+        headers: {
+          ...bearer(installToken),
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ token_id: tokenId }),
+      },
+      opts,
+    );
+    return true;
+  } catch (e) {
+    if (e instanceof HubCallError && e.kind === "refused" && e.status === 404)
+      return false;
     throw e;
   }
 }

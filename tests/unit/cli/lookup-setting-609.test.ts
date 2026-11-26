@@ -10,7 +10,7 @@ import {
   LOOKUP_LIMITS,
   LOOKUP_TIMEOUTS_MS,
   lookupTimeouts,
-} from "../../../src/ui/cli/proc-lookup.js";
+} from "../../../src/shared/proc-lookup.js";
 import { patchCliRows } from "../../../src/shared/settings-cli-rows.js";
 
 describe("issue 609: the lookup's wait is a Setting", () => {

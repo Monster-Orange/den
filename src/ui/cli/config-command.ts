@@ -84,9 +84,13 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "github.watch_max_interval_seconds": ["github", "watch_max_interval_seconds"],
   "github.api_budget_floor": ["github", "api_budget_floor"],
   "github.watches_max": ["github", "watches_max"],
+  "github.watch_stale_minutes": ["github", "watch_stale_minutes"],
+  "github.watch_max_open_hours": ["github", "watch_max_open_hours"],
+  "github.rerun_look_minutes": ["github", "rerun_look_minutes"],
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
+  "web.tools_probe_seconds": ["web_ready", "tools_probe_seconds"],
   // Issue 819: new-device requests and wrong codes.
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
@@ -178,6 +182,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // Issue 1022: how often the page polls health, visible and hidden.
   "health_poll.visible_seconds": ["health_poll", "visible_seconds"],
   "health_poll.hidden_seconds": ["health_poll", "hidden_seconds"],
+  "git_reads.at_once": ["git_reads", "at_once"],
 };
 
 /** Issue 532: a terminal limit's effective value (user.yml over den.yml). */

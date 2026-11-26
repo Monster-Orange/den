@@ -31,6 +31,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { AGENT_ACTOR_RE } from "./agent-actor.js";
+import { readRecord } from "./agents/records.js";
 import { isServerScope } from "./agents/server-agent.js";
 import { writeFileAtomic } from "./atomic-write.js";
 import { WEB_SECRET_FILE } from "./web-secret.js";
@@ -254,7 +256,9 @@ export type OperatorAct =
   | "agent-say"
   | "agent-relaunch"
   | "agent-restart"
-  | "agents-restart-stale";
+  | "agents-restart-stale"
+  | "approval-allow"
+  | "setting-undo";
 
 /**
  * The person-only requests the test operator may make, and nothing else.
@@ -272,6 +276,11 @@ export type OperatorAct =
  *    agent-relaunch's rules: a project agent only, and (agent-routes.ts)
  *    only the bed's own agents, those Den marked testBed; the bulk one
  *    filters to them before it does anything (testBedOnly).
+ *  - approval-allow: Allow of a held write (1391, 1414). Allow only, and
+ *    only one a bed's own agent asked for (testBedAsker, checked in
+ *    approval-routes.ts). Never through the edge.
+ *  - setting-undo: Undo of a setting a bed's own agent changed without
+ *    asking (1391, 1414; index.ts). Never through the edge.
  */
 const ACTS: readonly [OperatorAct, string, RegExp][] = [
   ["terminal-start", "POST", /^\/api\/workspaces\/[^/]+\/sessions$/],
@@ -289,6 +298,9 @@ const ACTS: readonly [OperatorAct, string, RegExp][] = [
     /^\/api\/workspaces\/[^/]+\/agents\/[^/]+\/restart$/,
   ],
   ["agents-restart-stale", "POST", /^\/api\/agents\/restart-stale$/],
+  // A held write's id, as approval-routes.ts DECIDE_PATH has it.
+  ["approval-allow", "POST", /^\/api\/approvals\/[A-Za-z0-9_-]{16}\/decide$/],
+  ["setting-undo", "POST", /^\/api\/settings\/undo$/],
 ];
 
 /**
@@ -300,6 +312,32 @@ export function testBedOnly<T extends { id: string; workspace: string }>(
   isTestBed: (a: T) => boolean,
 ): T[] {
   return list.filter((a) => !isServerScope(a.workspace) && isTestBed(a));
+}
+
+/**
+ * The held writes the test operator
+ * may Allow, and no others. A live check proves Allow and Undo with a
+ * setting change (gate 1391's rows). Others reach past the test install
+ * (GitHub, the machine-wide gate folder, the shared engine, the host), and
+ * the agent that asks and the operator that Allows belong to one run: an
+ * agent Allowing its own held writes, which the fixture person never may. Adding one
+ * needs a live check that names it and a ruling.
+ */
+export const OPERATOR_HELD_ACTIONS: readonly string[] = ["setting_change"];
+
+/**
+ * Whether `actor` (a held write's asker) is one of the bed's
+ * own agents: an agent whose record Den marked testBed when it started it
+ * on the test-person path. Anything else, a record that can't
+ * be read included: not the bed's.
+ */
+export function testBedAsker(stateDir: string, actor: string): boolean {
+  if (!AGENT_ACTOR_RE.test(actor)) return false;
+  try {
+    return readRecord(stateDir, actor.slice("agent:".length))?.testBed === true;
+  } catch {
+    return false;
+  }
 }
 
 /** The act a request is, or null when it is none of them. */

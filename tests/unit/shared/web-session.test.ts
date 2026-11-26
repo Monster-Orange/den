@@ -295,6 +295,7 @@ describe("the sign-in config (web.allow_plain_http_remote; web.session is ignore
       // den#143: `web up`'s readiness waits.
       readyProbeSeconds: 10,
       startWaitSeconds: 120,
+      toolsProbeSeconds: 30,
       // Issue 819: the new-device limits' permissive defaults.
       pairRequestsPerMinute: 30,
       approveAttempts: 10,
