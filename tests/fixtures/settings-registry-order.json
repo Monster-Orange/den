@@ -5,6 +5,8 @@
     ["server.crash_loop_wait", "server"],
     ["server.report_screenshot_days", "server"],
     ["server.server_log_max", "server"],
+    ["server.slow_request_ms", "server"],
+    ["server.event_loop_lag_ms", "server"],
     ["server.report_screenshot_max", "server"],
     ["server.report_screenshot_hub_max", "server"],
     ["server.report_screenshot_hub_wait", "server"],

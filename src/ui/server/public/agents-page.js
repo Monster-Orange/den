@@ -1,7 +1,15 @@
 /**
  * The Agents tab (AG-4a-term, AG spec §5d): every session and agent of
- * the workspaces in view, grouped by workspace (the scope bar, or the
- * page's ?ws=), and up to four terminal panes beside the list.
+ * the workspaces in view (the scope bar, or the page's ?ws=), and up to
+ * four terminal panes beside the list.
+ *
+ * One list across projects, in four bands sorted by who needs
+ * the person (agent-bands.js, the kit's attention.js): Needs you, Done not
+ * seen, Working, Idle. Each row has its mark and chip; on All projects its
+ * project tag; the server agent is ranked like any other, tagged "Server".
+ * Opening an agent is seen: Done turns Idle at once (the server keeps the
+ * mark per person, POST /api/notifications/looking). Stopped agents stay
+ * in one group at the bottom, in the person's order.
  *
  * A pane is xterm.js (served from node_modules, /vendor/*) on a WebSocket
  * to /api/sessions/<id>/io: the session host's attach, so the pane gets
@@ -142,6 +150,21 @@ import { termPane } from "/term-pane.js";
 import { makeComposer } from "/agent-composer.js";
 import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
 import {
+  attnSub,
+  bandGroup,
+  bandsOf,
+  byNeed,
+  chipHtml,
+  markHtml,
+  metaHtml,
+  needsWhy,
+  personOrdered,
+  railNeeds,
+  rowState,
+  sinceShort,
+  tagHtml,
+} from "/agent-bands.js";
+import {
   attachFiles,
   guardPageDrops,
   pickFiles,
@@ -220,8 +243,12 @@ const PHONE = "(max-width: 720px)";
 const MAX_NAME = 40;
 const REFRESH_MS = 5_000;
 
+const BY = ["need", "project", "group"];
+
 const st = {
   root: null,
+  seenNow: new Map(),
+  loadFailed: false,
   /**
    * Issue 1407: each agent's answer to a restart for its tools (ws\0id →
    * now, turn, job with what and how long, unknown), shown under its row
@@ -232,10 +259,9 @@ const st = {
   drag: null,
   /** Issue 96: a drag just ended, so the click it makes is swallowed. */
   dragClick: false,
-  /** Issue 96: on a phone, the project whose agents show Up and Down. */
-  reorderWs: null,
   /** Issue 226: on a phone, whether the Stopped group's agents show them. */
   reorderStopped: false,
+  reorderBand: null,
   /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
   reconnect: reconnectOptions(undefined),
   /** 0.4.45: /api/workspaces, for the projects' names (projName). */
@@ -459,12 +485,15 @@ const urlWorkspace = () => {
  * or isn't known: never All in its place), else the scope bar's view.
  */
 function viewWorkspaces() {
+  return pickedWorkspace() ? [pickedWorkspace()] : (st.data?.workspaces ?? []);
+}
+
+function pickedWorkspace() {
   const all = st.data?.workspaces ?? [];
   const ws = urlWorkspace();
-  if (ws) return [ws];
-  if (st.scope && st.scope !== "all" && all.includes(st.scope))
-    return [st.scope];
-  return all;
+  if (ws) return ws;
+  if (st.scope && st.scope !== "all" && all.includes(st.scope)) return st.scope;
+  return null;
 }
 
 function stateTone(r) {
@@ -1005,6 +1034,58 @@ function waitingText(r) {
   return s && s !== k ? s : t("ag.waiting");
 }
 
+function seenMap() {
+  const out = new Map(st.seenNow);
+  if (typeof document !== "undefined" && document.visibilityState !== "hidden")
+    for (const id of visibleIds()) {
+      const r = rowOf(id);
+      if (r?.attn === "done") out.set(id, r.attnSince);
+    }
+  return out;
+}
+
+function markOpened(id) {
+  const r = rowOf(id);
+  if (!r || r.kind !== "agent") return;
+  if (r.attn === "done") st.seenNow.set(id, r.attnSince);
+  sayLooking([r.agent]);
+}
+
+function sayLooking(agents) {
+  // busy-ok: a background ping while the tab is looked at; no button
+  if (agents.length)
+    void api("POST", "/api/notifications/looking", { agents }).catch(() => {});
+}
+
+function allProjects() {
+  return viewWorkspaces().length > 1;
+}
+
+function attnParts(r, attn) {
+  const ago = (iso) =>
+    iso && Number.isFinite(Date.parse(iso))
+      ? formatTime(iso, { style: "relative" })
+      : "";
+  if (r.kind !== "agent") return { detail: cwdText(r) };
+  if (attn === "needs") {
+    const w = needsWhy(r);
+    return {
+      detail: w && !w.startsWith("ag.whyLong.") ? w : waitingText(r),
+      time: r.attnSince ? sinceShort(r.attnSince) : "",
+    };
+  }
+  if (attn === "done")
+    return {
+      detail: r.attnSince
+        ? t("ag.meta.finished", { ago: ago(r.attnSince) })
+        : "",
+    };
+  if (attn === "working")
+    return { detail: r.attnSince ? sinceShort(r.attnSince) : "" };
+  if (r.attn === "done") return { detail: t("ag.meta.seen") };
+  return { detail: r.attnSince ? ago(r.attnSince) : cwdText(r) };
+}
+
 function rowHtml(r) {
   if (isStopped(r)) return stoppedHtml(r);
   const open = st.open.includes(r.id);
@@ -1012,10 +1093,18 @@ function rowHtml(r) {
     r.kind === "agent"
       ? nameHtml(r)
       : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
-  const right = r.waiting
-    ? `<span class="wbdg">${esc(waitingText(r))}</span>`
-    : `<span class="st">${esc(r.activity ? t(`ag.activity.${r.activity}`) : stateText(r.state))}</span>`;
-  const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
+  const seen = seenMap();
+  const attn = rowState(r, seen);
+  const right = chipHtml(r, seen);
+  const meta = metaHtml({
+    runtime: r.runtimeLabel || r.runtime,
+    ...attnParts(r, attn),
+  });
+  const ptag = tagHtml(r, {
+    all: allProjects(),
+    name: projName,
+    pc: (ws) => projectColour(st.projects, ws),
+  });
   // D62: the helpers chip is on line 2, before the meta, never in the dot's
   // column (it pushed this row's name right of the others').
   const chip = r.kind === "agent" ? helperBadgeHtml(r) : "";
@@ -1055,18 +1144,20 @@ function rowHtml(r) {
       ? `<span class="agtags">${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
       : "";
   const button =
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}"${pcAttr(r.workspace)}` +
+    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${pcAttr(r.workspace)}` +
     ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
-    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + (said ? ` · ${said}` : ""))}">` +
+    ` data-attn="${attn}"` +
+    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + ` · ${t(`ag.chip.${attn}`)}` + (said ? ` · ${said}` : ""))}">` +
     gripHtml(r) +
-    `<span class="den-dot ${r.waiting ? "warn" : stateTone(r)}" aria-hidden="true"></span>` +
+    markHtml(attn) +
     `<span class="nm">${tileHtml(r.kind === "agent" ? displayName(r) : r.label)}${nm}</span>${right}` +
     (chip
-      ? `<span class="agl2">${chip}${meta ? `<span class="meta">${esc(meta)}</span>` : ""}</span>`
-      : meta
-        ? `<span class="meta">${esc(meta)}</span>`
+      ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta" data-meta>${ptag}${meta}</span>` : ""}</span>`
+      : meta || ptag
+        ? `<span class="meta" data-meta>${ptag}${meta}</span>`
         : "") +
     tags +
+    (attn ? `<span class="agchev" data-chev aria-hidden="true">›</span>` : "") +
     `</button>`;
   // D28: a running agent whose rotation is due: its callout, with buttons
   // (before, only a tag: nothing to press).
@@ -1177,17 +1268,24 @@ function paintList() {
       `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
     );
   if (!st.data) {
-    setList(el, notes.join(""));
+    setList(
+      el,
+      notes.join("") +
+        (st.loadFailed
+          ? `<div class="agnote" data-note="load-failed" role="status">${esc(t("ag.list.failed"))} <button type="button" class="den-btn sm" data-act="retry-list">${esc(t("ag.list.retry"))}</button> ${esc(t("ag.list.keepRunning"))}</div>`
+          : `<div class="agskel" role="status" aria-label="${esc(t("ag.list.loading"))}"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>`),
+    );
     return;
   }
-  // ON-6: the server agent's group, "Server", first, whatever the view.
   // D71: agents whose workspace was deleted, under its old name.
   const orphans = st.data.sessions.filter(
     (s) => s.orphan && belongsOn(PAGE, s),
   );
   const shown = [
     ...new Set([
-      ...(st.data.sessions.some((s) => s.server) ? [SERVER_WS] : []),
+      ...(!pickedWorkspace() && st.data.sessions.some((s) => s.server)
+        ? [SERVER_WS]
+        : []),
       ...viewWorkspaces(),
       ...orphans.map((s) => s.workspace),
     ]),
@@ -1247,49 +1345,74 @@ function paintList() {
     );
   // Issue 482: the Agents page says once where the shells went.
   if (PAGE !== "terminal") notes.push(movedNote());
-  // D37: running ones under their workspace; the agents that aren't
-  // running in one "Stopped (n)" group at the bottom.
   const inView = shown.flatMap((ws) =>
     st.data.sessions.filter((s) => s.workspace === ws && belongsOn(PAGE, s)),
   );
   const stopped = inView.filter(inStopped);
-  const groups = shown
-    .map((ws) => ({
-      ws,
-      rows: inView.filter((s) => s.workspace === ws && !inStopped(s)),
-    }))
-    .filter((g) => g.rows.length > 0);
-  // Issue 750: without Hub's groups, one line says why (By project as
-  // before); with them, By project or By group.
-  // Issue 1407: two or more agents need a restart for their tools: one
-  // Restart for them all, and Restart all now for those that wait.
   if (PAGE !== "terminal") {
     const bar = toolsBarHtml(inView);
     if (bar) notes.push(bar);
   }
   const gLine = PAGE === "terminal" ? "" : groupsLineHtml(st.groupsRead, t);
   if (gLine) notes.push(gLine);
+  const running = inView.filter((s) => !inStopped(s));
+  const need = (xs) => byNeed(xs, { seenNow: seenMap() });
   const byGroup =
     PAGE !== "terminal" && st.by === "group" && groupsOffered(st.groupsRead);
-  const body =
-    PAGE === "terminal"
-      ? terminalsBodyHtml()
-      : byGroup
-        ? groupsViewHtml(inView, st.groupsRead.groups, {
-            t,
-            rowHtml,
-            groupsUrl: st.groupsRead.groupsUrl,
-          })
-        : groups.length || stopped.length
-          ? groups
-              .map(
-                (g) =>
-                  `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)}><div class="wsh"><span>${wsLinkHtml(g.ws)}</span><span>${reorderButtonHtml(g)}${esc(g.rows.length)}</span></div>` +
-                  g.rows.map((r) => reorderRowHtml(g, r)).join("") +
-                  `</div>`,
-              )
-              .join("") + stoppedGroupHtml(stopped)
-          : `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
+  const byProject = PAGE !== "terminal" && st.by === "project";
+  const none = `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
+  let body;
+  if (PAGE === "terminal") body = terminalsBodyHtml();
+  else if (byGroup)
+    body = groupsViewHtml(inView, st.groupsRead.groups, {
+      t,
+      rowHtml,
+      groupsUrl: st.groupsRead.groupsUrl,
+      order: need,
+    });
+  else if (byProject) {
+    const groups = shown
+      .map((ws) => ({
+        ws,
+        rows: need(running.filter((s) => s.workspace === ws)),
+      }))
+      .filter((g) => g.rows.length > 0);
+    body =
+      groups.length || stopped.length
+        ? groups
+            .map(
+              (g, i) =>
+                `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)} role="group" aria-labelledby="agp-${i}"><div class="wsh"><span id="agp-${i}">${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
+                g.rows.map((r) => rowHtml(r)).join("") +
+                `</div>`,
+            )
+            .join("") + stoppedGroupHtml(stopped)
+        : none;
+  } else {
+    const bands = bandsOf(running, { seenNow: seenMap() });
+    body =
+      bands.length || stopped.length
+        ? bands
+            .map(
+              (b) =>
+                `<div class="wsg agband" data-band="${b.state}" role="group" aria-labelledby="agb-${b.state}"><div class="wsh"><span id="agb-${b.state}">${esc(t(`ag.band.${b.state}`))}</span><span class="n" data-count>${esc(b.rows.length)}</span></div>` +
+                reorderBandHtml(b) +
+                b.rows
+                  .map((r) =>
+                    orderRowHtml(
+                      rowHtml(r),
+                      r,
+                      phone() &&
+                        st.reorderBand === b.state &&
+                        runningMovable(r),
+                    ),
+                  )
+                  .join("") +
+                `</div>`,
+            )
+            .join("") + stoppedGroupHtml(stopped)
+        : none;
+  }
   setList(
     el,
     notes.join("") +
@@ -1347,11 +1470,9 @@ function fitListFloor() {
   let px = upTo(rows[Math.min(LIST_FLOOR_ROWS, rows.length) - 1]);
   const right = agx.querySelector("#agr");
   const pane = right?.querySelector(".pane:not([hidden])");
-  if (pane && document.querySelector(".den-dock.open")) {
-    // The runs dock open takes up to half the screen: the page scrolls to
-    // the pane's To line above it anyway, and the list keeps its first row.
-    px = Math.max(LIST_FLOOR_MIN_PX, upTo(rows[0]));
-  } else if (pane) {
+  if (pane) {
+    if (document.querySelector(".den-dock.open"))
+      px = Math.max(LIST_FLOOR_MIN_PX, upTo(rows[0]));
     const gap = parseFloat(getComputedStyle(agx).rowGap) || 0;
     // The right side's least: the pane's minimum, plus what sits beside it
     // there (the tab strip in Tabs).
@@ -1440,19 +1561,17 @@ function terminalsHref() {
     : "/terminals";
 }
 
-/** Issue 750: the person's By project or By group, kept in this browser. */
 function savedBy() {
   try {
-    return localStorage.getItem("den-agents-by") === "group"
-      ? "group"
-      : "project";
+    const v = localStorage.getItem("den-agents-by");
+    return BY.includes(v) ? v : "need";
   } catch {
-    return "project";
+    return "need";
   }
 }
 
 function setBy(by) {
-  st.by = by === "group" ? "group" : "project";
+  st.by = BY.includes(by) ? by : "need";
   try {
     localStorage.setItem("den-agents-by", st.by);
   } catch {
@@ -1531,7 +1650,7 @@ function stoppedGroupHtml(rows) {
 
 /**
  * #80: whether session `s` belongs in this view: the view's projects, the
- * server agent (it spans projects) and an agent whose project was deleted
+ * server agent (it spans projects; in All projects only) and an agent whose project was deleted
  * (D71). 0.4.44 added the open tabs' projects too, which mixed another
  * project's agents into a project's list; a tab from another project is
  * now left out instead (hideOtherProjects), so the list always has the
@@ -1541,7 +1660,8 @@ function inView(s) {
   if (!s) return false;
   // Issue 482: a shell is on the Terminals page, an agent on Agents.
   if (!belongsOn(PAGE, s)) return false;
-  if (s.server || s.workspace === SERVER_WS || s.orphan) return true;
+  if (s.server || s.workspace === SERVER_WS) return !pickedWorkspace();
+  if (s.orphan) return true;
   return viewWorkspaces().includes(s.workspace);
 }
 
@@ -1662,38 +1782,18 @@ async function paneFollowsProject() {
   if (latest) await openPane(latest.id);
 }
 
-/**
- * The Agents page's count: "2 agents · 1 shell · 0 waiting · <scope>". A
- * plain terminal is a shell, not an agent; a part that is 0 is left out,
- * except waiting (and agents, when there is nothing at all).
- */
-export function subText(rows, waiting, scope) {
-  const agents = rows.filter((r) => r.kind === "agent").length;
-  const shells = rows.length - agents;
-  const parts = [];
-  if (agents || !shells)
-    parts.push(
-      t(agents === 1 ? "ag.sub.agent" : "ag.sub.agents", { n: agents }),
-    );
-  if (shells)
-    parts.push(
-      t(shells === 1 ? "ag.sub.shell" : "ag.sub.shells", { n: shells }),
-    );
-  parts.push(t("ag.sub.waiting", { w: waiting }));
-  if (scope) parts.push(scope);
-  return parts.join(" · ");
-}
-
 function paintSub() {
   const rows = visibleRows();
-
-  const waiting = rows.filter((r) => r.waiting).length;
   const count = st.root.querySelector("#ag-count");
   if (count)
     count.textContent =
       PAGE === "terminal"
         ? terminalsCountText(rows.length, st.scopeLabel, t)
-        : subText(rows, waiting, st.scopeLabel);
+        : attnSub(
+            rows.filter((r) => !inStopped(r)),
+            st.scopeLabel,
+            seenMap(),
+          );
   const url = st.root.querySelector("#ag-url");
   if (url) url.textContent = location.pathname + location.search;
   // Issue 482: the rail lights the page's own item (Terminals or Agents):
@@ -1829,14 +1929,21 @@ async function refreshOnce() {
   } catch {
     /* the last list stays; the next ask may answer */
   }
+  st.loadFailed = !st.data && !st.signedOut;
   followAgents();
-  // D32: the rail's Agents badge: helpers running now.
   window.denShell?.setState?.({
     helpersRunning: (st.data?.sessions ?? []).reduce(
       (n, r) => n + (r.helpers?.running ?? 0),
       0,
     ),
+    agentsNeedYou: railNeeds(
+      (st.data?.sessions ?? []).filter((r) => !inStopped(r)),
+    ),
   });
+  for (const [id, at] of st.seenNow) {
+    const r = rowOf(id);
+    if (!r || r.attn !== "done" || r.attnSince !== at) st.seenNow.delete(id);
+  }
   st.scopeLabel = scopeLabelFor(viewWorkspaces());
   hideOtherProjects();
   paintList();
@@ -2252,6 +2359,7 @@ async function pick(id, add) {
     st.claimOnOpen = live;
   } else if (st.focusOnOpen === id) st.focusOnOpen = null;
   if (st.panes.has(id)) {
+    markOpened(id);
     paintLayout();
     paintList();
     if (!add) {
@@ -3303,6 +3411,7 @@ function pathAnchor(p, e) {
 }
 
 async function openPane(id, { front = true } = {}) {
+  markOpened(id);
   if (st.panes.has(id)) {
     st.panes.get(id).term?.focus();
     return;
@@ -3600,25 +3709,30 @@ const agentPath = (r, verb) =>
 // ── Issue 96: a project's agents in the person's order ─────────────────
 // A grip and a pointer drag (mouse, pen and touch), ⋯ Move up, Move down
 // and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in
-// the project's header (Up and Down per row, then Done). A row moves
-// inside its group (agent-order.js); the server stores the order in the
-// person's user config and every list follows.
 
-/** The agent ids of r's group, as the list shows them. */
-const groupOf = (r) => orderGroup(st.data?.sessions ?? [], r, inStopped);
+const groupOf = (r) =>
+  inStopped(r)
+    ? orderGroup(st.data?.sessions ?? [], r, inStopped)
+    : bandGroup(
+        (st.data?.sessions ?? []).filter((s) => !inStopped(s)),
+        r,
+        { seenNow: seenMap() },
+      );
 
 /** The grip a pointer drags a row by (any pointer: mouse, pen, touch). */
 const gripHtml = (r) =>
-  orderable(r, SERVER_WS)
+  orderable(r, SERVER_WS) && (inStopped(r) || groupOf(r).length > 0)
     ? `<span class="agrip" data-grip="" role="img" aria-label="${esc(t("ag.ord.gripOne", { id: displayName(r) }))}" title="${esc(t("ag.ord.grip"))}">⠿</span>`
     : "";
 
-/** A phone's Reorder (or Done) in a project's header, when it has two agents to order. */
-function reorderButtonHtml(g) {
-  if (!phone() || g.ws === SERVER_WS) return "";
-  if (g.rows.filter((r) => orderable(r, SERVER_WS)).length < 2) return "";
-  const on = st.reorderWs === g.ws;
-  return `<button type="button" class="den-btn sm agord-t" data-act="reorder" data-ws="${esc(g.ws)}" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderOne", { ws: projName(g.ws) }))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button>`;
+const runningMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
+
+function reorderBandHtml(b) {
+  if (!phone() || !personOrdered(b.state) || !b.rows.some(runningMovable))
+    return "";
+  const on = st.reorderBand === b.state;
+  const band = t(`ag.band.${b.state}`);
+  return `<div class="agord-sb"><button type="button" class="den-btn sm agord-t" data-act="reorder" data-band="${esc(b.state)}" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderBand", { band }))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button></div>`;
 }
 
 /**
@@ -3633,15 +3747,6 @@ function reorderStoppedHtml(rows) {
 
 /** Issue 226: a stopped row that can move: its group has two or more. */
 const stoppedMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
-
-/** A running row; in a phone's Reorder, with its Up and Down beside it. */
-function reorderRowHtml(g, r) {
-  return orderRowHtml(
-    rowHtml(r),
-    r,
-    phone() && st.reorderWs === g.ws && orderable(r, SERVER_WS),
-  );
-}
 
 /** `html`, the row of `r`; with its Up and Down beside it when `on`. */
 function orderRowHtml(html, r, on) {
@@ -3742,6 +3847,10 @@ function showMoved(r, to) {
   const rest = all.filter((s) => s !== r);
   const at = rest.indexOf(other) + (to.after ? 1 : 0);
   st.data.sessions = [...rest.slice(0, at), r, ...rest.slice(at)];
+  let n = 0;
+  for (const s of st.data.sessions)
+    if (s.kind === "agent" && s.agent && s.workspace === r.workspace)
+      s.place = n++;
   paintList();
 }
 
@@ -3787,7 +3896,8 @@ function wireOrder(agl) {
       !over ||
       over.kind !== "agent" ||
       over.workspace !== r.workspace ||
-      inStopped(over) !== inStopped(r)
+      inStopped(over) !== inStopped(r) ||
+      !groupOf(r).includes(over.agent)
     )
       return null;
     const box = b.getBoundingClientRect();
@@ -6150,6 +6260,7 @@ export async function mountAgentsPage(root) {
       if (which === "switch-ws") return void switchWorkspace(act);
       if (which === "show-all") return void showAllActive();
       if (which === "switch-back") return void switchBack();
+      if (which === "retry-list") return void refresh();
       // #80: the helpers badge opens or closes them under its agent.
       if (which === "helpers-toggle") {
         const k = `${act.dataset.ws}\0${act.dataset.agent}`;
@@ -6162,9 +6273,9 @@ export async function mountAgentsPage(root) {
       if (which === "reorder") {
         if (act.hasAttribute("data-stopped"))
           st.reorderStopped = !st.reorderStopped;
-        else
-          st.reorderWs =
-            st.reorderWs === act.dataset.ws ? null : act.dataset.ws;
+        else if (act.dataset.band)
+          st.reorderBand =
+            st.reorderBand === act.dataset.band ? null : act.dataset.band;
         paintList();
         return;
       }
@@ -6442,11 +6553,7 @@ export async function mountAgentsPage(root) {
       .map((id) => rowOf(id))
       .filter((r) => r?.kind === "agent")
       .map((r) => r.agent);
-    // busy-ok: a background ping while the tab is looked at; no button
-    if (agents.length)
-      void api("POST", "/api/notifications/looking", { agents }).catch(
-        () => {},
-      );
+    sayLooking(agents);
   };
   setInterval(looking, 4000);
   window.addEventListener("focus", looking);

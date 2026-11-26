@@ -49,6 +49,7 @@ export const UI_MODULES: readonly string[] = [
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
   "/agent-order.js",
+  "/agent-bands.js",
   // Issue 750: the agents page's By group view.
   "/agent-groups.js",
   // Issue 1407: one agent's answer to a restart for its tools.
@@ -198,6 +199,7 @@ export const KIT_FILES: readonly string[] = [
   "group-header.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  "attention.js",
   // Issue 789: a preview in a sandboxed frame, and the script inside it.
   "preview.js",
   "preview-frame.js",
