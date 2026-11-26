@@ -9,7 +9,6 @@
  */
 
 import { checkCoachConfig, type CoachSettings } from "./coach/settings.js";
-import { checkEnvHoldConfig, type EnvHoldSettings } from "./agents/env-hold.js";
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { filesBlock, type FileSettings } from "./agents/file-deny.js";
@@ -724,11 +723,6 @@ export interface UserConfig {
      * (shared/issue-write.ts).
      */
     issue_writes?: unknown;
-    env_hold?: unknown;
-    env_allow?: unknown;
-    env_allow_agents?: unknown;
-    env_guard?: unknown;
-    env_hold_existing?: unknown;
     issue_writes_per_hour?: unknown;
     /** Issue 1127: how old a repo's visibility may be for the words check. */
     issue_writes_visibility_minutes?: unknown;
@@ -1203,30 +1197,6 @@ export function setUserRuntimeBin(id: string, bin: string | null): void {
   if (Object.keys(agents).length) next.agents = agents;
   else delete next.agents;
   writeUserConfig(next);
-}
-
-export function setUserEnvHoldExisting(): void {
-  const cfg = readUserConfig();
-  writeUserConfig({
-    ...cfg,
-    agents: { ...(cfg.agents ?? {}), env_hold_existing: true },
-  });
-}
-
-export function addUserEnvAllow(names: readonly string[]): void {
-  const cfg = readUserConfig();
-  const was = Array.isArray(cfg.agents?.env_allow)
-    ? (cfg.agents!.env_allow as unknown[]).filter(
-        (n): n is string => typeof n === "string",
-      )
-    : [];
-  writeUserConfig({
-    ...cfg,
-    agents: {
-      ...(cfg.agents ?? {}),
-      env_allow: [...new Set([...was, ...names])].sort(),
-    },
-  });
 }
 
 /**
@@ -2166,9 +2136,6 @@ export interface AgentsConfig {
    * `{ clis: [...], dirs: [...] }` (agents/api-only.ts).
    */
   api_only_engines?: { clis?: unknown; dirs?: unknown };
-  env_hold?: unknown;
-  env_allow?: unknown;
-  env_guard?: unknown;
   /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
@@ -2283,11 +2250,6 @@ export const AGENTS_RESERVED_KEYS = [
   "issue_writes_per_hour",
   "issue_writes_visibility_minutes",
   "issue_writes_public",
-  "env_hold",
-  "env_allow",
-  "env_allow_agents",
-  "env_guard",
-  "env_hold_existing",
   // Issue 1129: the restart queue (agents.resume.*), never an agent id.
   "resume",
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
@@ -2494,7 +2456,6 @@ export interface ResolvedAgentsConfig {
   roles?: RolesConfig;
   /** den#3: agents.subagents and agents.claude_ai_connectors, defaults applied. */
   subagents?: SubagentSettings;
-  envHold?: EnvHoldSettings;
 }
 
 /** `agents.helpers` (D32) checked; a bad key or value throws naming it. */
@@ -2680,12 +2641,6 @@ export function readAgentsConfig(
     },
     path.relative(ROOT, USER_CONFIG_PATH),
   );
-  out.envHold = asConfigError(
-    () => checkEnvHoldConfig((u.agents ?? {}) as Record<string, unknown>),
-    path.relative(ROOT, USER_CONFIG_PATH),
-  );
-  if (out.envHold && out.mode === "personal" && !out.envHold.holdSet)
-    out.envHold.hold = [];
   // A signing key is per machine: user.yml's agents.git wins.
   const myGit = u.agents?.git;
   // An agent called git (grants or sandbox only) is no signing key.
@@ -3108,17 +3063,6 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.exitedShellMinutes = exitedMin;
   }
-  for (const k of [
-    "env_hold",
-    "env_allow",
-    "env_allow_agents",
-    "env_guard",
-    "env_hold_existing",
-  ])
-    if ((raw as Record<string, unknown>)[k] !== undefined)
-      throw new Error(
-        `agents.${k}: set it in config/local/user.yml, never in the distribution's config (an agent can edit a repo)`,
-      );
   out.coach = checkCoachConfig(raw.coach);
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [
@@ -3229,9 +3173,13 @@ export interface SessionsConfig {
    * failed, and the bell says so) (default 30; 0: no look).
    */
   host_restart_check_seconds?: number;
+  size_claim_grace_seconds?: number;
+  size_leave_grace_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
+export const DEFAULT_SIZE_CLAIM_GRACE_SECONDS = 30;
+export const DEFAULT_SIZE_LEAVE_GRACE_SECONDS = 3;
 export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
 export const DEFAULT_HOST_RESTART_CHECK_SECONDS = 30;
 export const DEFAULT_PTY_WARN_ABOVE = 400;
@@ -3247,6 +3195,8 @@ export interface ResolvedSessionsConfig {
   hostRestartWaitSeconds: number;
   hostRestartNote: boolean;
   hostRestartCheckSeconds: number;
+  sizeClaimGraceSeconds: number;
+  sizeLeaveGraceSeconds: number;
 }
 
 const SESSIONS_KEYS = [
@@ -3258,6 +3208,8 @@ const SESSIONS_KEYS = [
   "host_restart_wait_seconds",
   "host_restart_note",
   "host_restart_check_seconds",
+  "size_claim_grace_seconds",
+  "size_leave_grace_seconds",
 ];
 
 /**
@@ -3295,6 +3247,8 @@ export const SESSIONS_SETTINGS_KEYS = [
   "pty_close_seconds",
   "pty_warn_above",
   "pty_machine_warn_percent",
+  "size_claim_grace_seconds",
+  "size_leave_grace_seconds",
 ] as const;
 
 /** What is wrong with one sessions.<key> value, in den-config's words; null: fine. */
@@ -3325,6 +3279,8 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
     hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
     hostRestartNote: true,
     hostRestartCheckSeconds: DEFAULT_HOST_RESTART_CHECK_SECONDS,
+    sizeClaimGraceSeconds: DEFAULT_SIZE_CLAIM_GRACE_SECONDS,
+    sizeLeaveGraceSeconds: DEFAULT_SIZE_LEAVE_GRACE_SECONDS,
   };
   const check = raw.host_restart_check_seconds;
   if (check !== undefined) {
@@ -3406,6 +3362,32 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
         `sessions.close_grace_seconds: must be a number of seconds, 0 to 300 (got ${JSON.stringify(grace)})`,
       );
     out.closeGraceSeconds = grace;
+  }
+  const claim = raw.size_claim_grace_seconds;
+  if (claim !== undefined) {
+    if (
+      typeof claim !== "number" ||
+      !Number.isFinite(claim) ||
+      claim < 0 ||
+      claim > 3600
+    )
+      throw new Error(
+        `sessions.size_claim_grace_seconds: must be a number of seconds, 0 to 3600 (got ${JSON.stringify(claim)})`,
+      );
+    out.sizeClaimGraceSeconds = claim;
+  }
+  const leave = raw.size_leave_grace_seconds;
+  if (leave !== undefined) {
+    if (
+      typeof leave !== "number" ||
+      !Number.isFinite(leave) ||
+      leave < 0 ||
+      leave > 300
+    )
+      throw new Error(
+        `sessions.size_leave_grace_seconds: must be a number of seconds, 0 to 300 (got ${JSON.stringify(leave)})`,
+      );
+    out.sizeLeaveGraceSeconds = leave;
   }
   const max = raw.max_concurrent;
   if (max !== undefined) {

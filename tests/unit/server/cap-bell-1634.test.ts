@@ -130,6 +130,12 @@ describe("issue 1634: a resume a cap refused, after a restart", () => {
       subject: "record:cap-held:planner",
       msg: { vars: { key: "agents.max_concurrent", limit: 4 } },
     });
+    const rec = JSON.parse(
+      fs.readFileSync(path.join(dir, "agents", "planner.json"), "utf8"),
+    );
+    expect(rec.restartFailed.why).toBe(
+      "4 agents are running and agents.max_concurrent is 4",
+    );
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

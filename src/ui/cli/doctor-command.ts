@@ -31,11 +31,6 @@ import { rankFindings, readWebUrl } from "../../shared/web/web-url.js";
 import { loopbackRefusal } from "../../shared/web/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
-import { envHoldLines, shellEnvNames } from "./doctor-env-hold.js";
-import { wouldHold } from "../../shared/agents/env-hold-rollout.js";
-import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
-import { listRecords as listAgentRecords } from "../../shared/agents/records.js";
-import { workspaceEntryRaw } from "../../shared/environment-manager/workspaces.js";
 import {
   agentsKeepRunningAfterLogout,
   readAgentsConfig,
@@ -2817,36 +2812,6 @@ function collapseDoneKey(): string[] {
   }
 }
 
-function envHoldDoctorLines(): string[] {
-  try {
-    const hold = readAgentsConfig().envHold;
-    if (!hold) return [];
-    const present = shellEnvNames();
-    const legacy = wouldHold(
-      listAgentRecords(getStateDir()),
-      hold,
-      present,
-      (ws) => {
-        try {
-          return checkProjectEnvAllow(
-            ws,
-            (
-              workspaceEntryRaw(ws) as
-                | { agents?: { env_allow?: unknown } }
-                | undefined
-            )?.agents?.env_allow,
-          );
-        } catch {
-          return [];
-        }
-      },
-    );
-    return envHoldLines(readBrand().name, hold, present, legacy).lines;
-  } catch {
-    return [];
-  }
-}
-
 export async function cmdDoctor(args: string[]): Promise<number> {
   const probe = args.includes("--probe");
   const json = args.includes("--json");
@@ -3148,7 +3113,6 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
-  for (const l of envHoldDoctorLines()) console.log(l);
   const checked = await doctorAddress(product().cli);
   const edges = await edgeAddresses();
   const addr = addressLines(

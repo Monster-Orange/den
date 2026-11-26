@@ -22,6 +22,7 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { shortDots } from "./helpers/short-dots.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 jest.setTimeout(60_000);
 
@@ -57,13 +58,8 @@ async function open(
     reducedMotion: "reduce",
   });
   await signIn(ctx, s!.stateDir, s!.base);
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
       st.textContent = "#cl-overlay{display:none!important}";
