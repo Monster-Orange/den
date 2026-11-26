@@ -136,6 +136,8 @@ const crumbs: Crumb[] = [
 const bar: string =
   scopeHtml({ crumbs, lang: "en" }) +
   searchHtml({ shortcut: true }) +
+  searchHtml({ placeholder: "Find work…" }) +
+  searchHtml({ lang: "es", placeholder: { en: "Find work…", es: "Buscar trabajo…" } }) +
   bellButtonHtml({ count: 3 }) +
   bellPanelHtml({ items: [{ text: "Done", href: "#d", time: "now" }] }) +
   accountHtml({ name: "Ada Lovelace", login: "ada", role: "Owner", href: "/me" });
