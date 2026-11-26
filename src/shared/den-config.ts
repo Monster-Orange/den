@@ -722,6 +722,7 @@ export interface UserConfig {
     issue_writes_per_hour?: unknown;
     /** Issue 1127: how old a repo's visibility may be for the words check. */
     issue_writes_visibility_minutes?: unknown;
+    issue_writes_public?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -730,7 +731,7 @@ export interface UserConfig {
     order?: unknown;
   };
   /**
-   * The web server's per-machine keys (src/shared/web-session.ts
+   * The web server's per-machine keys (src/shared/web/web-session.ts
    * readWebAuthConfig): allow_plain_http_remote, edge_unattested,
    * github_client_id, and (SEC-2a) machine_name, the name the signed-out
    * page gives this machine.
@@ -1555,7 +1556,7 @@ export function readDenConfig(): DenConfig {
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
-      // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
+      // 0.4.45: the Hub editions under Connect (shared/hub/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
       // Issue 1391: the distribution's den.yml, else this file.
@@ -2244,6 +2245,7 @@ export const AGENTS_RESERVED_KEYS = [
   "issue_writes",
   "issue_writes_per_hour",
   "issue_writes_visibility_minutes",
+  "issue_writes_public",
   // Issue 1129: the restart queue (agents.resume.*), never an agent id.
   "resume",
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).

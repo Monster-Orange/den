@@ -1597,6 +1597,10 @@
       "Volver a comprobar la visibilidad de un repositorio tras",
     "set.agents.issue_writes_visibility_minutes.d":
       "El texto que un agente publica en un repositorio público, o en uno cuya visibilidad no se conoce, se revisa primero en busca de nombres de la lista. Estos son los minutos que se guarda la visibilidad de un repositorio antes de volver a preguntar a GitHub, así que un repositorio que se hace público se revisa poco después. De 1 a 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+    "set.agents.issue_writes_public":
+      "Los agentes escriben issues en repositorios públicos",
+    "set.agents.issue_writes_public.d":
+      "Activado, los agentes pueden crear issues y comentarios en repositorios públicos. Su texto se revisa primero en busca de nombres de la lista, y el pie no nombra a ningún agente ni instalación. Desactivado, se rechaza la escritura en un repositorio público. Activarlo necesita tu permiso. __DEN_CLI__ config agents.issue_writes_public=false",
     "ap.do.agent_import":
       'Traer la conversación {session} como agente {persona} del proyecto "{project}"',
     "ap.do.approval_policy":
@@ -3139,6 +3143,14 @@
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
+    "bell.m.deliveryFileBad":
+      "Den no pudo leer {n} entregas retenidas; guardó el archivo como {moved}.",
+    "bell.m.deliveryFileBad.one":
+      "Den no pudo leer {n} entrega retenida; guardó el archivo como {moved}.",
+    "bell.m.deliveryFileBadUncounted":
+      "Den no pudo leer {file} ni contar sus entregas retenidas; guardó el archivo como {moved}.",
+    "bell.m.deliveryFileBadKept":
+      "Den no pudo leer {file} ni apartarlo; la entrega sigue sin lo que guardaba.",
     "bell.m.notAtPrompt":
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en su indicador de entrada",
     "bell.m.notAtPrompt.one":
@@ -3191,6 +3203,8 @@
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":
       "Salió __DEN_TITLE__ {v}. Permite la actualización cuando te venga bien (esta instalación usa {have})",
+    "bell.m.updateRollbackFailed":
+      "__DEN_TITLE__ no pudo actualizarse a {v}, y la reversión también falló: puede que __DEN_TITLE__ {from} no arranque. Vuelve a fijar la versión {from} en {root} y ejecuta npm install allí. Motivo: {why}",
     "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
     "bell.m.updateWaits":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso",

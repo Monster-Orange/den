@@ -16,7 +16,7 @@ import {
   setHubProject,
   type HubProjectChoice,
   type HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import { product } from "../../shared/product.js";
 import {
@@ -307,7 +307,9 @@ async function suggestedAll(
   }
   const page = deps.link
     ? deps.link(HUB_LINK_ALL_PAGE)
-    : (await import("../../shared/web-url.js")).publicLink(HUB_LINK_ALL_PAGE);
+    : (await import("../../shared/web/web-url.js")).publicLink(
+        HUB_LINK_ALL_PAGE,
+      );
   if (json) {
     out(JSON.stringify({ ok: true, projects: rows, page }));
     return 0;

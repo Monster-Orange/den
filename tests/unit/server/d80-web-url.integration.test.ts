@@ -29,7 +29,7 @@ import {
   migrateWebUrl,
   readWebUrl,
   setWebUrl,
-} from "../../../src/shared/web-url.js";
+} from "../../../src/shared/web/web-url.js";
 import type { UserConfig } from "../../../src/shared/den-config.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
