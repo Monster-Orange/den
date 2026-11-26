@@ -1,9 +1,3 @@
-/**
- * The tools' check that the server on the port is this distribution's.
- * A refusal says which of the ways it failed, and how long it waited; the
- * wait is web.tools_probe_seconds, read at each check; the next call after
- * any refusal checks again; and the check dials where the server listens.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";

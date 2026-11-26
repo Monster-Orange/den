@@ -227,7 +227,6 @@ export interface WebAuthConfig {
    * the wait at once.
    */
   startWaitSeconds: number;
-  /** `web.tools_probe_seconds`: how long the MCP tools' identity check waits. */
   toolsProbeSeconds: number;
   /**
    * Issue 819: `web.pair_requests_per_minute` (user.yml over the
