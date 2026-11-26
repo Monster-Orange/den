@@ -11,12 +11,12 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   takeTestInstallLaunchFlag,
   takeTestResolveLaunch,
   testInstallRestartEnv,
 } from "../../shared/test-install-launch.js";
-import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { maskSecretLine } from "../../shared/secret-values.js";
 import { createLogRing } from "./log-ring.js";
 import {
