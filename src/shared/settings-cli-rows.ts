@@ -17,9 +17,9 @@
  *   web_github: { owner_name_timeout_seconds? }
  *                                     user.yml web.owner_name_timeout_seconds
  *                                     (issue 406)
- *   web_ready: { probe_seconds?, start_seconds? }
+ *   web_ready: { probe_seconds?, start_seconds?, tools_probe_seconds? }
  *                                     user.yml web.ready_probe_seconds,
- *                                     web.start_wait_seconds (den#143)
+ *                                     web.start_wait_seconds, web.tools_probe_seconds
  *   web_pairing: { requests_per_minute?, approve_attempts?,
  *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
  *                                     web.approve_attempts,
@@ -371,6 +371,11 @@ const WEB_READY: Record<string, Limit> = {
   },
   start_seconds: {
     key: "start_wait_seconds",
+    ...WEB_WAIT_RANGE,
+    int: false,
+  },
+  tools_probe_seconds: {
+    key: "tools_probe_seconds",
     ...WEB_WAIT_RANGE,
     int: false,
   },
