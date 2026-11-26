@@ -233,7 +233,7 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
     if (!r.ok) expect(r.error).toMatch(/is a link/);
     const after = fs.statSync(STATE);
     expect([after.uid, after.mode]).toEqual([before.uid, before.mode]);
-    fs.rmSync(p.home);
+    fs.unlinkSync(p.home);
   });
 
   it("pin 5: remove leaves no login, group, rule or folder, and doctor proves it", () => {
