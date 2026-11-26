@@ -69,7 +69,9 @@ export async function run(ctx, s) {
   const env = await oneLine(a, "printenv CLAUDE_ENV_FILE", 15000);
   out.envFile = env.status === 0 && !env.cut ? env.out.trim() : null;
   if (!out.envFile || !fs.existsSync(out.envFile)) {
-    miss(`CLAUDE_ENV_FILE (${out.envFile ?? "no answer"})`);
+    miss(
+      `CLAUDE_ENV_FILE (${env.cut ? "output cut short" : (out.envFile ?? "no answer")})`,
+    );
     out.turn = { ran: false, why: "no env file" };
     return out;
   }

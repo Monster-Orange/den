@@ -75,7 +75,10 @@ type Run = {
   refused: string[];
 };
 
-function runGate(dir: string, mode: "stub" | "silent" = "stub"): Run {
+function runGate(
+  dir: string,
+  mode: "stub" | "silent" | "cut" | "noprofile" = "stub",
+): Run {
   const js = `
     import { spawnSync } from "node:child_process";
     const g = await import("./gate/974.mjs");
@@ -93,12 +96,14 @@ function runGate(dir: string, mode: "stub" | "silent" = "stub"): Run {
     const sh = async (cmd) => {
       sent.push(cmd);
       if (mode === "silent") return { status: null, out: "", err: "no /sh result" };
+      if (mode === "noprofile" && cmd.includes("g974-profile")) return { status: null, out: "", err: "no /sh result" };
       if (/\\n/.test(cmd)) {
         refused.push(cmd.split("\\n")[0]);
         return { status: null, out: "", err: "no /sh result within 15000 ms" };
       }
       const r = spawnSync("/bin/sh", ["-c", cmd], { encoding: "utf-8", env });
-      return { status: r.status, out: (r.stdout || "").slice(0, 1500), err: (r.stderr || "").slice(0, 1500) };
+      const res = { status: r.status, out: (r.stdout || "").slice(0, 1500), err: (r.stderr || "").slice(0, 1500) };
+      return mode === "cut" ? { ...res, cut: { out: 99999 } } : res;
     };
     const agent = () => ({
       start: () => ({ code: 0 }),
@@ -167,6 +172,42 @@ describe("issue 974's live check against the stub's limits", () => {
     const r = runGate(agentFiles("silent"), "silent");
     expect(r.rows).toBeUndefined();
     expect(r.error).toMatch(/974 not measured: CLAUDE_ENV_FILE/);
+  });
+});
+
+describe("Vision's three rules for the check", () => {
+  it("(a) a multi-line /sh is refused before it is sent", () => {
+    const js = `
+      const g = await import("./gate/974.mjs");
+      let calls = 0;
+      const a = { sh: async () => { calls++; return { status: 0, out: "" }; } };
+      let error = null;
+      try { await g.oneLine(a, "echo a\\necho b", 1000); } catch (e) { error = String(e.message); }
+      process.stdout.write(JSON.stringify({ calls, error }));
+    `;
+    const p = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    expect(JSON.parse(p.stdout)).toEqual({
+      calls: 0,
+      error: expect.stringMatching(/refused a multi-line \/sh command/),
+    });
+  });
+
+  it("(b) output the bed marks as cut is said as such and never parsed", () => {
+    const r = runGate(agentFiles("cut"), "cut");
+    expect(r.rows).toBeUndefined();
+    expect(r.error).toMatch(
+      /974 not measured: CLAUDE_ENV_FILE \(output cut short\)/,
+    );
+  });
+
+  it('(c) a probe with no value is an ERROR naming it, never "still there"', () => {
+    const r = runGate(agentFiles("noprofile"), "noprofile");
+    expect(r.rows).toBeUndefined();
+    expect(r.error).toMatch(/974 not measured: the profile canary/);
+    expect(r.error).not.toMatch(/still there/);
   });
 });
 
