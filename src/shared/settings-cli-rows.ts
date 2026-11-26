@@ -123,6 +123,7 @@ import { SERVER_LOG_LIMITS } from "./server-log-file.js";
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
   "agents_default_mode",
+  "skill_packs",
   "local_dev",
   "cli_tabs",
   "log_window_lines",

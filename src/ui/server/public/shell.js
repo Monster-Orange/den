@@ -2630,6 +2630,20 @@
     "set.agents.subagents_respect_load_hold": "No new subagents under load",
     "set.agents.subagents_respect_load_hold.d":
       "On, while the machine's load is over the agents' load ceiling, a new subagent is refused, and the agent is told this setting's name. Off, subagents start whatever the load. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "Skill packs",
+    "set.agents.skill_packs.d":
+      "Skill packs Den gives its agents. Each is vendored in Den at a pinned version and never fetched. __DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "Open-source skills for coding agents. Choose which of them Den's agents get. __DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "On",
+    "set.ui.skillPackLicence": "Licence",
+    "set.ui.skillPackPin": "pinned at",
+    "set.ui.skillPackOnCount": "{n} skills on",
+    "set.ui.skillPackCost": "Adds about {n} tokens to each agent's start",
+    "set.ui.skillPackSkills": "Skills",
+    "set.ui.skillPackAll": "All",
+    "set.ui.skillPackNone": "None",
     "set.agents.max_concurrent": "Agents at once",
     "set.agents.max_concurrent.d":
       "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",

@@ -1431,6 +1431,20 @@
       "Sin subagentes nuevos bajo carga",
     "set.agents.subagents_respect_load_hold.d":
       "Activado, mientras la carga de la máquina supere el techo de carga de los agentes, se rechaza un subagente nuevo, y al agente se le dice el nombre de este ajuste. Desactivado, los subagentes se inician sea cual sea la carga. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "Paquetes de habilidades",
+    "set.agents.skill_packs.d":
+      "Paquetes de habilidades que Den da a sus agentes. Cada uno va incluido en Den en una versión fijada y nunca se descarga. __DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "Habilidades de código abierto para agentes de programación. Elige cuáles reciben los agentes de Den. __DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "Activado",
+    "set.ui.skillPackLicence": "Licencia",
+    "set.ui.skillPackPin": "fijado en",
+    "set.ui.skillPackOnCount": "{n} habilidades activadas",
+    "set.ui.skillPackCost": "Añade unos {n} tokens al inicio de cada agente",
+    "set.ui.skillPackSkills": "Habilidades",
+    "set.ui.skillPackAll": "Todas",
+    "set.ui.skillPackNone": "Ninguna",
     "set.agents.max_concurrent": "Agentes a la vez",
     "set.agents.max_concurrent.d":
       "Cuántos agentes pueden funcionar a la vez en esta máquina. Las terminales simples nunca cuentan. Un inicio por encima de esto se rechaza, y lo dice. Esto prevalece sobre el valor de la distribución. __DEN_CLI__ config agents.max_concurrent=4",

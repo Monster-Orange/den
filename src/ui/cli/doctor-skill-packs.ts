@@ -35,7 +35,7 @@ export interface SkillPackDoctorDeps {
   claudeConfigDir?: string;
 }
 
-const WHY = {
+export const WHY = {
   agent: "the agent",
   persona: "its persona",
   install: "the install",
@@ -56,7 +56,7 @@ export function packsOffWhy(
   return p ? "persona" : "install";
 }
 
-function liveAgents(): PackAgent[] {
+export function liveAgents(): PackAgent[] {
   const cfg = readAgentsConfig();
   const find = personaLookup(resolveAgentsDeps({}));
   return listRecords(getStateDir())

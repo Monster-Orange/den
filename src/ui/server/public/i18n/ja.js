@@ -1381,6 +1381,20 @@
       "負荷が高いときは新しいサブエージェントを止める",
     "set.agents.subagents_respect_load_hold.d":
       "オンの場合、マシンの負荷がエージェントの負荷上限を超えている間は新しいサブエージェントが拒否され、エージェントにはこの設定の名前が伝えられます。オフの場合、負荷に関係なくサブエージェントが開始します。__DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "スキルパック",
+    "set.agents.skill_packs.d":
+      "Den がエージェントに与えるスキルパック。それぞれ固定したバージョンで Den に同梱され、ダウンロードはしません。__DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "コーディングエージェント向けのオープンソースのスキル。Den のエージェントに渡すものを選びます。__DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "オン",
+    "set.ui.skillPackLicence": "ライセンス",
+    "set.ui.skillPackPin": "固定コミット",
+    "set.ui.skillPackOnCount": "{n} 個のスキルがオン",
+    "set.ui.skillPackCost": "各エージェントの起動に約 {n} トークン追加",
+    "set.ui.skillPackSkills": "スキル",
+    "set.ui.skillPackAll": "すべて",
+    "set.ui.skillPackNone": "なし",
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",

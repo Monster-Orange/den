@@ -11,6 +11,10 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import {
+  patchSkillPacksBody,
+  skillPacksData,
+} from "./skill-pack-settings.js";
 import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   COACH_ROUTES,
@@ -6492,6 +6496,13 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    skill_packs: (() => {
+      try {
+        return skillPacksData(user, denForCaps());
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 1373: the agents' cap in force (user.yml over den.yml).
     agents_limits: (() => {
       try {
@@ -10740,6 +10751,7 @@ async function handleRequest(
           agent_hooks?: unknown;
           sessions?: unknown;
           agents_limits?: unknown;
+          skill_packs?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
           git_reads?: unknown;
@@ -10821,6 +10833,14 @@ async function handleRequest(
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
+        }
+        if (body.skill_packs !== undefined) {
+          const sp = patchSkillPacksBody(
+            user as Record<string, unknown>,
+            body.skill_packs,
+            denForCaps(),
+          );
+          if (!sp.ok) return send400(res, sp.error);
         }
         // Issue 144: the machine's gate slots (their own file, not user.yml).
         let gatePatch: GateSettingsPatch | undefined;

@@ -1350,6 +1350,92 @@ function drawEdgeUp(host, ctx) {
  * Issue 103: the web apps that may frame the embedded agent pane: one
  * origin a line, saved as a list (the server checks each, exactly).
  */
+export function skillPackEdits(pack, checked) {
+  const on = new Set(checked);
+  const dflt = pack.skills.filter((s) => s.byDefault).map((s) => s.name);
+  const k = `skill_packs.${pack.name}`;
+  if ([...on].every((s) => dflt.includes(s))) {
+    const exclude = dflt.filter((s) => !on.has(s));
+    return [
+      { key: `${k}.skills`, value: null },
+      { key: `${k}.exclude`, value: exclude.length ? exclude : null },
+    ];
+  }
+  return [
+    { key: `${k}.skills`, value: [...on].sort() },
+    { key: `${k}.exclude`, value: null },
+  ];
+}
+
+function drawSkillPack(host, ctx, api, name) {
+  const p = ctx.data?.skill_packs?.packs?.find((x) => x.name === name);
+  if (!p) {
+    host.innerHTML = "";
+    return;
+  }
+  const id = `set-sp-${name}`;
+  const tree = `${p.source}/tree/${p.commit}/${p.path}`;
+  const licence = `${p.source}/blob/${p.commit}/${p.path}/LICENSE`;
+  const skills = p.skills
+    .map(
+      (s) =>
+        `<li><label><input type="checkbox" data-skill="${escHtml(s.name)}"${s.on ? " checked" : ""}> <code>${escHtml(s.name)}</code></label>` +
+        (s.description
+          ? ` <span class="set-note">${escHtml(s.description)}</span>`
+          : "") +
+        `</li>`,
+    )
+    .join("");
+  host.innerHTML =
+    `<div style="flex-basis:100%">` +
+    `<label><input type="checkbox" id="${id}-on"${p.on ? " checked" : ""}> ${escHtml(L("set.ui.skillPackOn", "On"))}</label>` +
+    `<div class="set-note">${escHtml(p.license)}, ${escHtml(p.copyright)} · <a href="${escHtml(licence)}" target="_blank" rel="noopener">${escHtml(L("set.ui.skillPackLicence", "Licence"))}</a> · ` +
+    `${escHtml(L("set.ui.skillPackPin", "pinned at"))} <a href="${escHtml(tree)}" target="_blank" rel="noopener"><code>${escHtml(p.commit.slice(0, 7))}</code></a> · ` +
+    `${escHtml(L("set.ui.skillPackOnCount", "{n} skills on", { n: p.skillsOn }))}</div>` +
+    `<div class="set-note">${escHtml(L("set.ui.skillPackCost", "Adds about {n} tokens to each agent's start", { n: p.tokens }))}</div>` +
+    `<details id="${id}-skills"><summary>${escHtml(L("set.ui.skillPackSkills", "Skills"))}</summary>` +
+    `<button type="button" class="den-btn sm" id="${id}-all">${escHtml(L("set.ui.skillPackAll", "All"))}</button> ` +
+    `<button type="button" class="den-btn sm" id="${id}-none">${escHtml(L("set.ui.skillPackNone", "None"))}</button>` +
+    `<ul style="list-style:none;padding-left:0">${skills}</ul></details></div>`;
+  const boxes = () => [...host.querySelectorAll("input[data-skill]")];
+  const saveChecked = () =>
+    void api.save(
+      skillPackEdits(
+        p,
+        boxes()
+          .filter((b) => b.checked)
+          .map((b) => b.dataset.skill),
+      ),
+    );
+  host.querySelector(`#${id}-on`).addEventListener("change", (e) => {
+    void api.save({
+      key: `skill_packs.${name}.on`,
+      value: e.target.checked ? null : false,
+    });
+  });
+  for (const b of boxes()) b.addEventListener("change", saveChecked);
+  host.querySelector(`#${id}-all`).addEventListener("click", () => {
+    const dflt = new Set(
+      p.skills.filter((s) => s.byDefault).map((s) => s.name),
+    );
+    for (const b of boxes()) b.checked = dflt.has(b.dataset.skill);
+    void api.save([
+      { key: `skill_packs.${name}.skills`, value: null },
+      { key: `skill_packs.${name}.exclude`, value: null },
+    ]);
+  });
+  host.querySelector(`#${id}-none`).addEventListener("click", () => {
+    for (const b of boxes()) b.checked = false;
+    void api.save([
+      { key: `skill_packs.${name}.skills`, value: null },
+      {
+        key: `skill_packs.${name}.exclude`,
+        value: p.skills.filter((s) => s.byDefault).map((s) => s.name),
+      },
+    ]);
+  });
+}
+
 function drawOrigins(host, ctx, api) {
   const list = Array.isArray(ctx.data?.embed?.origins)
     ? ctx.data.embed.origins
@@ -5430,6 +5516,39 @@ export const DEN_SETTINGS = [
       ctx.data.agents_limits?.subagents_respect_load_hold !== false,
     write: (v, ctx) =>
       ctx.post({ agents_limits: { subagents_respect_load_hold: !!v } }),
+  },
+  {
+    id: "agents.skill_packs",
+    category: "agents",
+    label: "Skill packs",
+    description:
+      "Skill packs Den gives its agents. Each is vendored in Den at a pinned version and never fetched. __DEN_CLI__ config skill_packs.on=false",
+    keywords: ["agents", "skills", "skill packs", "plugin", "skill_packs"],
+    scope: "user",
+    keys: ["skill_packs"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.skill_packs?.on !== false,
+    write: (v, ctx) =>
+      ctx.post({
+        skill_packs: { key: "skill_packs.on", value: v ? null : false },
+      }),
+  },
+  {
+    id: "agents.skill_packs.pstack",
+    category: "agents",
+    label: "pstack",
+    description:
+      "Open-source skills for coding agents. Choose which of them Den's agents get. __DEN_CLI__ config skill_packs",
+    keywords: ["agents", "skills", "skill packs", "pstack", "licence", "MIT"],
+    scope: "user",
+    keys: ["skill_packs"],
+    control: {
+      type: "custom",
+      render: (host, ctx, api) => drawSkillPack(host, ctx, api, "pstack"),
+    },
+    read: (ctx) =>
+      ctx.data.skill_packs?.packs?.find((p) => p.name === "pstack") ?? null,
+    write: (v, ctx) => ctx.post({ skill_packs: v }),
   },
   {
     // den#156: the Agents list's waits (user.yml agents_list.*).

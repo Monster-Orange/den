@@ -383,6 +383,7 @@ describe("the settings inventory (R21)", () => {
         "agents_limits.max_concurrent",
         "agents_limits.max_subagents",
         "agents_limits.subagents_respect_load_hold",
+        "skill_packs",
         // Issue 403: how long a filed report's screenshot is kept.
         "reports.screenshot_keep_days",
         "reports.screenshot_max_mb",
