@@ -16,7 +16,7 @@
  * title or body holds a listed name (public-text.mjs), with or without
  * --no-guardrails, as the api-only rules are.
  *
- * Its guardrails block exactly two things, and nothing else:
+ * Its guardrails block these, plus emptying a linked node_modules:
  *
  *   1. Whole-file reads of a log or a large file into the conversation:
  *      - Read with no `limit`;
@@ -363,6 +363,90 @@ function fileArgs(cmd, args) {
   return out;
 }
 
+const LINK_HINT =
+  "Remove only the link first (`rm node_modules`, with no -r), then install: " +
+  "this worktree gets its own folder, and the shared one is left alone.";
+
+const INSTALLS = {
+  npm: new Set(
+    "ci install i in isntall add prune uninstall un remove rm r update up dedupe".split(
+      " ",
+    ),
+  ),
+  pnpm: new Set("install i add remove rm prune update up".split(" ")),
+  yarn: new Set(["", "install", "add", "remove"]),
+};
+const DIR_FLAGS = new Set(["--prefix", "-C", "--dir", "--cwd"]);
+
+const expand = (p, home) =>
+  home && (p === "~" || p.startsWith("~/")) ? path.join(home, p.slice(1)) : p;
+
+function linkTarget(dir) {
+  const link = path.join(dir, "node_modules");
+  try {
+    if (!fs.lstatSync(link).isSymbolicLink()) return null;
+  } catch {
+    return null;
+  }
+  try {
+    return fs.realpathSync(link);
+  } catch {
+    return path.resolve(dir, fs.readlinkSync(link));
+  }
+}
+
+function installDir(cmd, args) {
+  let dir = null;
+  let sub = null;
+  for (let j = 0; j < args.length; j++) {
+    const a = args[j];
+    const eq = /^(--prefix|--dir|--cwd)=(.+)$/.exec(a);
+    if (eq) dir = eq[2];
+    else if (DIR_FLAGS.has(a)) dir = args[++j] ?? null;
+    else if (!a.startsWith("-") && sub === null) sub = a;
+  }
+  return INSTALLS[cmd].has(sub ?? "") ? { dir } : null;
+}
+
+function emptiedDirs(cmd, args, here, home) {
+  if (cmd in INSTALLS) {
+    const hit = installDir(cmd, args);
+    return hit ? [path.resolve(here, expand(hit.dir ?? ".", home))] : [];
+  }
+  if (cmd === "git") {
+    let dir = ".";
+    let j = 0;
+    while (args[j] === "-C") {
+      dir = args[j + 1] ?? ".";
+      j += 2;
+    }
+    if (args[j] !== "clean") return [];
+    const flags = args.slice(j + 1).filter((a) => a.startsWith("-"));
+    if (
+      flags.some((a) => a === "-n" || a === "--dry-run" || /^-[a-z]*n/.test(a))
+    )
+      return [];
+    return flags.some((a) => /^-[a-zA-Z]*[xX]/.test(a))
+      ? [path.resolve(here, expand(dir, home))]
+      : [];
+  }
+  if (cmd !== "rm") return [];
+  if (!args.some((a) => /^-[a-zA-Z]*[rR]/.test(a) || a === "--recursive"))
+    return [];
+  return args
+    .filter((a) => !a.startsWith("-") && /(^|\/)node_modules\/\*?$/.test(a))
+    .map((a) =>
+      path.dirname(path.resolve(here, expand(a.replace(/\/\*?$/, ""), home))),
+    );
+}
+
+function unlinkedDirs(cmd, args, here, home) {
+  if (cmd !== "rm") return [];
+  return args
+    .filter((a) => !a.startsWith("-") && /(^|\/)node_modules$/.test(a))
+    .map((a) => path.dirname(path.resolve(here, expand(a, home))));
+}
+
 /** The reason to block this Bash command, or null. */
 export function bashDecision(command, opts = {}) {
   const { cwd, home, background } = opts;
@@ -372,11 +456,23 @@ export function bashDecision(command, opts = {}) {
   } catch {
     return null;
   }
+  let here = path.resolve(cwd || ".");
+  const unlinked = new Set();
   for (const stages of pipelines)
     for (let s = 0; s < stages.length; s++) {
       const st = stages[s];
       const cmd = base(st.words[0] ?? "");
       const args = st.words.slice(1);
+      const plain = !args.some((a) => a.includes("$") || a.includes("`"));
+      if (plain && (cmd === "cd" || cmd === "pushd") && args[0] !== "-")
+        here = path.resolve(here, expand(args[0] ?? "~", home));
+      for (const d of plain ? emptiedDirs(cmd, args, here, home) : []) {
+        const target = unlinked.has(d) ? null : linkTarget(d);
+        if (target)
+          return `Den blocked \`${[cmd, ...args].join(" ")}\`: ${path.join(d, "node_modules")} is a link to ${target}, a folder other worktrees share, and this would empty it. ${LINK_HINT}`;
+      }
+      if (plain)
+        for (const d of unlinkedDirs(cmd, args, here, home)) unlinked.add(d);
       if (cmd === "sleep" && args.length && !background && !st.background)
         return `Den blocked \`sleep ${args.join(" ")}\`. ${SLEEP_HINT}`;
       if (cmd !== "cat" && cmd !== "less" && cmd !== "tail") continue;

@@ -21,6 +21,7 @@ config and manifest changes a distribution must make to move to it under
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
 - minimatch, used by the TypeScript lint parser, is now 11.0.9, past a denial-of-service flaw in its brace patterns (GHSA-g3hv-75wg-m249; below 11.0.1). It's dev-only, not in the published package: `npm ls minimatch --omit=dev` shows only 5.1.9, outside the flaw's range. The lock also no longer lists the PTY module (@lydell/node-pty) as a required dependency; package.json has it as optional only.
+- An agent's `npm ci`, `npm install`, `pnpm install`, `yarn install`, `rm -rf node_modules/` or `git clean -x` is refused where `node_modules` is a link to a folder other worktrees share, since it would empty that folder for all of them. The refusal says to remove only the link (`rm node_modules`), then install.
 
 ## [0.4.90] - 2026-11-25
 
