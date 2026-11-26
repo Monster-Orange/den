@@ -23,7 +23,8 @@ import * as dns from "dns";
 import * as http from "http";
 import * as https from "https";
 import * as net from "net";
-import { isLoopbackName } from "./web-url-check.js";
+import { isLoopbackName } from "./web/web-url-check.js";
+import { testResolveLookup } from "./test-resolve.js";
 
 export const DEN_IDENTITY_PATH = "/api/den-identity";
 const KEY_CONTEXT = "den-identity-v1";
@@ -116,6 +117,9 @@ export interface ProbeOptions {
 }
 
 async function lookupAll(host: string): Promise<string[]> {
+  // Issue 1073: a test install's own name map, when it holds the name.
+  const mapped = testResolveLookup(host);
+  if (mapped) return [mapped];
   const r = await dns.promises.lookup(host, { all: true, verbatim: true });
   return r.map((a) => a.address);
 }

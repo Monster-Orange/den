@@ -66,8 +66,6 @@ export function rotationHookOutput(
   if (stored && stored.after !== args.after)
     args = { ...args, after: stored.after };
   const i = input as Record<string, unknown>;
-  // Issue 765: a helper (a background subagent, a fork) runs in this
-  // process: its compactions don't count and the notice isn't its own.
   if (fromHelper(i)) return "";
   const event = i.hook_event_name;
   const conversation =

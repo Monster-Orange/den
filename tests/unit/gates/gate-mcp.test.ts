@@ -142,11 +142,21 @@ describe("gate slots over MCP", () => {
       cpuSlotsBesideReleaseBrowser: 0,
       // Issue 1009: cores × 4 / 3 on the machine the test runs on.
       cpuHoldLoad: GATE_DEFAULTS.cpuHoldLoad,
+      loadHoldPerCore: 3,
+      // Issue 1132: cores × 1.5 on the machine the test runs on.
+      maxStartLoad: GATE_DEFAULTS.maxStartLoad,
+      maxStartWaitMinutes: 10,
+      reapGraceSeconds: 10,
+      memoryFreeMinPercent: 10,
+      memoryReadingKeepSeconds: 30,
+      swapHoldGb: 8,
+      vmMemoryShare: 1,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,
       overrunBellMultiple: 2,
       priorityMax: 1,
       priorityPassLimitMinutes: 0,
+      releasePassOtherKindMinutes: 30,
       priorityAgents: true,
       priorityRunners: true,
       claimMinutes: 3,
@@ -154,9 +164,14 @@ describe("gate slots over MCP", () => {
       mcpLapseMinutes: 15,
       mcpGraceMinutes: 15,
       browserRequiresContainer: false,
+      browserContainerStrict: false,
       browserBoxDefault: "any",
       browserHostOnly: "",
+      // Issue 1264: Den's agent hook routes heavy runs, with the default list.
+      routeAgents: true,
+      routeCommands: GATE_DEFAULTS.routeCommands,
       remoteRenewSeconds: 30,
+      waiterReturnMinutes: 10,
       remoteLapseSeconds: 120,
       remoteMaxSlots: 4,
       remoteMaxAsks: 4,
@@ -237,5 +252,43 @@ describe("issue 1023: gate_slot_release and a gate run's own entry", () => {
     const r = await callTool("gate_slot_release", { id: e.id }, c);
     expect(r.isError).toBe(true);
     expect(c.gates!.list().map((x) => x.id)).toEqual([e.id]);
+  });
+});
+
+describe("issue 1048: an agent's cpu slot over MCP", () => {
+  it("says how many workers its run may use, and why it waits on the load", async () => {
+    let load5 = 0;
+    const dir = ctx().gates!.dir;
+    const as = (actor: string) => ({
+      ...ctx(dir, actor),
+      gates: new GateStore({
+        platform: "linux",
+        dir,
+        alive: () => true,
+        load: () => load5,
+        cores: () => 18,
+      }),
+    });
+    const ask = { kind: "cpu", label: "unit", estimate_minutes: 5 };
+    const a = json(await callTool("gate_slot_request", ask, as("agent:one")));
+    expect(a.granted).toBeTruthy();
+    expect(a.workers).toBe(9);
+    load5 = 60;
+    const b = json(await callTool("gate_slot_request", ask, as("agent:two")));
+    expect(b.granted).toBeFalsy();
+    expect(b.workers).toBeUndefined();
+    expect(b.loadHold).toEqual({
+      why: "cores",
+      load: 60,
+      limit: 54,
+      perCore: 3,
+      cores: 18,
+    });
+    load5 = 40;
+    const c = json(
+      await callTool("gate_slot_request", { id: b.id }, as("agent:two")),
+    );
+    expect(c.granted).toBeTruthy();
+    expect(c.loadHold).toBeUndefined();
   });
 });

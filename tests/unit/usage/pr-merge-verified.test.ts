@@ -16,13 +16,19 @@ import {
   agentFilesDir,
   listRecords,
   writeRecord,
+  type AgentRecord,
 } from "../../../src/shared/agents/records.js";
 import {
   readRotation,
   writeRotation,
 } from "../../../src/shared/agents/rotation.js";
 import { ghPrState } from "../../../src/shared/git/gh-pr-state.js";
-import { agentUsage } from "../../../src/shared/usage/report.js";
+import {
+  agentUsage,
+  type PrStateCheck,
+} from "../../../src/shared/usage/report.js";
+import type { UsageSource } from "../../../src/shared/usage/sources.js";
+import type { TranscriptStats } from "../../../src/shared/usage/transcript.js";
 import {
   ghPrMergeRef,
   mineTranscript,
@@ -139,16 +145,87 @@ describe("usage checks the claim with gh", () => {
     expect(asked).toEqual(["https://github.com/acme/notes/pull/101"]);
   });
 
-  it("OPEN, an error, or no check at all: not marked", async () => {
-    expect((await agent1(async () => "OPEN")).prMerged).toBeUndefined();
-    expect(
-      (
-        await agent1(async () => {
-          throw new Error("gh: not found");
-        })
-      ).prMerged,
-    ).toBeUndefined();
-    expect((await agent1()).prMerged).toBeUndefined();
+  // Issue 1493: these three read no files. The record and its transcript's
+  // stats are handed to agentUsage in memory, so a stalled runner disk
+  // can't push them past the timeout. The MERGED case above keeps the
+  // fixture on disk end to end.
+  const memory = async (prState?: PrStateCheck) => {
+    const rec = {
+      id: "agent-1",
+      persona: "builder",
+      runtime: "den-claude",
+      workspace: "notes",
+      cwd: "/work/notes",
+      resumeToken: "00000000-0000-4000-8000-000000000001",
+    } as AgentRecord;
+    const stats: TranscriptStats = {
+      file: "memory.jsonl",
+      subagent: false,
+      first: Date.parse("2026-11-05T09:00:00.000Z"),
+      last: Date.parse("2026-11-05T09:30:00.000Z"),
+      calls: 2,
+      tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 },
+      models: { "claude-opus-5-5": 2 },
+      tools: { Bash: 2 },
+      toolErrors: {},
+      denials: 0,
+      polls: 0,
+      sleepSeconds: 0,
+      compactions: 0,
+      prompts: 1,
+      corrections: 0,
+      interrupts: 0,
+      agentSpawns: 0,
+      activeSeconds: 60,
+      prOpened: "https://github.com/acme/notes/pull/101",
+      prMerges: [{ ref: "" }],
+    };
+    const source: UsageSource = {
+      id: "memory",
+      runtimes: ["den-claude"],
+      root: () => "/nowhere",
+      agentFiles: () => [stats.file],
+      files: () => [stats.file],
+      mine: async () => stats,
+    };
+    const asked: string[] = [];
+    const rows = await agentUsage([rec], {
+      source: () => source,
+      ...(prState
+        ? {
+            prState: (ref: string, o: { repo?: string; cwd: string }) => {
+              asked.push(ref);
+              return prState(ref, o);
+            },
+          }
+        : {}),
+    });
+    return { outcome: rows[0].outcome!, asked };
+  };
+
+  it("OPEN: not marked", async () => {
+    const r = await memory(async () => "OPEN");
+    expect(r.asked).toEqual(["https://github.com/acme/notes/pull/101"]);
+    expect(r.outcome.prMerged).toBeUndefined();
+  });
+
+  it("an error from the check: not marked", async () => {
+    const r = await memory(async () => {
+      throw new Error("gh: not found");
+    });
+    expect(r.asked).toEqual(["https://github.com/acme/notes/pull/101"]);
+    expect(r.outcome.prMerged).toBeUndefined();
+  });
+
+  it("no check at all: not marked", async () => {
+    const r = await memory();
+    expect(r.asked).toEqual([]);
+    expect(r.outcome.prMerged).toBeUndefined();
+  });
+
+  it("the same in-memory claim, answered MERGED: marked (so the three above can fail)", async () => {
+    const r = await memory(async () => "MERGED");
+    expect(r.outcome.prMerged).toBe(true);
   });
 });
 
@@ -406,7 +483,6 @@ describe("issue 765: a helper's merge is its own", () => {
     tmps.push(dir);
     const f = writeUsageFixture(dir);
     const env = { HOME: dir, CLAUDE_CONFIG_DIR: path.join(dir, "claude") };
-    // Agent 3 opened a pull request and never merged it; its helper did.
     const rec = listRecords(f.stateDir).find((r) => r.id === "agent-3")!;
     const sub = path.join(
       f.projects,

@@ -181,6 +181,8 @@ describe("D47: every den-claude agent's hook reads the rules", () => {
     expect(pre.hooks[0].command).toContain(apiOnly.audit);
     expect(pre.hooks[0].command).not.toContain("--no-guardrails");
     expect(Object.keys(h).sort()).toEqual([
+      "PostToolUse",
+      "PostToolUseFailure",
       "PreCompact",
       "PreToolUse",
       "SessionStart",

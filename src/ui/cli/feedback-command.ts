@@ -15,8 +15,8 @@
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 import { isAgentTokenEnv } from "../../shared/actor-token.js";
 import { visibilityWords, visibleToEveryone } from "../../shared/feedback.js";
 import { shotFileDataUrl } from "../../shared/report-shots.js";

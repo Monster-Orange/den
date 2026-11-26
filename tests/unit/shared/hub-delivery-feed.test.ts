@@ -11,11 +11,11 @@ import path from "node:path";
 import {
   embedDelivery,
   SeenDeliveries,
-} from "../../../src/shared/hub-delivery";
+} from "../../../src/shared/hub/hub-delivery";
 import {
   DeliveryLoop,
   type AgentState,
-} from "../../../src/shared/hub-delivery-loop";
+} from "../../../src/shared/hub/hub-delivery-loop";
 import { feedPointerDelivery } from "../../../src/shared/agents/app-feeds";
 
 let dir = "";

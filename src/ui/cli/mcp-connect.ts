@@ -38,7 +38,8 @@ import {
 } from "./server-identity.js";
 import { readDenConfig, readMcpConfig } from "../../shared/den-config.js";
 import { printJson } from "./json-out.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 export const MCP_CONNECT_SUBCOMMANDS = [
   "connect",
@@ -160,9 +161,7 @@ function readText(file: string): string | null {
 function writeConfig(file: string, text: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, text);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, text);
 }
 
 function apply(

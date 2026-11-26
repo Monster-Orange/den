@@ -77,11 +77,6 @@ export interface RotationState {
    * here, at most agents.rotation_wait_minutes.
    */
   waitingSince?: string;
-  /**
-   * Issue 765: a person put this agent's rotation off until then (ISO
-   * 8601). Before it, nothing rotates it; after it, the normal rule
-   * applies. It outlives a new conversation.
-   */
   deferredUntil?: string;
   /** Issue 914: how many background items it waits on (the row says so). */
   waitingOn?: number;
@@ -350,8 +345,6 @@ export function launchRotation(
         compactions: 0,
         after,
       };
-  // Issue 765: a deferral is the person's, not the conversation's; one
-  // already past goes.
   if (prev?.deferredUntil && isDeferred(prev, now))
     s.deferredUntil = prev.deferredUntil;
   else delete s.deferredUntil;
@@ -363,14 +356,6 @@ export function launchRotation(
   return s;
 }
 
-/**
- * Issue 765: whether a hook input came from a helper (a background
- * subagent, a fork) rather than the agent's own session. A helper runs in
- * the agent's process with its session_id, and Claude Code adds
- * `agent_id` and `agent_type` to its hook input. Den never launches with
- * `--agent`, so `agent_type` alone marks a helper too. A helper's
- * compactions and merges are its own: they never count for the agent.
- */
 export function fromHelper(input: unknown): boolean {
   if (!input || typeof input !== "object") return false;
   const i = input as Record<string, unknown>;
@@ -395,7 +380,6 @@ export function noteCompaction(
     unknown
   >;
   const prev = readRotation(filesDir);
-  // Issue 765: a helper's compaction is its own.
   if (fromHelper(i)) return prev ?? { compactions: 0, after };
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;
@@ -530,7 +514,6 @@ export function dueFor(
   return s.compactions >= s.after ? "compactions" : undefined;
 }
 
-/** Issue 765: a person put the rotation off past `now`. */
 export function isDeferred(
   s: Pick<RotationState, "deferredUntil"> | null,
   now: Date = new Date(),
@@ -539,11 +522,6 @@ export function isDeferred(
   return Number.isFinite(at) && now.getTime() < at;
 }
 
-/**
- * Issue 765: put agent's rotation off until `until`; null clears it, and
- * the normal rule applies again at once. Its rotation.json is made when
- * the agent has none yet.
- */
 export function deferRotation(filesDir: string, until: Date | null): void {
   const s = readRotation(filesDir) ?? { compactions: 0, after: 0 };
   if (until) s.deferredUntil = until.toISOString();
@@ -554,15 +532,9 @@ export function deferRotation(filesDir: string, until: Date | null): void {
 const DEFER_WORDS =
   "a time to come: +30m, +2h, +1d, HH:MM, an ISO time, or off";
 
-/**
- * Issue 765: the time a person typed for "put off rotation until": "+30m",
- * "+2h", "+1d"; "HH:MM", the next such time on this machine's clock; an
- * ISO 8601 time; or "off" (null). It must be after `now`.
- */
 export function parseDeferTime(
   raw: string,
   now: Date = new Date(),
-  /** The furthest off it may be (ms), agents.rotation_defer_max_hours. */
   maxMs?: number,
 ): Date | null {
   const v = raw.trim();
@@ -585,7 +557,6 @@ export function parseDeferTime(
   } else if (/^\d{4}-\d{2}-\d{2}T/.test(v) && Number.isFinite(Date.parse(v))) {
     at = new Date(Date.parse(v));
   }
-  // A huge +N or year is no time at all (an Invalid Date): refused too.
   if (!at || !Number.isFinite(at.getTime()) || at.getTime() <= now.getTime())
     throw new Error(
       `put off until takes ${DEFER_WORDS} (got ${JSON.stringify(raw)})`,
@@ -664,7 +635,6 @@ export interface RotationInfo {
   ready: boolean;
   /** Issue 914: it waits on this many background items it left running. */
   waiting?: number;
-  /** Issue 765: a person put its rotation off until then (ISO 8601). */
   deferredUntil?: string;
 }
 
@@ -700,7 +670,6 @@ export function rotationInfo(
   }
   if (policy && !policy.onPrMerged && s.due === "pr-merged") delete s.due;
   const merged = policy ? policy.onPrMerged : true;
-  // Issue 765: put off by a person: nothing is due before that time.
   const deferred = isDeferred(s);
   const due = deferred
     ? undefined

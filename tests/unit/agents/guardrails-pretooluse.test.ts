@@ -144,11 +144,6 @@ describe("it never blocks anything else", () => {
   });
 });
 
-/**
- * Issue 765: a helper (a background subagent, a fork: agent_id or
- * agent_type in its hook input) never writes the agent's handoff.md. The
- * hook gets the file with --handoff; the refusal names the helper's own.
- */
 describe("issue 765: a helper never writes the agent's handoff.md", () => {
   const files = path.join(dir, "agent-files");
   const handoff = path.join(files, "handoff.md");

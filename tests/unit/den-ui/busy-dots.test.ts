@@ -49,6 +49,8 @@ interface FakeEvent {
   defaultPrevented?: boolean;
   persisted?: boolean;
   preventDefault?: () => void;
+  stopImmediatePropagation?: () => void;
+  stopped?: boolean;
 }
 
 class El {
@@ -174,7 +176,11 @@ class El {
   }
   click() {
     if (this.disabled) return;
-    this.dispatch({ type: "click", target: this });
+    // The window's capture listeners first (busy.js's guard, issue 1434).
+    const e: FakeEvent = { type: "click", target: this };
+    e.stopImmediatePropagation = () => (e.stopped = true);
+    win.dispatch(e);
+    if (!e.stopped) this.dispatch(e);
   }
   focus() {
     doc.activeElement = this;
@@ -272,11 +278,12 @@ const win = {
 type Kit = {
   OPEN_MS: number;
   DOTS_MS: number;
+  NO_ANSWER_MS: number;
   configureBusy: (h: Record<string, unknown>) => void;
   registerActions: (m: Record<string, unknown>) => void;
   busyAction: (
     name: string,
-    run: (h: Record<string, string>) => unknown,
+    run: (h: Record<string, string>, progress: (t: string) => void) => unknown,
     opts?: Record<string, unknown>,
   ) => Promise<unknown>;
   pending: (
@@ -337,8 +344,10 @@ function button(label = "Save changes") {
   return b;
 }
 const dialog = () => doc.body.querySelectorAll("dialog")[0] ?? null;
+// Issue 1434: held is aria-disabled, never disabled (that drops focus).
 const held = (b: El) =>
-  b.disabled &&
+  !b.disabled &&
+  b.getAttribute("aria-disabled") === "true" &&
   b.getAttribute("aria-busy") === "true" &&
   b.querySelectorAll(".bz-dots").length === 1;
 
@@ -407,13 +416,9 @@ describe("issue 699, 1: dots at once, for every button the kit holds", () => {
       submitter: b,
       preventDefault: () => (prevented = true),
     });
-    // The dots at once; the submitter is disabled only after the browser
-    // took its name and value into the form's data.
-    expect(b.querySelectorAll(".bz-dots")).toHaveLength(1);
-    expect(b.getAttribute("aria-busy")).toBe("true");
-    expect(prevented).toBe(false);
-    await tick(0);
+    // Held at once (aria-disabled leaves its name and value in the form).
     expect(held(b)).toBe(true);
+    expect(prevented).toBe(false);
     // A second submit while held is stopped.
     doc.dispatch({
       type: "submit",
@@ -578,23 +583,93 @@ describe("issue 699, 7: reduced motion", () => {
   });
 });
 
-describe("issue 699, 8: the working pop-up at 3 s, a setting", () => {
+describe("issues 699 and 1054, 8: no Working pop-up for one request; steps keep it at 3 s", () => {
   it("the default is 3000 ms, exported as DOTS_MS", () => {
     expect(kit.DOTS_MS).toBe(3000);
   });
-  it("opens at 3000 ms, not before; the dots stay behind it", async () => {
+  // Issue 1054: a single request shows its wait on the button alone.
+  it("1054: a held button never opens the Working pop-up; the dots stay until the answer", async () => {
     const b = button();
-    void kit.busyAction("save", () => answer(10_000), { button: b });
+    const out = kit.busyAction("save", () => answer(30_000), { button: b });
+    await tick(3000);
+    expect(dialog()?.open ?? false).toBe(false);
+    await tick(26_999);
+    expect(dialog()?.open ?? false).toBe(false);
+    expect(held(b)).toBe(true);
+    await tick(1);
+    await expect(out).resolves.toEqual({ ok: true });
+    expect(dialog()).toBeNull();
+    expect(b.disabled).toBe(false);
+    expect(toasts).toEqual(["Saved"]);
+  });
+  it("1054: no answer by NO_ANSWER_MS opens the no-answer pop-up (Check again), not Working", async () => {
+    const b = button();
+    void kit.busyAction("save", () => answer(120_000), { button: b });
+    await tick(kit.NO_ANSWER_MS - 1);
+    expect(dialog()?.open ?? false).toBe(false);
+    await tick(1);
+    expect(dialog()?.open).toBe(true);
+    expect(dialog()?.dataset.state).toBe("noanswer");
+    expect(held(b)).toBe(true);
+  });
+  it("1054: an action with named steps (steps: true) keeps the pop-up at dotsMs", async () => {
+    const w = (x: Record<string, string>) => ({ en: x, es: x, ja: x });
+    kit.registerActions({
+      long: {
+        who: "Probe",
+        steps: true,
+        words: w({ working: "Moving", success: "Moved", failure: "Not moved" }),
+      },
+    });
+    const b = button();
+    void kit.busyAction("long", () => answer(10_000), { button: b });
     await tick(2999);
     expect(dialog()?.open ?? false).toBe(false);
     await tick(1);
     expect(dialog()?.open).toBe(true);
+    expect(dialog()?.dataset.state).toBe("working");
     expect(held(b)).toBe(true);
   });
-  it("configureBusy({ dotsMs }) moves it", async () => {
+  it("1054: a run that names its steps (progress) gets the pop-up, from dotsMs", async () => {
+    const b = button();
+    let step: (t: string) => void = () => {};
+    void kit.busyAction(
+      "save",
+      (_h: unknown, progress: (t: string) => void) => {
+        step = progress;
+        return answer(20_000);
+      },
+      { button: b },
+    );
+    await tick(5000);
+    expect(dialog()?.open ?? false).toBe(false);
+    step("Copying the files");
+    expect(dialog()?.open).toBe(true);
+    expect(dialog()?.dataset.state).toBe("working");
+    expect(dialog()!.textContent).toContain("Copying the files");
+  });
+  it("1054: a step named before dotsMs opens it at dotsMs, not before", async () => {
+    const b = button();
+    void kit.busyAction(
+      "save",
+      (_h: unknown, progress: (t: string) => void) => {
+        progress("Step one");
+        return answer(20_000);
+      },
+      { button: b },
+    );
+    await tick(2999);
+    expect(dialog()?.open ?? false).toBe(false);
+    await tick(1);
+    expect(dialog()?.open).toBe(true);
+  });
+  it("configureBusy({ dotsMs }) moves it, for an action with steps", async () => {
     kit.configureBusy({ dotsMs: 1000 });
     const b = button();
-    void kit.busyAction("save", () => answer(10_000), { button: b });
+    void kit.busyAction("save", () => answer(10_000), {
+      button: b,
+      steps: true,
+    });
     await tick(999);
     expect(dialog()?.open ?? false).toBe(false);
     await tick(1);
@@ -695,11 +770,11 @@ describe("issue 699, 9: the button never shows an error", () => {
       () => (++n === 1 ? answer(4000, 500) : answer(10_000)),
       { button: b },
     );
+    // Issue 1054: no Working pop-up first; the failure opens it.
     await tick(3000);
-    expect(dialog()?.open).toBe(true);
+    expect(dialog()?.open ?? false).toBe(false);
     await tick(1000);
     expect(dialog()?.dataset.state).toBe("failure");
-    expect(held(b)).toBe(true);
     dialog()!.querySelector('[data-bz="retry"]')!.click();
     expect(held(b)).toBe(true);
     await tick(0);
@@ -714,7 +789,10 @@ describe("issue 699, 9: the button never shows an error", () => {
     const b = button();
     void kit.busyAction("save", () => answer(4000, 500), { button: b });
     await tick(4000);
-    expect(held(b)).toBe(true);
+    // Issue 1054: no Working pop-up came first, so the label is back as
+    // the failure pop-up opens.
+    expect(dialog()?.dataset.state).toBe("failure");
+    expect(held(b)).toBe(false);
     dialog()!.querySelector('[data-bz="close"]')!.click();
     expect(b.disabled).toBe(false);
     expect(b.querySelectorAll(".bz-dots")).toHaveLength(0);
@@ -738,7 +816,7 @@ describe('issue 699: data-instant="<reason>"', () => {
     const b = button();
     b.setAttribute("data-instant", "only reads a local list");
     void kit.busyAction("save", () => answer(10_000), { button: b });
-    expect(b.disabled).toBe(true);
+    expect(b.getAttribute("aria-disabled")).toBe("true");
     expect(b.querySelectorAll(".bz-dots")).toHaveLength(0);
     await tick(kit.OPEN_MS);
     expect(dialog()?.open).toBe(true);
@@ -811,5 +889,39 @@ describe("issue 698: holdDots, the dots alone (a wait with its own words)", () =
   });
   it("no button: nothing happens", () => {
     expect(() => kit.holdDots(null)).not.toThrow();
+  });
+});
+
+describe("issue 1434: held keeps focus", () => {
+  it("held is aria-disabled, never disabled; focus stays; let go, both are off", async () => {
+    const b = button();
+    b.focus();
+    void kit.pending(b, () => answer(500));
+    expect(held(b)).toBe(true);
+    expect(b.disabled).toBe(false);
+    expect(doc.activeElement).toBe(b);
+    await tick(500);
+    expect(b.getAttribute("aria-disabled")).toBeNull();
+    expect(b.getAttribute("aria-busy")).toBeNull();
+    expect(doc.activeElement).toBe(b);
+  });
+  it("a click on a held button never reaches the page's own listener", async () => {
+    const b = button();
+    let clicks = 0;
+    b.addEventListener("click", () => clicks++);
+    kit.holdDots(b);
+    b.click();
+    b.click();
+    expect(clicks).toBe(0);
+    kit.holdDots(b, false);
+    b.click();
+    expect(clicks).toBe(1);
+  });
+  it("a button the page made aria-disabled stays so after the hold", () => {
+    const b = button();
+    b.setAttribute("aria-disabled", "true");
+    kit.holdDots(b);
+    kit.holdDots(b, false);
+    expect(b.getAttribute("aria-disabled")).toBe("true");
   });
 });

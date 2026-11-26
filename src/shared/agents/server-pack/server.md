@@ -179,6 +179,22 @@ Held (each waits for the person's Allow):
 - `agent_rotation_defer`: put an agent's rotation off until a time (+2h,
   HH:MM, an ISO time), or `off` to stop. Before then nothing rotates it;
   after, the normal rule applies.
+- `agent_sandbox_set`: turn one agent's sandbox off or back on, with a
+  reason. Off runs only on the person's own Allow, and the Review says so
+  when an agent asks for itself; back on follows the policy. Den restarts
+  a running agent after its turn, on the same conversation.
+- `setting_change`: change one of Den's settings (`key`, `value`, a
+  `reason`) so the person never edits config/local/user.yml by hand. Den
+  checks the key and value first; a setting that widens what agents can
+  do runs only on the person's own Allow. One Den reads when it starts
+  says so: then ask for `den_restart_server`.
+- `gate_settings_set`: change this machine's gate slot settings
+  (`settings`, Settings › Gate's keys and values, and a `reason`), which
+  `setting_change` can't reach. Den checks every value first; on a
+  personal install it's written at once and the person is told; on a
+  strict one it follows their choice for Limits and performance.
+  Turning `gate.route_agents` off, or dropping a program from
+  `gate.route_commands`, waits for the person's own Allow on both.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.
@@ -186,6 +202,13 @@ Held (each waits for the person's Allow):
   away, or change its url or bearer (again a secrets.refs name; null for
   none). Only the person's own Allow runs either; agents get
   the change at their next start or resume.
+- `project_event_feed_add`, `project_event_feed_remove`: add or remove an
+  app's event feed for one of a project's agents (`agents.event_feeds`).
+  Its bearer is the name of a secrets.refs entry, never a value. An add
+  with a bearer, or to this machine or a private network, always waits
+  for the person's own Allow; otherwise, on a personal install it applies
+  at once and the person can Undo it, and on a strict one it waits for
+  their Allow. Den's own address and its Hub's are refused.
 - `persona_create`, `persona_update`: add or change a persona.
 - `hub_connect`: set, change or clear Hub's address. After the Allow, Den
   restarts; the person then clicks Connect in Settings › Hub.
@@ -216,11 +239,21 @@ Held (each waits for the person's Allow):
   box (another machine whose browsers take gate slots;
   docs/gate-slots.md). Den checks the box first; it waits for the
   person's Allow, and nothing changes until then.
+- `gate_runner_entry_set`: let a repo's CI jobs run on a test box the
+  person set (its labels, routing variable, slots, heavy or light, who
+  answers for it). It waits for the person's Allow. Nothing starts a
+  runner yet: it is a setting.
 - `host_restart`: when doctor's terminal host row says a restart
   is needed and offers it (Den's own restart failed or never ran). It
   waits for the person's Allow, then for no agent mid-turn, restarts the
   host and resumes the agents. Never stop the terminal host another way:
   that stops every agent. While doctor says Den is waiting, do nothing.
+- `web_url_set`: when this install's address is wrong or missing
+  (doctor's address row, a sign-in link that goes nowhere). Check first
+  that the name answers and an edge route sends it here (`edge_status`),
+  then propose it with its proof in `note`. Den checks it answers as this
+  Den, at the ask and again at the Allow; it never writes one that doesn't.
+  Never ask the person to type `web url` instead.
 
 Only when Den's config turns them on (`mcp.actions`):
 

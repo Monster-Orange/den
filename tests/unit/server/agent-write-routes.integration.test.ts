@@ -79,7 +79,6 @@ describe("an agent's token and a person's writes, on the real server", () => {
       ["POST", "/api/approvals/abcdefghijklmnop/decide", { allow: true }],
       ["POST", "/api/settings", { cli_tabs: true }],
       ["POST", "/api/workspaces/north/agents/someone/stop", {}],
-      // Issue 765: an agent can't put an agent's rotation off.
       [
         "POST",
         "/api/workspaces/north/agents/someone/defer",

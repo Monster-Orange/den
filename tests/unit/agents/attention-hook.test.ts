@@ -176,4 +176,12 @@ describe("at launch", () => {
       "UserPromptSubmit",
     ]);
   });
+
+  it("an agent with Den's hooks gets the sandbox's refusal note, after a tool and after a failed one (issue 936)", () => {
+    const { hooks } = launch();
+    for (const ev of ["PostToolUse", "PostToolUseFailure"]) {
+      const cmds = hooks![ev]!.map((e) => e.hooks[0].command);
+      expect(cmds.some((c) => /sandbox-refusal\.[jt]s/.test(c))).toBe(true);
+    }
+  });
 });

@@ -1,8 +1,8 @@
 /**
  * The shared GitHub watcher's one status line, for doctor and
  * `<cli> github status`: GitHub calls left this hour and the reset time,
- * the active watches and the current interval; when paused, why and until
- * when. Read from the server's <state>/github/watch-status.json
+ * the active watches (issue 1166: the queued ones, the oldest's age and the
+ * cap now) and the current interval; when paused, why and until when. Read from the server's <state>/github/watch-status.json
  * (watcher.ts writes it each round).
  */
 import * as fs from "node:fs";
@@ -39,7 +39,20 @@ export function githubWatchLine(
     s.remaining === null
       ? "GitHub calls left: not known yet"
       : `${s.remaining}${s.limit ? ` of ${s.limit}` : ""} GitHub calls left${s.resetAt ? ` (reset ${s.resetAt})` : ""}`;
-  const rest = `${s.active} ${s.active === 1 ? "watch" : "watches"}, every ${s.intervalSeconds} s`;
+  // Issue 1166: the queued ones, the oldest open one's age and the cap.
+  const age =
+    s.oldestAt && Number.isFinite(Date.parse(s.oldestAt))
+      ? Math.max(
+          0,
+          Math.floor((Date.parse(s.at) - Date.parse(s.oldestAt)) / 60_000),
+        )
+      : null;
+  const rest =
+    `${s.active} ${s.active === 1 ? "watch" : "watches"}` +
+    (s.queued ? `, ${s.queued} queued` : "") +
+    (age !== null ? `, oldest ${age} min` : "") +
+    (s.cap ? ` (at most ${s.cap} at once now)` : "") +
+    `, every ${s.intervalSeconds} s`;
   if (s.pausedUntil)
     return {
       ok: false,

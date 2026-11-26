@@ -97,6 +97,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/project-colour-picker.js",
+    "/health-rollup.js",
     "/favicon.ico",
     // Issue 644: the kit's site files (its head snippet names them).
     "/favicon.svg",
@@ -239,6 +240,10 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/agents/stale",
     "D44: the running agents whose MCP servers are out of date (ids and projects)",
+  ),
+  R(
+    "/api/agents/restart-status",
+    "issue 1407: each agent of a restart for its tools, live (state, job command redacted, why one failed, redacted); a signed-in person's only",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
@@ -436,12 +441,31 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST"],
     "/api/coach/dismiss",
-    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
+    "issue 52: Dismiss a Coach finding, a person's (a reason kept when given)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/undismiss",
+    "issue 52: Undo a Coach finding's dismissal, a person's",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/apply",
+    "issue 110: Apply a Coach finding's change, a person's: it asks for a held write, which waits for a person's Allow",
   ),
   M(
     ["POST"],
     "/api/web/fixture-person",
     "issue 810: Set up test person, a person's, on a test install only",
+  ),
+  R(
+    "/api/web/test-installs",
+    "issue 816: the test installs on this computer waiting for their test person (the signed-in person only, checked in the route)",
+  ),
+  M(
+    ["POST"],
+    "/api/web/fixture-person/grant",
+    "issue 816: your own Den, at your Allow, makes this test install's test person (its person bearer on this machine plus a one-use grant)",
   ),
   M(
     ["POST"],
@@ -497,6 +521,11 @@ export const ROUTES: readonly RouteEntry[] = [
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
+  M(
+    ["POST"],
+    "/api/audit/cli",
+    "issue 1369: a CLI's audit entry, recorded as its credential says",
+  ),
   M(["POST"], "/api/web/restart", "restarts this server"),
   M(["PUT"], "/api/release/config"),
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
@@ -513,6 +542,16 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/verify/run",
     "issue 208: runs Verify's checks on local; any other environment is held",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/import",
+    "issue 1182: a person keeps an outside runner's verdict as a Verify run",
+  ),
+  M(
+    ["POST"],
+    "/api/verify/remove",
+    "issue 1182: a person removes an imported Verify run",
   ),
   R("/api/verify/schedules", "issue 214: Verify's schedules and their Allows"),
   M(
@@ -540,6 +579,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
+  // Issue 1371 Part 2: the person's Undo of a setting an agent changed.
+  M(["POST"], "/api/settings/undo", "puts a setting back (user.yml)"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
   // Issue 666: Make <alias> this Den's address (the owner's only).
@@ -567,6 +608,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/agents/accounts/order",
     "changes the order agents use {vendor} accounts in",
+  ),
+  M(
+    ["POST"],
+    "/api/agents/accounts/remove",
+    "issue 1182: removes a {vendor} account and its sign-in token; a person's only",
   ),
   // FB: the preview composes (no write); a send is a person's only.
   M(
@@ -599,6 +645,11 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST", "DELETE"], "/api/workspaces"),
   M(["POST"], "/api/workspaces/rename"),
   M(["POST"], "/api/workspaces/create"),
+  M(
+    ["POST"],
+    "/api/workspaces/seed",
+    "issue 1182: resets the blueprint's projects to the committed config; a person's only",
+  ),
   M(["POST"], "/api/workspaces/services/autostart"),
   M(["POST"], "/api/workspaces/services/mode"),
   M(["POST", "DELETE"], "/api/workspaces/services"),
@@ -649,6 +700,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "issue 459: a project's app event feeds and their state, names, agents and urls only",
   ),
   M(
+    ["POST"],
+    "/api/workspaces/:ws/event-feeds",
+    "issue 1480: a person adds an app event feed (its bearer a secrets.refs name); a person's only (an agent asks with project_event_feed_add)",
+  ),
+  M(
+    ["DELETE"],
+    "/api/workspaces/:ws/event-feeds/:name",
+    "issue 1480: a person removes an app event feed; a person's only (an agent asks with project_event_feed_remove)",
+  ),
+  M(
     ["POST", "DELETE"],
     "/api/workspaces/:ws/mcp-servers/:name",
     "issue 352: a person changes one's url or bearer reference, or removes it; a person's only (an agent asks with project_mcp_update or project_mcp_remove)",
@@ -694,6 +755,11 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/workspaces/:ws/agents/:id/compacting-clear",
     "issue 278: a person looked at an agent stuck compacting: its loop is over for now and held deliveries go again; a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/agents/:id/folder",
+    "issue 1182: a stopped agent's folder ({repo} or {folder}); a person's only (an agent asks with agent_folder)",
   ),
   M(
     ["POST"],
@@ -799,6 +865,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 625: a person turns a test box on or off; off, it gets no slot and no contact",
   ),
   R(
+    "/api/gate-slots/runner-entries",
+    "Issue 642: the CI runner entries (a repo's jobs on a test box); a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries",
+    "Issue 642: a person adds or replaces a runner entry; an agent asks with gate_runner_entry_set",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries/remove",
+    "Issue 642: a person removes a runner entry",
+  ),
+  R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),
@@ -896,6 +976,19 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/hub/link-suggestions",
     "#68: link the ticked projects to Hub's suggestions in one confirm; a person's only",
+  ),
+  R(
+    "/api/hub/groups",
+    "Issue 750: this install's groups as Hub serves them (read from Hub, kept in memory only), for the agents page's By group view",
+  ),
+  R(
+    "/api/hub/connect-review",
+    "issue 646: Connect's review: each project, its Hub project or the proposed one and why (names only)",
+  ),
+  M(
+    ["POST"],
+    "/api/hub/connect-review",
+    "issue 646: Connect and link all: link the rows at once, ask Hub for the new projects as one plan; a person's only",
   ),
   R(
     "/api/hub/names-check",
@@ -1185,6 +1278,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/workspaces/:ws/agents/:id/restart",
     "/api/workspaces/:ws/agents/:id/link",
     "/api/workspaces/:ws/agents/:id/move",
+    "/api/workspaces/:ws/agents/:id/folder",
     "/api/workspaces/:ws/agents/:id/say",
     "/api/workspaces/:ws/agents/:id/order",
   ],
@@ -1197,6 +1291,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "agent-routes.ts:EVENT_FEED_PATH": ["/api/workspaces/:ws/event-feeds/:name"],
   "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
   "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [

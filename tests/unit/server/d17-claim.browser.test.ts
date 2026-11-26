@@ -19,7 +19,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { readWebOwner } from "../../../src/shared/web-owner.js";
+import { readWebOwner } from "../../../src/shared/web/web-owner.js";
 import { startDenServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
@@ -164,7 +164,7 @@ describe("Connect your GitHub account, from another machine (D29)", () => {
     });
     await p.goto(`http://${EDGE}:${port}/settings`);
     await p.waitForSelector("#den-claim-title");
-    const buttons = await p.$$eval("#den-gh .acts .btn", (bs) =>
+    const buttons = await p.$$eval("#den-gh .acts .den-btn", (bs) =>
       bs.map((b) => ({
         id: b.id,
         text: (b.textContent ?? "").trim(),
