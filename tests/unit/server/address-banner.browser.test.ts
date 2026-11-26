@@ -180,14 +180,11 @@ describe.each(ENGINES)("issue 455 in %s", (e) => {
       await b.waitFor({ state: "detached", timeout: 5000 });
       await shot(p, `dismissed-${e}-${width}`);
       // Shown once for this address: the next page says nothing.
-      // Issue 841: wait for the answer that decides the banner, not a sleep.
       const base = s.base;
       const answer = await settled<Response>(p, "/api/edge/address", () =>
         p.goto(`${base}/agents`),
       );
       await answer.finished();
-      // The banner is added in the same task as the answer is read; one
-      // round trip into the page runs after it.
       await p.evaluate(() => new Promise((ok) => requestAnimationFrame(ok)));
       expect(await b.count()).toBe(0);
       await p.context().close();

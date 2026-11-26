@@ -1,27 +1,6 @@
-/**
- * Issue 841: how a browser test finds an element and waits for the page,
- * in Chromium and WebKit alike.
- *
- * - Find by what a person sees: `byRole(page, "button", "Save")` (its role
- *   and accessible name) or `byLabel(page, "Project name")`, both matched
- *   exactly. Never a class selector or a position (`.nth`, `:nth-child`):
- *   those break on a restyle (the brittle-pattern ratchet counts them).
- * - Wait for a named state, never a fixed sleep: `waitFor(page, { dialog:
- *   "Delete project" })`, `{ dialogClosed }`, `{ row }`. A wait ends as soon
- *   as the state holds; one that runs out says which state, how long, and
- *   Playwright's reason.
- * - A request settled: `settled(page, "/api/agents", () => button.click(),
- *   { method: "POST" })` arms the wait before the action, so a fast response
- *   is never missed; the path is exact and the method keeps a background
- *   poll from settling it.
- *
- * Timeouts default to the suite's wait (browserWaitMs: DEN_BROWSER_WAIT_MS,
- * 20 s unset), which allows for a remote browser's round trips.
- */
 import type { Locator, Page } from "playwright";
 import { browserWaitMs } from "./browser.js";
 
-/** What these helpers use of a Playwright Locator. */
 export interface FindLocator {
   waitFor(opts: {
     state: "visible" | "hidden" | "attached" | "detached";
@@ -29,13 +8,11 @@ export interface FindLocator {
   }): Promise<void>;
 }
 
-/** What settled uses of a Playwright Response. */
 export interface FindResponse {
   url(): string;
   request(): { method(): string };
 }
 
-/** What these helpers use of a Playwright Page (a Page satisfies it). */
 export interface FindPage {
   getByRole(
     role: string,
@@ -48,7 +25,6 @@ export interface FindPage {
   ): Promise<FindResponse>;
 }
 
-/** An element by its role and accessible name, matched exactly. */
 export function byRole(
   page: Page,
   role: Parameters<Page["getByRole"]>[0],
@@ -67,14 +43,12 @@ export function byRole(
   return page.getByRole(role, { name, exact: true });
 }
 
-/** A form control by its label, matched exactly. */
 export function byLabel(page: Page, label: string | RegExp): Locator;
 export function byLabel(page: FindPage, label: string | RegExp): FindLocator;
 export function byLabel(page: FindPage, label: string | RegExp): FindLocator {
   return page.getByLabel(label, { exact: true });
 }
 
-/** A page state a test waits for, by what a person sees. */
 export type PageState =
   | { dialog: string | RegExp }
   | { dialogClosed: string | RegExp }
@@ -83,7 +57,6 @@ export type PageState =
 const shown = (n: string | RegExp) =>
   typeof n === "string" ? JSON.stringify(n) : String(n);
 
-/** A state in words, for a failure message. */
 export function describeState(s: PageState): string {
   if ("dialog" in s) return `the dialog ${shown(s.dialog)} to open`;
   if ("dialogClosed" in s)
@@ -91,10 +64,6 @@ export function describeState(s: PageState): string {
   return `a row ${shown(s.row)}`;
 }
 
-/**
- * Waits until `state` holds, up to `timeout` ms (the suite's wait unset).
- * Throws naming the state, the time and the reason when it runs out.
- */
 export async function waitFor(
   page: FindPage,
   state: PageState,
@@ -116,13 +85,6 @@ export async function waitFor(
   }
 }
 
-/**
- * Runs `action` and waits for the first response to it, armed before the
- * action. A string is the exact path (`/api/agents` never matches
- * `/api/agents/stale`, and the query is ignored); a RegExp is tested against
- * the whole URL, for anything looser. `method` ("POST", any case) keeps a
- * background poll to the same path from settling it. Returns the response.
- */
 export async function settled<R extends FindResponse = FindResponse>(
   page: FindPage,
   url: string | RegExp,
@@ -141,7 +103,6 @@ export async function settled<R extends FindResponse = FindResponse>(
     }
   };
   const waiting = page.waitForResponse(match, { timeout });
-  // Never an unhandled rejection while the action runs.
   waiting.catch(() => undefined);
   await action();
   try {

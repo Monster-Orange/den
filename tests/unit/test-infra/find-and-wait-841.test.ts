@@ -1,10 +1,3 @@
-/**
- * Issue 841: shared test helpers (tests/unit/helpers/find.ts). Elements are
- * found by role and accessible name, or by label, matched exactly; a test
- * waits for a named page state, never a fixed sleep, and a wait that runs
- * out says which state, how long, and why. A fake page here; the real
- * browsers in find-and-wait.browser.test.ts.
- */
 import { describe, expect, it, jest } from "@jest/globals";
 import {
   byLabel,
@@ -45,8 +38,6 @@ function fakePage(
       calls.push(["getByLabel", label, opts]);
       return locator(["label", label]);
     },
-    // The page's responses in the order they arrive: the first that
-    // matches resolves the wait, as in Playwright; none times out.
     waitForResponse: (
       match: (r: FakeResponse) => boolean,
       opts: { timeout: number },

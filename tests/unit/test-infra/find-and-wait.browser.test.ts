@@ -1,9 +1,3 @@
-/**
- * Issue 841: the shared finders and waits (tests/unit/helpers/find.ts) in
- * real Chromium and WebKit. A page served from a routed origin opens a
- * dialog, adds a row and fetches after a delay; the test waits for each
- * state by name, never a sleep, and a wait that runs out says which state.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
