@@ -45,6 +45,7 @@ const t = (k, v = {}) =>
   );
 const SOURCE = { own: "its own setting", install: "the Den-wide default" };
 const ROW_NAME = `${t("ag.openName", { id: `${WS} / tester` })} · idle`;
+const ROW_TEXT = `tester ${ID} idle`;
 
 export function fakeBed({ den = "good" } = {}) {
   const st = {
@@ -67,6 +68,7 @@ export function fakeBed({ den = "good" } = {}) {
   // closed, "top" (the ⋯ menu) or "mode" (its Mode radios).
   let menuOpen = "closed";
   let said = null;
+  let onPost = null;
   let tagShown = null;
   let busyOn = null; // the element that showed busy: "more", "other" or none
   let watching = null; // the label of the button the check watches
@@ -113,30 +115,46 @@ export function fakeBed({ den = "good" } = {}) {
   const page = {
     async waitForSelector() {}, // the row's mode tag (read by evaluate)
     locator(sel) {
-      if (sel !== `[data-agent="${ID}"]`)
-        return {
-          async waitFor() {
-            fail(sel);
-          },
-        };
       return {
-        getByRole(role, o = {}) {
-          const found =
-            role === "button" &&
-            o.name instanceof RegExp &&
-            o.name.test(ROW_NAME);
-          return {
-            async waitFor() {
-              if (!found) fail(String(o.name));
-            },
-            async click() {
-              if (!found) fail(String(o.name));
-            },
-          };
+        async waitFor() {
+          fail(sel);
         },
       };
     },
     getByRole(role, o = {}) {
+      if (role === "button" && o.name instanceof RegExp) {
+        let text = "";
+        const found = () => o.name.test(ROW_NAME) && ROW_TEXT.includes(text);
+        const row = {
+          filter(f) {
+            text = f.hasText;
+            return row;
+          },
+          first: () => row,
+          async waitFor() {
+            if (!found()) fail(String(o.name));
+          },
+          async click() {
+            if (!found()) fail(String(o.name));
+          },
+          locator() {
+            const tag = {
+              first: () => tag,
+              async waitFor() {
+                if (!found() || !tagShown) fail("[data-mode]");
+              },
+              async getAttribute(a) {
+                return a === "data-mode" ? tagShown.mode : tagShown.source;
+              },
+              async textContent() {
+                return tagShown.text;
+              },
+            };
+            return tag;
+          },
+        };
+        return row;
+      }
       if (role === "button")
         return {
           async count() {
@@ -152,7 +170,12 @@ export function fakeBed({ den = "good" } = {}) {
       if (role === "menuitem")
         return {
           async click() {
-            if (menuOpen !== "top" || !/^Mode: /.test(o.name)) fail(o.name);
+            const now = t("ag.mode.item", { m: t(`pm.name.${st.running}`) });
+            if (
+              menuOpen !== "top" ||
+              !(o.name instanceof RegExp ? o.name.test(now) : o.name === now)
+            )
+              fail(o.name);
             menuOpen = "mode";
           },
         };
@@ -171,10 +194,33 @@ export function fakeBed({ den = "good" } = {}) {
         },
         async click() {
           if (menuOpen !== "mode" || !m) fail(o.name);
-          setMode(m === "follow" ? null : m);
+          if (den !== "refused") setMode(m === "follow" ? null : m);
           menuOpen = "closed";
+          onPost?.(
+            den === "refused"
+              ? { status: 403, body: { ok: false, code: "fixture_scope" } }
+              : { status: 200, body: { ok: true } },
+          );
         },
       };
+    },
+    waitForResponse(pred, opts = {}) {
+      return new Promise((ok, no) => {
+        setTimeout(
+          () => no(new Error("timeout")),
+          Math.min(opts.timeout ?? 50, 50),
+        );
+        onPost = (x) => {
+          const res = {
+            url: () =>
+              `http://bed.invalid/api/workspaces/${WS}/agents/${ID}/mode`,
+            request: () => ({ method: () => "POST" }),
+            status: () => x.status,
+            json: async () => x.body,
+          };
+          if (pred(res)) ok(res);
+        };
+      });
     },
     getByText(text) {
       return {

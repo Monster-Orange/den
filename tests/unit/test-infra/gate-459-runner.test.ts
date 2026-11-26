@@ -29,6 +29,7 @@ interface After {
   ups: number;
   feeds: number;
   gotos: string[];
+  held: unknown;
 }
 
 function runGate(den: string, bed = "file", limitMs = 0) {
@@ -82,6 +83,20 @@ describe("gate/459.mjs as the bed runs it", () => {
     expect(r.after.gotos[0]).toContain("project=north");
     expect(r.after.downs).toBe(2);
     expect(r.after.ups).toBe(2);
+    putBack(r);
+  });
+
+  it("a held item left for its agent is captured, and Den's held file is never edited", () => {
+    const r = runGate("heldLeft");
+    expect(r.error).toBeUndefined();
+    expect(r.rows?.[1].detail).toContain('"held_reason":"busy"');
+    expect(r.after.held).toEqual({
+      queue: {
+        "gate-459-feed": [{ id: "feed:old", held_reason: "busy" }],
+        "other-agent": [{ id: "hub:keep" }],
+      },
+      active: {},
+    });
     putBack(r);
   });
 

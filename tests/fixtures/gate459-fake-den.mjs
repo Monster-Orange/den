@@ -101,6 +101,26 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
       ? null
       : fs.mkdtempSync(path.join(os.tmpdir(), "gate459-"));
   const file = root ? path.join(root, FILE) : null;
+  const heldPath = root
+    ? path.join(root, "state", "hub", "deliveries-seen.json")
+    : null;
+  if (root && den === "heldLeft") {
+    fs.mkdirSync(path.dirname(heldPath), { recursive: true });
+    fs.writeFileSync(
+      heldPath,
+      JSON.stringify({
+        ids: [],
+        last: null,
+        held: {
+          queue: {
+            [ID]: [{ id: "feed:old", held_reason: "busy" }],
+            "other-agent": [{ id: "hub:keep" }],
+          },
+          active: {},
+        },
+      }),
+    );
+  }
   if (bed === "file") {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, ORIGINAL);
@@ -257,7 +277,9 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
   const ctx = {
     url: "http://bed.invalid",
     // The bed has no node_modules: the check finds yaml where the bed's runner does.
-    o: root ? { bed: root, yamlFrom: REPO } : {},
+    o: root
+      ? { bed: root, yamlFrom: REPO, denHome: path.join(root, "state") }
+      : {},
     newPage: () => page,
     async goto(_p, where) {
       st.gotos.push(where);
@@ -291,7 +313,7 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
       return { code: 0, out: "", err: "" };
     },
     async api(p) {
-      if (!st.up) return null;
+      if (!st.up) throw new TypeError("fetch failed");
       if (p === "/api/server-info") return { ok: true };
       if (p === "/api/sessions")
         return {
@@ -338,6 +360,10 @@ export function fakeBed({ den = "good", bed = "file" } = {}) {
       ups: st.ups,
       feeds: st.feeds.size,
       gotos: st.gotos,
+      held:
+        heldPath && fs.existsSync(heldPath)
+          ? JSON.parse(fs.readFileSync(heldPath, "utf8")).held
+          : null,
     }),
     cleanup: () => {
       webDown();
