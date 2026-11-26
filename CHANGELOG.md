@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.90] - unreleased
 
+### Added
+
+- An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
+
 ### Fixed
 
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
