@@ -137,11 +137,16 @@ export function launchFileProblems(
     st: fs.Stats,
     want: number,
     kind: "dir" | "file",
-  ) => {
+  ): void => {
     const name = path.relative(agentsDir, p);
-    if (st.isSymbolicLink()) return out.push(`${name} is a link`);
-    if (kind === "dir" ? !st.isDirectory() : !st.isFile())
-      return out.push(`${name} is not a ${kind === "dir" ? "folder" : "file"}`);
+    if (st.isSymbolicLink()) {
+      out.push(`${name} is a link`);
+      return;
+    }
+    if (kind === "dir" ? !st.isDirectory() : !st.isFile()) {
+      out.push(`${name} is not a ${kind === "dir" ? "folder" : "file"}`);
+      return;
+    }
     if (st.uid !== personUid)
       out.push(`${name} is not the person's (owner uid ${st.uid})`);
     // The permission bits decide who writes; setgid only passes the group
