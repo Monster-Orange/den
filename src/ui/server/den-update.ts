@@ -104,21 +104,12 @@ export type UpdateResult =
       to?: string;
       /** Issue 1403: a routine update stopped; the person decides. */
       needsPerson?: true;
-      /**
-       * Issue 125: the rollback failed too. What the person must do by hand
-       * (put the pin back on `from` in `root`, then npm install there), kept
-       * apart from the long npm reasons so the bell can lead with it.
-       */
       rollbackFailed?: RollbackFailed;
     };
 
-/** Issue 125: an update whose rollback failed as well. */
 export interface RollbackFailed {
-  /** The version the pin must go back to. */
   from: string;
-  /** The distribution's folder, where npm install must run. */
   root: string;
-  /** Both reasons: the update's, then the rollback's. */
   why: string;
 }
 

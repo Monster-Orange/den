@@ -445,7 +445,6 @@ export interface UpdateCheckDeps {
   ): Promise<{
     ok: boolean;
     error?: string;
-    /** Issue 125: the rollback failed too (den-update.ts RollbackFailed). */
     rollbackFailed?: import("./den-update.js").RollbackFailed;
   }>;
   /** Hold "update Den to X" for the person; false when it couldn't. */
@@ -764,8 +763,6 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
       const why = r.error ?? "the update didn't run";
       const rb = "rollbackFailed" in r ? r.rollbackFailed : undefined;
       if (rb)
-        // Issue 125: the bell keeps 300 characters, and npm's reasons are
-        // long: the failure and the hand-fix go first, the reasons last.
         d.notice(
           want,
           `Den couldn't update to ${want}, and the rollback failed too: Den ${rb.from} may not start. Put the pin back on ${rb.from} in ${rb.root} and run npm install there. Why: ${rb.why}`,

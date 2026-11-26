@@ -12837,7 +12837,6 @@ function startUpdateCheck(): void {
               : {
                   ok: false,
                   error: String(r.error ?? "not updated"),
-                  // Issue 125: the bell leads with the hand-fix.
                   ...(r.rollbackFailed
                     ? { rollbackFailed: r.rollbackFailed }
                     : {}),

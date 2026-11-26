@@ -163,7 +163,6 @@ describe("the lead install", () => {
       from: "1.2.0",
       root: "/srv/den",
     });
-    // What the bell keeps (it cuts at 300): the failure and the hand-fix first.
     const kept = n.text.slice(0, 300);
     expect(kept).toMatch(/rollback failed too/i);
     expect(kept).toContain("Den 1.2.0 may not start");
