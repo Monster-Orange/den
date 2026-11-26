@@ -25,8 +25,15 @@ function run(js: string): string {
 const limits = JSON.parse(
   run(`
     const g = await import("./gate/1668.mjs");
-    console.log(JSON.stringify({ n: g.SEED_AGENTS, tries: g.TRIES, limit: g.LIMIT_MS, probe: g.PROBE_MS, min: g.IN_FLIGHT_MIN }));`),
-) as { n: number; tries: number; limit: number; probe: number; min: number };
+    console.log(JSON.stringify({ n: g.SEED_AGENTS, tries: g.TRIES, limit: g.LIMIT_MS, probe: g.PROBE_MS, min: g.IN_FLIGHT_MIN, wait: g.HELPERS_WAIT_MS }));`),
+) as {
+  n: number;
+  tries: number;
+  limit: number;
+  probe: number;
+  min: number;
+  wait: number;
+};
 
 function rows(result: unknown): Row[] {
   return JSON.parse(
@@ -48,7 +55,12 @@ const probes = (ms: number, inFlight = limits.tries) =>
 const fast = {
   seedMs: 900,
   seed: { status: 0, said: `seeded ${limits.n}` },
-  warmMs: 4000,
+  warmMs: 40,
+  coldMs: 30,
+  coldStatus: 200,
+  coldHelperRows: 0,
+  coldProbe: { ms: 6, status: 200, inFlight: true },
+  helpersMs: 2100,
   helperRows: limits.n,
   tries: times(Math.floor(limits.limit / 4)),
   probes: probes(Math.floor(limits.probe / 4)),
@@ -112,6 +124,36 @@ describe("gate/1668 rows", () => {
       }),
     ).toThrow(
       /1668 not measured: server-info started while the list was still in flight on/,
+    );
+  });
+
+  it("0.4.90's cold list, reading every transcript before it answers, fails row 1 even when the warm lists are fast", () => {
+    const r = rows({
+      ...fast,
+      coldMs: limits.limit * 6,
+      coldHelperRows: limits.n,
+      coldProbe: { ms: limits.probe * 18, status: 200, inFlight: true },
+    });
+    expect(r.map((x) => x.ok)).toEqual([false, false]);
+    expect(r[0].detail).toContain(`cold list ${limits.limit * 6} ms`);
+    expect(r[1].detail).toContain(
+      `during the cold list ${limits.probe * 18} ms`,
+    );
+  });
+
+  it("helpers that never appear within the wait are not measured, naming the wait", () => {
+    expect(() =>
+      rows({
+        ...fast,
+        helperRows: 0,
+        helpersMs: null,
+        listed: limits.n,
+        listRows: limits.n + 1,
+      }),
+    ).toThrow(
+      new RegExp(
+        `1668 not measured: the list showed helpers on 0 of ${limits.n} seeded agents within ${limits.wait / 1000} s of the seed \\(it listed ${limits.n} of them`,
+      ),
     );
   });
 
