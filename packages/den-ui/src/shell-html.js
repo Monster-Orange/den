@@ -191,9 +191,6 @@ export function navItemHtml(n, navRole, lang) {
   const b = n.badge || null;
   const kind = navKind(n.kind, lang);
   const off = navOff(n.off);
-  // Issue 561: a "waiting" count says, on hover, who it waits on, so a
-  // bare number can't be read as a wrong total. Its aria words are the
-  // entry's name, unchanged (the badge stays aria-hidden).
   const waits =
     b && b.what === "waiting" && b.n != null && b.n !== ""
       ? ' title="' +

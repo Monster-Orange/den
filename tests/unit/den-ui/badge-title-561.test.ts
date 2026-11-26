@@ -1,10 +1,3 @@
-/**
- * Issue 561: a rail badge the host marks a "waiting" count carries the
- * kit's title, "{n} waiting on you" (en, es, ja), so a bare count on
- * hover can't be read as a wrong total. Other badges get none. The aria
- * words are unchanged: the badge stays aria-hidden and the entry's name
- * still reads "<label>, {n} waiting".
- */
 import { describe, expect, it } from "@jest/globals";
 import {
   navItemHtml,
@@ -28,7 +21,6 @@ describe("issue 561: a waiting badge's title", () => {
     ] as const) {
       const t = badge(entry({ n: 3, what: "waiting" }, lang));
       expect([lang, titleOf(t)]).toEqual([lang, want]);
-      // Still hidden from assistive tech: the entry's name says it.
       expect(t).toContain('aria-hidden="true"');
     }
   });
