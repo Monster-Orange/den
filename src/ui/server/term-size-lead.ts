@@ -3,10 +3,13 @@ export interface TermSize {
   rows: number;
 }
 
+const SEEN_MAX = 64;
+
 export class SizeLead<V> {
   private lead: V | null = null;
   private goneAt: number | null = null;
   private readonly viewers = new Set<V>();
+  private readonly seen = new Set<V>();
   private readonly graceMs: number;
   private readonly now: () => number;
 
@@ -28,9 +31,15 @@ export class SizeLead<V> {
   }
 
   attach(v: V): void {
+    const alone = this.viewers.size === 0;
     this.viewers.add(v);
+    const known = this.seen.delete(v);
+    this.seen.add(v);
+    if (this.seen.size > SEEN_MAX)
+      this.seen.delete(this.seen.values().next().value as V);
     if (this.lead === v) this.goneAt = null;
-    if (this.lead === null) this.lead = v;
+    else if (this.lead === null || (this.goneAt !== null && alone && !known))
+      this.take(v);
   }
 
   detach(v: V, keep = true): void {

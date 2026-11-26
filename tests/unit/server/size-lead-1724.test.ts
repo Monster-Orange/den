@@ -52,6 +52,32 @@ describe("issue 1724: the view that holds the size keeps it through a blip", () 
     expect(l.resize("B", T)).toEqual(T);
   });
 
+  it("a new view that comes while the holder is gone and nobody else is here takes it; one seen before still waits out the grace", () => {
+    const { l } = lead();
+    l.attach("A");
+    l.attach("B");
+    l.resize("A", S, true);
+    l.detach("B");
+    l.detach("A");
+    l.attach("B");
+    expect(l.leader()).toBe("A");
+    l.detach("B");
+    l.attach("C");
+    expect(l.leader()).toBe("C");
+    expect(l.resize("C", T)).toEqual(T);
+  });
+
+  it("a new view while someone else is still here follows the gone holder", () => {
+    const { l } = lead();
+    l.attach("A");
+    l.attach("B");
+    l.resize("A", S, true);
+    l.detach("A");
+    l.attach("C");
+    expect(l.leader()).toBe("A");
+    expect(l.resize("C", T)).toBeNull();
+  });
+
   it("a pane closed on purpose hands it on at once, grace or not", () => {
     const { l } = lead(30_000);
     l.attach("A");
