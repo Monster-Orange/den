@@ -23,7 +23,7 @@ import * as dns from "dns";
 import * as http from "http";
 import * as https from "https";
 import * as net from "net";
-import { isLoopbackName } from "./web-url-check.js";
+import { isLoopbackName } from "./web/web-url-check.js";
 import { testResolveLookup } from "./test-resolve.js";
 
 export const DEN_IDENTITY_PATH = "/api/den-identity";

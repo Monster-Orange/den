@@ -13,6 +13,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vm from "vm";
 import { BUILTIN_CATALOG } from "../../../src/shared/agents/catalog.js";
+import { readSettingsSources } from "./helpers/settings-sources.js";
 
 type Table = Record<string, string>;
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
@@ -104,7 +105,7 @@ const withoutTail = (s: string) => s.replace(TAIL, "");
 const chore = (lang: string, s: string) =>
   CHORE[lang].some((r) => r.test(withoutTail(s)));
 
-const REGISTRY = read("settings-registry.js");
+const REGISTRY = readSettingsSources();
 const messages = catalogs("i18n/es.js", "i18n/ja.js", "shell.js");
 /** Keys the registry looks up: L("key", …) and t("key", …). */
 const LOOKED_UP = new Set(

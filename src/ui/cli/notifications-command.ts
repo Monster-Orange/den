@@ -15,6 +15,11 @@ import {
   type Which,
 } from "../../shared/notifications.js";
 import { product } from "../../shared/product.js";
+import {
+  personServerFor,
+  throughServer,
+  type PersonServer,
+} from "./person-server.js";
 
 export const NOTIFICATIONS_HELP = {
   usage: "notifications [list|read|clear]",
@@ -32,6 +37,8 @@ export interface NotificationsDeps {
   now?: () => number;
   out?: (line: string) => void;
   err?: (line: string) => void;
+  /** Issue 989: the running server (default: this install's). */
+  server?: PersonServer;
 }
 
 function ago(iso: string, now: number): string {
@@ -119,6 +126,27 @@ export async function cmdNotifications(
   } else if (rest.length === 1 && sub === "read") {
     which = { id: rest[0] };
   } else if (rest.length) return usage();
+  // Issue 989: the running server changes the bell when it answers (the
+  // person's only there); its refusal is final. No server: as before.
+  let answer: Record<string, unknown> | null;
+  try {
+    answer = await throughServer(
+      deps.server ?? personServerFor(stateDir),
+      "POST",
+      `/api/notifications/${sub}`,
+      which,
+    );
+  } catch (e) {
+    err(
+      `✗ ${cli} notifications ${sub}: ${(e as Error).message}; nothing was changed`,
+    );
+    return 1;
+  }
+  if (answer) {
+    const n = typeof answer.changed === "number" ? answer.changed : 0;
+    out(sub === "read" ? `Marked ${n} read.` : `Cleared ${n}.`);
+    return 0;
+  }
   if (sub === "read") {
     out(`Marked ${store.markRead(which)} read.`);
   } else {

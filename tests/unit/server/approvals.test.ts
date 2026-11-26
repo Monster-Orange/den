@@ -23,7 +23,7 @@ import {
   checkRequest,
   type GuardContext,
 } from "../../../src/ui/server/request-guard.js";
-import { approveKeyHash } from "../../../src/shared/web-session.js";
+import { approveKeyHash } from "../../../src/shared/web/web-session.js";
 
 const PORT = 4100;
 const SERVER_CSRF = "server-start-csrf-token-aaaaaaaaaaaaaaaaaaaaaa";

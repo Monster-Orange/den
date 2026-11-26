@@ -171,6 +171,14 @@ rm -f "$1/lock"
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pw-install-"));
     fs.mkdirSync(path.join(tmp, "bin"));
     fs.writeFileSync(path.join(tmp, "bin", "npx"), FAKE, { mode: 0o755 });
+    fs.writeFileSync(
+      path.join(tmp, "bin", "apt-cache"),
+      `#!/bin/bash
+echo " 500 http://archive.example/mirror noble-updates/main amd64 Packages"
+[ -n "\${FAKE_NO_UBUNTU:-}" ] && echo "     release o=vendor-other,a=noble" || echo "     release v=24.04,o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=main,b=amd64"
+`,
+      { mode: 0o755 },
+    );
     fs.writeFileSync(path.join(tmp, "bin", "fake-apt-leftover"), LEFTOVER, {
       mode: 0o755,
     });
@@ -282,6 +290,33 @@ rm -f "$1/lock"
     expect(r.code).not.toBe(0);
     expect([r.deps, r.install]).toEqual([2, 0]);
     expect(r.out).toMatch(/::error::.*install-deps.*failed twice/);
+  }, 30_000);
+
+  it("install-deps fails on a runner with no Ubuntu apt sources: no retry, and the error says why and never to re-run", () => {
+    const r = run("no-ubuntu", {
+      FAKE_HANG_install_deps: "1",
+      FAKE_NO_UBUNTU: "1",
+      ImageOS: "ubuntu26",
+      ImageVersion: "20261116.88.1",
+    });
+    expect(r.code).not.toBe(0);
+    expect([r.deps, r.install]).toEqual([1, 0]);
+    expect(r.out).toMatch(
+      /::error::.*ubuntu26 20261116\.88\.1.*no Ubuntu apt sources.*never re-run/,
+    );
+    expect(r.out).not.toMatch(/(?<!never )re-run the job/);
+  }, 30_000);
+
+  it("failing twice names the runner image and asks for a fresh head, never a re-run", () => {
+    const r = run("deps-twice-hint", {
+      FAKE_HANG_install_deps: "1 2",
+      ImageOS: "ubuntu26",
+      ImageVersion: "20261116.88.1",
+    });
+    expect(r.out).toMatch(
+      /::error::.*failed twice.*ubuntu26 20261116\.88\.1.*fresh head/,
+    );
+    expect(r.out).not.toMatch(/(?<!never )re-run the job/);
   }, 30_000);
 
   it("the browsers are arguments: chromium and webkit when none are given", () => {

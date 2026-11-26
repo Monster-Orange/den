@@ -19,7 +19,7 @@ import {
   type AppFeedLimits,
   type AppFeedServiceDeps,
 } from "../../../src/ui/server/app-feed-service";
-import type { Delivery } from "../../../src/shared/hub-delivery";
+import type { Delivery } from "../../../src/shared/hub/hub-delivery";
 
 const BEARER = "s3cr3t-feed-bearer-value-123";
 
@@ -62,17 +62,21 @@ function setup(
     projectOf?: Record<string, string>;
     relay?: (dv: Delivery) => Promise<boolean>;
     holds?: (id: string) => boolean;
+    lookup?: AppFeedServiceDeps["lookup"];
+    seen?: Set<string>;
   } = {},
 ) {
   const calls: {
     url: string;
     headers: Record<string, string>;
     signal?: AbortSignal | null;
+    /** Issue 1491: the checked address a pinned request went to. */
+    address?: string;
   }[] = [];
   const logs: string[] = [];
   const bells: Parameters<AppFeedServiceDeps["bell"]>[0][] = [];
   const relayed: Delivery[] = [];
-  const seen = new Set<string>();
+  const seen = o.seen ?? new Set<string>();
   const projectOf: Record<string, string> = o.projectOf ?? {
     "north-helper": "north",
   };
@@ -117,6 +121,14 @@ function setup(
     bell: (n) => bells.push(n),
     stateDir: dir,
     fetch: fakeFetch,
+    // Issue 1491: a public_only feed's pinned request, recorded with the
+    // address it was pinned to and answered as the fake app does.
+    pinned: async (url, init) => {
+      const r = await fakeFetch(url, init as RequestInit);
+      calls[calls.length - 1]!.address = init.address;
+      return r;
+    },
+    ...(o.lookup ? { lookup: o.lookup } : {}),
     log: (l) => logs.push(l),
     retryMs: { first: 5, max: 10 },
   });
@@ -248,6 +260,84 @@ describe("app feed service: pointer delivery", () => {
     s.svc.stop();
     expect(s.relayed).toHaveLength(2);
     expect(s.relayed[1].text).toMatch(/unread events/);
+  });
+
+  it("a feed whose store was removed gets its next event typed: pointer ids never repeat across stores", async () => {
+    const seen = new Set<string>();
+    const a = setup({ seen });
+    a.svc.sync();
+    await until(() => a.relayed.length === 1);
+    a.svc.stop();
+    fs.rmSync(path.join(dir, "app-feeds"), { recursive: true, force: true });
+    const b = setup({ seen });
+    b.svc.sync();
+    await until(() => b.relayed.length === 1);
+    b.svc.stop();
+    expect(b.relayed[0].id).not.toBe(a.relayed[0].id);
+  });
+
+  it("a restart with the store kept never types a pointer twice", async () => {
+    const seen = new Set<string>();
+    const a = setup({ seen });
+    a.svc.sync();
+    await until(() => a.relayed.length === 1);
+    a.svc.stop();
+    const b = setup({ seen });
+    b.svc.sync();
+    await until(() => b.calls.length >= 1);
+    await b.svc.tick();
+    b.svc.stop();
+    expect(b.relayed).toHaveLength(0);
+  });
+
+  it("an upgraded store keeps its old ids: nothing already typed is typed again", async () => {
+    const seen = new Set<string>();
+    const a = setup({ seen });
+    a.svc.sync();
+    await until(() => a.relayed.length === 1);
+    a.svc.stop();
+    const [store] = fs.readdirSync(path.join(dir, "app-feeds"));
+    const meta = path.join(dir, "app-feeds", store, "events", "meta.json");
+    for (const pointed of [1, 0]) {
+      fs.writeFileSync(meta, JSON.stringify({ read: 0, pointed }));
+      seen.clear();
+      seen.add("inbox:embed:feed:north/chat/1");
+      const b = setup({ seen });
+      b.svc.sync();
+      await until(() => b.calls.length >= 1);
+      await b.svc.tick();
+      b.svc.stop();
+      expect(b.relayed).toHaveLength(0);
+    }
+    let n = 0;
+    const c = setup({
+      seen,
+      respond: (url) =>
+        url.includes("after=")
+          ? new Response("[]", { status: 200 })
+          : stream([`id: e1\ndata: x\n\n`, `id: e${n++ ? 3 : 2}\ndata: y\n\n`]),
+    });
+    c.svc.sync();
+    await until(() => c.relayed.length === 1);
+    c.svc.stop();
+    expect(c.relayed[0].id).toBe("inbox:embed:feed:north/chat/2");
+  });
+
+  it("a new store gets a random epoch, kept after; an old one is legacy", () => {
+    const d = path.join(dir, "old");
+    fs.mkdirSync(d);
+    fs.writeFileSync(
+      path.join(d, "meta.json"),
+      JSON.stringify({ read: 3, pointed: 3 }),
+    );
+    expect(new FileFeedStore(d, () => 100).epoch()).toBe("");
+    expect(new FileFeedStore(d, () => 100).epoch()).toBe("");
+    const e = new FileFeedStore(path.join(dir, "new"), () => 100).epoch();
+    expect(e).toMatch(/^[0-9a-f]{16}$/);
+    expect(new FileFeedStore(path.join(dir, "new"), () => 100).epoch()).toBe(e);
+    expect(
+      new FileFeedStore(path.join(dir, "other"), () => 100).epoch(),
+    ).not.toBe(e);
   });
 
   it("the feed's agent is checked at delivery: one now in another project gets nothing", async () => {
@@ -424,5 +514,78 @@ describe("app feed service: limits", () => {
     s.svc.stop();
     expect(view.feeds[0].state).toBe("no_agent");
     expect(s.calls).toEqual([]);
+  });
+});
+
+describe("app feed service: a public_only feed's address (issues 1480, 1491)", () => {
+  const feed = (extra: Record<string, unknown>) => ({
+    north: [
+      {
+        name: "chat",
+        agent: "north-helper",
+        url: "https://app.example.test/events",
+        ...extra,
+      },
+    ],
+  });
+  /** A lookup that answers each call in turn, then the last again. */
+  const answers = (...list: string[][]) => {
+    const asked: string[] = [];
+    const lookup = async (host: string) => {
+      asked.push(host);
+      const a = list[Math.min(asked.length - 1, list.length - 1)]!;
+      return a.map((address) => ({
+        address,
+        family: address.includes(":") ? 6 : 4,
+      }));
+    };
+    return { asked, lookup };
+  };
+
+  it("is resolved again at each connect: one that now names a private address is never opened", async () => {
+    const l = answers(["127.0.0.1"]);
+    const s = setup({ feeds: feed({ public_only: true }), lookup: l.lookup });
+    s.svc.sync();
+    await until(() => (s.svc.view("north").feeds[0]?.problem ?? "") !== "");
+    const view = s.svc.view("north");
+    s.svc.stop();
+    expect(s.calls).toEqual([]);
+    expect(l.asked[0]).toBe("app.example.test");
+    expect(view.feeds[0].problem).toContain("private");
+  });
+
+  it("issue 1491: a name that answers public at the check and 127.0.0.1 after connects to the checked address only", async () => {
+    // A rebind: the first answer is public, every later one is loopback.
+    const l = answers(["93.184.216.34"], ["127.0.0.1"]);
+    const s = setup({ feeds: feed({ public_only: true }), lookup: l.lookup });
+    s.svc.sync();
+    await until(() => s.calls.length >= 1);
+    s.svc.stop();
+    // One lookup for the connect, and the request went to its answer:
+    // nothing looked the name up again to reach 127.0.0.1.
+    expect(l.asked).toEqual(["app.example.test"]);
+    expect(s.calls.map((c) => [c.url, c.address])).toEqual([
+      ["https://app.example.test/events", "93.184.216.34"],
+    ]);
+  });
+
+  it("issue 1491: a name with any private answer is refused, and nothing is opened", async () => {
+    const l = answers(["93.184.216.34", "10.0.0.7"]);
+    const s = setup({ feeds: feed({ public_only: true }), lookup: l.lookup });
+    s.svc.sync();
+    await until(() => (s.svc.view("north").feeds[0]?.problem ?? "") !== "");
+    s.svc.stop();
+    expect(s.calls).toEqual([]);
+  });
+
+  it("a feed the person wrote or allowed (no public_only) connects as before", async () => {
+    const l = answers(["127.0.0.1"]);
+    const s = setup({ feeds: feed({}), lookup: l.lookup });
+    s.svc.sync();
+    await until(() => s.calls.length >= 1);
+    s.svc.stop();
+    expect(s.calls[0].url).toBe("https://app.example.test/events");
+    expect(s.calls[0].address).toBeUndefined();
+    expect(l.asked).toEqual([]);
   });
 });
