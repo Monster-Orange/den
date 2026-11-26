@@ -14,6 +14,7 @@
  *
  * Unit tests for the same paths: tests/unit/server/notice-type-828.test.ts.
  */
+import { isAnswering } from "./lib/answering.mjs";
 export const issue = 828;
 export const items = [828, 1104];
 export const clauses = [
@@ -39,15 +40,6 @@ export const TRIES = 3;
 async function body(r) {
   return r && typeof r.json === "function" ? r.json() : r;
 }
-const answering = async (ctx) => {
-  try {
-    return Array.isArray(
-      (await body(await ctx.api("/api/notifications"))).groups,
-    );
-  } catch {
-    return false;
-  }
-};
 
 /** The bell's items about agent `id` (Needs you, then Updates). */
 export function bellItems(n, id) {
@@ -118,9 +110,9 @@ export async function run(ctx, s) {
 
   // Clause 3: around a web restart, the question still waits.
   r.down = (await ctx.cli(["web", "down", "--json"]))?.code ?? null;
-  r.downMs = await ctx.until(async () => !(await answering(ctx)), 30000);
+  r.downMs = await ctx.until(async () => !(await isAnswering(ctx)), 30000);
   r.up = (await ctx.cli(["web", "up", "--no-open"]))?.code ?? null;
-  r.upMs = await ctx.until(() => answering(ctx), 90000);
+  r.upMs = await ctx.until(() => isAnswering(ctx), 90000);
   r.afterWaits = await waits(a);
   r.afterBell = bellItems(await body(await ctx.api("/api/notifications")), ASK);
 
@@ -152,9 +144,9 @@ export async function run(ctx, s) {
 }
 
 export async function teardown(ctx) {
-  if (!(await answering(ctx))) {
+  if (!(await isAnswering(ctx))) {
     await ctx.cli(["web", "up", "--no-open"]);
-    await ctx.until(() => answering(ctx), 90000);
+    await ctx.until(() => isAnswering(ctx), 90000);
   }
   await removeAgent(ctx, ASK);
   await removeAgent(ctx, ELICIT);

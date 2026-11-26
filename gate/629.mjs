@@ -43,6 +43,7 @@
 // When Hub shows the answer, the answer itself is checked.
 const hubBlind = (d) => d != null && d.ack == null && d.acked === true;
 
+import { isAnswering } from "./lib/answering.mjs";
 export const issue = 629;
 export const clauses = [
   "after a restart, Den's note to its agent is not typed while the agent shows a dialog for its person; the bell says the note waits, the agent's waiting row stays, and the note is typed once the dialog is answered",
@@ -75,14 +76,6 @@ const parse = (b) => {
     return JSON.parse(b);
   } catch {
     return null;
-  }
-};
-
-const answering = async (ctx) => {
-  try {
-    return Array.isArray((await ctx.api("/api/notifications"))?.groups);
-  } catch {
-    return false;
   }
 };
 
@@ -338,9 +331,9 @@ export async function run(ctx, s) {
 }
 
 export async function teardown(ctx, s) {
-  if (!(await answering(ctx))) {
+  if (!(await isAnswering(ctx))) {
     ctx.cli(["web", "up", "--no-open"]);
-    await ctx.until(() => answering(ctx), 60000);
+    await ctx.until(() => isAnswering(ctx), 60000);
   }
   try {
     await s?.yml?.close?.();
