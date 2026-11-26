@@ -5,7 +5,7 @@
  * to us" goes to the distribution's page; never an email address.
  */
 import { describe, expect, it } from "@jest/globals";
-import { hubEditions } from "../../../src/shared/hub-editions.js";
+import { hubEditions } from "../../../src/shared/hub/hub-editions.js";
 import { hubHtml } from "../../../src/ui/server/public/settings-registry.js";
 
 const editions = {

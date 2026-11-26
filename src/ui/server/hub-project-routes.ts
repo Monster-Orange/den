@@ -23,9 +23,9 @@ import {
   setHubProject,
   type HubProjectChoice,
   type HubProjectLink,
-} from "../../shared/hub-project-link.js";
-import type { Uncovered } from "../../shared/hub-project-sync.js";
-import type { HubCreate } from "../../shared/hub-project-create.js";
+} from "../../shared/hub/hub-project-link.js";
+import type { Uncovered } from "../../shared/hub/hub-project-sync.js";
+import type { HubCreate } from "../../shared/hub/hub-project-create.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { hubMatchOf } from "./hub-link-all-routes.js";
 import {
@@ -84,8 +84,8 @@ export interface LinkElsewhere {
 
 async function defaultElsewhere(ws: string): Promise<LinkElsewhere | null> {
   const [link, binding, paths] = await Promise.all([
-    import("../../shared/hub-project-link.js"),
-    import("../../shared/hub-binding.js"),
+    import("../../shared/hub/hub-project-link.js"),
+    import("../../shared/hub/hub-binding.js"),
     import("../../shared/paths.js"),
   ]);
   const away = link.hubLinkElsewhere(ws);
@@ -136,7 +136,7 @@ async function defaultWhoami(): Promise<{
 async function defaultCreate(ws: string): Promise<HubCreate | null> {
   const [{ defaultHubCreateDeps }, c] = await Promise.all([
     import("./hub-create-routes.js"),
-    import("../../shared/hub-project-create.js"),
+    import("../../shared/hub/hub-project-create.js"),
   ]);
   const d = await defaultHubCreateDeps();
   if (!d.asked(ws)) return null;

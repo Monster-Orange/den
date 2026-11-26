@@ -24,7 +24,7 @@
 import * as http from "http";
 import * as https from "https";
 import { githubEndpoints, type GithubEndpoints } from "./github-app.js";
-import { githubDisplayName } from "./web-owner.js";
+import { githubDisplayName } from "./web/web-owner.js";
 
 export interface DeviceCode {
   deviceCode: string;

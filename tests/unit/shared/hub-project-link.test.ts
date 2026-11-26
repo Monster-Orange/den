@@ -9,7 +9,7 @@ import * as path from "path";
 
 let tmp = "";
 const before = process.env.DEN_ROOT;
-type Mod = typeof import("../../../src/shared/hub-project-link.js");
+type Mod = typeof import("../../../src/shared/hub/hub-project-link.js");
 let m: Mod;
 const file = () => path.join(tmp, "config", "local", "workspaces.yml");
 
@@ -23,7 +23,7 @@ beforeAll(async () => {
   );
   process.env.DEN_ROOT = tmp;
   jest.resetModules();
-  m = await import("../../../src/shared/hub-project-link.js");
+  m = await import("../../../src/shared/hub/hub-project-link.js");
 });
 
 afterAll(() => {
