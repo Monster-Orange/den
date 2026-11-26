@@ -1290,6 +1290,10 @@
       "Una ejecución de versión marcada que espera tanto nunca se adelanta, en minutos",
     "set.server.gate_priority_pass.d":
       "Una ejecución de versión con prioridad pasa delante de todas las demás que esperan de su tipo. Entre las marcadas con prioridad de versión, nunca pasa a una que lleva esperando este tiempo. 0: nunca pasa a otra marcada. __DEN_CLI__ gate settings --priority-pass-limit-minutes 0",
+    "set.server.gate_release_pass_other":
+      "Una ejecución de versión en espera pasa delante de las del otro tipo pedidas antes que llevan esperando hasta este tiempo, en minutos",
+    "set.server.gate_release_pass_other.d":
+      "Mientras espera una ejecución de versión con prioridad, una de cpu o de navegador del otro tipo pedida antes no empieza en un turno que ella necesita, salvo que lleve esperando más que esto. Nunca detiene una que ya se ejecuta. 0: no pasa a ninguna. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
     "set.server.gate_priority_agents":
       "Los agentes pueden pedir prioridad de versión",
     "set.server.gate_priority_agents.d":

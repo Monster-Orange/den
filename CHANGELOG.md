@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.90] - unreleased
 
+### Changed
+
+- Gate slots: a waiting release run (`gate run --priority release`) now passes earlier waiting runs of the other kind too. While it waits, a cpu run asked before a browser release run (or a browser run asked before a cpu release run) doesn't start in a slot the release run needs, unless it has waited longer than the new setting `release_pass_other_kind_minutes` (default 30). A run that holds a slot is never stopped, and the slot log's `priority` row lists the runs it passed. At 0, the order is as before. `priority_pass_limit_minutes` keeps its meaning and its default of 0. (issue 1648)
+
 ### Fixed
 
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
