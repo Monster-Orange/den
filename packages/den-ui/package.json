@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den-ui",
-  "version": "0.19.0",
+  "version": "0.21.0",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "license": "MIT",
   "repository": {
@@ -42,6 +42,8 @@
     "./savestate.css": "./src/savestate.css",
     "./panel-fold": "./src/panel-fold.js",
     "./panel-fold.css": "./src/panel-fold.css",
+    "./popover": "./src/popover.js",
+    "./popover.css": "./src/popover.css",
     "./switch": "./src/switch.js",
     "./switch.css": "./src/switch.css",
     "./preview": "./src/preview.js",
