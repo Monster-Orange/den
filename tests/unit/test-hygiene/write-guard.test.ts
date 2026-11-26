@@ -167,6 +167,54 @@ describe("the write guard is an allow-list (issue 1356)", () => {
   });
 });
 
+describe("a checkout inside a temp folder (issue 1691)", () => {
+  function tempRig() {
+    const scratch = path.join(
+      tmp,
+      `scratch-${Math.random().toString(36).slice(2)}`,
+    );
+    const checkout = path.join(scratch, "probe", "den");
+    const suiteRoot = path.join(scratch, "den-test-1", "dist");
+    for (const d of [
+      path.join(checkout, "config", "local"),
+      path.join(suiteRoot, "config", "local"),
+    ])
+      fs.mkdirSync(d, { recursive: true });
+    const f = { ...fs, promises: { ...fs.promises } } as typeof fs;
+    const refused: string[] = [];
+    installWriteGuard(
+      f,
+      { checkout, temp: [scratch] },
+      (p) => void refused.push(p),
+    );
+    return { f, scratch, checkout, suiteRoot, refused };
+  }
+
+  it("still refuses the checkout's own config/local", async () => {
+    const r = tempRig();
+    const file = path.join(r.checkout, "config", "local", "user.yml");
+    expect(() => r.f.writeFileSync(file, "x")).toThrow(
+      /outside its temp folders/,
+    );
+    await expect(r.f.promises.writeFile(file, "x")).rejects.toThrow(
+      /outside its temp folders/,
+    );
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it("lets through a plain temp file, a suite's own temp config/local and the rest of the checkout", () => {
+    const r = tempRig();
+    r.f.writeFileSync(path.join(r.scratch, "a.txt"), "x");
+    r.f.writeFileSync(
+      path.join(r.suiteRoot, "config", "local", "user.yml"),
+      "x",
+    );
+    r.f.mkdirSync(path.join(r.checkout, "coverage"), { recursive: true });
+    r.f.writeFileSync(path.join(r.checkout, "coverage", "lcov.info"), "x");
+    expect(r.refused).toEqual([]);
+  });
+});
+
 describe("the roots a run names (issue 1356)", () => {
   it("adds CI's own temp folder and jest's named cache folder, and nothing else from the env", () => {
     const ci = path.join(tmp, "runner-temp");
