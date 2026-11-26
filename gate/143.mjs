@@ -16,6 +16,7 @@ export const readOnly = true;
 const GH = "https://api.github.com";
 const CI_FILE = "ci.yml";
 const SHARD = /^pr(-shards)? \(/;
+const EVENTS = new Set(["pull_request", "merge_group", "push"]);
 
 function json(text) {
   try {
@@ -63,7 +64,7 @@ async function ciRun(ctx) {
           `/repos/${repo}/actions/workflows/${CI_FILE}/runs?head_sha=${sha}&per_page=20`,
         )
       ).workflow_runs ?? [];
-    const run = runs[0];
+    const run = runs.find((r) => EVENTS.has(r.event));
     if (!run) return { ok: false, detail: `no ci run on ${short} (${repo})` };
     const at = `${CI_FILE} run ${run.html_url} on ${short}`;
     if (run.status !== "completed")
