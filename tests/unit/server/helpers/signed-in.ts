@@ -37,8 +37,8 @@ import {
   checkLoginCode,
   mintLoginCode,
   WEB_SESSIONS_FILE,
-} from "../../../../src/shared/web-session.js";
-import { readWebSecret } from "../../../../src/shared/web-secret.js";
+} from "../../../../src/shared/web/web-session.js";
+import { readWebSecret } from "../../../../src/shared/web/web-secret.js";
 import { FIRST_RUN_FILE } from "../../../../src/ui/server/first-run.js";
 import { denAuth } from "./den-auth.js";
 

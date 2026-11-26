@@ -12,7 +12,7 @@ import {
   readWebOwner,
   webOwnerPath,
   writeWebOwner,
-} from "../../../src/shared/web-owner.js";
+} from "../../../src/shared/web/web-owner.js";
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-owner-"));
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));

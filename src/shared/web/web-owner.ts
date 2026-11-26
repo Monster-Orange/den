@@ -10,8 +10,8 @@
  */
 import * as fs from "fs";
 import * as path from "path";
-import { getStateDir } from "./paths.js";
-import { writeFileAtomic } from "./atomic-write.js";
+import { getStateDir } from "../paths.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export const WEB_OWNER_FILE = "web-owner.json";
 

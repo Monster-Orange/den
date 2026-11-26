@@ -18,15 +18,15 @@ import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { writeFileAtomic } from "./atomic-write.js";
+import { writeFileAtomic } from "../atomic-write.js";
 import {
   actorTokenOf,
   isActorTokenShape,
   isAgentTokenEnv,
-} from "./actor-token.js";
-import { getStateDir } from "./paths.js";
-import { AGENT_ACTOR_ENV } from "./sessions/env.js";
-import { TEST_PERSON_HEADER, testPersonOn } from "./test-person.js";
+} from "../actor-token.js";
+import { getStateDir } from "../paths.js";
+import { AGENT_ACTOR_ENV } from "../sessions/env.js";
+import { TEST_PERSON_HEADER, testPersonOn } from "../test-person.js";
 
 export const WEB_SECRET_FILE = "web.secret";
 const SECRET_BYTES = 32;

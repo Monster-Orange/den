@@ -5,7 +5,7 @@
  * how Den links into Hub, are described in hub-groups-routes.ts. Shared,
  * so the CLI imports no server module.
  */
-import type { HubGroupsMode } from "./hub.js";
+import type { HubGroupsMode } from "../hub.js";
 import {
   fetchHubGroups,
   GROUPS_FEATURE,
@@ -146,9 +146,9 @@ export async function groupsView(
 /** The deps on this install: Den's Hub config, token and binding. */
 export async function defaultHubGroupsDeps(): Promise<HubGroupsDeps> {
   const [hub, binding, paths] = await Promise.all([
-    import("./hub.js"),
+    import("../hub.js"),
     import("./hub-binding.js"),
-    import("./paths.js"),
+    import("../paths.js"),
   ]);
   const cfg = (() => {
     try {

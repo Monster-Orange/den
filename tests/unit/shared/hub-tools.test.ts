@@ -20,7 +20,7 @@ import {
   toolsChangeNote,
   toolsHash,
   type ToolShape,
-} from "../../../src/shared/hub-tools.js";
+} from "../../../src/shared/hub/hub-tools.js";
 import { readHubConfig } from "../../../src/shared/hub.js";
 
 const tool = (

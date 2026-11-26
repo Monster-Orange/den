@@ -9,7 +9,7 @@
  * information (anyone else). No I/O here but the de-dup file.
  */
 import fs from "node:fs";
-import { writeFileAtomic } from "./atomic-write.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export type Verified = "hub_session" | "hub_token";
 

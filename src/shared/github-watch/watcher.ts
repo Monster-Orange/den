@@ -49,7 +49,7 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { embedDelivery, type Delivery } from "../hub-delivery.js";
+import { embedDelivery, type Delivery } from "../hub/hub-delivery.js";
 import { GITHUB_WATCH_LIMITS, type GithubWatchSettings } from "./settings.js";
 import type { GhGet, GhResponse } from "./gh-http.js";
 import { writeFileAtomic } from "../atomic-write.js";

@@ -31,7 +31,7 @@ import {
   type DenConfig,
   type UserConfig,
 } from "../../../src/shared/den-config.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
 import { policyFor } from "../../../src/shared/approval-policy.js";
 
 let dir = "";
