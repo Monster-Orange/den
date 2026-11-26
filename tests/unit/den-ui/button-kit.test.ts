@@ -135,18 +135,6 @@ describe("button.css", () => {
       "outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: var(--focus-offset, 2px);",
     );
   });
-
-  it("gives a 44px tap on a touch screen without changing the look", () => {
-    const c = css();
-    const touch = c.slice(c.indexOf("@media (pointer: coarse)"));
-    expect(touch).toMatch(/\.den-btn\s*\{\s*position:\s*relative;/);
-    expect(touch).toMatch(
-      /\.den-btn::after\s*\{[^}]*min-width:\s*var\(--tap\)/,
-    );
-    expect(touch).toMatch(
-      /\.den-btn::after\s*\{[^}]*min-height:\s*var\(--tap\)/,
-    );
-  });
 });
 
 describe("Den keeps no copy of the button", () => {

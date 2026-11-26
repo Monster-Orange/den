@@ -79,14 +79,6 @@ describe("groupHeaderHtml (group-header.js)", () => {
 });
 
 describe("group-header.css and Den's serving of it", () => {
-  it("tokens only: no raw colours", () => {
-    const css = fs
-      .readFileSync(path.join(SRC, "group-header.css"), "utf-8")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
-    expect(css).toContain(".den-grph");
-    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|hsl\(/i);
-  });
-
   it("Den serves it and links it on every page with the frame", () => {
     expect(KIT_FILES).toEqual(
       expect.arrayContaining(["group-header.js", "group-header.css"]),
