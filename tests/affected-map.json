@@ -2230,6 +2230,7 @@
         "tests/unit/server/held-review-keys-205.test.ts",
         "tests/unit/server/i18n.test.ts",
         "tests/unit/server/page-imports-served.test.ts",
+        "tests/unit/server/page-restart-audit.test.ts",
         "tests/unit/server/product-tokens.test.ts",
         "tests/unit/server/project-wording.test.ts",
         "tests/unit/server/public-tokens-parse.test.ts",

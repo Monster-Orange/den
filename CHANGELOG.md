@@ -6,6 +6,7 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.91] - unreleased
 
+- A restart from the update pill's Reload is named in the audit log as the update pill's, as Restart Den in the menu and in Settings already are. It used to say only "the page".
 - When the bell's Allow row leaves and comes back while you're on its Review button, the keyboard goes back to Review even if you switched to another window meanwhile. Coming back to the window isn't moving on.
 - When an update fails and putting the old version back fails too, the bell now says so on its own. It leads with what to do by hand: put the pin back on the old version in the distribution's folder and run npm install there. npm's reasons come last.
 - Doctor warns when the gate's `route_agents` setting holds a value that is neither on nor off. The warning names the value, what Den reads it as, and the forms the setting takes. How the value is read is unchanged.
