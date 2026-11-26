@@ -11,11 +11,19 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
+import { AGENTS_ENTRY, agentsSource } from "../server/helpers/agents-source.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const CLI = path.join(process.cwd(), "src", "ui", "cli");
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const read = (dir: string, f: string) =>
   fs.readFileSync(path.join(dir, f), "utf-8");
+const pageText = (f: string) =>
+  f === "settings-registry.js"
+    ? readSettingsSources()
+    : f === AGENTS_ENTRY
+      ? agentsSource()
+      : read(PUBLIC, f);
 
 type Entry =
   | { read: true }
@@ -131,6 +139,8 @@ const LISTING: Record<string, Entry> = {
   "github status": R,
 
   "hub link": page("settings-registry.js", "/hub-project"),
+  // Issue 750: the Agents page's own groups read (By group), printed.
+  "hub groups": R,
   // den#49: an agent's commands, with its own Den token; a person uses Hub.
   "hub put": script("an agent publishes an artifact's files to Hub"),
   "hub pull": script("an agent fetches an artifact's files from Hub"),
@@ -147,6 +157,11 @@ const LISTING: Record<string, Entry> = {
   "gate settings": page("settings-registry.js", 'id: "server.gate_cpu"'),
   // Issue 625: the test boxes, set on the Settings page.
   "gate box": page("settings-registry.js", 'id: "server.gate_boxes"'),
+  // Issue 642: the CI runner entries, set on the Settings page.
+  "gate runner": page(
+    "settings-registry.js",
+    'id: "server.gate_runner_entries"',
+  ),
 
   "repo detect": R,
 
@@ -328,7 +343,7 @@ describe("MODE-5: every CLI command has its page control listed", () => {
       .filter(
         (e): e is [string, { page: string; marker: string }] => "page" in e[1],
       )
-      .filter(([, e]) => !read(PUBLIC, e.page).includes(e.marker))
+      .filter(([, e]) => !pageText(e.page).includes(e.marker))
       .map(([c, e]) => `${c}: ${e.page} has no ${e.marker}`);
     expect(missing).toEqual([]);
   });

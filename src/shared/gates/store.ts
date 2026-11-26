@@ -10,6 +10,8 @@
  *                     cpu_slots_beside_release_browser (its follow-up),
  *                     cpu_hold_load (issue 1009),
  *                     load_hold_per_core (issue 1048),
+ *                     max_start_load, max_start_wait_minutes,
+ *                     reap_grace_seconds (issue 1132),
  *                     local_browser_slots,
  *                     overrun_margin_minutes, overrun_bell_multiple,
  *                     remote_renew_seconds, remote_lapse_seconds; issue
@@ -21,22 +23,40 @@
  *                     issue 795: yielded (the entry and the one let ahead);
  *                     issue 867: waiter-gone, reattached, and a gone
  *                     waiter taken back with reason "waiter-gone"
+ *   leftovers.json    issue 1132: process groups of runs whose slot ended,
+ *                     stopped (TERM, then KILL after the grace) until empty
  *   dropped.json      issue 867: places taken back from gone waiters, until
  *                     their asker asks again (told once) or a day passes
  *   lock/             held while the grant decision is made
  *
  * Every read takes back a holder whose processes are gone (or, issue 621,
  * a runner whose lease lapsed), at once, and records it; it flags (once) a holder past its estimate plus the margin.
- * Nothing here kills a process or takes a live holder's slot.
+ * Nothing here takes a live holder's slot. Issue 1132: the one thing it
+ * stops is what a run left in its own process group once its slot ended.
  */
-import { execFileSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import {
+  pidRunning,
+  processGroupStateSync,
+  recordProcessGroup,
+  type GroupState,
+  type RecordedProcessGroup,
+} from "../process/process-group.js";
 import { peekVms, readVms, type VmReading } from "./vms.js";
-import { browserRequiresContainerDefault } from "./browser-container.js";
+import type { InstallMode } from "../den-config.js";
+import {
+  browserRequiresContainerDefault,
+  dockerPublished,
+  installModeNow,
+  ownAddresses,
+  resolveName,
+  type Binding,
+} from "./browser-container.js";
 import {
   BOX_DEFAULTS,
   BOX_NAME_RE,
@@ -63,6 +83,12 @@ import {
   type GateBox,
 } from "./boxes.js";
 import {
+  checkRunnerEntry,
+  entryKey,
+  runnerEntriesOf,
+  type RunnerEntry,
+} from "./runner-entries.js";
+import {
   classOf,
   parseClassMap,
   parseClassOrder,
@@ -88,8 +114,13 @@ import {
   type GateEntry,
   type GateKind,
   type GateSettings,
+  type MachineReading,
 } from "./rules.js";
 
+/**
+ * The gate is one queue per machine, shared by every install and
+ * distribution here, so its folder is always "den", never the product name.
+ */
 export function gateDir(env: NodeJS.ProcessEnv = process.env): string {
   const set = env.DEN_GATE_DIR?.trim();
   if (set) return path.resolve(set);
@@ -122,10 +153,18 @@ export type GateSettingsPatch = {
   cpu_hold_load?: number | null;
   /** Issue 1048: cpu asks wait over this many times the cores (0: off). */
   load_hold_per_core?: number | null;
+  /** Issue 1132: no run starts at or over this 5-minute load (0: off). */
+  max_start_load?: number | null;
+  /** Issue 1132: held that long, a run starts anyway (0: no limit). */
+  max_start_wait_minutes?: number | null;
+  /** Issue 1132: seconds from TERM to KILL for a run's leftovers. */
+  reap_grace_seconds?: number | null;
   /** Issue 1274: new runs here wait under this free memory, % (0: off). */
   memory_free_min_percent?: number | null;
   /** Issue 1274: new runs here wait over this much swap in use, GB (0: off). */
   swap_hold_gb?: number | null;
+  /** Issue 1349: seconds a last good memory reading stands after a failed one. */
+  memory_reading_keep_seconds?: number | null;
   /** Issue 1274: doctor warns over this share of RAM promised to VMs. */
   vm_memory_share?: number | null;
   overrun_margin_minutes?: number | null;
@@ -156,7 +195,32 @@ export type GateSettingsPatch = {
   browser_box_default?: string | null;
   /** Issue 1033: projects and label patterns kept on this machine. */
   browser_host_only?: string | null;
+  /** Issue 1264: 1 routes agents' heavy runs through the gate; 0 off. */
+  route_agents?: number | null;
+  /** Issue 1264: the programs routed, comma-separated. */
+  route_commands?: string | null;
 };
+
+/**
+ * Issue 1264: route_commands, checked: each entry a program (`jest`) or
+ * an npm form (`npm test`, `npm run test*`), plain words only; or what is
+ * wrong. Empty is the default list.
+ */
+export function parseRouteCommands(s: string): string[] | string {
+  const out: string[] = [];
+  for (const raw of s.split(",")) {
+    const it = raw.trim().replace(/\s+/g, " ");
+    if (!it) continue;
+    if (
+      it.length > 60 ||
+      !/^[A-Za-z0-9._@/:-]+(?: [A-Za-z0-9._@/:-]+\*?)*$/.test(it)
+    )
+      return `"${it.slice(0, 40)}" is not a program name (plain words only)`;
+    out.push(it);
+  }
+  if (out.length > 32) return "at most 32 programs";
+  return out;
+}
 
 /** Issue 803: the settings that are a line of text, and their checks. */
 /**
@@ -172,7 +236,8 @@ export const GATE_TEXT: Record<
   | "class_map"
   | "class_windows"
   | "browser_box_default"
-  | "browser_host_only",
+  | "browser_host_only"
+  | "route_commands",
   (v: string) => unknown
 > = {
   class_order: parseClassOrder,
@@ -180,6 +245,7 @@ export const GATE_TEXT: Record<
   class_windows: parseClassWindows,
   browser_box_default: checkBoxDefault,
   browser_host_only: parseHostOnly,
+  route_commands: parseRouteCommands,
 };
 type GateNumberKey = Exclude<keyof GateSettingsPatch, keyof typeof GATE_TEXT>;
 
@@ -199,10 +265,16 @@ export const GATE_LIMITS: Record<
   cpu_hold_load: { min: 0, max: 1024, int: false },
   // Issue 1048: a multiple of the cores; 0 turns the hold off.
   load_hold_per_core: { min: 0, max: 64, int: false },
+  // Issue 1132: a 5-minute load average (total); 0 turns the ceiling off.
+  max_start_load: { min: 0, max: 1024, int: false },
+  max_start_wait_minutes: { min: 0, max: 24 * 60, int: true },
+  reap_grace_seconds: { min: 0, max: 600, int: true },
   // Issue 1274: percent of memory free; 0 turns the hold off.
   memory_free_min_percent: { min: 0, max: 90, int: false },
   // Issue 1274: GB of swap in use; 0 turns the hold off.
   swap_hold_gb: { min: 0, max: 1024, int: false },
+  // Issue 1349: seconds; past them an unread reading is unknown (and holds).
+  memory_reading_keep_seconds: { min: 0, max: 3600, int: true },
   // Issue 1274: a share of RAM (1: all of it); above 1 allows overcommit.
   vm_memory_share: { min: 0.1, max: 4, int: false },
   overrun_margin_minutes: { min: 0, max: 24 * 60, int: false },
@@ -233,7 +305,9 @@ export const GATE_LIMITS: Record<
   box_recheck_seconds: { min: 1, max: 24 * 3600, int: true },
   // A browser ask declares a container browser; 1 yes, 0 no. Unset: yes
   // on a macOS host, no elsewhere (browser-container.ts).
-  browser_requires_container: { min: 0, max: 1, int: true },
+  browser_requires_container: { min: 0, max: 2, int: true },
+  // Issue 1264: Den's agent hook routes heavy runs; 1 yes, 0 no.
+  route_agents: { min: 0, max: 1, int: true },
 };
 
 /**
@@ -300,6 +374,14 @@ export type GateEvent =
   // Issue 867: a waiter's run is gone, its place kept; and taken back.
   | "waiter-gone"
   | "reattached"
+  // Issue 1132: what a gone run left was stopped; a run held by the load
+  // ceiling, and one that started anyway past the wait limit.
+  | "stopped-leftovers"
+  | "start-held"
+  | "started-busy"
+  // Issue 1264: an agent's heavy run Den's hook left alone (recorded by
+  // the hook; never arguments).
+  | "outside"
   // Issue 1263: a run's throwaway containers removed after its slot ended.
   | "containers-removed";
 
@@ -319,11 +401,17 @@ export interface GateSettingsRow {
 }
 
 /** A settings key's value in effect, as stored (true/false as 1/0). */
-function settingValue(s: GateSettings, key: string): number | string | null {
+export function gateSettingValue(
+  s: GateSettings,
+  key: string,
+): number | string | null {
   const camel = key.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
   const v = (s as unknown as Record<string, unknown>)[camel];
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "number" || typeof v === "string") return v;
+  // Issue 1264: a list (route_commands) as its settings text, so a change
+  // to it is seen, logged and judged.
+  if (Array.isArray(v)) return v.join(", ");
   return null;
 }
 
@@ -380,8 +468,8 @@ export interface GateEventRow {
    * the floor, or swap over it), when one does.
    */
   held?: {
-    memory?: { free: number; limit: number };
-    swap?: { usedGb: number; limitGb: number };
+    memory?: { free: number | null; limit: number; unavailable?: true };
+    swap?: { usedGb: number | null; limitGb: number; unavailable?: true };
   };
   /** ended-early: who ended it; priority: who asked (agent or person). */
   by?: string;
@@ -402,11 +490,21 @@ export interface GateEventRow {
   machine?: string;
   /** Issue 1033: why a run that could go to a box stays here. */
   hostWhy?: string;
-  /** Issue 1263: containers-removed: how many, and their image names. */
+  /**
+   * Issue 1263: containers-removed: how many, and their image names.
+   * Issue 1132: stopped-leftovers: how many processes.
+   */
   count?: number;
   images?: string[];
   /** Issue 1289: the run's checkout tag. */
   checkout?: string;
+  /** Issue 1132: stopped-leftovers: the command's name (count above). */
+  cmd?: string;
+  /** Issue 1132: stopped-leftovers: the signal (TERM, or KILL after it). */
+  signal?: "TERM" | "KILL";
+  /** Issue 1132: start-held, started-busy: the load and the ceiling. */
+  load?: number;
+  limit?: number;
 }
 
 /** Issue 1289: the log events that end a slot. */
@@ -418,6 +516,75 @@ export const SLOT_ENDS: ReadonlySet<GateEvent> = new Set<GateEvent>([
   "ended-early",
 ]);
 
+/**
+ * Issue 1132: why a run's leftovers were stopped: its command ended, its
+ * folder was deleted, its parent went away, or gate run itself was gone.
+ */
+export type LeftoverReason = "ended" | "folder-gone" | "parent-gone" | "gone";
+
+/** Issue 1132: a process group whose slot ended, until it is empty. */
+interface Leftover {
+  group: number;
+  /** The leader as recorded when it started (process-group.ts). */
+  rec?: RecordedProcessGroup;
+  /** The boot it was recorded in (minutes since the epoch). */
+  boot?: number;
+  id: string;
+  kind: GateKind;
+  who: string;
+  label: string;
+  cmd: string;
+  reason: LeftoverReason;
+  endedAt: string;
+  termAt?: string;
+  killAt?: string;
+}
+
+/** Issue 1132: an entry's group, as noted when its slot ends. */
+type GroupOwner = Pick<
+  GateEntry,
+  "id" | "kind" | "who" | "label" | "group" | "groupRec" | "boot" | "cmd"
+>;
+
+/**
+ * Issue 1132: what the store may do to a process group (tests fake it).
+ * A group is signalled only while it is still the one gate run started:
+ * its record is checked first (process-group.ts), and one from before
+ * this boot is never signalled (slot files outlive a reboot, and a
+ * recorded number may then lead someone else's group).
+ */
+export interface GroupOps {
+  /** The record of a leader just started, or null (gone, or unreadable). */
+  record(pid: number): RecordedProcessGroup | null;
+  /** Whether it is still ours, gone, or reused; null when it can't tell. */
+  state(rec: RecordedProcessGroup): GroupState | null;
+  signal(group: number, signal: "SIGTERM" | "SIGKILL"): void;
+  /** When this machine booted, in minutes since the epoch. */
+  boot(): number;
+}
+
+/** Issue 1132: a boot this many minutes from the recorded one is another. */
+const BOOT_SLACK_MIN = 2;
+
+/** Issue 1132: process groups through the shared helper (ps; /proc on Linux). */
+export const realGroups: GroupOps = {
+  record: (pid) =>
+    Number.isInteger(pid) && pid > 1 ? recordProcessGroup(pid) : null,
+  state: (rec) => processGroupStateSync(rec),
+  signal(group, signal) {
+    if (!(Number.isInteger(group) && group > 1)) return;
+    try {
+      process.kill(-group, signal);
+    } catch {
+      /* already gone */
+    }
+  },
+  boot: () => Math.round((Date.now() / 1000 - os.uptime()) / 60),
+};
+
+/** Issue 1132: a group not empty this long after its slot ended is let go. */
+const LEFTOVER_KEEP_MS = 60 * 60_000;
+
 /** Issue 715: who asked for priority, for the record (739: a runner). */
 const byOf = (e: GateEntry): string =>
   e.remote
@@ -428,14 +595,7 @@ const byOf = (e: GateEntry): string =>
 const reasonOf = (r: string | undefined) =>
   r?.replace(/\s+/g, " ").trim().slice(0, 200);
 
-const isAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as { code?: string }).code === "EPERM";
-  }
-};
+const isAlive = (pid: number): boolean => pidRunning(pid);
 
 export interface GateStoreOpts {
   dir?: string;
@@ -447,6 +607,14 @@ export interface GateStoreOpts {
   probe?: BoxProbe;
   /** The host's platform (the browser-container default); tests set it. */
   platform?: NodeJS.Platform;
+  /** What running containers publish here (default: docker ps). */
+  containerBindings?: () => Promise<readonly Binding[]>;
+  /** A name's addresses (default: dns.lookup, all of them). */
+  resolveHost?: (name: string) => Promise<readonly string[]>;
+  /** The install's mode (default: user.yml and den.yml; unreadable strict). */
+  installMode?: () => InstallMode;
+  /** The host's own addresses (default: its interfaces). */
+  hostAddresses?: () => readonly string[];
   /**
    * Issue 1009: the machine's 5-minute load average (default
    * os.loadavg()[1]); tests pass a stub.
@@ -454,10 +622,12 @@ export interface GateStoreOpts {
   load?: () => number;
   /** Issue 1048: the machine's cores (default os.availableParallelism). */
   cores?: () => number;
-  /** Issue 1274: free memory, percent (default realFreeMemory). */
-  free?: () => number;
-  /** Issue 1274: swap in use, GB (default realSwapUsedGb). */
-  swap?: () => number;
+  /** Issue 1132: process groups (default process-group.ts and kill); tests fake it. */
+  groups?: GroupOps;
+  /** Issue 1274: free memory, percent (default realFreeMemory; null: not measured here). */
+  free?: () => MachineReading;
+  /** Issue 1274: swap in use, GB (default realSwapUsedGb; null: not measured here). */
+  swap?: () => MachineReading;
   /**
    * Issue 1274: a fixed VM reading (tests). Without it: null with
    * DEN_GATE_VMS=0 (the test setup), else read in the background.
@@ -500,9 +670,13 @@ export function freePercentFromMeminfo(text: string): number {
  * free level (kern.memorystatus_level, what memory_pressure prints);
  * Linux: MemAvailable. NaN: unread (no hold).
  */
-export function realFreeMemory(env: NodeJS.ProcessEnv = process.env): number {
+export function realFreeMemory(
+  env: NodeJS.ProcessEnv = process.env,
+): MachineReading {
   const fixed = Number((env.DEN_GATE_FREE_MEM ?? "").trim() || NaN);
   if (Number.isFinite(fixed)) return fixed;
+  // Issue 1349: no reading on this platform: not measured, not unknown.
+  if (!MEASURED_PLATFORMS.has(process.platform)) return null;
   // Read at most every 2 s: the store asks on every pass.
   const now = Date.now();
   if (freeCache && now - freeCache.at < 2_000) return freeCache.value;
@@ -538,13 +712,20 @@ export function swapGbFromMeminfo(text: string): number {
 
 let swapCache: { at: number; value: number } | undefined;
 
+/** Issue 1349: the platforms Den reads free memory and swap on. */
+const MEASURED_PLATFORMS = new Set<NodeJS.Platform>(["darwin", "linux"]);
+
 /**
  * Issue 1274: swap in use here, GB. DEN_GATE_SWAP_GB fixes it (the test
  * setup sets 0). Read at most every 2 s. NaN: unread (no hold).
  */
-export function realSwapUsedGb(env: NodeJS.ProcessEnv = process.env): number {
+export function realSwapUsedGb(
+  env: NodeJS.ProcessEnv = process.env,
+): MachineReading {
   const fixed = Number((env.DEN_GATE_SWAP_GB ?? "").trim() || NaN);
   if (Number.isFinite(fixed)) return fixed;
+  // Issue 1349: no reading on this platform: not measured, not unknown.
+  if (!MEASURED_PLATFORMS.has(process.platform)) return null;
   const now = Date.now();
   if (swapCache && now - swapCache.at < 2_000) return swapCache.value;
   let value = NaN;
@@ -557,9 +738,9 @@ export function realSwapUsedGb(env: NodeJS.ProcessEnv = process.env): number {
           stdio: ["ignore", "pipe", "ignore"],
         }),
       );
-    else if (process.platform === "linux")
-      value = swapGbFromMeminfo(fs.readFileSync("/proc/meminfo", "utf-8"));
+    else value = swapGbFromMeminfo(fs.readFileSync("/proc/meminfo", "utf-8"));
   } catch {
+    // Issue 1349: unknown, which holds.
     value = NaN;
   }
   swapCache = { at: now, value };
@@ -587,6 +768,152 @@ function readFreeMemory(): number {
     /* unread */
   }
   return NaN;
+}
+
+/** Issue 1349: `sysctl -n <key>`'s output, read by a child process the thread never waits on. */
+function sysctlAsync(key: string): Promise<string> {
+  return new Promise((res, rej) =>
+    execFile(
+      "/usr/sbin/sysctl",
+      ["-n", key],
+      { encoding: "utf-8", timeout: 2_000 },
+      (err, out) => (err ? rej(err) : res(String(out))),
+    ),
+  );
+}
+
+/** Issue 1349: realSwapUsedGb's machine read, without a synchronous process. */
+async function readSwapAsync(): Promise<MachineReading> {
+  if (process.platform === "darwin")
+    return swapGbFromSysctl(await sysctlAsync("vm.swapusage"));
+  if (process.platform === "linux")
+    return swapGbFromMeminfo(
+      await fs.promises.readFile("/proc/meminfo", "utf-8"),
+    );
+  return null;
+}
+
+/** Issue 1349: readFreeMemory's machine read, without a synchronous process. */
+async function readFreeMemoryAsync(): Promise<MachineReading> {
+  if (process.platform === "darwin") {
+    const n = Number((await sysctlAsync("kern.memorystatus_level")).trim());
+    return Number.isFinite(n) && n >= 0 && n <= 100 ? n : NaN;
+  }
+  if (process.platform === "linux")
+    return freePercentFromMeminfo(
+      await fs.promises.readFile("/proc/meminfo", "utf-8"),
+    );
+  return null;
+}
+
+/** Issue 1349: backgroundReading's choices. */
+export interface BackgroundReadingOpts {
+  /** Read again when the value is older than this, ms (default 2000). */
+  everyMs?: number;
+  /**
+   * After a failed read, the last good value stands this long, ms (default
+   * 30 s, the setting memory_reading_keep_seconds); past it: NaN, unknown.
+   */
+  keepMs?: number | (() => number);
+  /** The value before the first read lands (a primed, synchronous read). */
+  first?: MachineReading;
+  now?: () => number;
+}
+
+/**
+ * Issue 1349: a machine reading for the server's thread. It answers at once
+ * with the last value, and a value older than everyMs is read again in the
+ * background, one read at a time. Unknown is NaN, and an unknown reading
+ * holds: before the first read (unless primed with `first`), and after a
+ * failed read once the last good value is older than keepMs. A failed read
+ * within keepMs keeps the last good value: sysctl fails under pressure,
+ * exactly when a hold matters. null (not measured here) passes through.
+ */
+export function backgroundReading(
+  read: () => Promise<MachineReading>,
+  o: BackgroundReadingOpts = {},
+): () => MachineReading {
+  const now = o.now ?? Date.now;
+  const everyMs = o.everyMs ?? 2_000;
+  const keepMs = () =>
+    typeof o.keepMs === "function" ? o.keepMs() : (o.keepMs ?? 30_000);
+  const primed = o.first !== undefined;
+  let value: MachineReading = primed ? o.first! : NaN;
+  let at = primed ? now() : -Infinity;
+  let goodAt =
+    primed && o.first !== null && Number.isFinite(o.first) ? at : -Infinity;
+  let reading = false;
+  const failed = () => {
+    if (now() - goodAt > keepMs()) value = NaN;
+  };
+  return () => {
+    if (!reading && now() - at >= everyMs) {
+      reading = true;
+      read()
+        .then((v) => {
+          if (v === null || Number.isFinite(v)) {
+            value = v;
+            goodAt = now();
+          } else failed();
+        }, failed)
+        .finally(() => {
+          at = now();
+          reading = false;
+        });
+    }
+    // A last good value past keepMs with no read landing is unknown too.
+    if (value !== null && Number.isFinite(value) && now() - goodAt > keepMs())
+      return NaN;
+    return value;
+  };
+}
+
+/** A fixed reading from the environment (the test setup, a drill), or NaN. */
+const fixedReading = (v: string | undefined) => Number((v ?? "").trim() || NaN);
+
+/** Issue 1349: the server's readers' choices (tests pass prime and read). */
+export interface ServerReadingOpts {
+  /** One synchronous read when the reader is made (the server's start). */
+  prime?: () => MachineReading;
+  /** The background read. */
+  read?: () => Promise<MachineReading>;
+  /** memory_reading_keep_seconds, as ms. */
+  keepMs?: () => number;
+}
+
+function serverReading(
+  env: "DEN_GATE_SWAP_GB" | "DEN_GATE_FREE_MEM",
+  prime: () => MachineReading,
+  read: () => Promise<MachineReading>,
+  o: ServerReadingOpts,
+): () => MachineReading {
+  const bg = backgroundReading(o.read ?? read, {
+    first: (o.prime ?? prime)(),
+    ...(o.keepMs ? { keepMs: o.keepMs } : {}),
+  });
+  return () => {
+    const fixed = fixedReading(process.env[env]);
+    return Number.isFinite(fixed) ? fixed : bg();
+  };
+}
+
+/**
+ * Issue 1349: the server's swap in use, GB: read once, synchronously, when
+ * made (before the server serves), then only in the background, never a
+ * synchronous process on a request. DEN_GATE_SWAP_GB still fixes it.
+ */
+export function serverSwapUsedGb(o: ServerReadingOpts = {}) {
+  return serverReading("DEN_GATE_SWAP_GB", realSwapUsedGb, readSwapAsync, o);
+}
+
+/** Issue 1349: the server's free memory, percent, as serverSwapUsedGb. */
+export function serverFreeMemory(o: ServerReadingOpts = {}) {
+  return serverReading(
+    "DEN_GATE_FREE_MEM",
+    realFreeMemory,
+    readFreeMemoryAsync,
+    o,
+  );
 }
 
 /** Issue 1048: this machine's cores. */
@@ -639,6 +966,43 @@ export class GateYieldRefused extends Error {}
 /** Issue 621: a runner token has as many slots as it may. */
 export class GateFullError extends Error {}
 
+/**
+ * Issue 1339: the gate-slot lock is held by another process past this
+ * store's lockWaitMs (at once, for the server's store: lockWaitMs 0).
+ */
+export class GateLockBusy extends Error {
+  constructor(lock: string) {
+    super(`the gate-slot lock (${lock}) stayed held`);
+    this.name = "GateLockBusy";
+  }
+}
+
+/** Issue 1339: gateLocked's defaults: the CLI's wait, in 25 ms looks. */
+export const GATE_LOCK_WAIT_MS = 10_000;
+export const GATE_LOCK_STEP_MS = 25;
+
+/**
+ * Issue 1339: `fn` (one GateStore call that takes the lock, on a store
+ * with lockWaitMs 0), tried again every `stepMs` while another process
+ * holds the lock, up to `waitMs`; then GateLockBusy. The wait is a timer,
+ * so the server's other requests run meanwhile; the CLI's store keeps its
+ * synchronous wait.
+ */
+export async function gateLocked<T>(
+  fn: () => T,
+  o: { waitMs?: number; stepMs?: number } = {},
+): Promise<T> {
+  const until = Date.now() + (o.waitMs ?? GATE_LOCK_WAIT_MS);
+  for (;;) {
+    try {
+      return fn();
+    } catch (e) {
+      if (!(e instanceof GateLockBusy) || Date.now() >= until) throw e;
+    }
+    await new Promise((r) => setTimeout(r, o.stepMs ?? GATE_LOCK_STEP_MS));
+  }
+}
+
 export class GateStore {
   readonly dir: string;
   private readonly now: () => number;
@@ -649,18 +1013,31 @@ export class GateStore {
   private readonly probe: BoxProbe;
   private readonly readLoad: () => number;
   private readonly readCores: () => number;
-  private readonly readFree: () => number;
-  private readonly readSwap: () => number;
+  private readonly groups: GroupOps;
+  private readonly readFree: () => MachineReading;
+  private readonly readSwap: () => MachineReading;
   private readonly fixedVms: (() => VmReading | null) | undefined;
   private readonly vmsAsync:
     | ((share: number) => Promise<VmReading>)
     | undefined;
   readonly platform: NodeJS.Platform;
+  /** What running containers publish here (browser-container.ts). */
+  readonly containerBindings: () => Promise<readonly Binding[]>;
+  /** A name's addresses (browser-container.ts). */
+  readonly resolveHost: (name: string) => Promise<readonly string[]>;
+  /** The install's mode (browser-container.ts). */
+  readonly installMode: () => InstallMode;
+  /** The host's own addresses (browser-container.ts). */
+  readonly hostAddresses: () => readonly string[];
   /** Issue 1002: bytes of the slot log measured() has read (for tests). */
   logBytesRead = 0;
 
   constructor(o: GateStoreOpts = {}) {
     this.platform = o.platform ?? process.platform;
+    this.containerBindings = o.containerBindings ?? (() => dockerPublished());
+    this.resolveHost = o.resolveHost ?? ((n) => resolveName(n));
+    this.installMode = o.installMode ?? installModeNow;
+    this.hostAddresses = o.hostAddresses ?? ownAddresses;
     this.dir = o.dir ?? gateDir();
     this.now = o.now ?? Date.now;
     this.alive = o.alive ?? isAlive;
@@ -668,16 +1045,21 @@ export class GateStore {
     this.probe = o.probe ?? realBoxProbe;
     this.readLoad = o.load ?? (() => realLoad());
     this.readCores = o.cores ?? realCores;
+    this.groups = o.groups ?? realGroups;
     this.readFree = o.free ?? (() => realFreeMemory());
     this.readSwap = o.swap ?? (() => realSwapUsedGb());
     this.fixedVms = o.vms;
     this.vmsAsync = o.vmsAsync;
   }
 
-  /** Issue 1274: swap in use here now, GB (NaN: unread). */
-  swapUsedGb(): number {
+  /**
+   * Issue 1274: swap in use here now, GB. NaN: unknown (it holds); null:
+   * not measured on this platform (issue 1349).
+   */
+  swapUsedGb(): MachineReading {
     try {
       const n = this.readSwap();
+      if (n === null) return null;
       return Number.isFinite(n) ? n : NaN;
     } catch {
       return NaN;
@@ -710,9 +1092,10 @@ export class GateStore {
   }
 
   /** Issue 1274: this machine's free memory now, percent (NaN: unread). */
-  freeMemory(): number {
+  freeMemory(): MachineReading {
     try {
       const n = this.readFree();
+      if (n === null) return null;
       return Number.isFinite(n) ? n : NaN;
     } catch {
       return NaN;
@@ -748,11 +1131,27 @@ export class GateStore {
     return this.now();
   }
 
-  settings(): GateSettings & BoxSettings {
+  settings(
+    /** Issue 1395: the settings as they'd be with this patch (a preview). */
+    patch?: GateSettingsPatch,
+  ): GateSettings & BoxSettings {
     try {
-      const v = JSON.parse(
-        fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
-      ) as Record<string, unknown>;
+      let v: Record<string, unknown>;
+      try {
+        v = JSON.parse(
+          fs.readFileSync(path.join(this.dir, "settings.json"), "utf-8"),
+        ) as Record<string, unknown>;
+      } catch (e) {
+        if (!patch) throw e;
+        v = {};
+      }
+      if (patch) {
+        v = { ...v };
+        for (const [k, x] of Object.entries(patch)) {
+          if (x === null) delete v[k];
+          else if (x !== undefined) v[k] = x;
+        }
+      }
       const text = (k: keyof typeof GATE_TEXT) =>
         typeof v[k] === "string" ? (v[k] as string) : "";
       const num = (k: GateNumberKey, d: number) => {
@@ -784,12 +1183,25 @@ export class GateStore {
           "load_hold_per_core",
           GATE_DEFAULTS.loadHoldPerCore,
         ),
+        maxStartLoad: num("max_start_load", GATE_DEFAULTS.maxStartLoad),
+        maxStartWaitMinutes: num(
+          "max_start_wait_minutes",
+          GATE_DEFAULTS.maxStartWaitMinutes,
+        ),
+        reapGraceSeconds: num(
+          "reap_grace_seconds",
+          GATE_DEFAULTS.reapGraceSeconds,
+        ),
         memoryFreeMinPercent: num(
           "memory_free_min_percent",
           GATE_DEFAULTS.memoryFreeMinPercent,
         ),
         vmMemoryShare: num("vm_memory_share", GATE_DEFAULTS.vmMemoryShare),
         swapHoldGb: num("swap_hold_gb", GATE_DEFAULTS.swapHoldGb),
+        memoryReadingKeepSeconds: num(
+          "memory_reading_keep_seconds",
+          GATE_DEFAULTS.memoryReadingKeepSeconds,
+        ),
         overrunMarginMinutes: num(
           "overrun_margin_minutes",
           GATE_DEFAULTS.overrunMarginMinutes,
@@ -842,15 +1254,27 @@ export class GateStore {
           "box_recheck_seconds",
           BOX_DEFAULTS.boxRecheckSeconds,
         ),
+        // 1: on; 2: on and strict (a run may not declare "self").
         browserRequiresContainer:
           num(
             "browser_requires_container",
             browserRequiresContainerDefault(this.platform) ? 1 : 0,
-          ) === 1,
+          ) >= 1,
+        browserContainerStrict: num("browser_requires_container", 0) === 2,
         // Issue 1033: a browser run with no --box: here or a test box.
         browserBoxDefault:
           text("browser_box_default").trim() === "local" ? "local" : "any",
         browserHostOnly: text("browser_host_only"),
+        // Issue 1264: false is slice 1's form of off, as the hook reads it.
+        routeAgents:
+          v.route_agents !== false &&
+          num("route_agents", GATE_DEFAULTS.routeAgents ? 1 : 0) === 1,
+        routeCommands: (() => {
+          const l = parseRouteCommands(text("route_commands"));
+          return typeof l === "string" || !l.length
+            ? [...GATE_DEFAULTS.routeCommands]
+            : l;
+        })(),
         // Issue 803: priority classes; none set is today's queue (and
         // today's settings, key for key).
         ...classSettings(
@@ -875,15 +1299,22 @@ export class GateStore {
    * Issue 963: each change is in the slot log, with `by` (who changed it,
    * named as an ask is), when, and each key's value before and after (the
    * value in effect: a cleared key's is its default). No change, no row.
+   * Issue 1395: the one writer of settings.json, under the gate-slot lock
+   * the grant decision holds (GateLockBusy past the store's wait); the
+   * file is replaced whole, so a reader never sees half of it.
    */
   writeSettings(patch: GateSettingsPatch, by = "unknown"): void {
+    this.locked(() => this.writeSettingsLocked(patch, by));
+  }
+
+  private writeSettingsLocked(patch: GateSettingsPatch, by: string): void {
     const before = this.settings();
     this.writeSettingsFile(patch);
     const after = this.settings();
     const changes: Record<string, GateSettingChange> = {};
     for (const k of Object.keys(patch)) {
-      const from = settingValue(before, k);
-      const to = settingValue(after, k);
+      const from = gateSettingValue(before, k);
+      const to = gateSettingValue(after, k);
       if (from !== to) changes[k] = { from, to };
     }
     if (!Object.keys(changes).length) return;
@@ -947,6 +1378,29 @@ export class GateStore {
     };
     fs.appendFileSync(this.eventsFile, JSON.stringify(full) + "\n");
     return at;
+  }
+
+  /**
+   * Issue 1264: the runs that ran outside the gate today (since local
+   * midnight), per agent, most first.
+   */
+  outsideToday(): { who: string; count: number }[] {
+    const t = new Date(this.now());
+    const since = new Date(
+      t.getFullYear(),
+      t.getMonth(),
+      t.getDate(),
+    ).getTime();
+    const counts = new Map<string, number>();
+    for (const r of this.events()) {
+      if (r.event !== "outside") continue;
+      const at = Date.parse(r.at);
+      if (!(at >= since)) continue;
+      counts.set(r.who, (counts.get(r.who) ?? 0) + 1);
+    }
+    return [...counts]
+      .map(([who, count]) => ({ who, count }))
+      .sort((a, b) => b.count - a.count || a.who.localeCompare(b.who));
   }
 
   /**
@@ -1122,17 +1576,21 @@ export class GateStore {
         break;
       } catch (e) {
         if ((e as { code?: string }).code !== "EEXIST") throw e;
+        let tookBack = false;
         try {
           if (
             Date.now() - fs.statSync(lock).mtimeMs > 30_000 ||
             this.holderGone(lock)
-          )
+          ) {
             fs.rmSync(lock, { recursive: true, force: true });
+            tookBack = true;
+          }
         } catch {
           /* someone else took it back */
         }
-        if (Date.now() > until)
-          throw new Error(`the gate-slot lock (${lock}) stayed held`);
+        if (tookBack) continue;
+        // Issue 1339: with lockWaitMs 0 (the server's), busy at once.
+        if (Date.now() >= until) throw new GateLockBusy(lock);
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
       }
     }
@@ -1284,6 +1742,8 @@ export class GateStore {
         }
       }
       this.remove(e.id);
+      // Issue 1132: what a gone run left in its group is stopped below.
+      if (!lapse) this.noteGroup(e, "gone");
       const why = !lapse && e.orphanedAt ? "waiter-gone" : undefined;
       this.record(e, {
         event: lapse ? "taken-back-lapsed" : "taken-back-gone",
@@ -1367,6 +1827,7 @@ export class GateStore {
       this.write(e);
       this.record(e, { event: "overdue", ...this.heldFor(e, now) });
     }
+    this.sweep(s, now);
     return [
       ...entries.filter((e) => e.grantedAt).sort(byAsked),
       ...queueOrder(entries, s, now),
@@ -1533,6 +1994,8 @@ export class GateStore {
     hostWhy?: string;
     /** Issue 1033: a default pick's boxes (the others can't serve it). */
     onlyBoxes?: string[];
+    /** Issue 1198: a default pick that may take a box only. */
+    boxesOnly?: boolean;
     /** Issue 1289: the run's checkout tag (12 hex characters). */
     checkout?: string;
   }): GateEntry {
@@ -1581,6 +2044,9 @@ export class GateStore {
                 .slice(0, 64),
             }
           : {}),
+        ...(o.kind === "browser" && o.where === "any" && o.boxesOnly
+          ? { boxesOnly: true as const }
+          : {}),
       };
       fs.mkdirSync(this.slots, { recursive: true });
       // Created whole and only once (#380): readAll never sees it half-written.
@@ -1618,10 +2084,26 @@ export class GateStore {
         here && (mem || sw)
           ? {
               ...(mem
-                ? { memory: { free: Math.round(mem.free), limit: mem.limit } }
+                ? {
+                    memory: mem.unavailable
+                      ? {
+                          free: null,
+                          limit: mem.limit,
+                          unavailable: true as const,
+                        }
+                      : { free: Math.round(mem.free), limit: mem.limit },
+                  }
                 : {}),
               ...(sw
-                ? { swap: { usedGb: sw.usedGb, limitGb: sw.limitGb } }
+                ? {
+                    swap: sw.unavailable
+                      ? {
+                          usedGb: null,
+                          limitGb: sw.limitGb,
+                          unavailable: true as const,
+                        }
+                      : { usedGb: sw.usedGb, limitGb: sw.limitGb },
+                  }
                 : {}),
             }
           : undefined;
@@ -1655,6 +2137,8 @@ export class GateStore {
     where?: string;
     /** A browser run's declared container browser, as recorded. */
     browserEndpoint?: string;
+    /** Issue 1198: "any" with no browser of its own: a box only. */
+    boxesOnly?: boolean;
   }): GateEntry {
     const reason = reasonOf(o.priority?.reason);
     if (o.priority && !reason)
@@ -1684,6 +2168,9 @@ export class GateStore {
         estimateMin: o.estimateMin,
         ...whereOf(o.kind, o.where),
         ...browserEndpointOf(o.kind, o.browserEndpoint),
+        ...(o.kind === "browser" && o.where === "any" && o.boxesOnly
+          ? { boxesOnly: true as const }
+          : {}),
         remote: {
           runner: o.runner.slice(0, 64),
           tokenId: o.tokenId,
@@ -1736,6 +2223,30 @@ export class GateStore {
       }
       if (mine.length) this.settle();
       return mine.length;
+    });
+  }
+
+  /**
+   * Issue 1339: the live slots as their files stand, with no lock and no
+   * settle (each file is written whole, so a plain read is safe). For a
+   * reader on the server's one thread, the bell's refresh: list() waits on
+   * the machine-wide lock synchronously, up to lockWaitMs, and while a gate
+   * run held it the whole server stood still. What list() would take back
+   * (a gone run, a lapsed lease, a waiter whose run is gone) isn't shown;
+   * the next locked call takes it back.
+   */
+  peekAll(): GateEntry[] {
+    const s = this.settings();
+    const now = this.now();
+    return this.readAll().filter((e) => {
+      if (lapsed(e, now) || mcpLapsed(e, s, now)) return false;
+      if (!e.orphanedAt && !gone(e, this.alive)) return true;
+      // Issue 867: a waiter whose run is gone keeps its place a while.
+      return (
+        keptWaiter(e, s) &&
+        now - (e.orphanedAt ? Date.parse(e.orphanedAt) : now) <=
+          s.waiterReturnMinutes * 60_000
+      );
     });
   }
 
@@ -1824,25 +2335,257 @@ export class GateStore {
   }
 
   /** gate run's command: the slot stays while it runs. */
-  setRunPid(id: string, runPid: number): void {
+  /**
+   * The command gate run started. Issue 1132: with `group`, the process
+   * group it leads (stopped when the slot ends), and the command's name.
+   */
+  setRunPid(
+    id: string,
+    runPid: number,
+    o: { group?: number; cmd?: string } = {},
+  ): void {
     this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
       if (!e) return;
       e.runPid = runPid;
+      // Issue 1132: the group, with its leader's record and this boot,
+      // so it is never mistaken for another later. Unreadable: none.
+      const rec =
+        o.group !== undefined && o.group > 1
+          ? this.groups.record(o.group)
+          : null;
+      if (rec) {
+        e.group = rec.pgid;
+        e.groupRec = rec;
+        e.boot = this.groups.boot();
+      }
+      if (o.cmd) e.cmd = path.basename(o.cmd).slice(0, 60);
       this.write(e);
     });
   }
 
-  /** The holder is done (or the waiter gives up). */
-  release(id: string): boolean {
+  /**
+   * The holder is done (or the waiter gives up). Issue 1132: what its run
+   * left in its process group is stopped (TERM now, KILL after the grace),
+   * unless `reap` is false; `reason` says why it ended, when not plainly.
+   */
+  release(
+    id: string,
+    o: { reason?: Exclude<LeftoverReason, "gone">; reap?: boolean } = {},
+  ): boolean {
     return this.locked(() => {
       const e = this.readAll().find((x) => x.id === id);
       if (!e) return false;
       this.remove(id);
-      this.record(e, { event: "released", ...this.heldFor(e, this.now()) });
+      this.record(e, {
+        event: "released",
+        ...this.heldFor(e, this.now()),
+        ...(o.reason && o.reason !== "ended" ? { reason: o.reason } : {}),
+      });
+      if (o.reap !== false) this.noteGroup(e, o.reason ?? "ended");
       this.settle();
       return true;
     });
+  }
+
+  /**
+   * Issue 1132: stop what is left in `e`'s group, its slot already ended
+   * (gate run, after a command whose slot it gave back early). Returns
+   * whether anything of it is still being stopped.
+   */
+  reap(e: GroupOwner, reason: LeftoverReason): boolean {
+    return this.locked(() => {
+      this.noteGroup(e, reason);
+      this.sweep(this.settings(), this.now());
+      return this.readLeftovers().some((l) => l.id === e.id);
+    });
+  }
+
+  /**
+   * Issue 1132: one pass over the groups of ended slots (any store does it
+   * as it reads the queue). Returns whether entry `id`'s group is still
+   * being stopped.
+   */
+  stopLeftovers(id?: string): boolean {
+    return this.locked(() => {
+      this.sweep(this.settings(), this.now());
+      return id !== undefined && this.readLeftovers().some((l) => l.id === id);
+    });
+  }
+
+  /** Issue 1132: the slot log's stopped-leftovers rows, newest last. */
+  stoppedLeftovers(sinceMs: number): GateEventRow[] {
+    return this.events().filter(
+      (r) => r.event === "stopped-leftovers" && Date.parse(r.at) >= sinceMs,
+    );
+  }
+
+  /**
+   * Issue 1132: records that a run's leftovers were stopped: how many, the
+   * command's name and the run's label, never arguments or environment.
+   */
+  noteStopped(o: {
+    id: string;
+    kind: GateKind;
+    who: string;
+    label: string;
+    cmd: string;
+    count: number;
+    reason: LeftoverReason;
+    signal?: "TERM" | "KILL";
+  }): void {
+    const { id, kind, who, label, cmd, count, reason, signal } = o;
+    this.record({ id, kind, who, label } as GateEntry, {
+      event: "stopped-leftovers",
+      count,
+      cmd,
+      reason,
+      signal: signal ?? "TERM",
+    });
+  }
+
+  /**
+   * Issue 1132: a granted run whose command waits for the load to drop
+   * under the ceiling (recorded once), or no longer waits (absent).
+   */
+  setStartHold(id: string, hold?: { load: number; limit: number }): void {
+    this.locked(() => {
+      const e = this.readAll().find((x) => x.id === id);
+      if (!e) return;
+      if (!hold) {
+        if (!e.startHold) return;
+        delete e.startHold;
+        this.write(e);
+        return;
+      }
+      const load = Math.round(hold.load * 10) / 10;
+      const first = !e.startHold;
+      e.startHold = {
+        load,
+        limit: hold.limit,
+        since: e.startHold?.since ?? new Date(this.now()).toISOString(),
+      };
+      this.write(e);
+      if (first)
+        this.record(e, { event: "start-held", load, limit: hold.limit });
+    });
+  }
+
+  /** Issue 1132: past the wait limit, a held run starts anyway: busy. */
+  startedBusy(id: string, hold: { load: number; limit: number }): void {
+    this.locked(() => {
+      const e = this.readAll().find((x) => x.id === id);
+      if (!e) return;
+      delete e.startHold;
+      this.write(e);
+      this.record(e, {
+        event: "started-busy",
+        load: Math.round(hold.load * 10) / 10,
+        limit: hold.limit,
+      });
+    });
+  }
+
+  private get leftoversFile(): string {
+    return path.join(this.dir, "leftovers.json");
+  }
+
+  private readLeftovers(): Leftover[] {
+    try {
+      const v = JSON.parse(fs.readFileSync(this.leftoversFile, "utf-8"));
+      return Array.isArray(v) ? (v as Leftover[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private writeLeftovers(all: Leftover[]): void {
+    if (!all.length && !fs.existsSync(this.leftoversFile)) return;
+    fs.mkdirSync(this.dir, { recursive: true });
+    writeFileAtomic(this.leftoversFile, JSON.stringify(all));
+  }
+
+  /** Issue 1132: an ended slot's group, to be stopped. Call under the lock. */
+  private noteGroup(e: GroupOwner, reason: LeftoverReason): void {
+    if (
+      !(e.group !== undefined && e.group > 1) ||
+      e.group === process.pid ||
+      !e.groupRec
+    )
+      return;
+    const all = this.readLeftovers();
+    if (all.some((l) => l.group === e.group)) return;
+    all.push({
+      group: e.group,
+      id: e.id,
+      kind: e.kind,
+      who: e.who,
+      label: e.label,
+      cmd: e.cmd ?? "",
+      reason,
+      endedAt: new Date(this.now()).toISOString(),
+      rec: e.groupRec,
+      ...(e.boot !== undefined ? { boot: e.boot } : {}),
+    });
+    this.writeLeftovers(all);
+  }
+
+  /**
+   * Issue 1132: each ended slot's group: TERM what is in it (recorded with
+   * the count), KILL what is still there after the grace, and forget it
+   * once it is empty (or after an hour). Call under the lock.
+   */
+  private sweep(s: GateSettings, now: number): void {
+    const all = this.readLeftovers();
+    if (!all.length) return;
+    const at = new Date(now).toISOString();
+    const keep: Leftover[] = [];
+    let changed = false;
+    const boot = this.groups.boot();
+    for (const l of all) {
+      // Issue 1132: never a record from before this boot, or one with no
+      // leader's record; and only while the group is still ours.
+      const stale =
+        !l.rec ||
+        l.boot === undefined ||
+        Math.abs(l.boot - boot) > BOOT_SLACK_MIN ||
+        now - Date.parse(l.endedAt) > LEFTOVER_KEEP_MS;
+      const st = stale ? null : this.groups.state(l.rec!);
+      if (stale || st?.state === "gone" || st?.state === "reused") {
+        changed = true;
+        continue;
+      }
+      if (!st) {
+        keep.push(l); // can't tell now: nothing is signalled; look again
+        continue;
+      }
+      const pids = st.members;
+      const row = {
+        id: l.id,
+        kind: l.kind,
+        who: l.who,
+        label: l.label,
+        cmd: l.cmd,
+        count: pids.length,
+        reason: l.reason,
+      };
+      if (!l.termAt) {
+        this.groups.signal(l.group, "SIGTERM");
+        this.noteStopped({ ...row, signal: "TERM" });
+        l.termAt = at;
+        changed = true;
+      } else if (
+        !l.killAt &&
+        now - Date.parse(l.termAt) >= s.reapGraceSeconds * 1000
+      ) {
+        this.groups.signal(l.group, "SIGKILL");
+        this.noteStopped({ ...row, signal: "KILL" });
+        l.killAt = at;
+        changed = true;
+      }
+      keep.push(l);
+    }
+    if (changed) this.writeLeftovers(keep);
   }
 
   /**
@@ -1999,6 +2742,57 @@ export class GateStore {
     return out;
   }
 
+  // ---- Issue 642: CI runner entries (shared/gates/runner-entries.ts) ----
+
+  /** The runner entries (settings.json `runner_entries`); none by default. */
+  runnerEntries(): RunnerEntry[] {
+    return runnerEntriesOf(this.settingsFile().runner_entries);
+  }
+
+  private writeRunnerEntries(list: RunnerEntry[]): void {
+    const cur = this.settingsFile();
+    if (list.length) cur.runner_entries = list;
+    else delete cur.runner_entries;
+    writeFileAtomic(
+      path.join(this.dir, "settings.json"),
+      JSON.stringify(cur, null, 2) + "\n",
+    );
+  }
+
+  /**
+   * Adds a runner entry, or replaces the one for that repo and box. Its
+   * box must be set. Callers: a person (Settings, `gate runner add`), or
+   * an agent's held write after the person's Allow.
+   */
+  setRunnerEntry(v: unknown): RunnerEntry {
+    const c = checkRunnerEntry(v);
+    if (!c.ok) throw new Error(c.error);
+    const e = c.entry;
+    return this.locked(() => {
+      if (!this.boxes().some((b) => b.name === e.box))
+        throw new Error(`no test box ${e.box}: set the box first`);
+      const k = entryKey(e);
+      const list = this.runnerEntries();
+      const at = list.findIndex((x) => entryKey(x) === k);
+      if (at >= 0) list[at] = e;
+      else list.push(e);
+      this.writeRunnerEntries(list);
+      return e;
+    });
+  }
+
+  /** Removes the runner entry for a repo on a box. */
+  removeRunnerEntry(repo: string, box: string): boolean {
+    return this.locked(() => {
+      const k = entryKey({ repo, box });
+      const list = this.runnerEntries();
+      const left = list.filter((x) => entryKey(x) !== k);
+      if (left.length === list.length) return false;
+      this.writeRunnerEntries(left);
+      return true;
+    });
+  }
+
   /** What the last check of each box found. */
   boxStates(): Record<string, BoxState> {
     return readBoxStates(this.dir);
@@ -2059,7 +2853,7 @@ export class GateStore {
         (n) => !freshYes(states[n], now, s.boxCheckTimeoutSeconds),
       );
       if (!want.length) {
-        this.locked(() => this.settle());
+        await gateLocked(() => this.locked(() => this.settle()));
         return;
       }
       const found = await Promise.all(
@@ -2084,19 +2878,21 @@ export class GateStore {
           }
         }),
       );
-      const no = this.locked(() => {
-        const st = readBoxStates(this.dir);
-        const at = new Date(this.now()).toISOString();
-        for (const { n, r } of found)
-          st[n] = {
-            state: r.state,
-            ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
-            at,
-          };
-        writeBoxStates(this.dir, st);
-        this.settle();
-        return found.some((f) => f.r.state !== "open");
-      });
+      const no = await gateLocked(() =>
+        this.locked(() => {
+          const st = readBoxStates(this.dir);
+          const at = new Date(this.now()).toISOString();
+          for (const { n, r } of found)
+            st[n] = {
+              state: r.state,
+              ...(r.reason ? { reason: r.reason.slice(0, 200) } : {}),
+              at,
+            };
+          writeBoxStates(this.dir, st);
+          this.settle();
+          return found.some((f) => f.r.state !== "open");
+        }),
+      );
       if (!no) return;
     }
   }

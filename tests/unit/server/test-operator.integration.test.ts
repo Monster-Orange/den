@@ -19,6 +19,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { writeRecord } from "../../../src/shared/agents/records.js";
 import { signedIn } from "./helpers/signed-in.js";
 import {
   fixturePersonPath,
@@ -32,6 +33,7 @@ import {
 } from "../../../src/shared/web-secret.js";
 import {
   creationRecordPath,
+  verifiedCreationRecord,
   writeCreationRecord,
 } from "../../../src/shared/test-operator.js";
 
@@ -57,6 +59,10 @@ let tmp = "";
 let fresh: Den;
 let later: Den;
 let normal: Den;
+let webup: Den;
+let copied: Den;
+/** The sealed record copied into `copied`, as it was. */
+let copiedRecord = "";
 
 interface Reply {
   status: number;
@@ -164,7 +170,15 @@ const MARKED = ["environments: [local]", "web:", "  test_install: true", ""];
 
 async function startDen(
   name: string,
-  o: { flag: boolean; ownState: boolean; existing?: boolean },
+  o: {
+    flag: boolean;
+    ownState: boolean;
+    existing?: boolean;
+    /** Issue 1407: what `web up` writes before the server starts. */
+    webUpLog?: boolean;
+    /** Issue 1407: another install's sealed record, copied in. */
+    copyRecordFrom?: string;
+  },
 ): Promise<Den> {
   const root = path.join(tmp, name, "dist");
   const home = path.join(tmp, name, "home");
@@ -178,6 +192,24 @@ async function startDen(
   // An install that already ran (its state folder holds its secret), and
   // was marked a test install later.
   if (o.existing) ensureWebSecret(stateDir);
+  if (o.webUpLog) {
+    fs.mkdirSync(path.join(stateDir, "logs", "den"), { recursive: true });
+    fs.writeFileSync(
+      path.join(stateDir, "logs", "den", "web.log"),
+      "\n--- den web start ---\n",
+    );
+    // `web up` writes web.json (the server's pid) as soon as it starts the
+    // server, before the server's first look (a probe of the real `web up`).
+    fs.writeFileSync(
+      path.join(stateDir, "web.json"),
+      `${JSON.stringify({ pid: 4242, port: 4317, root, logPath: "web.log" }, null, 2)}\n`,
+    );
+  }
+  if (o.copyRecordFrom)
+    fs.copyFileSync(
+      creationRecordPath(o.copyRecordFrom),
+      creationRecordPath(stateDir),
+    );
   const env: NodeJS.ProcessEnv = {
     ...baseEnv(),
     DEN_ROOT: root,
@@ -276,11 +308,36 @@ async function asFixture(den: Den, m: string, p: string, body?: unknown) {
 
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-op814-")));
-  [fresh, later, normal] = await Promise.all([
+  // Another install's sealed record (its own folder and secret), to copy
+  // into a real install's folder.
+  const other = path.join(tmp, "other-state");
+  writeCreationRecord(other, ensureWebSecret(other));
+  copiedRecord = fs.readFileSync(creationRecordPath(other), "utf-8");
+  [fresh, later, normal, webup, copied] = await Promise.all([
     startDen("fresh", { flag: true, ownState: true }),
     startDen("later", { flag: true, ownState: true, existing: true }),
     startDen("normal", { flag: false, ownState: true }),
+    startDen("webup", { flag: true, ownState: true, webUpLog: true }),
+    startDen("copied", {
+      flag: true,
+      ownState: true,
+      existing: true,
+      copyRecordFrom: other,
+    }),
   ]);
+  // The acts' agent: one of the bed's own (Den marked it testBed), so the
+  // operator's say, relaunch and restart reach it (issues 956, 1407).
+  writeRecord(fresh.stateDir, {
+    id: "a1",
+    workspace: "notes",
+    persona: "a1",
+    runtime: "den-claude",
+    cwd: fresh.home,
+    session: { backend: "den-pty", id: "gone-a1" },
+    sessionName: "den-notes:a1",
+    startedAt: "2026-11-06T09:30:00.000Z",
+    testBed: true,
+  });
   // The later install: a person sets the fixture person up (issue 810).
   const p = await signedIn(later.stateDir, later.base);
   const r = await call(later, "POST", "/api/web/fixture-person", p.headers, {});
@@ -289,7 +346,9 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => {
   await Promise.all(
-    [fresh, later, normal].filter(Boolean).map((d) => stopServer(d.server)),
+    [fresh, later, normal, webup, copied]
+      .filter(Boolean)
+      .map((d) => stopServer(d.server)),
   );
   fs.rmSync(tmp, { recursive: true, force: true });
 });
@@ -350,6 +409,44 @@ describe("a new test install is made with its fixture person", () => {
   });
 });
 
+/**
+ * Issue 1407 (Vision's ruling): the birth is the flagged start that makes
+ * the install's secret, whatever `web up` wrote first; a real install's
+ * folder never becomes one, even with another install's record in it.
+ */
+describe("issue 1407: a test install started by `web up`", () => {
+  it("its log there first: still created as a test install, record sealed, fixture person made", () => {
+    expect(
+      verifiedCreationRecord(webup.stateDir, readWebSecret(webup.stateDir)),
+    ).toBe(true);
+    expect(fs.existsSync(fixturePersonPath(webup.stateDir))).toBe(true);
+  });
+
+  it.each(ACTS)(
+    "%s %s passes the gate there, audited as the test operator",
+    async (m, p, body) => {
+      const r = await asFixture(webup, m, p, body);
+      expect([m, p, r.json.code]).not.toEqual([m, p, "fixture_scope"]);
+      const row = auditRows(webup)
+        .reverse()
+        .find(
+          (e) => e.verb === "test-operator" && String(e.detail).includes(p),
+        );
+      expect(row?.principal).toBe("test:operator");
+    },
+  );
+
+  it("a real install with another install's sealed record copied in: not one, the record unchanged and unverified, no fixture person", () => {
+    expect(fs.readFileSync(creationRecordPath(copied.stateDir), "utf-8")).toBe(
+      copiedRecord,
+    );
+    expect(
+      verifiedCreationRecord(copied.stateDir, readWebSecret(copied.stateDir)),
+    ).toBe(false);
+    expect(fs.existsSync(fixturePersonPath(copied.stateDir))).toBe(false);
+  });
+});
+
 describe("the test operator, on a new test install", () => {
   it.each(ACTS)(
     "%s %s passes the gate, audited as the test operator",
@@ -387,12 +484,40 @@ describe("the test operator, on a new test install", () => {
     ["GET", "/api/web/waiting", undefined],
     ["POST", "/api/hub/connect", {}],
     ["POST", "/api/hub/link-suggestions", {}],
-    ["POST", "/api/workspaces/notes/agents/a1/restart", {}],
     ["POST", "/api/agents/runtimes/claude/path", { path: "/nope" }],
     ["GET", "/api/workspaces/notes/hub-project", undefined],
     ["GET", "/api/hub/link-suggestions", undefined],
   ])("%s %s stays refused", async (m, p, body) => {
     const r = await asFixture(fresh, m, p, body);
+    expect(r.status).toBe(403);
+  });
+
+  // Issue 1407: the operator may restart the bed's own agents only. An id
+  // that isn't there answers the same 403 as one Den didn't mark, so it
+  // can't learn which agents exist; the server agent's is refused too.
+  it.each([
+    ["an agent that isn't there", "notes", "none1407a", null],
+    ["an agent Den didn't mark", "notes", "real1407", false],
+    ["the server agent", "den-server", "helper1407", true],
+  ])("a restart of %s: 403", async (_n, ws, id, marked) => {
+    if (marked !== null)
+      writeRecord(fresh.stateDir, {
+        id,
+        workspace: ws,
+        persona: id,
+        runtime: "den-claude",
+        cwd: fresh.home,
+        session: { backend: "den-pty", id: `gone-${id}` },
+        sessionName: `den-${ws}:${id}`,
+        startedAt: "2026-11-06T09:30:00.000Z",
+        ...(marked ? { testBed: true as const } : {}),
+      });
+    const r = await asFixture(
+      fresh,
+      "POST",
+      `/api/workspaces/${ws}/agents/${id}/restart`,
+      { when: "now" },
+    );
     expect(r.status).toBe(403);
   });
 
@@ -410,6 +535,111 @@ describe("the test operator is refused everywhere else", () => {
     async (m, p, body) => {
       const r = await asFixture(later, m, p, body);
       expect([r.status, r.json.code]).toEqual([403, "fixture_scope"]);
+    },
+  );
+
+  // Issue 1407: on a test install with no test operator (marked later),
+  // the fixture person may restart the bed's own agents only (the bed's
+  // own Den, gate/1407's page row). Every other agent, the server agent's
+  // and an id that isn't there: the same 403.
+  it.each([
+    ["one Den marked testBed", "notes", "bed1407", true, false],
+    ["an agent Den didn't mark", "notes", "real1407b", false, true],
+    ["an agent that isn't there", "notes", "none1407", null, true],
+    ["the server agent", "den-server", "helper1407b", true, true],
+  ])(
+    "marked later: the fixture person's restart of %s",
+    async (_n, ws, id, marked, refused) => {
+      if (marked !== null)
+        writeRecord(later.stateDir, {
+          id,
+          workspace: ws,
+          persona: id,
+          runtime: "den-claude",
+          cwd: later.home,
+          session: { backend: "den-pty", id: `gone-${id}` },
+          sessionName: `den-${ws}:${id}`,
+          startedAt: "2026-11-06T09:30:00.000Z",
+          ...(marked ? { testBed: true as const } : {}),
+        });
+      const r = await asFixture(
+        later,
+        "POST",
+        `/api/workspaces/${ws}/agents/${id}/restart`,
+        { when: "now" },
+      );
+      expect(r.json.code).not.toBe("fixture_scope");
+      if (refused) expect(r.status).toBe(403);
+      else expect(r.status).not.toBe(403);
+    },
+  );
+
+  it.each([
+    [
+      "edits, on one Den marked testBed",
+      "notes",
+      "mode252a",
+      true,
+      "edits",
+      200,
+    ],
+    [
+      "follow its project, on one Den marked testBed",
+      "notes",
+      "mode252b",
+      true,
+      null,
+      200,
+    ],
+    ["auto, on one Den marked testBed", "notes", "mode252c", true, "auto", 403],
+    ["all, on one Den marked testBed", "notes", "mode252d", true, "all", 403],
+    [
+      "edits, on an agent Den didn't mark",
+      "notes",
+      "mode252e",
+      false,
+      "edits",
+      403,
+    ],
+    [
+      "edits, on an agent that isn't there",
+      "notes",
+      "mode252f",
+      null,
+      "edits",
+      403,
+    ],
+    [
+      "edits, on the server agent",
+      "den-server",
+      "mode252g",
+      true,
+      "edits",
+      403,
+    ],
+  ])(
+    "marked later: the fixture person's mode %s",
+    async (_n, ws, id, marked, mode, status) => {
+      if (marked !== null)
+        writeRecord(later.stateDir, {
+          id,
+          workspace: ws,
+          persona: id,
+          runtime: "den-claude",
+          cwd: later.home,
+          session: { backend: "den-pty", id: `gone-${id}` },
+          sessionName: `den-${ws}:${id}`,
+          startedAt: "2026-11-06T09:30:00.000Z",
+          ...(marked ? { testBed: true as const } : {}),
+        });
+      const r = await asFixture(
+        later,
+        "POST",
+        `/api/workspaces/${ws}/agents/${id}/mode`,
+        { mode },
+      );
+      expect(r.json.code).not.toBe("fixture_scope");
+      expect(r.status).toBe(status);
     },
   );
 

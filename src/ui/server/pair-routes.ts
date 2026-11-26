@@ -39,6 +39,11 @@ export interface PairRouteDeps {
   /** The client's address for a new request's record, when Den knows it. */
   client: (req: http.IncomingMessage) => string | undefined;
   /**
+   * Issue 1333: the client address's mesh name, if it has one (a reverse
+   * lookup). Asked after the request is made; the page never waits on it.
+   */
+  clientName?: (client: string) => Promise<string | null>;
+  /**
    * Issue 819: why this request may not approve or deny a device (not a
    * person's signed-in browser with its approval key), or null when it may.
    */
@@ -84,11 +89,26 @@ function waitingJson(v: PairView): Record<string, unknown> {
     ref: v.ref,
     device: v.device,
     ...(v.client ? { client: v.client } : {}),
+    ...(v.clientName ? { clientName: v.clientName } : {}),
+    ...(v.host ? { host: v.host } : {}),
     createdAt: new Date(v.createdAt).toISOString(),
     expiresAt: new Date(v.expiresAt).toISOString(),
     ...(v.link ? { fromLink: true } : {}),
     ...(v.linkAt ? { fromLogin: new Date(v.linkAt).toISOString() } : {}),
   };
+}
+
+/**
+ * Issue 1333: the Den address a request opened (its Host header), kept
+ * only when it is a plain host or host:port, so the approver's dialog
+ * shows nothing a page could invent beyond a name.
+ */
+export function denAddressOf(req: http.IncomingMessage): string | undefined {
+  const h = req.headers?.host;
+  if (typeof h !== "string" || h.length > 255) return undefined;
+  return /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:\d{1,5})?$/.test(h)
+    ? h.toLowerCase()
+    : undefined;
 }
 
 /** Issue 819: why a new request wasn't made, for its page. */
@@ -155,9 +175,11 @@ export async function handlePairRoutes(
   res.setHeader("Cache-Control", "no-store");
 
   if (pathname === "/api/signin/code" && method === "POST") {
+    const client = deps.client(req);
     const r = deps.pairs.tryCreate({
       userAgent: req.headers["user-agent"],
-      client: deps.client(req),
+      client,
+      host: denAddressOf(req),
     });
     if (!r.ok) {
       const e = CREATE_REFUSED[r.error];
@@ -173,6 +195,15 @@ export async function handlePairRoutes(
       // What is left, for the page's own countdown (no clock skew).
       expiresIn: Math.max(0, r.expiresAt - Date.now()),
     });
+    if (client && deps.clientName) {
+      const ref = r.ref;
+      deps.clientName(client).then(
+        (n) => {
+          if (n) deps.pairs.setClientName(ref, n);
+        },
+        () => {},
+      );
+    }
     return true;
   }
   const p = POLL_PATH.exec(pathname);
@@ -203,12 +234,16 @@ export async function handlePairRoutes(
       return true;
     }
     if (v.state === "approved") {
+      // Issue 1299: sign in first. A refused sign-in (the sessions file
+      // busy or unreadable) throws with the approval kept, so the next
+      // poll signs in. Nothing awaits between get() and claim(), so the
+      // claim cannot be lost after the session is made.
+      const s = deps.signIn(req);
       const claimed = deps.pairs.claim(p[1]);
       if (!claimed) {
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
-      const s = deps.signIn(req);
       if (claimed.link) deps.linkEnded?.(claimed.link, "signed-in", req);
       res.setHeader("Set-Cookie", s.cookie);
       res.setHeader("Cache-Control", "no-store");

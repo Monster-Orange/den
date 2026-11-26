@@ -211,6 +211,7 @@ import {
 } from "./notifications-command.js";
 import { GITHUB_HELP, cmdGithub } from "./github-command.js";
 import { ASK_HELP, cmdAsk } from "./ask-command.js";
+import { APPROVALS_HELP, cmdApprovals } from "./approvals-command.js";
 import { cmdFeedback, FEEDBACK_HELP } from "./feedback-command.js";
 import { cmdVerify, VERIFY_HELP } from "./verify-command.js";
 import { HUB_HELP, cmdHub } from "./hub-command.js";
@@ -271,6 +272,10 @@ import {
   workspaceViaServer,
   type WorkspaceVerb,
 } from "./workspace-person.js";
+import { useNotificationConfig } from "../../shared/notifications.js";
+
+// Issue 1348: the bell's store lock times, from user.yml `notifications:`.
+useNotificationConfig(() => readUserConfig().notifications);
 
 /**
  * Issue 989: a person's project change, through the running server. True
@@ -517,8 +522,12 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
     ],
   },
   config: {
-    usage: "config [get|set ...]",
-    lines: [`View or edit ${product().cli} configuration.`],
+    usage: "config [get|set ...|propose <key>=<value> --reason <why>]",
+    lines: [
+      `View or edit ${product().cli} configuration.`,
+      "propose: ask the person to change one setting (the held write setting_change),",
+      "as an agent does; Den checks it first and the person allows it in Den.",
+    ],
   },
   apps: {
     usage: "apps [--json]   (alias: applications)",
@@ -607,6 +616,7 @@ const COMMAND_HELP: Record<string, { usage: string; lines: string[] }> = {
   hub: HUB_HELP,
   notifications: NOTIFICATIONS_HELP,
   ask: ASK_HELP,
+  approvals: APPROVALS_HELP,
   github: GITHUB_HELP,
   feedback: {
     ...FEEDBACK_HELP,
@@ -854,6 +864,16 @@ class DenCLI {
     const stopTimer = startTimer();
     // The exit hook can't await a send; hand it to a detached sender.
     shipFromDetachedSender();
+    // Issue 1369: audit entries go to the running server over this CLI's
+    // own authenticated call; queued when none takes them.
+    {
+      const { setAuditSender } = await import("../../shared/config-audit.js");
+      const { personServerFor } = await import("./person-server.js");
+      setAuditSender(async (row) => {
+        const r = await personServerFor()("POST", "/api/audit/cli", row);
+        return !!r && r.status >= 200 && r.status < 300;
+      });
+    }
     let telCmd = telemetryCommandName(args.find((a) => !a.startsWith("-")));
     process.once("exit", (code) => {
       recordInvocation({
@@ -884,6 +904,8 @@ class DenCLI {
         await this.handleCommand(
           parsed.command ? [parsed.command, ...parsed.args] : [],
         );
+        // Issue 1369: its audit entries sent before it ends.
+        await (await import("../../shared/config-audit.js")).flushAuditSends();
       } catch (error) {
         recordFailure({
           command: telCmd,
@@ -893,6 +915,8 @@ class DenCLI {
         });
         console.error(chalk.red(`\n❌ Error: ${(error as Error).message}`));
         printSandboxHint(error);
+        // Issue 1369: a refusal's audit entry sent before it ends.
+        await (await import("../../shared/config-audit.js")).flushAuditSends();
         process.exit(1);
       }
       return;
@@ -1277,6 +1301,10 @@ class DenCLI {
 
         case "ask":
           process.exitCode = await cmdAsk(args.slice(1));
+          break;
+
+        case "approvals":
+          process.exitCode = await cmdApprovals(args.slice(1));
           break;
 
         case "github":

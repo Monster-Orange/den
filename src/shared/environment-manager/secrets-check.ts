@@ -23,13 +23,14 @@ import * as path from "path";
 import * as yaml from "yaml";
 import { getDistRoot } from "../paths.js";
 import { getReposRoot } from "../den-config.js";
+import { REPO_SECRETS_FILE } from "../credential-paths.js";
 
 import { product } from "../product.js";
 /** stack's generated placeholder, plus the `<angle-bracket>` fill-me-in convention. */
 const PLACEHOLDER_RE = /^(replace-me|<[^>]*>)$/;
 
 const EXAMPLE_FILE = ".stack-secrets.example.yml";
-const SECRETS_FILE = ".stack-secrets.yml";
+const SECRETS_FILE = REPO_SECRETS_FILE;
 
 export interface SecretsCheckResult {
   ok: boolean;

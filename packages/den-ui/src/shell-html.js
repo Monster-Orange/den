@@ -264,8 +264,13 @@ export function navItemHtml(n, navRole, lang) {
     : link;
 }
 
-/** A rail group: its heading (and "from <d>" tag) and its entries. */
-export function railGroupHtml(g, body, lang) {
+/**
+ * A rail group: its heading (and "from <d>" tag) and its entries, in
+ * div.den-gb. Issue 1444: `folded` marks it data-folded; the heading stays
+ * plain, and only hydrateRailFolds (shell-client.js) makes it the toggle,
+ * so a page with no script shows every entry.
+ */
+export function railGroupHtml(g, body, lang, folded) {
   const id = esc(g.id);
   const from = g.from;
   return (
@@ -273,6 +278,7 @@ export function railGroupHtml(g, body, lang) {
     id +
     '"' +
     (from ? ' aria-describedby="den-gd-' + id + '"' : "") +
+    (folded ? " data-folded" : "") +
     '><div class="den-gh" data-nav-role="group"><span id="den-gh-' +
     id +
     '">' +
@@ -293,8 +299,11 @@ export function railGroupHtml(g, body, lang) {
         esc(kitT(lang, "kit.from", { d: from })) +
         "</span>"
       : "") +
+    '<div class="den-gb" id="den-gb-' +
+    id +
+    '">' +
     body +
-    "</div>"
+    "</div></div>"
   );
 }
 
@@ -314,7 +323,12 @@ function collapseHtml(collapsed, lang) {
   );
 }
 
-/** The rail's content: the groups, the spacer, the foot, the toggle. */
+/**
+ * The rail's content: the groups, the spacer, then the foot (a host's
+ * foot entries, Settings, the account entry, the toggle) in one
+ * .den-rail-foot. The foot stays pinned at the rail's bottom while the
+ * groups scroll above it (issue 1341).
+ */
 export function railHtml({
   nav = [],
   groups = [],
@@ -323,8 +337,10 @@ export function railHtml({
   account,
   lang,
   collapsed,
+  folded = [],
 } = {}) {
   let html = "";
+  const fold = new Set(Array.isArray(folded) ? folded : []);
   for (const g of groups) {
     const items = nav.filter((n) => n.group === g.id);
     if (!items.length) continue;
@@ -332,15 +348,18 @@ export function railHtml({
       g,
       items.map((n) => navItemHtml(n, "page", lang)).join(""),
       lang,
+      fold.has(g.id) && !items.some((n) => n.current),
     );
   }
   html += '<div class="den-rail-grow"></div>';
+  html += '<div class="den-rail-foot">';
   html += foot
     .map((n) => (typeof n === "string" ? n : navItemHtml(n, undefined, lang)))
     .join("");
   html += settingsHtml(settings, lang);
   html += accountHtml(account);
   html += collapseHtml(!!collapsed, lang);
+  html += "</div>";
   return html;
 }
 

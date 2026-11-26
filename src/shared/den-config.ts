@@ -37,13 +37,15 @@ import {
   type RolesConfig,
 } from "./agents/roles.js";
 import type { TestAccountsConfig } from "./auth/test-accounts.js";
+import { gitSigningBlock, type AgentGitBlock } from "./agents/git-signing.js";
 import {
-  gitSigningBlock,
-  type AgentGitSettings,
-} from "./agents/git-signing.js";
+  LOCK_WAIT_MINUTES_DEFAULT,
+  TURN_READ_MAX_BYTES,
+} from "./agents/limit-defaults.js";
 
 import { product } from "./product.js";
 import { auditConfig, type ConfigAuditRow } from "./config-audit.js";
+import { statSettled } from "./stat-settled.js";
 const ROOT = getDistRoot();
 const DEN_CONFIG_PATH = path.join(ROOT, product().configFile);
 const USER_CONFIG_PATH = path.join(ROOT, "config", "local", "user.yml");
@@ -200,6 +202,11 @@ export interface ReleaseConfig {
 }
 
 export interface DenConfig {
+  /**
+   * Issue 1391: the distribution's default install mode (its den.yml):
+   * strict here can't be loosened by a person (see resolveInstallMode).
+   */
+  install_mode?: unknown;
   /** Secrets backend strategy — see src/shared/secrets. */
   secrets?: SecretsConfig;
   /** Environments enabled for this deployment. */
@@ -368,6 +375,17 @@ export interface UserConfig {
    */
   approvals?: unknown;
   /**
+   * Issue 1391 (Den Builder): the concurrency caps' baselines, the last
+   * value the person set or allowed, kept while agents' routine raises
+   * move the value (setting-change.ts CAP_KEYS). The person's only.
+   */
+  setting_baselines?: unknown;
+  /**
+   * Issue 1391: `install_mode: personal | strict`, the person's. Unset is
+   * personal: one person's own machine (see readInstallMode).
+   */
+  install_mode?: unknown;
+  /**
    * Issue 1072: settings that widen what agents may do, read from here
    * only (an agent's sandbox can't write this file): mcp.actions.
    */
@@ -382,6 +400,7 @@ export interface UserConfig {
    * to 300) and hidden (default 60 s, 10 to 3600). health-poll.ts.
    */
   health_poll?: { visible_seconds?: unknown; hidden_seconds?: unknown };
+  git_reads?: { at_once?: unknown };
   /**
    * 0.4.46: after the machine restarts, the services that were up come back
    * up (restore_on_boot, true by default; restore-on-boot.ts).
@@ -426,6 +445,18 @@ export interface UserConfig {
     keep_minutes?: number;
     max_entries?: number;
     max_answer_kb?: number;
+  };
+  /**
+   * Issue 1348: the bell's store lock (notifications.json.lock).
+   * lock_exit_wait_seconds (default 2): at exit only, how long changes
+   * still waiting for the lock wait for it. lock_no_pid_seconds (default
+   * 10): when a lock with no holder pid is taken back.
+   * lock_live_seconds (default 60): when a live holder's lock is.
+   */
+  notifications?: {
+    lock_exit_wait_seconds?: number;
+    lock_no_pid_seconds?: number;
+    lock_live_seconds?: number;
   };
   /**
    * Key of the preferred editor for "open in editor" actions (e.g. "vscode", "cursor").
@@ -476,7 +507,7 @@ export interface UserConfig {
   appearance?: { theme?: string; mode?: string };
   /**
    * The web UI's language (R19): en (the default, never stored), ja or es.
-   * See src/ui/server/ui-language.ts.
+   * See src/shared/ui-language.ts.
    */
   language?: string;
   /**
@@ -549,7 +580,7 @@ export interface UserConfig {
   /**
    * Issue 609: how long Den's process lookups (lsof, ps) wait:
    * first_seconds (5) the first try, retry_seconds (20) the one after
-   * (ui/cli/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
+   * (shared/proc-lookup.ts). DEN_LOOKUP_TIMEOUTS_MS overrides both.
    */
   process_lookup?: {
     first_seconds?: unknown;
@@ -629,6 +660,13 @@ export interface UserConfig {
      * distribution's (gate 0.4.44-dev.0: it was ignored here).
      */
     git?: unknown;
+    /**
+     * Issue 52: agents.coach.judge.enabled is the person's, here only.
+     * Judging sends samples, the person's prompts among them, to the model
+     * provider, so an agent writing the distribution's config can't switch
+     * it on (as issue 1072 does for settings that widen an agent's reach).
+     */
+    coach?: { judge?: { enabled?: unknown } | null } | null;
     /** More runtime catalog entries (AG-0.5, agents/catalog.ts). */
     runtime_catalog?: unknown;
     /**
@@ -675,6 +713,7 @@ export interface UserConfig {
      * shell's (`-lc`) and the interactive one's (`-ilc`), in seconds (10).
      */
     shell_path_timeout_seconds?: unknown;
+    draft_hold_max_minutes?: unknown;
     /**
      * issue_write: the persona roles that write GitHub issues in their
      * project's repos (a list), and the install's writes an hour
@@ -682,6 +721,8 @@ export interface UserConfig {
      */
     issue_writes?: unknown;
     issue_writes_per_hour?: unknown;
+    /** Issue 1127: how old a repo's visibility may be for the words check. */
+    issue_writes_visibility_minutes?: unknown;
     /** AG-4b: the Agents tab's layout (src/ui/server/agents-layout-pref.ts). */
     layout?: unknown;
     /** #80: running helpers an open badge shows (agents-layout-pref.ts). */
@@ -1190,6 +1231,97 @@ export function setUserOsUser(on: boolean): void {
   } as UserConfig);
 }
 
+/**
+ * Issue 1328: `agents.<id>.sandbox: on|off` in user.yml, for the held write
+ * agent_sandbox_set. Only that key changes: comments, the order and every
+ * other key stay (the file is edited as a YAML document, never rewritten
+ * from its values).
+ */
+export function setUserAgentSandbox(id: string, on: boolean): void {
+  if (!AGENT_KEY_RE.test(id) || AGENTS_RESERVED_KEYS.includes(id))
+    throw new Error(
+      `setUserAgentSandbox: ${JSON.stringify(id)} is not an agent id`,
+    );
+  let raw = "";
+  try {
+    raw = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
+  let doc: yaml.Document;
+  if (raw.trim()) {
+    doc = yaml.parseDocument(raw);
+    if (doc.errors.length)
+      throw new Error(`config/local/user.yml: ${doc.errors[0]!.message}`);
+  } else {
+    doc = new yaml.Document({});
+    doc.commentBefore =
+      " Per-engineer preferences — gitignored, never committed";
+  }
+  // An empty key (`agents:`) reads as a null scalar: the same as none.
+  const empty = (n: unknown) =>
+    n === undefined || n === null || (yaml.isScalar(n) && n.value == null);
+  const agents = doc.get("agents", true);
+  if (empty(agents)) doc.set("agents", doc.createNode({}));
+  else if (!yaml.isMap(agents))
+    throw new Error("config/local/user.yml: agents must be a mapping");
+  const block = doc.getIn(["agents", id], true);
+  if (empty(block)) doc.setIn(["agents", id], doc.createNode({}));
+  else if (!yaml.isMap(block))
+    throw new Error(`config/local/user.yml: agents.${id} must be a mapping`);
+  doc.setIn(["agents", id, "sandbox"], on ? "on" : "off");
+  fs.mkdirSync(path.dirname(USER_CONFIG_PATH), { recursive: true });
+  // lineWidth 0: long lines elsewhere in the file are never refolded.
+  writeFileAtomic(USER_CONFIG_PATH, doc.toString({ lineWidth: 0 }));
+}
+
+/**
+ * Issue 1328: drops agents.<id>.sandbox from user.yml when an agent is
+ * removed, so its setting goes with it (and its block, when that was all
+ * it held). Whether it was there; nothing is written when it wasn't.
+ */
+export function clearUserAgentSandbox(id: string): boolean {
+  if (!AGENT_KEY_RE.test(id) || AGENTS_RESERVED_KEYS.includes(id)) return false;
+  let raw = "";
+  try {
+    raw = fs.readFileSync(USER_CONFIG_PATH, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw err;
+  }
+  if (!raw.trim()) return false;
+  const doc = yaml.parseDocument(raw);
+  if (doc.errors.length)
+    throw new Error(`config/local/user.yml: ${doc.errors[0]!.message}`);
+  if (!doc.hasIn(["agents", id, "sandbox"])) return false;
+  doc.deleteIn(["agents", id, "sandbox"]);
+  const block = doc.getIn(["agents", id], true);
+  if (yaml.isMap(block) && block.items.length === 0)
+    doc.deleteIn(["agents", id]);
+  writeFileAtomic(USER_CONFIG_PATH, doc.toString({ lineWidth: 0 }));
+  return true;
+}
+
+/**
+ * Issue 1371: the settings that widen what an agent may do and are read
+ * only from config/local/user.yml (issues 936, 1072, SEC-2a): never from
+ * the distribution's config, which an agent's change could reach. `*` is
+ * one key (an agent's id). setting_change marks each "widens what agents
+ * can do": only the person's own Allow runs it. A test keeps the list and
+ * the readers in step (a key here set in the distribution's config is
+ * ignored or refused).
+ */
+export const USER_ONLY_WIDENING: readonly string[] = [
+  "mcp.actions",
+  "agents.*.grants",
+  "agents.sandbox",
+  "agents.*.sandbox",
+  "agents.sandbox_sockets",
+  "web.edge_unattested",
+  "web.allow_plain_http_remote",
+  "secrets.onepassword.token",
+];
+
 /** Read the per-engineer user config (config/local/user.yml). Returns {} if absent. */
 export function readUserConfig(): UserConfig {
   try {
@@ -1321,7 +1453,11 @@ export function sectionConfigError(
   }
 }
 
-let checked: { key: string; error: ConfigError | null } | null = null;
+let checked: {
+  key: string;
+  readAt: number;
+  error: ConfigError | null;
+} | null = null;
 
 /**
  * Throw the config's validation error (a ConfigError naming its keys), if it
@@ -1331,16 +1467,24 @@ let checked: { key: string; error: ConfigError | null } | null = null;
  * validation stops them all, not only those that happen to read `orgs:`.
  * A missing file, or one that does not parse, is left to readDenConfig.
  * Memoised on the file's mtime and size: the server checks per request.
+ * Kept only once the file's mtime is more than a clock tick older than the
+ * read (statSettled), so two same-size edits in one tick can't keep the
+ * first one's verdict.
  */
 export function assertDenConfigValid(): void {
   let key: string;
+  let st: fs.Stats;
   try {
-    const st = fs.statSync(DEN_CONFIG_PATH);
+    st = fs.statSync(DEN_CONFIG_PATH);
     key = `${st.mtimeMs}:${st.size}`;
   } catch {
     return;
   }
-  if (checked?.key !== key) {
+  if (
+    checked?.key !== key ||
+    !statSettled({ mtimeMs: st.mtimeMs }, checked.readAt)
+  ) {
+    const readAt = Date.now();
     let error: ConfigError | null = null;
     try {
       const parsed = yaml.parse(fs.readFileSync(DEN_CONFIG_PATH, "utf-8")) as {
@@ -1351,7 +1495,7 @@ export function assertDenConfigValid(): void {
       if (!isConfigError(e)) return;
       error = e;
     }
-    checked = { key, error };
+    checked = { key, readAt, error };
   }
   if (checked.error) throw new ConfigError(checked.error.issues);
 }
@@ -1420,6 +1564,8 @@ export function readDenConfig(): DenConfig {
       // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
+      // Issue 1391: the distribution's den.yml, else this file.
+      install_mode: denYmlKey("install_mode") ?? parsed?.install_mode,
     };
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
@@ -1917,6 +2063,7 @@ export function readMcpConfig(
 export interface AgentsConfig {
   /** Agents that may run at once (default 4); plain sessions never count. */
   max_concurrent?: number;
+  max_per_project?: number;
   /**
    * Persona packs (AG-2a): directories of persona files, relative to the
    * distribution root. Den's default pack is always read first; a pack's
@@ -2006,6 +2153,7 @@ export interface PersonaPackConfig {
 }
 
 export const DEFAULT_AGENTS_MAX_CONCURRENT = 4;
+export const DEFAULT_AGENTS_MAX_PER_PROJECT = 0;
 
 /** The keys of `agents:` that are not an agent id. */
 /** 0.4.48: agents.restart_wait_minutes when unset (a long gate runs ~1 h). */
@@ -2022,12 +2170,45 @@ export const ROTATION_WAIT_MINUTES_DEFAULT = 240;
  * session ends without Den asking is brought back once in this window.
  */
 export const UNASKED_EXIT_WINDOW_MINUTES_DEFAULT = 10;
+/**
+ * Issue 1311: agents.draft_hold_max_minutes when unset: how long Den's held
+ * messages wait on a person's unsent draft before the bell says so. The
+ * draft is never sent for them; they go on waiting.
+ */
+export const DRAFT_HOLD_MAX_MINUTES = {
+  default: 30,
+  min: 1,
+  max: 1440,
+} as const;
+export const DRAFT_HOLD_MAX_MINUTES_DEFAULT = DRAFT_HOLD_MAX_MINUTES.default;
+
+/**
+ * Issue 1311: agents.draft_hold_max_minutes (user.yml) for Settings: 30
+ * when unset, 1 to 1440. A wrong value throws, naming the key.
+ */
+export function agentsDraftHoldMaxMinutes(
+  read: () => UserConfig = readUserConfig,
+): number {
+  const v = read().agents?.draft_hold_max_minutes;
+  if (v === undefined || v === null) return DRAFT_HOLD_MAX_MINUTES.default;
+  if (
+    typeof v === "number" &&
+    Number.isFinite(v) &&
+    v >= DRAFT_HOLD_MAX_MINUTES.min &&
+    v <= DRAFT_HOLD_MAX_MINUTES.max
+  )
+    return v;
+  throw new Error(
+    `agents.draft_hold_max_minutes: minutes, ${DRAFT_HOLD_MAX_MINUTES.min} to ${DRAFT_HOLD_MAX_MINUTES.max} (got ${JSON.stringify(v)})`,
+  );
+}
 
 /** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
 export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
 
 export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
+  "max_per_project",
   // #70: an agent's token only from its own processes.
   "token_binding",
   // Issue 242: how long an agent's call waits for Den to find its process.
@@ -2045,6 +2226,8 @@ export const AGENTS_RESERVED_KEYS = [
   "rotation_wait_minutes",
   // Issue 926: bring back an agent whose session ended without Den asking.
   "unasked_exit_window_minutes",
+  // Issue 1311: how long held messages wait on a draft before the bell.
+  "draft_hold_max_minutes",
   // Issue 218: how long a change waits for another process's on one agent.
   "lock_wait_minutes",
   // 0.4.45: how long an exited shell stays listed.
@@ -2066,6 +2249,7 @@ export const AGENTS_RESERVED_KEYS = [
   // issue_write: which roles write GitHub issues, and how many an hour.
   "issue_writes",
   "issue_writes_per_hour",
+  "issue_writes_visibility_minutes",
   // Issue 1129: the restart queue (agents.resume.*), never an agent id.
   "resume",
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
@@ -2114,9 +2298,64 @@ function sandboxValue(
   );
 }
 
+/**
+ * Issue 1391: how open an install is. personal (the default): one person's
+ * own machine; the agent sandbox is off unless set, and held writes ask
+ * only for money, deletes, real security and acting on others. strict
+ * (opt-in): team and enterprise installs, the sandbox on and every held
+ * write as the approval policy says.
+ */
+export type InstallMode = "personal" | "strict";
+export const INSTALL_MODES: readonly InstallMode[] = ["personal", "strict"];
+
+/** Which file set the install's mode, for Doctor. */
+export type InstallModeFrom = "den.yml" | "user.yml" | "default";
+
+/**
+ * One file's install_mode. Fails closed: unset is undefined (no say), and
+ * "personal" is personal; null, a typo or any other value is strict.
+ */
+function installModeValue(v: unknown): InstallMode | undefined {
+  if (v === undefined) return undefined;
+  return v === "personal" ? "personal" : "strict";
+}
+
+/**
+ * Issue 1391: the install's mode and which file set it. The distribution's
+ * den.yml sets the default (unset: personal); the person's user.yml may
+ * choose; strict in either wins, so a person can't loosen a distribution's
+ * strict. Never throws: a bad value in either file is strict.
+ */
+export function resolveInstallMode(
+  u: UserConfig,
+  /** Required (Builder 2): a caller can't forget a distribution's strict. */
+  d: Pick<DenConfig, "install_mode">,
+): { mode: InstallMode; from: InstallModeFrom } {
+  const den = installModeValue(d.install_mode);
+  const mine = installModeValue(u.install_mode);
+  if (den === "strict") return { mode: "strict", from: "den.yml" };
+  if (mine) return { mode: mine, from: "user.yml" };
+  if (den) return { mode: den, from: "den.yml" };
+  return { mode: "personal", from: "default" };
+}
+
+/** The install's mode (resolveInstallMode); never throws. */
+export function readInstallMode(
+  u: UserConfig,
+  /** Required (Builder 2): a caller can't forget a distribution's strict. */
+  d: Pick<DenConfig, "install_mode">,
+): InstallMode {
+  return resolveInstallMode(u, d).mode;
+}
+
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  maxPerProject: number;
+  /** Issue 1391: the install's mode (resolveInstallMode). */
+  mode?: InstallMode;
+  /** Issue 1391: which file set it. */
+  modeFrom?: InstallModeFrom;
   /**
    * Issue 936: agents' sessions start in the OS sandbox, Den's state
    * read-only to them (agents.sandbox, default on). agents.<id>.sandbox:
@@ -2163,8 +2402,8 @@ export interface ResolvedAgentsConfig {
   rotate?: RotateSettings;
   /** D28: agents.rotate as written, the org scope. */
   rotateOrg?: OrgRotate;
-  /** agents.git: the key agents Den starts sign commits with (unset: none). */
-  git?: AgentGitSettings;
+  /** agents.git: signing off, or the key agents sign with (unset: the default, issue 1316). */
+  git?: AgentGitBlock;
   /** agents.helpers (D32) with its defaults. */
   helpers?: HelperSettings;
   /** agents.turn_read_max_mb (D39) in bytes; unset: the default. */
@@ -2189,6 +2428,13 @@ export interface ResolvedAgentsConfig {
    * back. 0: never brought back (still recorded and told).
    */
   unaskedExitWindowMs: number;
+  /**
+   * Issue 1311: agents.draft_hold_max_minutes (default 30). Messages Den
+   * holds while its person's unsent draft is on an agent's input line wait
+   * this long before the bell says so. The draft is never sent for them:
+   * they go on waiting.
+   */
+  draftHoldMaxMs?: number;
   /**
    * Issue 218: agents.lock_wait_minutes (default LOCK_WAIT_MINUTES_DEFAULT):
    * how long a change to an agent waits while another process changes it.
@@ -2344,27 +2590,244 @@ export function readAgentsConfig(
 ): ResolvedAgentsConfig {
   const c = config ?? readDenConfig();
   const u = user ?? (config ? {} : readUserConfigQuiet());
-  const out = asConfigError(() => parseAgentsConfig(c));
+  // Issue 1373: the agents' limits set in user.yml win over den.yml's,
+  // key by key (as issue 532 for sessions.*); each checked first, so a
+  // bad one names user.yml.
+  const mine = userAgentsLimits(u);
+  const theirs = c.agents as unknown;
+  const merged =
+    Object.keys(mine).length && (theirs === undefined || isMapping(theirs))
+      ? { ...c, agents: { ...(theirs ?? {}), ...mine } as DenConfig["agents"] }
+      : c;
+  const out = asConfigError(() => parseAgentsConfig(merged));
+  // Issue 52: judging sends samples off the machine, so only user.yml
+  // switches it on; the distribution's value is never read (doctor names it).
+  const judgeOn = asConfigError(
+    () => userJudgeEnabled(u),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
+  out.coach = out.coach ?? checkCoachConfig(undefined);
+  out.coach = {
+    ...out.coach,
+    judge: { ...out.coach.judge, enabled: judgeOn === true },
+  };
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
-    () => applyUserSandbox(out, u.agents),
+    () => {
+      // Issue 1391: on a personal install the sandbox is off unless
+      // user.yml sets it; strict keeps it on. A value set always wins.
+      const m = resolveInstallMode(u, c);
+      out.mode = m.mode;
+      out.modeFrom = m.from;
+      if (out.mode === "personal") out.sandbox = false;
+      applyUserSandbox(out, u.agents);
+    },
     path.relative(ROOT, USER_CONFIG_PATH),
   );
   // A signing key is per machine: user.yml's agents.git wins.
-  const mine = u.agents?.git;
+  const myGit = u.agents?.git;
   // An agent called git (grants or sandbox only) is no signing key.
   const agentCalledGit =
-    isMapping(mine) &&
-    Object.keys(mine).length > 0 &&
-    Object.keys(mine).every((k) => k === "grants" || k === "sandbox");
-  if (mine !== undefined && mine !== null && !agentCalledGit) {
+    isMapping(myGit) &&
+    Object.keys(myGit).length > 0 &&
+    Object.keys(myGit).every((k) => k === "grants" || k === "sandbox");
+  if (myGit !== undefined && myGit !== null && !agentCalledGit) {
     const g = asConfigError(
-      () => gitSigningBlock(mine),
+      () => gitSigningBlock(myGit),
       path.relative(ROOT, USER_CONFIG_PATH),
     );
     if (g) out.git = g;
   }
   return out;
+}
+
+/** user.yml's agents.coach.judge.enabled: true, false or unset (false). */
+function userJudgeEnabled(u: UserConfig): boolean {
+  const v = u.agents?.coach?.judge?.enabled;
+  if (v === undefined || v === null) return false;
+  if (typeof v !== "boolean")
+    throw new Error(
+      `agents.coach.judge.enabled must be true or false (got ${JSON.stringify(v)})`,
+    );
+  return v;
+}
+
+/**
+ * Issue 1373: the agents' limits a person may set in user.yml (Settings,
+ * `config`), each winning over the distribution's den.yml. Only limits
+ * and waits: keys that widen what an agent may do (token_binding, files,
+ * issue_writes, api_only_engines, persona packs, helpers, subagents,
+ * connectors, sandbox) are never taken from user.yml's agents block here.
+ * draft_hold_max_minutes and issue_writes_per_hour are user.yml's already
+ * (their own readers).
+ */
+export const AGENTS_USER_LIMIT_KEYS = [
+  "max_concurrent",
+  "max_per_project",
+  "token_peer_wait_ms",
+  "turn_read_max_mb",
+  "restart_wait_minutes",
+  "rotation_wait_minutes",
+  "unasked_exit_window_minutes",
+  "lock_wait_minutes",
+  "exited_shell_minutes",
+] as const;
+
+/**
+ * Issue 1373: the agent limits Settings' agents_limits, `config` and an
+ * agent's setting_change set. Issue 1417 (Den Builder: every setting has
+ * an agent ask path): all of AGENTS_USER_LIMIT_KEYS, each checked by
+ * parseAgentsConfig.
+ */
+export const AGENTS_SETTINGS_KEYS = AGENTS_USER_LIMIT_KEYS;
+
+/** user.yml's agent limits that are set, each checked with den-config's words. */
+function userAgentsLimits(u: UserConfig): Record<string, unknown> {
+  const a = u.agents as unknown;
+  if (!isMapping(a)) return {};
+  const mine: Record<string, unknown> = {};
+  for (const k of AGENTS_USER_LIMIT_KEYS)
+    if (a[k] !== undefined && a[k] !== null) mine[k] = a[k];
+  if (Object.keys(mine).length)
+    asConfigError(
+      () => parseAgentsConfig({ agents: mine } as unknown as DenConfig),
+      path.relative(ROOT, USER_CONFIG_PATH),
+    );
+  return mine;
+}
+
+/** What is wrong with one agents.<limit> value, in den-config's words; null: fine. */
+export function agentsLimitValueError(
+  key: string,
+  value: unknown,
+): string | null {
+  if (!(AGENTS_SETTINGS_KEYS as readonly string[]).includes(key))
+    return `agents.${key}: not a limit Settings sets (it takes ${AGENTS_SETTINGS_KEYS.join(", ")})`;
+  try {
+    parseAgentsConfig({ agents: { [key]: value } } as unknown as DenConfig);
+    return null;
+  } catch (e) {
+    return (e as Error).message;
+  }
+}
+
+/**
+ * Issue 1417: each agent limit's default, in its own units (as written),
+ * from the constants the code that applies it uses.
+ */
+const AGENT_LIMIT_DEFAULTS: Readonly<
+  Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number>
+> = {
+  max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+  max_per_project: DEFAULT_AGENTS_MAX_PER_PROJECT,
+  token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
+  turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
+  restart_wait_minutes: RESTART_WAIT_MINUTES_DEFAULT,
+  rotation_wait_minutes: ROTATION_WAIT_MINUTES_DEFAULT,
+  unasked_exit_window_minutes: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
+  lock_wait_minutes: LOCK_WAIT_MINUTES_DEFAULT,
+  exited_shell_minutes: DEFAULT_EXITED_SHELL_MINUTES,
+};
+
+/** Where a limit's value in force comes from. */
+export type LimitSource = "user.yml" | "den.yml" | "default";
+
+/**
+ * Issue 1417: one agent limit (`restart_wait_minutes`) in force, in its
+ * own units, and where it comes from: user.yml's, else den.yml's, else
+ * Den's default. undefined: not an agent limit.
+ */
+export function agentLimitInForce(
+  key: string,
+  user: UserConfig,
+  den: DenConfig,
+): { value: unknown; from: LimitSource } | undefined {
+  if (!Object.hasOwn(AGENT_LIMIT_DEFAULTS, key)) return undefined;
+  const pick = (b: unknown) => {
+    const v = isMapping(b) ? (b as Record<string, unknown>)[key] : undefined;
+    return v === null ? undefined : v;
+  };
+  const mine = pick(user.agents);
+  if (mine !== undefined) return { value: mine, from: "user.yml" };
+  const theirs = pick((den as { agents?: unknown }).agents);
+  if (theirs !== undefined) return { value: theirs, from: "den.yml" };
+  return {
+    value: AGENT_LIMIT_DEFAULTS[key as keyof typeof AGENT_LIMIT_DEFAULTS],
+    from: "default",
+  };
+}
+
+/**
+ * Issue 1417: a limit as `config` and the setting_change card name it
+ * (`agents.<limit>` or `sessions.<key>`), in force, with its source; one
+ * lookup so the two can't drift. undefined: not such a limit, or the
+ * sessions block can't be read (its own error elsewhere).
+ */
+export function limitInForce(
+  dotted: string,
+  user: UserConfig,
+  den: DenConfig,
+): { value: unknown; from: LimitSource } | undefined {
+  const [block, key, ...rest] = dotted.split(".");
+  if (!key || rest.length) return undefined;
+  if (block === "agents") return agentLimitInForce(key, user, den);
+  if (block !== "sessions" || !SESSIONS_KEYS.includes(key)) return undefined;
+  const has = (b: unknown) => isMapping(b) && Object.hasOwn(b, key);
+  try {
+    const camel = key.replace(/_(\w)/g, (_, c: string) => c.toUpperCase());
+    const value = readSessionsConfig(den, user)[
+      camel as keyof ResolvedSessionsConfig
+    ];
+    return {
+      value,
+      from: has(user.sessions)
+        ? "user.yml"
+        : has((den as { sessions?: unknown }).sessions)
+          ? "den.yml"
+          : "default",
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Issue 1373: one agent limit as it is in force, in its own units (as
+ * written): user.yml's, else den.yml's, else (issue 1417) Den's default.
+ * undefined: not an agent limit.
+ */
+export function agentsLimitInForce(key: string): unknown {
+  return agentLimitInForce(key, readUserConfigQuiet(), readDenConfig())?.value;
+}
+
+/**
+ * Issue 1373, for Doctor: each agent limit both files set, to different
+ * values (user.yml's wins). A file that can't be read: none.
+ */
+export function agentsUserDrift(
+  config?: DenConfig,
+  user?: UserConfig,
+): { key: string; mine: unknown; theirs: unknown }[] {
+  try {
+    const c = config ?? readDenConfig();
+    const u = user ?? (config ? {} : readUserConfigQuiet());
+    const theirs = isMapping(c.agents)
+      ? (c.agents as Record<string, unknown>)
+      : {};
+    const mine = isMapping(u.agents)
+      ? (u.agents as Record<string, unknown>)
+      : {};
+    return AGENTS_USER_LIMIT_KEYS.filter(
+      (k) =>
+        mine[k] !== undefined &&
+        mine[k] !== null &&
+        theirs[k] !== undefined &&
+        theirs[k] !== null &&
+        JSON.stringify(mine[k]) !== JSON.stringify(theirs[k]),
+    ).map((key) => ({ key, mine: mine[key], theirs: theirs[key] }));
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -2437,12 +2900,21 @@ export function applyUserSandbox(
 }
 
 /** user.yml, or {} when it can't be read (a bad one is its own row). */
-function readUserConfigQuiet(): UserConfig {
+/**
+ * Issue 1391 (Builder 2's review): a user.yml that exists but can't be read
+ * or parsed is strict, never personal: the sandbox keeps den.yml's value
+ * (on by default; required stays required). A missing file is {}.
+ */
+export function userConfigOrStrict(read: () => UserConfig): UserConfig {
   try {
-    return readUserConfig();
+    return read();
   } catch {
-    return {};
+    return { install_mode: "strict" };
   }
+}
+
+function readUserConfigQuiet(): UserConfig {
+  return userConfigOrStrict(readUserConfig);
 }
 
 function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
@@ -2464,6 +2936,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     );
   const out: ResolvedAgentsConfig = {
     maxConcurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+    maxPerProject: DEFAULT_AGENTS_MAX_PER_PROJECT,
     restartWaitMs: RESTART_WAIT_MINUTES_DEFAULT * 60_000,
     rotationWaitMs: ROTATION_WAIT_MINUTES_DEFAULT * 60_000,
     unaskedExitWindowMs: UNASKED_EXIT_WINDOW_MINUTES_DEFAULT * 60_000,
@@ -2536,6 +3009,21 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.unaskedExitWindowMs = Math.round(uw * 60_000);
   }
+  const dh = (raw as { draft_hold_max_minutes?: unknown })
+    .draft_hold_max_minutes;
+  out.draftHoldMaxMs = DRAFT_HOLD_MAX_MINUTES_DEFAULT * 60_000;
+  if (dh !== undefined && dh !== null) {
+    if (
+      typeof dh !== "number" ||
+      !Number.isFinite(dh) ||
+      dh < DRAFT_HOLD_MAX_MINUTES.min ||
+      dh > DRAFT_HOLD_MAX_MINUTES.max
+    )
+      throw new Error(
+        `agents.draft_hold_max_minutes: minutes, ${DRAFT_HOLD_MAX_MINUTES.min} to ${DRAFT_HOLD_MAX_MINUTES.max} (got ${JSON.stringify(dh)})`,
+      );
+    out.draftHoldMaxMs = Math.round(dh * 60_000);
+  }
   const lw = raw.lock_wait_minutes;
   if (lw !== undefined && lw !== null) {
     if (typeof lw !== "number" || !Number.isFinite(lw) || lw <= 0)
@@ -2570,6 +3058,14 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.maxConcurrent = max;
   }
+  const per = raw.max_per_project;
+  if (per !== undefined) {
+    if (typeof per !== "number" || !Number.isInteger(per) || per < 0)
+      throw new Error(
+        `agents.max_per_project: must be a whole number, 0 or more (0: no limit) (got ${JSON.stringify(per)})`,
+      );
+    out.maxPerProject = per;
+  }
   const packs = raw.persona_packs;
   if (packs !== undefined && packs !== null) {
     if (!Array.isArray(packs))
@@ -2595,7 +3091,7 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
     const where = `agents.${id}`;
     if (!AGENT_KEY_RE.test(id) || !isMapping(block))
       throw new Error(
-        `${where}: unknown key (agents: takes max_concurrent, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
+        `${where}: unknown key (agents: takes max_concurrent, max_per_project, token_binding, persona_packs, runtime_catalog, default_pack, rotate, helpers, uploads, subagents, claude_ai_connectors, categories, roles, ` +
           `or an agent id mapping to { grants: [...] })`,
       );
     for (const k of Object.keys(block))

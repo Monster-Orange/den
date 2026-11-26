@@ -51,6 +51,10 @@
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
 import type { RestartQueue } from "../../shared/agents/restart-queue.js";
+import {
+  AUDIT_SET_ASIDE_DIR,
+  AUDIT_SET_ASIDE_MARK,
+} from "../../shared/audit-file.js";
 import { readActivity } from "../../shared/agents/activity.js";
 import {
   denToolsOld,
@@ -84,6 +88,7 @@ import {
   type CommandLineOf,
 } from "../../shared/agents/running-mode.js";
 import {
+  inputLineEmpty,
   plainTerminalText,
   trustAnswerKey,
   promptOnScreen,
@@ -91,6 +96,11 @@ import {
   typingCheck,
   type TypingCheck,
 } from "../../shared/agents/trust-prompt.js";
+import {
+  clearDraft,
+  clearDraftSeenEmpty,
+  draftPending,
+} from "../../shared/agents/draft-input.js";
 import {
   resolveMode,
   type EffectiveMode,
@@ -101,8 +111,25 @@ import {
   type HubProjectLink,
 } from "../../shared/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
-import { readWebPort } from "../../shared/edge/config.js";
-import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
+import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import { edgeDomains } from "../../shared/edge/render.js";
+import {
+  feedAddressLocal,
+  feedSelfProblem,
+  type FeedLookup,
+  type FeedOwnAddresses,
+} from "../../shared/agents/feed-address.js";
+import { edgeKeyDirs, narrowEdgeDirs } from "../../shared/edge/key-dirs.js";
+import {
+  PLAYWRIGHT_AUTH_DIR,
+  REPO_SECRETS_FILE,
+} from "../../shared/credential-paths.js";
+import { projectRepoDirs } from "../../shared/project-repo-dirs.js";
+import {
+  listOtherInstalls,
+  registerInstall,
+  registryDir,
+} from "../../shared/install-registry.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { writeApiOnlyRules } from "../../shared/agents/api-only.js";
 import { hookCallSettings } from "../../shared/agents/guardrails/hook-call.js";
@@ -142,10 +169,17 @@ import {
   ROTATION_WAIT_MINUTES_DEFAULT,
   UNASKED_EXIT_WINDOW_MINUTES_DEFAULT,
   readUserConfig,
+  clearUserAgentSandbox,
   setUserRuntimeBin,
   userConfigPath,
   type ResolvedAgentsConfig,
 } from "../../shared/den-config.js";
+import {
+  newAgentSandboxOff,
+  personalNoSandbox,
+  SANDBOX_OFF_SINCE_ASK,
+  writeSandboxNote,
+} from "../../shared/agents/sandbox-set.js";
 import {
   contextTokensFor,
   contextWatchSettings,
@@ -164,7 +198,13 @@ import {
   workspaceMcpServersRaw,
   workspaceEntryRaw,
   setWorkspaceMcpServers,
+  setWorkspaceEventFeeds,
+  workspaceEventFeedsRaw,
 } from "../../shared/environment-manager/workspaces.js";
+import {
+  checkAppFeed,
+  type AppFeedConfig,
+} from "../../shared/agents/app-feeds.js";
 import { hubLoopPrompt, projectHubLoop } from "../../shared/hub-loop.js";
 import { namedSecretRef } from "../../shared/secrets/index.js";
 import {
@@ -263,7 +303,13 @@ import {
   type LaunchOutput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
-import { agentGitEnv } from "../../shared/agents/git-signing.js";
+import {
+  agentGitEnv,
+  resolveAgentSigning,
+  signingKeyAddLine,
+  signingReadFiles,
+  type AgentSigning,
+} from "../../shared/agents/git-signing.js";
 import {
   mcpLoadFailures,
   noteHubMcpInit,
@@ -358,6 +404,11 @@ import type { SessionInfo } from "../../shared/sessions/types.js";
 import { serverSpec } from "../mcp/connect.js";
 import { HUB_SERVER, hubTokenProblem } from "../../shared/hub.js";
 import {
+  noteHubUnbindFailed,
+  unbindAgentHubToken,
+} from "../../shared/hub-agent-tokens.js";
+import {
+  jobCommandOf,
   jobsUnder,
   readProcesses,
   type ProcessRow,
@@ -377,12 +428,16 @@ import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
   type AgentSandboxInput,
   localProofDirs,
+  defaultSessionTmpBase,
+  makeSessionTmp,
+  removeSessionTmp,
   sandboxFor,
   sandboxRequired,
   sandboxSetting,
   type SandboxWrap,
 } from "../../shared/agents/sandbox.js";
 import { gateDir } from "../../shared/gates/store.js";
+import { projectAgentCap } from "../../shared/agents/project-cap.js";
 import {
   AGENT_TOKEN_REF_NAME,
   agentSignInMode,
@@ -406,10 +461,28 @@ export interface AgentsDeps extends SessionsDeps {
   server?: PersonServer;
   agentsConfig?: () => ResolvedAgentsConfig;
   /**
+   * Issue 1328: drops a removed agent's agents.<id>.sandbox from user.yml
+   * and its note, so the setting goes with the agent. Default: the
+   * person's user.yml and this install's notes.
+   */
+  forgetSandbox?: (id: string) => void;
+  /**
    * Issue 936: wraps an agent's argv in the OS sandbox (Den's state
    * read-only to it). Default: sandboxFor with the person's setting.
    */
   agentSandbox?: AgentSandboxFn;
+  /**
+   * Issue 1325: makes a sandboxed session's own temp folder (default
+   * makeSessionTmp under /tmp); undefined: none (the system's TMPDIR).
+   */
+  sessionTmp?: () => string | undefined;
+  /**
+   * Issue 1325: the folder session temp folders are made in (default
+   * /tmp); Den removes one only right inside it.
+   */
+  sessionTmpBase?: string;
+  /** Issue 1316: the key an agent working in `cwd` signs commits with. */
+  agentSigning?: (cwd: string) => AgentSigning | undefined;
   /** Issue 1072: mcp.actions in the distribution's config, not read. */
   mcpNotReadFromOrg?: () => string[];
   distRoot?: () => string;
@@ -501,6 +574,11 @@ export interface AgentsDeps extends SessionsDeps {
   } | null>;
   /** 0.4.48: why the Hub token can't be read now, or null (hubTokenProblem). */
   hubProblem?: () => string | null;
+  hubAgentToken?: (
+    hub: { url: string; token: string },
+    a: { id: string; name: string; workspace: string },
+  ) => Promise<string | null>;
+  hubAgentUnbind?: (id: string) => Promise<void>;
   /**
    * Issue 163 (b): the secrets store and ref the agents' sign-in token is
    * read from under the always-on service (default: the install's
@@ -535,6 +613,17 @@ export interface AgentsDeps extends SessionsDeps {
   workspaceHubLoop?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
+  /** Issue 1480: project `ws`'s `agents.event_feeds` as written. */
+  workspaceEventFeeds?: (ws: string) => unknown;
+  /** Issue 1480: save project `ws`'s `agents.event_feeds` (as written). */
+  saveWorkspaceEventFeeds?: (
+    ws: string,
+    feeds: Record<string, unknown>[],
+  ) => void;
+  /** Issue 1480: resolves a feed's host name (default: the system's). */
+  feedLookup?: FeedLookup;
+  /** Issue 1480: Den's own addresses and its Hub's, which a feed may not name. */
+  feedOwnAddresses?: () => Promise<FeedOwnAddresses>;
   /** Issue 335: whether secrets.refs.<name> is set (default: the install's). */
   secretRefSet?: (name: string) => boolean;
   /** H5: the Hub project the person linked project `ws` to (X-Den-Project). */
@@ -547,13 +636,23 @@ export interface AgentsDeps extends SessionsDeps {
 }
 
 /** Issue 936: an agent's argv, wrapped (or not, and why). */
-export type AgentSandboxFn = (argv: string[], agentId: string) => SandboxWrap;
+export type AgentSandboxFn = (
+  argv: string[],
+  agentId: string,
+  /** Issue 1325: the session's own temp folder (makeSessionTmp). */
+  sessionTmp?: string,
+) => SandboxWrap;
 
 export interface AgentsResolved extends Resolved {
   /** Issue 989: this install's server, for person-only verbs. */
   server: PersonServer;
   agentsConfig: () => ResolvedAgentsConfig;
+  forgetSandbox: (id: string) => void;
   agentSandbox: AgentSandboxFn;
+  sessionTmp: () => string | undefined;
+  sessionTmpBase: string;
+  /** Issue 1316: the key an agent working in `cwd` signs commits with. */
+  agentSigning: (cwd: string) => AgentSigning | undefined;
   mcpNotReadFromOrg: () => string[];
   distRoot: () => string;
   serverAgentFolder: () => string;
@@ -590,6 +689,13 @@ export interface AgentsResolved extends Resolved {
   workspaceHubLoop: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
+  workspaceEventFeeds: (ws: string) => unknown;
+  saveWorkspaceEventFeeds: (
+    ws: string,
+    feeds: Record<string, unknown>[],
+  ) => void;
+  feedLookup?: FeedLookup;
+  feedOwnAddresses?: () => Promise<FeedOwnAddresses>;
   secretRefSet: (name: string) => boolean;
   workspaceHubProject: (ws: string) => HubProjectLink | null;
   denBase: () => string;
@@ -598,6 +704,8 @@ export interface AgentsResolved extends Resolved {
    * store refused it), in plain words; null otherwise.
    */
   hubProblem: () => string | null;
+  hubAgentToken: NonNullable<AgentsDeps["hubAgentToken"]>;
+  hubAgentUnbind: NonNullable<AgentsDeps["hubAgentUnbind"]>;
   processes: () => ProcessRow[];
   /** Issue 163 (b): the env a start signs in with, and what to say. */
   agentSignIn: (
@@ -638,8 +746,11 @@ export class AgentError extends Error {
   readonly hints: string[];
   /** AG-10.10: the running agent a start collided with, so a page can open it. */
   readonly running?: { id: string; sessionId: string };
-  /** 0.4.48: job_running: how long the job it left running has run. */
-  readonly job?: { minutes: number };
+  /**
+   * 0.4.48: job_running: how long the job it left running has run; issue
+   * 1407: what it runs, when known.
+   */
+  readonly job?: { minutes: number; command?: string };
   /**
    * Issue 479: runtime_quarantined: the copy it would run, and the
    * choices, so a page can offer them.
@@ -653,7 +764,7 @@ export class AgentError extends Error {
       code?: string;
       hints?: string[];
       running?: { id: string; sessionId: string };
-      job?: { minutes: number };
+      job?: { minutes: number; command?: string };
       quarantined?: QuarantinedRuntime;
     } = {},
   ) {
@@ -798,8 +909,6 @@ function defaultDenBase(): string {
 /**
  * D52: Hub as Den's proxy calls it for agent `agentId` (its actor token
  * proved it): Hub's base URL, its MCP endpoint, and the headers Den sets
- * from its own records. The install token is among them; it never leaves
- * Den's server. Null when Hub isn't set up or its token can't be read.
  */
 export async function hubUpstream(
   d: AgentsResolved,
@@ -833,10 +942,16 @@ export async function hubUpstream(
   const projectWs = [linked, who.workspace].find(
     (w): w is string => !!w && !isServerScope(w),
   );
+  const own = await d
+    .hubAgentToken(
+      { url: h.url, token: h.token },
+      { id: who.agentId, name, workspace: who.workspace },
+    )
+    .catch(() => null);
   return {
     base: h.url,
     mcpUrl: h.mcpUrl || `${h.url}/mcp`,
-    headers: hubHeaders(h.token, {
+    headers: hubHeaders(own ?? h.token, {
       agent: name,
       agentId: who.agentId,
       session: who.session,
@@ -876,6 +991,47 @@ function defaultMcpServer(cli: string): {
  * state, the distribution, the gate store, the socket folders allowed, and
  * the folders no session reads (the machine's local proof).
  */
+/**
+ * Issue 1316: where a signing key agents read may never be: what issue 728
+ * denies outside the state folder (this install's edge key folders, the
+ * other installs' state folders and their edges').
+ */
+function signingKeyRefusedDirs(
+  stateDir: string,
+  distRoot: string,
+  env: NodeJS.ProcessEnv,
+): string[] {
+  const out = [...edgeKeyDirs(distRoot)];
+  try {
+    for (const o of listOtherInstalls(registryDir({ ...process.env, ...env }), {
+      ownStateDir: stateDir,
+      home: { ...process.env, ...env }.HOME,
+    }))
+      out.push(o.stateDir, ...o.edgeKeyDirs);
+  } catch {
+    /* no registry: nothing more to refuse */
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * Issue 1391: whether this install's agents may read its activity trail:
+ * a personal install's, once the trail written before redaction is set
+ * aside (setAsideOldTrail's marker). Should that step fail, they don't.
+ */
+export function agentsMayReadTrail(
+  cfg: { mode?: "personal" | "strict" },
+  stateDir: string,
+): boolean {
+  return (
+    cfg.mode === "personal" &&
+    !!fs.lstatSync(
+      path.join(stateDir, AUDIT_SET_ASIDE_DIR, AUDIT_SET_ASIDE_MARK),
+      { throwIfNoEntry: false },
+    )
+  );
+}
+
 export function agentSandboxInput(o: {
   stateDir: string;
   distRoot: string;
@@ -884,20 +1040,42 @@ export function agentSandboxInput(o: {
   sockets?: string[];
   platform?: NodeJS.Platform;
   home?: string;
+  /** Issue 1316: agents.git.signing_key's files, read wherever they are. */
+  readableFiles?: string[];
+  /** Issue 1325: the session's own temp folder. */
+  sessionTmp?: string;
+  /** Issue 1391: a personal install's trail is read back. */
+  trailReadable?: boolean;
+  /** Repos' stack secrets files (hidden by path where no name rule exists). */
+  repoSecretFiles?: string[];
 }): AgentSandboxInput {
   return {
+    ...(o.sessionTmp ? { sessionTmp: o.sessionTmp } : {}),
+    ...(o.trailReadable === true ? { trailReadable: true } : {}),
     stateDir: o.stateDir,
     distRoot: o.distRoot,
     gateDir: gateDir(o.env),
     agentId: o.agentId,
     env: o.env,
     socketsAllowed: o.sockets ?? [],
-    deniedDirs: localProofDirs(
-      o.env,
-      o.platform ?? process.platform,
-      o.home ?? os.homedir(),
-      envKey("LOCAL_PROOF_DIR"),
-    ),
+    ...(o.readableFiles?.length
+      ? {
+          readableFiles: o.readableFiles,
+          keyRefusedDirs: signingKeyRefusedDirs(o.stateDir, o.distRoot, o.env),
+        }
+      : {}),
+    ...(o.repoSecretFiles?.length
+      ? { repoSecretFiles: o.repoSecretFiles }
+      : {}),
+    deniedDirs: [
+      ...localProofDirs(
+        o.env,
+        o.platform ?? process.platform,
+        o.home ?? os.homedir(),
+        envKey("LOCAL_PROOF_DIR"),
+      ),
+      path.join(o.distRoot, PLAYWRIGHT_AUTH_DIR),
+    ],
   };
 }
 
@@ -907,20 +1085,47 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     ...base,
     server: d.server ?? personServerFor(base.stateDir()),
     agentsConfig: d.agentsConfig ?? (() => readAgentsConfig()),
+    forgetSandbox:
+      d.forgetSandbox ??
+      ((id) => {
+        clearUserAgentSandbox(id);
+        writeSandboxNote(base.stateDir(), id, null);
+      }),
     mcpNotReadFromOrg:
       d.mcpNotReadFromOrg ?? (() => readMcpConfig().notReadFromOrg ?? []),
+    agentSigning:
+      d.agentSigning ??
+      ((cwd) =>
+        resolveAgentSigning({
+          git: (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+          stateDir: base.stateDir(),
+          cwd,
+          env: base.env,
+        })),
     agentSandbox:
       d.agentSandbox ??
-      ((argv, agentId) =>
+      ((argv, agentId, sessionTmp) =>
         sandboxFor(
           argv,
           agentSandboxInput({
+            sessionTmp,
             stateDir: base.stateDir(),
             distRoot: (d.distRoot ?? getDistRoot)(),
             env: base.env,
             agentId,
             sockets: (d.agentsConfig ?? (() => readAgentsConfig()))()
               .sandboxSockets,
+            readableFiles: signingReadFiles(
+              (d.agentsConfig ?? (() => readAgentsConfig()))().git,
+            ),
+            // Issue 1391: read at this start, as the deny rules are.
+            trailReadable: agentsMayReadTrail(
+              (d.agentsConfig ?? (() => readAgentsConfig()))(),
+              base.stateDir(),
+            ),
+            repoSecretFiles: projectRepoDirs()
+              .map((r) => path.join(r, REPO_SECRETS_FILE))
+              .filter((f) => fs.existsSync(f)),
           }),
           {
             on: sandboxSetting(
@@ -929,6 +1134,14 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
             ),
           },
         )),
+    // Issue 1331: on every platform, in a base no other session reaches.
+    sessionTmp:
+      d.sessionTmp ??
+      (() =>
+        makeSessionTmp(
+          d.sessionTmpBase ?? defaultSessionTmpBase(base.stateDir()),
+        )),
+    sessionTmpBase: d.sessionTmpBase ?? defaultSessionTmpBase(base.stateDir()),
     distRoot: d.distRoot ?? getDistRoot,
     serverAgentFolder:
       d.serverAgentFolder ??
@@ -987,10 +1200,21 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     saveWorkspaceMcpServers:
       d.saveWorkspaceMcpServers ??
       ((ws, servers) => setWorkspaceMcpServers(ws, servers)),
+    workspaceEventFeeds:
+      d.workspaceEventFeeds ?? ((ws) => workspaceEventFeedsRaw(ws)),
+    saveWorkspaceEventFeeds:
+      d.saveWorkspaceEventFeeds ??
+      ((ws, feeds) => setWorkspaceEventFeeds(ws, feeds)),
+    ...(d.feedLookup ? { feedLookup: d.feedLookup } : {}),
+    ...(d.feedOwnAddresses ? { feedOwnAddresses: d.feedOwnAddresses } : {}),
     secretRefSet: d.secretRefSet ?? ((name) => namedSecretRef(name) !== null),
     workspaceHubProject: d.workspaceHubProject ?? ((ws) => hubProjectOf(ws)),
     denBase: d.denBase ?? defaultDenBase,
     hubProblem: d.hubProblem ?? (() => hubTokenProblem()),
+    hubAgentToken: d.hubAgentToken ?? (async () => null),
+    hubAgentUnbind:
+      d.hubAgentUnbind ??
+      ((id) => unbindAgentHubToken(base.stateDir, d.hub ?? defaultHub, id)),
     processes: d.processes ?? readProcesses,
     agentSignIn: (tokenEnv, runtimeId, folder) =>
       agentSignInEnv(
@@ -1526,10 +1750,19 @@ export function noteEnded(
   stateDir: string,
   sessions: SessionInfo[],
   records: AgentRecord[],
+  /** Issue 1325: where session temp folders are made (AgentsDeps). */
+  sessionTmpBase = defaultSessionTmpBase(stateDir),
 ): void {
   const byId = new Map(sessions.map((s) => [s.ref.id, s]));
   for (const rec of records) {
     const s = byId.get(rec.session.id);
+    // Issue 1325: an exited session's temp folder goes, however it ended
+    // (never for one the host doesn't list: the host may just be away).
+    if (s?.exited && rec.sessionTmp) {
+      removeSessionTmp(rec.sessionTmp, sessionTmpBase);
+      delete rec.sessionTmp;
+      writeRecord(stateDir, rec);
+    }
     // An exit with no code is a host that went down: interrupted, not ended.
     if (!s?.exited || s.exitCode === undefined) continue;
     if (rec.endedAt || rec.stoppedAt || rec.restartFailed) continue;
@@ -1571,7 +1804,7 @@ export async function listAgents(
   } else all = await withClient(d, (c) => c.list());
   const sessions = all.filter((s) => inWorkspace(s, d.dist, ws));
   const records = listRecords(d.stateDir()).filter((r) => r.workspace === ws);
-  noteEnded(d.stateDir(), sessions, records);
+  noteEnded(d.stateDir(), sessions, records, d.sessionTmpBase);
   const rows = agentRows(sessions, records, d.stateDir(), policyResolver(d));
   addHelperCounts(d, rows, records);
   addRestartResume(d, rows, records);
@@ -2558,8 +2791,30 @@ export type PersonaHeldCheck =
       /** Issue 205: one message key per details line. */
       detailKeys: DetailKey[];
       args: Record<string, unknown>;
+      /** Issue 1403: the person's own Allow (see personaPersonOnly). */
+      personOnly?: true;
     }
   | { ok: false; error: string };
+
+/**
+ * Issue 1403 (Den Builder): a persona's mode and commands are new tool
+ * access, the person's, unless the install is personal with the sandbox
+ * off and no agent in it (as agent_create, issue 1391). A config that
+ * can't be read keeps it the person's.
+ */
+function personaPersonOnly(
+  d: AgentsResolved,
+  c: PersonaHeldCheck,
+): PersonaHeldCheck {
+  if (!c.ok) return c;
+  let routine = false;
+  try {
+    routine = personalNoSandbox(d.agentsConfig());
+  } catch {
+    routine = false;
+  }
+  return routine ? c : { ...c, personOnly: true };
+}
 
 /** Who asked (HeldAsker): an agent's id and the project its token is for. */
 export interface PersonaAsker {
@@ -2692,6 +2947,14 @@ export function checkPersonaCreate(
   raw: unknown,
   who: PersonaAsker = {},
 ): PersonaHeldCheck {
+  return personaPersonOnly(d, personaCreateCheck(d, raw, who));
+}
+
+function personaCreateCheck(
+  d: AgentsResolved,
+  raw: unknown,
+  who: PersonaAsker,
+): PersonaHeldCheck {
   try {
     const r = (raw ?? {}) as Record<string, unknown>;
     const home = personaHome(d, r, who, "add");
@@ -2762,6 +3025,7 @@ function personaInputOf(p: Persona): Record<string, unknown> {
     version: p.version ?? "latest",
     permission: intentOf(p.permissionMode) ?? "ask",
     allowedCommands: [...p.allowedCommands],
+    ...(p.subagentModel ? { subagentModel: p.subagentModel } : {}),
   };
 }
 
@@ -2776,6 +3040,14 @@ export function checkPersonaUpdate(
   d: AgentsResolved,
   raw: Record<string, unknown>,
   who: PersonaAsker = {},
+): PersonaHeldCheck {
+  return personaPersonOnly(d, personaUpdateCheck(d, raw, who));
+}
+
+function personaUpdateCheck(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: PersonaAsker,
 ): PersonaHeldCheck {
   try {
     const id = typeof raw.id === "string" ? raw.id.trim() : "";
@@ -3288,12 +3560,23 @@ async function namedId(
         running: { id: rec.id, sessionId: s.ref.id },
       });
   }
+  return namedIdChoice(d.stateDir(), name);
+}
+
+/**
+ * The id a start with display name `name` gets (namedId, without its
+ * live-session check): the name's slug, or slug-2, slug-3 … when taken;
+ * null when the name has no slug. Issue 1328: agent_create's sandbox check
+ * calls this too, so it checks the id the start picks.
+ */
+function namedIdChoice(stateDir: string, name: string): string | null {
+  const slug = nameSlug(name);
   if (!slug) return null;
-  if (!readRecord(d.stateDir(), slug)) return slug;
+  if (!readRecord(stateDir, slug)) return slug;
   const stem = slug.slice(0, 58);
   for (let n = 2; n < 1000; n++) {
     const id = `${stem}-${n}`;
-    if (!readRecord(d.stateDir(), id)) return id;
+    if (!readRecord(stateDir, id)) return id;
   }
   throw refused(`no free agent id for ${slug}: give one with --id`);
 }
@@ -3355,15 +3638,28 @@ function binDirOf(det: RuntimeDetect): { binDir?: string } {
 }
 
 /** The host's cap refusal as an AgentError (its hint says what to do). */
-function capOrThrow(d: AgentsResolved, e: unknown): never {
+function capOrThrow(
+  d: AgentsResolved,
+  e: unknown,
+  project?: { key: string },
+): never {
+  const mine =
+    e instanceof HostError && /\(agents\.max_per_project\)$/.test(e.message);
   if (e instanceof HostError && e.code === "cap")
-    throw new AgentError(e.message, {
-      status: 429,
-      code: "cap",
-      hints: [
-        `Stop one first (\`${d.cli} agents stop <id>\`), or raise agents.max_concurrent.`,
-      ],
-    });
+    throw new AgentError(
+      mine && project
+        ? e.message.replace(/\(agents\.max_per_project\)$/, `(${project.key})`)
+        : e.message,
+      {
+        status: 429,
+        code: "cap",
+        hints: [
+          mine && project
+            ? `Stop one of its agents first (\`${d.cli} agents stop <id>\`), or raise ${project.key}.`
+            : `Stop one first (\`${d.cli} agents stop <id>\`), or raise agents.max_concurrent.`,
+        ],
+      },
+    );
   throw e;
 }
 
@@ -3384,6 +3680,7 @@ async function startSession(
   info: SessionInfo;
   signInWarning?: string;
   sandboxWarning?: string;
+  signingWarning?: string;
 }> {
   if (old?.exited) await c.forget(old.ref.id);
   // Issue 163 (b): read before the token is minted (nothing to revoke).
@@ -3402,6 +3699,10 @@ async function startSession(
   let info: SessionInfo;
   let box: SandboxWrap;
   let legacy = false;
+  // Issue 1325: a sandboxed session's own temp folder (its sockets work).
+  let sessionTmp: string | undefined;
+  let signing: AgentSigning | undefined;
+  let signingWarning: string | undefined;
   try {
     // #70: the token in a file of the agent's own; the env names the file.
     const tokenFile = writeActorTokenFile(
@@ -3409,6 +3710,16 @@ async function startSession(
       launch.rec.id,
       minted.token,
     );
+    // Issue 1316: its commits signed with the agents' own SSH key, never
+    // the person's GPG (the sandbox refuses gpg's agent socket). Before
+    // the sandbox: bwrap binds only the folders that exist.
+    try {
+      signing = d.agentSigning(launch.rec.cwd);
+      if (signing?.made)
+        signingWarning = `${launch.rec.id} signs its commits with the agents' new SSH key. GitHub shows them Verified once you add it: ${signingKeyAddLine(signing)}`;
+    } catch (e) {
+      signingWarning = `${launch.rec.id}'s commits can't be signed with the agents' key: ${e instanceof Error ? e.message : String(e)}`;
+    }
     // Issue 936: Den's state read-only to the session (the OS sandbox).
     // An agent from before the sandbox starts outside it until the person
     // turns it on (the rollout, sandbox-rollout.ts).
@@ -3423,13 +3734,38 @@ async function startSession(
           env: {},
           reason: LEGACY_SANDBOX_REASON,
         }
-      : d.agentSandbox(launch.argv, launch.rec.id);
+      : (() => {
+          // The last session's folder, if it outlived it, goes first.
+          removeSessionTmp(launch.rec.sessionTmp, d.sessionTmpBase);
+          if (sandboxSetting(d.agentsConfig(), launch.rec.id)) {
+            try {
+              sessionTmp = d.sessionTmp();
+            } catch {
+              sessionTmp = undefined; // the system's TMPDIR, as before
+            }
+          }
+          const w = d.agentSandbox(launch.argv, launch.rec.id, sessionTmp);
+          if (!w.applied) {
+            removeSessionTmp(sessionTmp, d.sessionTmpBase);
+            sessionTmp = undefined;
+          }
+          return w;
+        })();
     if (!box.applied && sandboxRequired(d.agentsConfig(), launch.rec.id))
       throw refused(
         `agents start: ${launch.rec.id} needs the agent sandbox (agents.sandbox: required), and it can't apply here: ${box.reason ?? "no sandbox"}`,
         [`\`${d.cli} agents doctor\` shows why.`],
         409,
       );
+    let projectCap: { limit: number; key: string };
+    try {
+      projectCap = projectAgentCap(
+        launch.rec.workspace,
+        d.agentsConfig().maxPerProject ?? 0,
+      );
+    } catch (e) {
+      throw usage(`agents start: ${(e as Error).message}`);
+    }
     info = await c
       .start(
         {
@@ -3444,19 +3780,25 @@ async function startSession(
             launch.rec.id,
             tokenFile,
             launch.binDir ? [launch.binDir] : [],
-            // agents.git.signing_key: its commits signed with that key.
-            { ...agentGitEnv(d.agentsConfig().git), ...box.env },
+            // agents.git (issue 1316): its commits signed with its key.
+            { ...agentGitEnv(signing), ...box.env },
             signIn.env,
           ),
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
         },
-        { limit: d.maxConcurrent(), pool: "agents" },
+        {
+          limit: d.maxConcurrent(),
+          pool: "agents",
+          project: launch.rec.workspace,
+          projectLimit: projectCap.limit,
+        },
       )
-      .catch((e: unknown) => capOrThrow(d, e));
+      .catch((e: unknown) => capOrThrow(d, e, projectCap));
   } catch (e) {
     revokeActorToken(d.stateDir(), minted.key);
     removeActorTokenFile(d.stateDir(), launch.rec.id);
+    removeSessionTmp(sessionTmp, d.sessionTmpBase);
     throw e;
   }
   bindActorSession(d.stateDir(), minted.key, info.ref.id);
@@ -3471,6 +3813,8 @@ async function startSession(
   const denV = engineVersion();
   if (denV) rec.denVersion = denV;
   else delete rec.denVersion;
+  if (sessionTmp) rec.sessionTmp = sessionTmp;
+  else delete rec.sessionTmp;
   // A new session: whatever ended the last one no longer applies.
   delete rec.stoppedAt;
   delete rec.endedAt;
@@ -3504,6 +3848,7 @@ async function startSession(
       : {
           sandboxWarning: `${rec.id} runs outside the agent sandbox (Den's state is writable to it): ${box.reason ?? "no sandbox here"}`,
         }),
+    ...(signingWarning ? { signingWarning } : {}),
   };
 }
 
@@ -3620,6 +3965,32 @@ function launchInput(
     { id, persona: persona.id, workspace: ws, cwd: dir },
     persona,
   ).afterCompactions;
+  // Issue 728: this install registers itself (its server does at start too),
+  // then reads the others.
+  const ownEdgeKeys = edgeKeyDirs(d.distRoot());
+  // ...narrowed where the edge folder holds this install's own folders.
+  const ownEdgeDeny = narrowEdgeDirs(ownEdgeKeys, [
+    path.resolve(d.stateDir()),
+    path.resolve(d.distRoot()),
+    path.resolve(dir),
+  ]);
+  const reg = registryDir({ ...process.env, ...d.env });
+  const others = (() => {
+    try {
+      registerInstall(reg, {
+        stateDir: d.stateDir(),
+        edgeKeyDirs: ownEdgeKeys,
+      });
+    } catch {
+      /* listed at its server's next start */
+    }
+    return listOtherInstalls(reg, {
+      ownStateDir: d.stateDir(),
+      home: { ...process.env, ...d.env }.HOME,
+      // No entry may deny this install's own checkout or workspace.
+      protect: [d.distRoot(), dir],
+    });
+  })();
   return {
     persona,
     workspace: { name: ws, dir },
@@ -3629,15 +4000,42 @@ function launchInput(
     mcp: agentMcp(d, ws, id, grants),
     filesDir: agentFilesDir(d.stateDir(), id),
     stateDir: d.stateDir(),
-    // Issue 816: test installs announced on this computer.
-    otherStateDirs: listAnnounced(announceDir(), {
-      ownStateDir: d.stateDir(),
-    }).map((a) => a.stateDir),
+    // Issue 1391: read at this start; a change of mode waits for the next.
+    ...(agentsMayReadTrail(cfg, d.stateDir()) ? { trailReadable: true } : {}),
+    // Issue 816: test installs announced on this computer; issue 728: the
+    // other installs registered for this OS user, any distribution's.
+    otherStateDirs: [
+      ...new Set([
+        ...listAnnounced(announceDir(), { ownStateDir: d.stateDir() }).map(
+          (a) => a.stateDir,
+        ),
+        ...others.map((o) => o.stateDir),
+      ]),
+    ],
+    repoDirs: [
+      ...new Set(
+        [ws, ...grants].flatMap((w) => {
+          try {
+            return d
+              .workspaceServices(w)
+              .map((s) => s.path)
+              .filter((p) => !!p && path.isAbsolute(p));
+          } catch {
+            return [];
+          }
+        }),
+      ),
+    ],
+    playwrightAuthDir: path.join(d.distRoot(), PLAYWRIGHT_AUTH_DIR),
     // ...and where they announce, for those announced after this launch.
     testAnnounceDir: announceDir(),
+    installRegistryDir: reg,
     personConfigDir: path.join(d.distRoot(), "config", "local"),
-    // Issue 728: the edge's key folders, wherever its config puts them.
-    edgeKeyDirs: edgeKeyDirs(d.distRoot()),
+    // Issue 728: the edge's key folders, wherever its config puts them, and
+    // the other installs' edges'.
+    edgeKeyDirs: [
+      ...new Set([...ownEdgeDeny, ...others.flatMap((o) => o.edgeKeyDirs)]),
+    ],
     // Issue 810: the distribution config (the test-install mark).
     distConfigFile: path.join(d.distRoot(), product().configFile),
     env: d.env,
@@ -4172,71 +4570,77 @@ export async function startAgent(
         model: ch.model,
         version: ch.version,
       });
-      const { rec, info, signInWarning, sandboxWarning } = await startSession(
-        d,
-        c,
-        {
-          rec: {
-            id,
-            persona: persona.id,
-            // PSN-3: the persona as it started.
-            personaOrigin: persona.origin,
-            ...(personaHashOf(persona)
-              ? { personaHash: personaHashOf(persona) }
-              : {}),
-            runtime: rt.id,
-            ...(ch.model ? { model: ch.model } : {}),
-            ...(ch.model ? { version: ch.version } : {}),
-            ...(ch.permission ? { permission: ch.permission } : {}),
-            ...(req.allow !== undefined ? { allow: ch.extras } : {}),
-            ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
-            ...subagentsField(rt, persona, cfg),
-            workspace: ws,
-            cwd: input.worktree,
-            // D65 v2: its project and repo outlive every new conversation.
-            ...linkFields(d, ws, input.worktree, req.repo, prev),
-            sessionName: sessionName(d.dist, ws, id),
-            peerName,
-            // AG-4b: a name given to the agent is the agent's, not its
-            // conversation's: Start fresh and Relaunch keep it. AG-10.8:
-            // else its persona's name ("Rita").
-            // AG-10.10: a name given at start wins.
-            ...(given
-              ? { displayName: given, displayNameAt: new Date().toISOString() }
-              : prev?.displayName
+      const { rec, info, signInWarning, sandboxWarning, signingWarning } =
+        await startSession(
+          d,
+          c,
+          {
+            rec: {
+              id,
+              persona: persona.id,
+              // PSN-3: the persona as it started.
+              personaOrigin: persona.origin,
+              ...(personaHashOf(persona)
+                ? { personaHash: personaHashOf(persona) }
+                : {}),
+              runtime: rt.id,
+              ...(ch.model ? { model: ch.model } : {}),
+              ...(ch.model ? { version: ch.version } : {}),
+              ...(ch.permission ? { permission: ch.permission } : {}),
+              ...(req.allow !== undefined ? { allow: ch.extras } : {}),
+              ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
+              ...subagentsField(rt, persona, cfg),
+              workspace: ws,
+              cwd: input.worktree,
+              // D65 v2: its project and repo outlive every new conversation.
+              ...linkFields(d, ws, input.worktree, req.repo, prev),
+              sessionName: sessionName(d.dist, ws, id),
+              peerName,
+              // AG-4b: a name given to the agent is the agent's, not its
+              // conversation's: Start fresh and Relaunch keep it. AG-10.8:
+              // else its persona's name ("Rita").
+              // AG-10.10: a name given at start wins.
+              ...(given
                 ? {
-                    displayName: prev.displayName,
-                    ...(prev.displayNameAt
-                      ? { displayNameAt: prev.displayNameAt }
-                      : {}),
+                    displayName: given,
+                    displayNameAt: new Date().toISOString(),
                   }
-                : persona.displayName
-                  ? { displayName: persona.displayName }
-                  : {}),
-            // 0.4.8: launched on this token, so a resume continues it.
-            ...(out.resumeToken
-              ? { resumeToken: out.resumeToken, launched: true }
-              : {}),
-            ...(more.bringIn ? { broughtInAt: new Date().toISOString() } : {}),
-            // Issue 943: started on the test-person path, never brought in.
-            ...(auditVia() === "test-person" && !more.bringIn
-              ? { testBed: true as const }
-              : {}),
-            // D56: started outside its project, brought in by an ask naming
-            // that folder.
-            ...(more.bringIn?.outside ? { outside: true } : {}),
+                : prev?.displayName
+                  ? {
+                      displayName: prev.displayName,
+                      ...(prev.displayNameAt
+                        ? { displayNameAt: prev.displayNameAt }
+                        : {}),
+                    }
+                  : persona.displayName
+                    ? { displayName: persona.displayName }
+                    : {}),
+              // 0.4.8: launched on this token, so a resume continues it.
+              ...(out.resumeToken
+                ? { resumeToken: out.resumeToken, launched: true }
+                : {}),
+              ...(more.bringIn
+                ? { broughtInAt: new Date().toISOString() }
+                : {}),
+              // Issue 943: started on the test-person path, never brought in.
+              ...(auditVia() === "test-person" && !more.bringIn
+                ? { testBed: true as const }
+                : {}),
+              // D56: started outside its project, brought in by an ask naming
+              // that folder.
+              ...(more.bringIn?.outside ? { outside: true } : {}),
+            },
+            argv: out.argv,
+            env: out.env,
+            passthrough: rt.envPassthrough,
+            launchEnv: rt.launchEnv,
+            tokenEnv: rt.signInTokenEnv,
+            grants: cfg.agents[id]?.grants ?? [],
+            ...binDirOf(det),
           },
-          argv: out.argv,
-          env: out.env,
-          passthrough: rt.envPassthrough,
-          launchEnv: rt.launchEnv,
-          tokenEnv: rt.signInTokenEnv,
-          grants: cfg.agents[id]?.grants ?? [],
-          ...binDirOf(det),
-        },
-        old,
-        more.rotations?.length ? { rotations: more.rotations } : {},
-      );
+          old,
+          more.rotations?.length ? { rotations: more.rotations } : {},
+        );
       // 0.4.48: launched with no Hub because its token couldn't be read:
       // noted as a failed connect, so once Den reads it again the agent is
       // restarted to load Hub's tools, as after a Hub outage (mcp-reconnect).
@@ -4258,6 +4662,7 @@ export async function startAgent(
           ...sized,
           ...(signInWarning ? [signInWarning] : []),
           ...(sandboxWarning ? [sandboxWarning] : []),
+          ...(signingWarning ? [signingWarning] : []),
         ],
         early,
       };
@@ -4580,12 +4985,21 @@ function freeId(d: AgentsResolved, persona: string): string {
  */
 export async function runAgentImport(
   d: AgentsResolved,
-  a: { project: string; session: string; persona: string; runtime?: string },
+  a: {
+    project: string;
+    session: string;
+    persona: string;
+    runtime?: string;
+    /** Issue 1328: asked for knowing it starts outside the sandbox. */
+    sandboxOff?: boolean;
+  },
 ): Promise<
   | { ok: true; id: string; project: string; persona: string }
   | { ok: false; error: string }
 > {
   try {
+    if (importSandboxOff(d, a.persona) && a.sandboxOff !== true)
+      return { ok: false, error: SANDBOX_OFF_SINCE_ASK };
     const s = await importAgent(d, {
       workspace: a.project,
       session: a.session,
@@ -4854,6 +5268,8 @@ export type AgentCreateCheck =
       details: string[];
       /** Issue 205: one message key per details line. */
       detailKeys: DetailKey[];
+      /** Issue 1328: it starts outside the sandbox: the person's own Allow. */
+      personOnly?: boolean;
       args: AgentCreateArgs;
     }
   | { ok: false; error: string };
@@ -4866,6 +5282,8 @@ export interface AgentCreateArgs {
   mode: PermissionIntent;
   repo?: string;
   folder?: string;
+  /** Issue 1328: asked for knowing it starts outside the sandbox. */
+  sandboxOff?: boolean;
 }
 
 const INTENT_RANK: Record<PermissionIntent, number> = {
@@ -4937,8 +5355,10 @@ export function checkAgentCreate(
         : ws;
     const shown = name ?? persona.displayName ?? persona.id;
     const rt = runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID;
+    const off = createSandboxOff(d, ws, persona.id, name);
     return {
       ok: true,
+      ...(off ? { personOnly: true } : {}),
       summary: `start agent ${shown} (${persona.id}) in ${where}, mode ${mode}${runtime ? `, runtime ${runtime}` : ""}`,
       params: { name: shown, persona: persona.id, where, mode },
       ...review([
@@ -4957,6 +5377,7 @@ export function checkAgentCreate(
           "ap.det.agent_create.mode",
           { mode, cap: String(cap) },
         ),
+        ...(off ? [off] : []),
       ]),
       args: {
         project: ws,
@@ -4966,11 +5387,42 @@ export function checkAgentCreate(
         mode,
         ...(repo !== undefined ? { repo } : {}),
         ...(folder !== undefined ? { folder: dir ?? folder } : {}),
+        ...(off ? { sandboxOff: true } : {}),
       },
     };
   } catch (e) {
     return no((e as Error).message);
   }
+}
+
+/**
+ * Issue 1328: whether the agent agent_create starts would be outside the
+ * sandbox, for the id startAgent picks, the same way: the name's
+ * (namedIdChoice), else the persona's (defaultId). The run checks again,
+ * so an id that changes between ask and Allow is caught there.
+ */
+function createSandboxOff(
+  d: AgentsResolved,
+  ws: string,
+  persona: string,
+  name: string | undefined,
+): ReviewLine | null {
+  const given = name !== undefined ? checkDisplayName(name) : null;
+  const id =
+    (given ? namedIdChoice(d.stateDir(), given) : null) ??
+    defaultId(d.stateDir(), persona, ws);
+  return newAgentSandboxOff(d.agentsConfig(), [id]);
+}
+
+/**
+ * Issue 1328: whether the agent agent_import makes of `persona` would start
+ * outside the sandbox (the id it gets, as importAgent picks it).
+ */
+export function importSandboxOff(
+  d: AgentsResolved,
+  persona: string,
+): ReviewLine | null {
+  return newAgentSandboxOff(d.agentsConfig(), [freeId(d, persona)]);
 }
 
 /** SRV-P1: on Allow, starts it as `agents start` does. */
@@ -4983,6 +5435,9 @@ export async function createAgent(
 > {
   const c = checkAgentCreate(d, raw);
   if (!c.ok) return c;
+  // Issue 1328: asked for in the sandbox, it now starts outside it.
+  if (c.personOnly && raw.sandboxOff !== true)
+    return { ok: false, error: SANDBOX_OFF_SINCE_ASK };
   const a = c.args;
   const s = await startAgent(d, {
     workspace: a.project,
@@ -5612,6 +6067,381 @@ export async function runProjectMcpAdd(
   const ws = c.args.project;
   d.saveWorkspaceMcpServers(ws, [...projectMcpServers(d, ws), c.args.server]);
   return { ok: true, ...projectMcpView(d, ws) };
+}
+
+/** Issue 1480: project `ws`'s `agents.event_feeds` as written (a list). */
+function feedEntries(d: AgentsResolved, ws: string): Record<string, unknown>[] {
+  const raw = d.workspaceEventFeeds(ws);
+  return Array.isArray(raw)
+    ? raw.filter(
+        (e): e is Record<string, unknown> =>
+          !!e && typeof e === "object" && !Array.isArray(e),
+      )
+    : [];
+}
+
+const feedNameOf = (e: Record<string, unknown>) =>
+  typeof e.name === "string" ? e.name.trim() : "";
+
+/** Issue 1480: a checked feed as workspaces.yml spells it. */
+function feedEntry(f: AppFeedConfig): Record<string, unknown> {
+  return {
+    name: f.name,
+    agent: f.agent,
+    url: f.url,
+    ...(f.listUrl ? { list_url: f.listUrl } : {}),
+    ...(f.bearer ? { bearer: f.bearer } : {}),
+    ...(f.publicOnly ? { public_only: true } : {}),
+  };
+}
+
+/** Issue 1480: the ids of project `ws`'s agents. */
+export function projectAgentIds(d: AgentsResolved, ws: string): string[] {
+  return listRecords(d.stateDir())
+    .filter((r) => r.workspace === ws)
+    .map((r) => r.id)
+    .sort();
+}
+
+/**
+ * Issue 1480 (Reviewer C): Den's own addresses and its Hub's: web.url,
+ * the address Den's own tools dial, the edge's domains, and Hub's
+ * addresses. Each part best effort: one that can't be read is left out.
+ */
+async function ownFeedAddresses(d: AgentsResolved): Promise<FeedOwnAddresses> {
+  const hosts: string[] = [];
+  const ports: number[] = [];
+  const add = (u: string | null | undefined, port = false) => {
+    if (!u) return;
+    try {
+      const x = new URL(u);
+      hosts.push(x.hostname.replace(/^\[|\]$/g, ""));
+      if (port)
+        ports.push(Number(x.port || (x.protocol === "https:" ? 443 : 80)));
+    } catch {
+      /* not an address */
+    }
+  };
+  try {
+    add(d.webUrl());
+  } catch {
+    /* unset */
+  }
+  try {
+    // Den's own dial: its port on this machine.
+    const base = new URL(d.denBase());
+    ports.push(Number(base.port || 80));
+  } catch {
+    /* unset */
+  }
+  try {
+    const hub = await d.hub();
+    add(hub?.url);
+    add(hub?.mcpUrl);
+  } catch {
+    /* no Hub */
+  }
+  let domains: string[] = [];
+  try {
+    domains = edgeDomains(readEdgeConfig()).filter(Boolean);
+  } catch {
+    domains = [];
+  }
+  // The dial's host is this machine: only its port is refused there.
+  return {
+    hosts: hosts.filter((h) => !/^(localhost|127\.|::1$)/.test(h)),
+    domains,
+    ports,
+  };
+}
+
+export interface EventFeedAddArgs {
+  project: string;
+  feed: AppFeedConfig;
+}
+
+/**
+ * Issue 1480: checks a project_event_feed_add ask: one more app event
+ * feed for one of the project's agents (agents.event_feeds), its bearer
+ * the name of a secrets.refs entry, never a value (a refusal never echoes
+ * it). The approval policy places it (issue 1391): routine on a personal
+ * install, the person's Allow on a strict one. A project's agent asks for
+ * its own project; Den's agent for any.
+ */
+export async function checkEventFeedAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): Promise<HeldOpCheck<EventFeedAddArgs>> {
+  const no = (error: string): HeldOpCheck<EventFeedAddArgs> => ({
+    ok: false,
+    error,
+  });
+  try {
+    const t = projectMcpTarget(d, raw, who, "project_event_feed_add", "add to");
+    if (!t.ok) return t;
+    const ws = t.ws;
+    // The queue's check on Allow gets the args the first check gave.
+    const fv = raw.feed;
+    const src =
+      fv && typeof fv === "object" && !Array.isArray(fv)
+        ? (fv as Record<string, unknown>)
+        : raw;
+    const c = checkAppFeed({
+      name: src.name,
+      agent: src.agent,
+      url: src.url,
+      bearer: src.bearer,
+      list_url: src.list_url ?? src.listUrl,
+    });
+    if (!c.ok) return no(c.error);
+    const feed = c.feed;
+    if (!projectAgentIds(d, ws).includes(feed.agent))
+      return no(`agent: "${feed.agent}" is not one of project ${ws}'s agents`);
+    if (feedEntries(d, ws).some((e) => feedNameOf(e) === feed.name))
+      return no(`project ${ws} already has an event feed "${feed.name}"`);
+    // Reviewer C: never Den itself or its Hub.
+    const own = await (d.feedOwnAddresses ?? (() => ownFeedAddresses(d)))();
+    const self =
+      feedSelfProblem(feed.url, "url", own) ??
+      (feed.listUrl ? feedSelfProblem(feed.listUrl, "list_url", own) : null);
+    if (self) return no(self);
+    // Lane 1: this machine or a private network is the person's own Allow
+    // (app_feed_read would read local services); one checked public is
+    // written public_only, and resolved again at each connect.
+    const urls = [feed.url, ...(feed.listUrl ? [feed.listUrl] : [])];
+    const local = (
+      await Promise.all(urls.map((u) => feedAddressLocal(u, d.feedLookup)))
+    ).some(Boolean);
+    if (local) delete feed.publicOnly;
+    else feed.publicOnly = true;
+    const lines: [string, DetailKey][] = [
+      [
+        `Den opens ${feed.url} and types ${feed.agent} a short line when its events are unread.`,
+        {
+          key: "ap.feed.warn",
+          vars: { url: feed.url, agent: feed.agent },
+        },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+      [
+        `Feed: ${feed.name}, for ${feed.agent}`,
+        { key: "ap.feed.feed", vars: { name: feed.name, agent: feed.agent } },
+      ],
+      feed.bearer
+        ? [
+            `Bearer: read from secrets.refs.${feed.bearer} at each connect; never shown or written to the agent's files.`,
+            { key: "ap.feed.bearer", vars: { ref: feed.bearer } },
+          ]
+        : [
+            "No bearer: the stream is opened with no Authorization header.",
+            { key: "ap.feed.noBearer" },
+          ],
+    ];
+    return {
+      ok: true,
+      // Lane 1: Den sends that stored secret to the feed's url, so an add
+      // with a bearer widens: the person's own Allow on every install.
+      ...(feed.bearer || local ? { personOnly: true } : {}),
+      summary: `add event feed ${feed.name} (${feed.url}) for ${feed.agent} in project ${ws}`,
+      params: {
+        project: ws,
+        name: feed.name,
+        agent: feed.agent,
+        url: feed.url,
+      },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, feed },
+    };
+  } catch (e) {
+    return no((e as Error).message);
+  }
+}
+
+/** Issue 1480: on Allow (or at once), adds it, checked again. */
+export async function runEventFeedAdd(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  asked?: { decidedBy?: string },
+): Promise<
+  | {
+      ok: true;
+      project: string;
+      name: string;
+      /** What was written: Undo takes out only this. */
+      added: Record<string, unknown>;
+    }
+  | { ok: false; error: string }
+> {
+  const c = await checkEventFeedAdd(d, raw);
+  if (!c.ok) return c;
+  // As gate_settings_set: one that needs the person's own Allow never
+  // runs by the policy.
+  if (c.personOnly && asked?.decidedBy?.startsWith("auto:") === true)
+    return {
+      ok: false,
+      error:
+        "a feed with a bearer needs the person's own Allow: nothing was written; ask again",
+    };
+  const ws = c.args.project;
+  const added = feedEntry(c.args.feed);
+  d.saveWorkspaceEventFeeds(ws, [...feedEntries(d, ws), added]);
+  return { ok: true, project: ws, name: c.args.feed.name, added };
+}
+
+export interface EventFeedRemoveArgs {
+  project: string;
+  name: string;
+}
+
+/**
+ * Issue 1480: checks a project_event_feed_remove ask: take one of a
+ * project's app event feeds out (its agent gets no more lines from it).
+ * Placed as the add is.
+ */
+export function checkEventFeedRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+  who: { agent?: string; project?: string } = {},
+): HeldOpCheck<EventFeedRemoveArgs> {
+  try {
+    const t = projectMcpTarget(
+      d,
+      raw,
+      who,
+      "project_event_feed_remove",
+      "remove from",
+    );
+    if (!t.ok) return t;
+    const ws = t.ws;
+    const name = typeof raw.name === "string" ? raw.name.trim() : "";
+    if (!name) return { ok: false, error: "name: give the feed's name" };
+    const e = feedEntries(d, ws).find((x) => feedNameOf(x) === name);
+    if (!e)
+      return { ok: false, error: `project ${ws} has no event feed "${name}"` };
+    const lines: [string, DetailKey][] = [
+      [
+        `Den closes feed ${name}; its agent gets no more lines from it.`,
+        { key: "ap.feed.removeWarn", vars: { name } },
+      ],
+      [`Project: ${ws}`, { key: "ap.pm.project", vars: { project: ws } }],
+    ];
+    return {
+      ok: true,
+      summary: `remove event feed ${name} from project ${ws}`,
+      params: { project: ws, name },
+      details: lines.map((l) => l[0]),
+      detailKeys: lines.map((l) => l[1]),
+      args: { project: ws, name },
+    };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+/** Issue 1480: on Allow (or at once), removes it, checked again. */
+export async function runEventFeedRemove(
+  d: AgentsResolved,
+  raw: Record<string, unknown>,
+): Promise<
+  | {
+      ok: true;
+      project: string;
+      name: string;
+      /** What was taken out, when Den could read it: Undo puts it back. */
+      removed: Record<string, unknown> | null;
+    }
+  | { ok: false; error: string }
+> {
+  const c = checkEventFeedRemove(d, raw);
+  if (!c.ok) return c;
+  const ws = c.args.project;
+  const all = feedEntries(d, ws);
+  const gone = all.find((e) => feedNameOf(e) === c.args.name);
+  d.saveWorkspaceEventFeeds(
+    ws,
+    all.filter((e) => feedNameOf(e) !== c.args.name),
+  );
+  // Only a feed Den can read comes back by Undo: an entry it couldn't
+  // read may hold anything, so none of it is kept in the result.
+  const ok = gone ? checkAppFeed(gone) : null;
+  return {
+    ok: true,
+    project: ws,
+    name: c.args.name,
+    removed: ok?.ok ? feedEntry(ok.feed) : null,
+  };
+}
+
+/**
+ * Issue 1480: the bell's Undo of a feed added or removed without asking
+ * (a personal install, issue 1391). Only what ran by the policy; only
+ * while the feed is as it left it: an added one still the same, a
+ * removed one's name still free.
+ */
+export function undoEventFeed(
+  d: AgentsResolved,
+  approval: {
+    action: string;
+    result?: unknown;
+    decidedBy?: string;
+  },
+): { ok: true; note: string } | { ok: false; error: string } {
+  if (
+    approval.action !== "project_event_feed_add" &&
+    approval.action !== "project_event_feed_remove"
+  )
+    return { ok: false, error: "only an event feed change can be undone here" };
+  if (!approval.decidedBy?.startsWith("auto:"))
+    return {
+      ok: false,
+      error:
+        "only a change that ran without asking can be undone here: change it in Settings",
+    };
+  const r = approval.result as
+    | {
+        ok?: unknown;
+        project?: unknown;
+        name?: unknown;
+        added?: unknown;
+        removed?: unknown;
+      }
+    | undefined;
+  const ws = typeof r?.project === "string" ? r.project : "";
+  const name = typeof r?.name === "string" ? r.name : "";
+  if (r?.ok !== true || !ws || !name || !d.workspaceExists(ws))
+    return {
+      ok: false,
+      error: "that change didn't run, so there is nothing to undo",
+    };
+  const all = feedEntries(d, ws);
+  if (approval.action === "project_event_feed_add") {
+    const now = all.find((e) => feedNameOf(e) === name);
+    if (!now || JSON.stringify(now) !== JSON.stringify(r.added))
+      return {
+        ok: false,
+        error: `feed ${name} changed since: nothing was undone; change it in Settings`,
+      };
+    d.saveWorkspaceEventFeeds(
+      ws,
+      all.filter((e) => e !== now),
+    );
+    return { ok: true, note: `feed ${name} was taken out of project ${ws}` };
+  }
+  const back = checkAppFeed(r.removed);
+  if (!back.ok)
+    return {
+      ok: false,
+      error: `feed ${name} can't be put back here: add it in Settings`,
+    };
+  if (all.some((e) => feedNameOf(e) === name))
+    return {
+      ok: false,
+      error: `project ${ws} has a feed "${name}" again: nothing was undone`,
+    };
+  d.saveWorkspaceEventFeeds(ws, [...all, feedEntry(back.feed)]);
+  return { ok: true, note: `feed ${name} is back in project ${ws}` };
 }
 
 export interface ProjectMcpRemoveArgs {
@@ -6274,6 +7104,13 @@ export async function stopAgent(
           await new Promise((r) => setTimeout(r, EXIT_POLL_MS));
         }
       }
+      // Issue 1325: its temp folder goes once its session has (one still
+      // stopping: noteEnded takes it when the host lists it exited).
+      if (!stillStopping && next.sessionTmp) {
+        removeSessionTmp(next.sessionTmp, d.sessionTmpBase);
+        delete next.sessionTmp;
+        writeRecord(d.stateDir(), next);
+      }
       return {
         rec: next,
         ...(live ? { session: s! } : {}),
@@ -6544,6 +7381,7 @@ export async function resumeAgent(
           info,
           signInWarning,
           sandboxWarning,
+          signingWarning,
         } = await startSession(
           d,
           c,
@@ -6573,7 +7411,15 @@ export async function resumeAgent(
           asFresh ? {} : { resumedAt: new Date().toISOString() },
         );
         const early = await exitedAtOnce(d, c, info);
-        return { out, next, info, early, signInWarning, sandboxWarning };
+        return {
+          out,
+          next,
+          info,
+          early,
+          signInWarning,
+          sandboxWarning,
+          signingWarning,
+        };
       };
       let fresh = !known && Boolean(token);
       let newConversation = false;
@@ -6640,6 +7486,7 @@ export async function resumeAgent(
           ...(r.out.warnings ?? []),
           ...(r.signInWarning ? [r.signInWarning] : []),
           ...(r.sandboxWarning ? [r.sandboxWarning] : []),
+          ...(r.signingWarning ? [r.signingWarning] : []),
         ],
         early: r.early,
         fresh,
@@ -6827,6 +7674,155 @@ export async function agentJob(
 }
 
 /**
+ * Issue 1407: the job agent `rec` left running (the longest running one),
+ * with what it runs, for a person; null: none, or its runtime can't tell.
+ */
+export async function agentJobDetail(
+  d: AgentsResolved,
+  rec: AgentRecord,
+  pid?: number | null,
+): Promise<{ minutes: number; command: string } | null> {
+  const rt = getRuntime(rec.runtime);
+  if (!rt?.jobPattern) return null;
+  const root =
+    pid ??
+    (await withClient(d, async (c) => {
+      const s = sessionOf(await c.list(), rec);
+      return s && !s.exited ? s.pid : null;
+    }));
+  if (root === null || root === undefined) return null;
+  const jobs = jobsUnder(root, rt.jobPattern, d.processes());
+  if (!jobs.length) return null;
+  const top = jobs.reduce((a, b) => ((b.secs ?? 0) > (a.secs ?? 0) ? b : a));
+  return {
+    minutes: Math.round((top.secs ?? 0) / 60),
+    command: jobCommandOf(top.command),
+  };
+}
+
+/** Issue 1407: where one agent of a bulk restart stands, before it waits. */
+export type RestartState = "now" | "turn" | "job" | "unknown";
+export interface RestartPlan {
+  id: string;
+  workspace: string;
+  state: RestartState;
+  job?: { command: string; minutes: number };
+}
+/** Issue 1407: how one agent's restart ended (onDone). */
+export interface RestartOutcome {
+  id: string;
+  workspace: string;
+  outcome: "restarted" | "job" | "timedOut" | "failed";
+  job?: { command: string; minutes: number };
+  /** timedOut: the minutes it waited for the turn to end. */
+  minutes?: number;
+  error?: string;
+}
+
+/**
+ * Issue 1407: where agent `id` stands for a restart: idle (now), mid-turn
+ * (turn), its turn ended with a job it started still running (job, with
+ * what and how long), or Den can't tell when its turn ends (unknown). A
+ * stopped agent just resumes: now.
+ */
+export async function restartStateOf(
+  d: AgentsResolved,
+  id: string,
+  ws: string,
+): Promise<RestartPlan> {
+  const rec = agentRecord(d, id, ws);
+  const base = { id: rec.id, workspace: rec.workspace };
+  const live = await withClient(d, async (c) => {
+    const s = sessionOf(await c.list(), rec);
+    return s && !s.exited ? s : null;
+  });
+  if (!live) return { ...base, state: "now" };
+  const turn = await agentTurnBusy(d, rec, live).catch(() => null);
+  if (turn === null) return { ...base, state: "unknown" };
+  if (turn) return { ...base, state: "turn" };
+  const job = await agentJobDetail(d, rec, live.pid).catch(() => null);
+  if (job) return { ...base, state: "job", job };
+  return { ...base, state: "now" };
+}
+
+/**
+ * How a restart at the agent's next idle that did not happen
+ * ended: a job found when its turn ended (job), a wait of `waitedMs` that
+ * ran out (timedOut), or anything else (failed, with why).
+ */
+export function restartOutcomeOf(
+  id: string,
+  workspace: string,
+  e: unknown,
+  waitedMs: number,
+): RestartOutcome {
+  const err = e as AgentError;
+  if (err?.code === "job_running" && err.job)
+    return {
+      id,
+      workspace,
+      outcome: "job",
+      job: { command: err.job.command ?? "", minutes: err.job.minutes },
+    };
+  if (err?.code === "still_busy")
+    return {
+      id,
+      workspace,
+      outcome: "timedOut",
+      minutes: Math.round(waitedMs / 60_000),
+    };
+  return {
+    id,
+    workspace,
+    outcome: "failed",
+    error: e instanceof Error ? e.message : String(e),
+  };
+}
+
+/**
+ * Issue 1407: a bulk restart (restart-stale). Each agent is checked first
+ * and the answer is per agent (restartStateOf). Those idle or mid-turn
+ * restart at their next idle, on the same conversation; a job found when
+ * the turn ends is reported (onDone, outcome "job"), never waited out
+ * silently. One with a job, or whose turn Den can't read, is not
+ * restarted: the person decides (Restart now). Resolves with the plan
+ * before anything waits; onDone says how each restart ended.
+ */
+export async function restartMany(
+  d: AgentsResolved,
+  agents: readonly { id: string; workspace: string }[],
+  o: {
+    pollMs?: number;
+    maxMs?: number;
+    onDone?: (r: RestartOutcome) => void;
+  } = {},
+): Promise<RestartPlan[]> {
+  const plan: RestartPlan[] = [];
+  const waited = o.maxMs ?? restartWaitOf(d);
+  for (const a of agents) {
+    let p: RestartPlan;
+    try {
+      p = await restartStateOf(d, a.id, a.workspace);
+    } catch {
+      p = { id: a.id, workspace: a.workspace, state: "unknown" };
+    }
+    plan.push(p);
+    if (p.state !== "now" && p.state !== "turn") continue;
+    const base = { id: p.id, workspace: p.workspace };
+    void restartAgent(d, p.id, p.workspace, "after-turn", {
+      ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}),
+      ...(o.maxMs !== undefined ? { maxMs: o.maxMs } : {}),
+      jobStops: true,
+    }).then(
+      () => o.onDone?.({ ...base, outcome: "restarted" }),
+      (e: unknown) =>
+        o.onDone?.(restartOutcomeOf(p.id, p.workspace, e, waited)),
+    );
+  }
+  return plan;
+}
+
+/**
  * 0.4.48: a person's Restart at the agent's next idle, while a job it left
  * running still runs: asked first (job_running, with its minutes), never
  * waited out silently. Restart now ends the job.
@@ -6845,8 +7841,25 @@ export async function askAboutJob(
     );
 }
 
+/**
+ * Issue 1407: its turn has ended and a job it started still runs: the
+ * wait stops (job_running, with what it runs and how long).
+ */
+async function jobStopsWait(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<void> {
+  if ((await agentTurnBusy(d, rec).catch(() => null)) !== false) return;
+  const job = await agentJobDetail(d, rec).catch(() => null);
+  if (job)
+    throw new AgentError(
+      `agent ${rec.id}: its turn ended, but a background job it started is still running (${job.command}, ${job.minutes} min). Restart now ends the job.`,
+      { status: 409, code: "job_running", job },
+    );
+}
+
 /** 0.4.48: agents.restart_wait_minutes, in ms (its default if unreadable). */
-function restartWaitOf(d: AgentsResolved): number {
+export function restartWaitOf(d: AgentsResolved): number {
   try {
     return d.agentsConfig().restartWaitMs;
   } catch {
@@ -7049,6 +8062,11 @@ export async function restartAgent(
      * first (job_running) rather than waited for; Restart now ends it.
      */
     askIfJob?: boolean;
+    /**
+     * Issue 1407: a job found once its turn has ended stops the wait
+     * (job_running, with what it runs), never waited out silently.
+     */
+    jobStops?: boolean;
   } = {},
 ): Promise<Resumed> {
   const where = "agents restart";
@@ -7085,6 +8103,7 @@ export async function restartAgent(
           opts.maxMs ?? restartWaitOf(d),
           "not restarted",
         );
+      if (opts.jobStops) await jobStopsWait(d, agentRecord(d, id, ws));
       await new Promise((r) => setTimeout(r, opts.pollMs ?? TURN_POLL_MS));
       busy = await agentBusy(d, agentRecord(d, id, ws));
     }
@@ -8158,8 +9177,13 @@ async function removeRecords(
       const s = sessionOf(sessions, rec);
       revokeAgentTokens(d.stateDir(), rec.id);
       if (c && s?.exited) await c.forget(s.ref.id).catch(() => undefined);
-      if (removeRecord(d.stateDir(), rec.id))
-        out.push({ agent: rec.id, workspace: rec.workspace });
+      removeSessionTmp(rec.sessionTmp, d.sessionTmpBase); // issue 1325
+      d.forgetSandbox(rec.id); // issue 1328: its sandbox setting goes too
+      const moved = removeRecord(d.stateDir(), rec.id);
+      await d
+        .hubAgentUnbind(rec.id)
+        .catch((e) => noteHubUnbindFailed(d.stateDir(), rec.id, e));
+      if (moved) out.push({ agent: rec.id, workspace: rec.workspace });
     }
     purgeRemoved(d.stateDir());
     return out;
@@ -8222,7 +9246,12 @@ export async function pruneStopped(
   });
   for (const r of old) {
     revokeAgentTokens(d.stateDir(), r.id);
+    removeSessionTmp(r.sessionTmp, d.sessionTmpBase); // issue 1325
+    d.forgetSandbox(r.id); // issue 1328
     removeRecord(d.stateDir(), r.id);
+    await d
+      .hubAgentUnbind(r.id)
+      .catch((e) => noteHubUnbindFailed(d.stateDir(), r.id, e));
   }
   purgeRemoved(d.stateDir(), 0, now);
   return old.map((r) => r.id);
@@ -8668,6 +9697,26 @@ export function heldNotAtPrompt(id: string): boolean {
 }
 
 /**
+ * Issue 1311: agents whose last look found their person's unsent draft on
+ * the input line: what Den would type waits for it.
+ */
+const draftHeld = new Set<string>();
+
+/** Issue 1311: whether agent `id`'s text waits for its person's draft. */
+export function heldForDraft(id: string): boolean {
+  return draftHeld.has(id);
+}
+
+/**
+ * Issue 1311: how many texts Den holds for agent `id` while its person's
+ * draft is on the line (typeIntoAgent's queue; Hub's own queue counts
+ * apart). 0 when no draft holds it.
+ */
+export function draftWaiting(id: string): number {
+  return draftHeld.has(id) ? (typingQueued.get(id) ?? 0) : 0;
+}
+
+/**
  * Send an agent its first instruction once it is ready (AG-10.1): it has
  * printed something and then nothing for READY_QUIET_MS (a TUI drawn and
  * waiting), or READY_MAX_MS passed. Typed into its session over the host's
@@ -8690,6 +9739,11 @@ export async function sendFirstInstruction(
     onDialog?: () => void;
     /** Issue 664: called when it wasn't at its input prompt (text held). */
     onNotAtPrompt?: () => void;
+    /**
+     * Issue 1311: asked just before the text is typed; true (its person
+     * has an unsent draft on the line) holds it: nothing typed, false.
+     */
+    held?: () => boolean;
   } = {},
 ): Promise<boolean> {
   const quiet = o.quietMs ?? READY_QUIET_MS;
@@ -8732,6 +9786,8 @@ export async function sendFirstInstruction(
       o.onNotAtPrompt?.();
       return false;
     }
+    // Issue 1311: never into a prompt that holds its person's draft.
+    if (o.held?.()) return false;
     const soft = softNewlineSeq(getRuntime(runtime)?.catalog);
     const b = instructionBytes(text, said, soft);
     c.write(sessionId, Buffer.from(b.body, "utf-8"));
@@ -8878,21 +9934,43 @@ async function inputState(
     if (!c) return "stopped";
     let live = false;
     let screen: TypingCheck = "not_at_prompt";
+    let out = "";
+    let sid = rec.session.id;
+    let readAt = 0;
     try {
       const s = sessionOf(await c.list(), rec);
       live = Boolean(s && !s.exited);
+      if (s) sid = s.ref.id;
       // A dialog waiting for the person: not at its prompt, whatever its
       // transcript or quiet output says.
-      if (live && s)
-        screen = agentScreenCheck(
-          rec.runtime,
-          (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8"),
-        );
+      if (live && s) {
+        readAt = Date.now();
+        out = (await c.scrollback(s.ref.id, 64 * 1024)).toString("utf-8");
+        screen = agentScreenCheck(rec.runtime, out);
+      }
     } finally {
       c.close();
     }
     if (o.promptCheck !== false) notAtPrompt.delete(id);
-    if (!live) return "stopped";
+    if (!live) {
+      // Issue 1311: a draft dies with its session.
+      clearDraft(sid);
+      draftHeld.delete(id);
+      return "stopped";
+    }
+    // Issue 1311: its person's unsent draft on the line holds what Den
+    // types, until it is sent or cleared (an empty input line on screen
+    // clears it too). Not for the restart waits (promptCheck false).
+    if (o.promptCheck !== false) {
+      // An empty line read before the draft (or its echo) can't clear it.
+      if (draftPending(sid) && inputLineEmpty(out, getRuntime(rec.runtime)))
+        clearDraftSeenEmpty(sid, readAt);
+      if (draftPending(sid)) {
+        draftHeld.add(id);
+        return "busy";
+      }
+      draftHeld.delete(id);
+    }
     if (screen === "dialog") return "busy";
     if (waiting.has(id)) return "busy";
     // Issue 732: its turn alone. A background shell it left running (a
@@ -9178,35 +10256,60 @@ export function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
+  opts?: { onDraft?: "wait" | "refuse" },
 ): Promise<boolean>;
 /**
  * Issue 629: with `ready`, it is asked once this text's turn in the queue
  * comes (what was typed just ahead may have started a turn); "not-ready"
  * when it says no, and nothing is typed.
+ *
+ * Issue 1311: while its person has an unsent draft on the input line,
+ * nothing is typed. `onDraft` "wait" (the default): it waits, in order,
+ * until the draft is sent or cleared (the agent stopping ends the wait:
+ * false). "refuse": false at once, for a caller that keeps its own queue.
  */
 export function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-  opts: { ready: () => Promise<boolean> },
+  opts: { ready: () => Promise<boolean>; onDraft?: "wait" | "refuse" },
 ): Promise<boolean | "not-ready">;
 export async function typeIntoAgent(
   d: AgentsResolved,
   id: string,
   text: string,
-  opts?: { ready: () => Promise<boolean> },
+  opts?: { ready?: () => Promise<boolean>; onDraft?: "wait" | "refuse" },
 ): Promise<boolean | "not-ready"> {
   // Everything Den types into one agent (Hub comments, the tools note)
   // goes one at a time: two texts at once would land mixed in the pane.
   const before = typing.get(id) ?? Promise.resolve();
+  typingQueued.set(id, (typingQueued.get(id) ?? 0) + 1);
   const mine = before.then(async (): Promise<boolean | "not-ready"> => {
-    if (opts && !(await opts.ready())) return "not-ready";
-    const rec = readRecord(d.stateDir(), id);
-    if (!rec) return false;
-    return sendFirstInstruction(d, rec.session.id, rec.runtime, text, {
-      quietMs: 1500,
-      maxMs: 10_000,
-    });
+    for (;;) {
+      if (opts?.ready && !(await opts.ready())) return "not-ready";
+      const rec = readRecord(d.stateDir(), id);
+      if (!rec) return false;
+      const sid = rec.session.id;
+      if (draftPending(sid)) {
+        draftHeld.add(id);
+        if (opts?.onDraft === "refuse") return false;
+        if (!(await draftCleared(d, rec))) return false;
+        continue;
+      }
+      let heldByDraft = false;
+      const sent = await sendFirstInstruction(d, sid, rec.runtime, text, {
+        quietMs: 1500,
+        maxMs: 10_000,
+        held: () => (heldByDraft = draftPending(sid)),
+      });
+      if (!heldByDraft) {
+        if (sent) draftHeld.delete(id);
+        return sent;
+      }
+      // A draft began while it waited for quiet: as above.
+      draftHeld.add(id);
+      if (opts?.onDraft === "refuse") return false;
+    }
   });
   const done = mine.then(
     () => undefined,
@@ -9214,11 +10317,60 @@ export async function typeIntoAgent(
   );
   typing.set(id, done);
   void done.then(() => {
+    const n = (typingQueued.get(id) ?? 1) - 1;
+    if (n > 0) typingQueued.set(id, n);
+    else typingQueued.delete(id);
     if (typing.get(id) === done) typing.delete(id);
   });
   return mine;
 }
 const typing = new Map<string, Promise<void>>();
+/** Issue 1311: texts in each agent's typing queue (draftWaiting). */
+const typingQueued = new Map<string, number>();
+
+/** Issue 1311: how often a held text looks again for its draft's end. */
+const DRAFT_LOOK_MS = 500;
+/** Issue 1311: the same, once a draft has held it for a minute. */
+const DRAFT_LOOK_SLOW_MS = 2000;
+
+/**
+ * Issue 1311: waits until agent `rec`'s person's draft is sent or cleared
+ * (by their keys, or an empty input line on its screen): true. False when
+ * its session ends first (the draft dies with it). Never throws.
+ */
+async function draftCleared(
+  d: AgentsResolved,
+  rec: AgentRecord,
+): Promise<boolean> {
+  const sid = rec.session.id;
+  const began = Date.now();
+  for (;;) {
+    if (!draftPending(sid)) return true;
+    try {
+      const c = await d.connectExisting();
+      if (!c) return (clearDraft(sid), false);
+      try {
+        const s = (await c.list()).find((x) => x.ref.id === sid);
+        if (!s || s.exited) return (clearDraft(sid), false);
+        const readAt = Date.now();
+        const out = (await c.scrollback(sid, 64 * 1024)).toString("utf-8");
+        if (
+          inputLineEmpty(out, getRuntime(rec.runtime)) &&
+          clearDraftSeenEmpty(sid, readAt)
+        )
+          return true;
+      } finally {
+        c.close();
+      }
+    } catch {
+      /* the host didn't answer: look again */
+    }
+    // A draft left a while: look less often (each look reads its screen).
+    const wait =
+      Date.now() - began > 60_000 ? DRAFT_LOOK_SLOW_MS : DRAFT_LOOK_MS;
+    await new Promise((r) => setTimeout(r, wait));
+  }
+}
 
 /** A plain session started from the page (AG-10.1 "Plain session"). */
 export interface PlainStarted {

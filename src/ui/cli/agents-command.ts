@@ -67,12 +67,17 @@ import {
   legacyAgentIds,
 } from "../../shared/agents/sandbox-rollout.js";
 import {
+  plainText,
+  readSandboxNotes,
+} from "../../shared/agents/sandbox-set.js";
+import {
   gatherApiOnly,
   readApiOnlyAudit,
   type ApiOnlyRules,
 } from "../../shared/agents/api-only.js";
 import * as fs from "fs";
 import * as path from "path";
+import { realPath, SESSION_TMP_RE } from "../../shared/agents/sandbox.js";
 import { readAgentsConfig } from "../../shared/den-config.js";
 import {
   listUploads,
@@ -2751,6 +2756,56 @@ export interface SandboxReport {
   outside: { id: string; project: string; reason: string }[];
   /** The rollout: agents from before the sandbox, not turned on yet. */
   fromBefore: number;
+  /** Issue 1325: running agents' own temp folders (their TMPDIR). */
+  tmp?: { id: string; dir: string }[];
+  /** Issue 1325: session temp folders no agent's record names (left over). */
+  leftoverTmp?: string[];
+  /**
+   * Issue 1328: agents whose own sandbox is off (agents.<id>.sandbox), with
+   * when, why and who asked when agent_sandbox_set turned it off.
+   */
+  turnedOff?: { id: string; at?: string; why?: string; by?: string }[];
+  /**
+   * Issue 1391: a personal install with the sandbox off for all agents (its
+   * default): said once, as information, with no warning to turn it on.
+   */
+  personalOff?: boolean;
+  /** Issue 1391: the install's mode, said once (install_mode). */
+  mode?: "personal" | "strict";
+  /** Issue 1391: which file set it. */
+  modeFrom?: "den.yml" | "user.yml" | "default";
+}
+
+/**
+ * Issue 1325: den-XXXXXX folders in `base` of this user's that no agent's
+ * record names: a session's that outlived it.
+ */
+export function leftoverSessionTmps(
+  named: string[],
+  base: string = "/tmp",
+): string[] {
+  const keep = new Set(named.map((x) => realPath(x)));
+  const root = realPath(base);
+  const uid = process.getuid?.();
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => SESSION_TMP_RE.test(n))
+    .map((n) => path.join(root, n))
+    .filter((p) => {
+      try {
+        const st = fs.lstatSync(p);
+        return st.isDirectory() && (uid === undefined || st.uid === uid);
+      } catch {
+        return false;
+      }
+    })
+    .filter((p) => !keep.has(p))
+    .sort();
 }
 
 /** Issue 1072: the widening keys Den no longer reads from the org config. */
@@ -2814,8 +2869,45 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
     listRecords(d.stateDir()),
     d.agentsConfig(),
   );
+  const recs = listRecords(d.stateDir());
+  const tmp = recs
+    .filter((r) => r.session && !r.stoppedAt && r.sessionTmp)
+    .map((r) => ({ id: r.id, dir: r.sessionTmp! }));
+  const leftoverTmp = leftoverSessionTmps(
+    recs.flatMap((r) => (r.sessionTmp ? [r.sessionTmp] : [])),
+    d.sessionTmpBase,
+  );
+  // Issue 1328: every agent whose own sandbox is off, and the note.
+  let own: Record<string, { sandbox?: boolean }> = {};
+  try {
+    own = d.agentsConfig().agents ?? {};
+  } catch {
+    /* a bad config is its own row */
+  }
+  const notes = readSandboxNotes(d.stateDir());
+  let personalOff = false;
+  let mode: SandboxReport["mode"];
+  let modeFrom: SandboxReport["modeFrom"];
+  try {
+    const c = d.agentsConfig();
+    mode = c.mode;
+    modeFrom = c.modeFrom;
+    personalOff = c.mode === "personal" && c.sandbox === false;
+  } catch {
+    /* a bad config is its own row */
+  }
+  const turnedOff = Object.entries(own)
+    .filter(([, a]) => a.sandbox === false)
+    .map(([id]) => ({ id, ...(notes[id] ?? {}) }))
+    .sort((a, b) => a.id.localeCompare(b.id));
   return {
+    ...(turnedOff.length ? { turnedOff } : {}),
+    ...(personalOff ? { personalOff } : {}),
+    ...(mode ? { mode } : {}),
+    ...(modeFrom ? { modeFrom } : {}),
     fromBefore: fromBefore.length,
+    ...(tmp.length ? { tmp } : {}),
+    ...(leftoverTmp.length ? { leftoverTmp } : {}),
     here: {
       applied: probe.applied,
       ...(probe.tool ? { tool: probe.tool } : {}),
@@ -2827,6 +2919,40 @@ export function sandboxReport(d: AgentsResolved): SandboxReport {
 
 export function sandboxLines(r: SandboxReport): string[] {
   const out = ["Agent sandbox (agents can't write Den's state)"];
+  // Issue 1391: off by default on a personal install, so information, said
+  // once: nothing to turn on, and no agent outside it is a warning.
+  // Vision's ruling (issue 1391): after the upgrade, one info row.
+  if (r.mode === "personal" && r.modeFrom === "default")
+    out.push(
+      "  ℹ Install mode: personal (default). To switch, set install_mode: strict in den.yml (a distribution's installs) or choose it in Settings",
+    );
+  if (r.personalOff) {
+    out.push(
+      "  ℹ off: this is a personal install (install_mode: personal), so agents can use Docker, sockets and your own tools. On a shared machine, or a company's install, set install_mode: strict (or agents.sandbox: on) in config/local/user.yml",
+    );
+  } else {
+    if (r.mode === "strict")
+      out.push(
+        `  ℹ a strict install (install_mode: strict${r.modeFrom === "den.yml" ? ", set in den.yml by the distribution" : r.modeFrom === "user.yml" ? ", set in config/local/user.yml" : ""}): the sandbox is on, and agents' held writes follow the approval policy`,
+      );
+    else if (r.mode === "personal")
+      out.push(
+        "  ℹ a personal install, with the sandbox set on in config/local/user.yml",
+      );
+    sandboxOnLines(r, out);
+  }
+  // Issue 1325: where each session's own sockets and temp files go.
+  for (const t of r.tmp ?? [])
+    out.push(`  ✓ ${t.id}'s temp folder (TMPDIR, its own sockets): ${t.dir}`);
+  for (const dir of r.leftoverTmp ?? [])
+    out.push(
+      `  ⚠ ${dir} is an agent's temp folder no agent uses now: Den didn't see its agent's run end; it is safe to remove`,
+    );
+  return out;
+}
+
+/** The sandbox's lines where it is on by default (strict, or set on). */
+function sandboxOnLines(r: SandboxReport, out: string[]): void {
   // On by default: an agent outside it is a warning, never information.
   out.push(
     r.here.applied
@@ -2837,10 +2963,21 @@ export function sandboxLines(r: SandboxReport): string[] {
     out.push(
       `  ⚠ Sandbox is off for ${agentsCount(r.fromBefore)} (started before it): Allow Turn on in the bell, or set agents.sandbox: on in config/local/user.yml`,
     );
+  // Issue 1328: a person's choice, said as such (not a ⚠ to ask about).
+  // The notes file can be edited by hand: no control or format characters.
+  for (const x of r.turnedOff ?? []) {
+    const id = plainText(x.id);
+    const by = plainText(x.by ?? "") || "a person";
+    const why = plainText(x.why ?? "") || "no reason noted";
+    out.push(
+      x.at
+        ? `  ℹ ${id}: sandbox off since ${new Date(x.at).toLocaleString()}, asked by ${by}: ${why}`
+        : `  ℹ ${id}: sandbox off (set in config/local/user.yml, no reason noted)`,
+    );
+  }
   if (!r.outside.length) out.push("  ✓ every running agent is inside it");
   for (const x of r.outside)
     out.push(`  ⚠ ${x.id} (${x.project}) runs outside it: ${x.reason}`);
-  return out;
 }
 
 /** D65 v2: doctor's lines on which repo each agent works on. */

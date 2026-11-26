@@ -328,6 +328,34 @@ describe("the map (tests/affected-map.json)", () => {
     expect(s.allBecause).toEqual(["src/ui/server/request-guard.ts"]);
     expect(Object.keys(s.files)).toHaveLength(TESTS.length);
   });
+
+  it("a pull request touching only a live check runs every live check's own test", () => {
+    const s = select({
+      changed: ["gate/252.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    const own = TESTS.filter((t) =>
+      t.startsWith("tests/unit/test-infra/gate-"),
+    );
+    expect(own).toContain("tests/unit/test-infra/gate-252-runner.test.ts");
+    expect(own).toContain("tests/unit/test-infra/gate-expect-shape.test.ts");
+    for (const t of own) expect([t, files.includes(t)]).toEqual([t, true]);
+  });
+
+  it("a live check's change also runs a test elsewhere that loads it by path", () => {
+    const s = select({
+      changed: ["gate/750.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain("tests/unit/gates/gate-750-hub-leg.test.ts");
+    expect(files).toContain("tests/unit/gates/gate-750-real-read.test.ts");
+  });
 });
 
 describe("tests that start Den as a process (issue 708)", () => {
@@ -345,6 +373,22 @@ describe("tests that start Den as a process (issue 708)", () => {
     "tests/unit/shared/hub-delivery-held-ack.test.ts",
     "tests/unit/shared/hub-delivery-loop.test.ts",
   ];
+
+  it("issue 728: a test declared in subjects runs on its subject, though it starts a scaffolded distribution's bin the pattern can't see", () => {
+    const s = select({
+      changed: ["src/ui/cli/doctor-command.ts"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(s.all).toBe(false);
+    expect(Object.keys(s.files)).toEqual(
+      expect.arrayContaining([
+        "tests/unit/server/no-secrets-store.integration.test.ts",
+        "tests/unit/cli/repo-add-no-run.integration.test.ts",
+      ]),
+    );
+  });
 
   it("a change to its subject runs it, with no import edge (704's change)", () => {
     const s = select({
@@ -874,7 +918,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
   it("shell.js, ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
     for (const f of [
       "src/ui/server/public/shell.js",
-      "src/ui/server/ui-language.ts",
+      "src/shared/ui-language.ts",
       "src/ui/server/ui-assets.ts",
       "tests/unit/server/helpers/en-catalog.ts",
       "tests/unit/server/helpers/kit-shell.ts",

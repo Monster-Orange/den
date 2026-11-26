@@ -123,7 +123,7 @@ describe("clauses 1-3: each runtime's fixtures are Working, Blocked and Idle", (
       const d = detectScreen(f.runtime, f.screen)!;
       // A rule decides it: never the no-match fallback.
       expect([d.state, d.skip, d.fallback]).toEqual([f.expect, false, false]);
-      expect(agentStatus(undefined, d)).toBe(f.expect);
+      expect(agentStatus({ screen: d })).toBe(f.expect);
     },
   );
 
@@ -137,9 +137,9 @@ describe("clauses 1-3: each runtime's fixtures are Working, Blocked and Idle", (
 
   it("with Claude's hooks on, hook status wins over the screen", () => {
     const blocked = detect(RULE_SETS.claude, recorded("3-tool-dialog.raw"));
-    expect(agentStatus(undefined, blocked)).toBe("blocked");
-    expect(agentStatus("working", blocked)).toBe("working");
-    expect(agentStatus("idle", blocked)).toBe("idle");
+    expect(agentStatus({ screen: blocked })).toBe("blocked");
+    expect(agentStatus({ hook: "working", screen: blocked })).toBe("working");
+    expect(agentStatus({ hook: "idle", screen: blocked })).toBe("idle");
   });
 });
 
@@ -261,7 +261,7 @@ describe("clause 5: skip_state_update", () => {
     );
     const d = detect(RULE_SETS.codex, viewer);
     expect([d.rule, d.skip]).toEqual(["transcript_viewer", true]);
-    expect(agentStatus(undefined, d)).toBeUndefined();
+    expect(agentStatus({ screen: d })).toBeUndefined();
   });
 });
 
@@ -269,7 +269,7 @@ describe("clause 6: no match keeps today's behaviour; nothing working is Blocked
   it("a screen no rule matches is a fallback: the caller keeps the bell and output stopped", () => {
     const d = detect(RULE_SETS.gemini, scr("just some output\n"));
     expect([d.state, d.rule, d.fallback]).toEqual(["unknown", null, true]);
-    expect(agentStatus(undefined, d)).toBeUndefined();
+    expect(agentStatus({ screen: d })).toBeUndefined();
   });
 
   it("no working or idle fixture is classed Blocked, by any rule set", () => {

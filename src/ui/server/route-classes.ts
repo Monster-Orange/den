@@ -241,6 +241,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "D44: the running agents whose MCP servers are out of date (ids and projects)",
   ),
   R(
+    "/api/agents/restart-status",
+    "issue 1407: each agent of a restart for its tools, live (state, job command redacted, why one failed, redacted); a signed-in person's only",
+  ),
+  R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
     "D32: one helper's transcript, tool calls summarized, read-only (no stop or steer)",
   ),
@@ -436,7 +440,17 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST"],
     "/api/coach/dismiss",
-    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
+    "issue 52: Dismiss a Coach finding, a person's (a reason kept when given)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/undismiss",
+    "issue 52: Undo a Coach finding's dismissal, a person's",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/apply",
+    "issue 110: Apply a Coach finding's change, a person's: it asks for a held write, which waits for a person's Allow",
   ),
   M(
     ["POST"],
@@ -506,6 +520,11 @@ export const ROUTES: readonly RouteEntry[] = [
 
   // ── Mutations (checked by method) ───────────────────────────────────────
   M(["POST"], "/api/activity", "an agent's refused-call report"),
+  M(
+    ["POST"],
+    "/api/audit/cli",
+    "issue 1369: a CLI's audit entry, recorded as its credential says",
+  ),
   M(["POST"], "/api/web/restart", "restarts this server"),
   M(["PUT"], "/api/release/config"),
   M(["POST", "DELETE"], "/api/release/deploy", "starts or dismisses a deploy"),
@@ -559,6 +578,8 @@ export const ROUTES: readonly RouteEntry[] = [
   M(["POST"], "/api/sudo-password/forget", "forgets the admin password (R8)"),
   M(["POST"], "/api/scope"),
   M(["POST"], "/api/settings"),
+  // Issue 1371 Part 2: the person's Undo of a setting an agent changed.
+  M(["POST"], "/api/settings/undo", "puts a setting back (user.yml)"),
   // MODE-5: Check and save this install's address (a person's only).
   M(["POST"], "/api/web-url"),
   // Issue 666: Make <alias> this Den's address (the owner's only).
@@ -671,6 +692,16 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/workspaces/:ws/event-feeds",
     "issue 459: a project's app event feeds and their state, names, agents and urls only",
+  ),
+  M(
+    ["POST"],
+    "/api/workspaces/:ws/event-feeds",
+    "issue 1480: a person adds an app event feed (its bearer a secrets.refs name); a person's only (an agent asks with project_event_feed_add)",
+  ),
+  M(
+    ["DELETE"],
+    "/api/workspaces/:ws/event-feeds/:name",
+    "issue 1480: a person removes an app event feed; a person's only (an agent asks with project_event_feed_remove)",
   ),
   M(
     ["POST", "DELETE"],
@@ -828,6 +859,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 625: a person turns a test box on or off; off, it gets no slot and no contact",
   ),
   R(
+    "/api/gate-slots/runner-entries",
+    "Issue 642: the CI runner entries (a repo's jobs on a test box); a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries",
+    "Issue 642: a person adds or replaces a runner entry; an agent asks with gate_runner_entry_set",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries/remove",
+    "Issue 642: a person removes a runner entry",
+  ),
+  R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),
@@ -925,6 +970,10 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/hub/link-suggestions",
     "#68: link the ticked projects to Hub's suggestions in one confirm; a person's only",
+  ),
+  R(
+    "/api/hub/groups",
+    "Issue 750: this install's groups as Hub serves them (read from Hub, kept in memory only), for the agents page's By group view",
   ),
   R(
     "/api/hub/connect-review",
@@ -1235,6 +1284,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "agent-routes.ts:EVENT_FEED_PATH": ["/api/workspaces/:ws/event-feeds/:name"],
   "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
   "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
