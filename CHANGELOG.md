@@ -6,6 +6,7 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.91] - unreleased
 
+- An install reached through a symlinked folder (its `node_modules` a link to another folder) no longer restarts its terminal host, ending open terminals, at every Den start. Den now compares the terminal module the host loaded and the one installed by the file they resolve to, not by how the path is spelled. A module that's gone or replaced still restarts the host.
 - A restart from the update pill's Reload is named in the audit log as the update pill's, as Restart Den in the menu and in Settings already are. It used to say only "the page".
 - When the bell's Allow row leaves and comes back while you're on its Review button, the keyboard goes back to Review even if you switched to another window meanwhile. Coming back to the window isn't moving on.
 - An agent removed while Den is making its Hub token now gets 403 `agent_removed`, and nothing reaches Hub for it. Den checks the agent's record at the start of the call and again after the token, and refuses if it can't read it. (issue 1222)
