@@ -1,3 +1,4 @@
+import { testInstallRestartEnv } from "../../shared/test-install-launch.js";
 import { browserOpenRefusal } from "../../shared/browser-open.js";
 import {
   ownerGithubLine,
@@ -631,6 +632,13 @@ export function webServerEnv(
   return { ...base, PORT: String(port), ...secretsProcessEnv(cfg, base) };
 }
 
+export function webRestartEnv(
+  port: number,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...webServerEnv(port, base), ...testInstallRestartEnv() };
+}
+
 function startDenWebServer(options: WebCommandOptions): StartedServer {
   const root = getDistRoot();
   const entrypoint = resolveServerEntrypoint();
@@ -731,7 +739,7 @@ export function spawnDetachedWebRestart(port: number): number | undefined {
       {
         cwd: root,
         detached: true,
-        env: webServerEnv(port),
+        env: webRestartEnv(port),
         stdio: ["ignore", logFd, logFd],
       },
     );
