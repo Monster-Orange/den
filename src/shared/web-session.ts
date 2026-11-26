@@ -227,6 +227,7 @@ export interface WebAuthConfig {
    * the wait at once.
    */
   startWaitSeconds: number;
+  toolsProbeSeconds: number;
   /**
    * Issue 819: `web.pair_requests_per_minute` (user.yml over the
    * distribution's): how many new-device requests one client address may
@@ -557,6 +558,7 @@ export function readWebAuthConfig(
     );
   const readyProbe = waitSeconds(user, team, "ready_probe_seconds");
   const startWait = waitSeconds(user, team, "start_wait_seconds");
+  const toolsProbe = waitSeconds(user, team, "tools_probe_seconds");
   const pairLimits = Object.fromEntries(
     Object.entries(PAIR_LIMITS).map(([k, l]) => {
       const v = user[k] ?? team[k];
@@ -693,6 +695,7 @@ export function readWebAuthConfig(
     ownerNameTimeoutSeconds: nameWait ?? 10,
     readyProbeSeconds: readyProbe ?? WEB_READY_PROBE_SECONDS,
     startWaitSeconds: startWait ?? WEB_START_WAIT_SECONDS,
+    toolsProbeSeconds: toolsProbe ?? WEB_TOOLS_PROBE_SECONDS,
     pairRequestsPerMinute: pairLimits.pair_requests_per_minute,
     approveAttempts: pairLimits.approve_attempts,
     approveWindowSeconds: pairLimits.approve_window_seconds,
@@ -720,6 +723,7 @@ export const PAIR_LIMITS = {
 export const WEB_READY_PROBE_SECONDS = 10;
 /** den#143: `web.start_wait_seconds`'s default. */
 export const WEB_START_WAIT_SECONDS = 120;
+export const WEB_TOOLS_PROBE_SECONDS = 30;
 /** den#143: the readiness waits' range, in seconds. */
 export const WEB_WAIT_RANGE = { min: 1, max: 3600 } as const;
 
@@ -730,7 +734,7 @@ export const WEB_WAIT_RANGE = { min: 1, max: 3600 } as const;
 function waitSeconds(
   user: Record<string, unknown>,
   team: Record<string, unknown>,
-  key: "ready_probe_seconds" | "start_wait_seconds",
+  key: "ready_probe_seconds" | "start_wait_seconds" | "tools_probe_seconds",
 ): number | undefined {
   const v = user[key] ?? team[key];
   if (v === undefined || v === null) return undefined;
@@ -904,8 +908,8 @@ export class SessionStoreUnreadable extends Error {
 
 /**
  * Issue 1299 (shared with issue 1300): held while any process writes the
- * sessions file; it holds the holder's pid. A lock whose pid no longer
- * runs is taken over.
+ * sessions file; it holds the holder's pid, then (issue 1582) a random
+ * nonce for that take. A lock whose pid no longer runs is taken over.
  */
 export const WEB_SESSIONS_LOCK = "web-sessions.lock";
 
@@ -940,15 +944,28 @@ function pidRuns(pid: number): boolean {
   }
 }
 
+/** Issue 1582: the holder's pid, the lock's first word (an older lock has no nonce). */
+function lockPid(text: string): number {
+  return Number(text.trim().split(/\s+/)[0]) || 0;
+}
+
 /**
  * Issue 1299 review: unlinks a stale lock only when it is still the file
  * `seen` described (same inode and modified time): two writers that both
  * found it stale never delete the lock the first of them took since.
+ * Issue 1582: and the same text (`seenText`, the pid and its nonce): a
+ * lock taken over within one time tick can keep the inode and mtime.
  */
-export function lockUnlinkIfUnchanged(file: string, seen: fs.Stats): boolean {
+export function lockUnlinkIfUnchanged(
+  file: string,
+  seen: fs.Stats,
+  seenText?: string,
+): boolean {
   try {
     const now = fs.statSync(file);
     if (now.ino !== seen.ino || now.mtimeMs !== seen.mtimeMs) return false;
+    if (seenText !== undefined && fs.readFileSync(file, "utf-8") !== seenText)
+      return false;
     fs.unlinkSync(file);
     return true;
   } catch {
@@ -964,6 +981,7 @@ function lockHolder(file: string): {
   free: boolean;
   holder: number;
   seen?: fs.Stats;
+  seenText?: string;
 } {
   let seen: fs.Stats;
   try {
@@ -972,8 +990,10 @@ function lockHolder(file: string): {
     return { free: true, holder: 0 };
   }
   let holder = 0;
+  let seenText = "";
   try {
-    holder = Number(fs.readFileSync(file, "utf-8").trim()) || 0;
+    seenText = fs.readFileSync(file, "utf-8");
+    holder = lockPid(seenText);
   } catch {
     return { free: true, holder: 0 };
   }
@@ -982,7 +1002,7 @@ function lockHolder(file: string): {
   // older than that takes (one that died there).
   const young =
     holder === 0 && Date.now() - seen.mtimeMs <= LOCK_UNREAD_STALE_MS;
-  return { free: !live && !young, holder, seen };
+  return { free: !live && !young, holder, seen, seenText };
 }
 
 /** Blocks this thread `ms` (the CLI's writer waiting a few ms for the lock). */
@@ -1040,14 +1060,13 @@ export class WebSessionStore {
     return webSessionsPath(this.stateDir());
   }
 
-  /** The file's key for the cache; null when there is none (or any error). */
-  private statKey(): string | null {
-    try {
-      const s = fs.statSync(this.file());
-      return `${s.ino}:${s.size}:${s.mtimeMs}`;
-    } catch {
-      return null;
-    }
+  /**
+   * Issue 1582: the cache's key, a hash of the file's text. Its inode,
+   * size and mtime don't prove it unchanged: rewritten within one time
+   * tick, it can keep all three, and an ended session would stay.
+   */
+  private static textKey(text: string): string {
+    return createHash("sha256").update(text).digest("hex");
   }
 
   /** Issue 1299: a read that failed: no sessions now, and writes wait. */
@@ -1064,17 +1083,14 @@ export class WebSessionStore {
   private load(): StoreFile {
     // Issue 1299: only a missing file is a fresh store; any other stat
     // error is a read that failed.
-    let key: string;
     try {
-      const st = fs.statSync(this.file());
-      key = `${st.ino}:${st.size}:${st.mtimeMs}`;
+      fs.statSync(this.file());
     } catch (e) {
       const code = String((e as NodeJS.ErrnoException).code ?? "stat failed");
       if (code !== "ENOENT") return this.failedRead(code);
       this.unreadable = null;
       return empty();
     }
-    if (this.cache?.key === key) return this.cache.data;
     // Issue 1299: a read that fails is never cached, and every write is
     // refused until a read works: a write now would save over every
     // session the file holds.
@@ -1087,6 +1103,10 @@ export class WebSessionStore {
       );
     }
     this.unreadable = null;
+    // Issue 1582: the same text is the same data (read, it's parsed only
+    // when it changed).
+    const key = WebSessionStore.textKey(text);
+    if (this.cache?.key === key) return this.cache.data;
     let raw: Partial<StoreFile> | null = null;
     try {
       const parsed: unknown = JSON.parse(text);
@@ -1147,9 +1167,9 @@ export class WebSessionStore {
     const dir = this.stateDir();
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     const file = this.file();
-    writeFileAtomic(file, `${JSON.stringify(data)}\n`, { mode: 0o600 });
-    const key = this.statKey();
-    this.cache = key ? { key, data } : null;
+    const text = `${JSON.stringify(data)}\n`;
+    writeFileAtomic(file, text, { mode: 0o600 });
+    this.cache = { key: WebSessionStore.textKey(text), data };
   }
 
   /**
@@ -1237,15 +1257,17 @@ export class WebSessionStore {
     for (;;) {
       try {
         const fd = fs.openSync(file, "wx", 0o600);
+        // Issue 1582: this take's own text, so its release (and a writer
+        // taking a stale lock over) tells it from any other take.
+        const mine = `${process.pid} ${randomBytes(8).toString("hex")}\n`;
         try {
-          fs.writeSync(fd, `${process.pid}\n`);
+          fs.writeSync(fd, mine);
         } finally {
           fs.closeSync(fd);
         }
         return () => {
           try {
-            if (Number(fs.readFileSync(file, "utf-8").trim()) === process.pid)
-              fs.unlinkSync(file);
+            if (fs.readFileSync(file, "utf-8") === mine) fs.unlinkSync(file);
           } catch {
             /* already gone */
           }
@@ -1262,7 +1284,7 @@ export class WebSessionStore {
       }
       // Left behind: take it over, unless it changed since it was read.
       tookOver = true;
-      if (h.seen) lockUnlinkIfUnchanged(file, h.seen);
+      if (h.seen) lockUnlinkIfUnchanged(file, h.seen, h.seenText);
     }
   }
 

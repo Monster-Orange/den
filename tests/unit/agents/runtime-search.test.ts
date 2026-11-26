@@ -285,6 +285,10 @@ describe("AG-0.2: the version", () => {
       bin,
       `#!/bin/sh\necho x >> "${counter}"\n[ "$1" = "--version" ] && { echo "2.3.4 (Claude Code)"; exit 0; }\nexit 1\n`,
     );
+    // Written a minute ago: a CLI written just now is asked again (issue
+    // 1598, statSettled).
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(bin, old, old);
     expect(await runtimeVersion(bin, ["--version"], {})).toBe("2.3.4");
     expect(await runtimeVersion(bin, ["--version"], {})).toBe("2.3.4");
     expect(fs.readFileSync(counter, "utf-8").trim().split("\n")).toHaveLength(

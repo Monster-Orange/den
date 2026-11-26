@@ -1,6 +1,7 @@
 // Live check for #340: the account an agent runs on is shown by its label, never an email. Picking among
 // accounts happens only under the always-on service with tokens set, so those clauses are not run.
 // Read only.
+import { doctorChecks, readJson } from "./lib/read-json.mjs";
 export const issue = 340;
 export const clauses = [
   "the account an agent runs on is shown on the agent (its label, never an email)",
@@ -20,20 +21,15 @@ export async function setup() {
 
 export async function run(ctx) {
   const l = ctx.cli(["agents", "list", "--json"]);
-  let rows = [];
-  try {
-    rows = JSON.parse(l.out);
-  } catch {
-    rows = [];
-  }
+  const rows = readJson(l, "agents list");
   const labels = (Array.isArray(rows) ? rows : [])
     .filter((a) => a && "signIn" in a)
     .map((a) => ({ agent: a.agent ?? a.id, signIn: a.signIn }));
-  const d = ctx.cli(["doctor"]);
-  const why = String(d.out + d.err)
-    .split("\n")
-    .filter((l2) => /agents accounts set-token/.test(l2))
-    .map((l2) => l2.trim());
+  const d = ctx.cli(["doctor", "--json"]);
+  const checks = doctorChecks(d);
+  const why = checks
+    .filter((c) => /agents accounts set-token/.test(String(c?.detail ?? "")))
+    .map((c) => `${c.id}: ${c.detail}`);
   return {
     code: l.code,
     agents: Array.isArray(rows) ? rows.length : null,

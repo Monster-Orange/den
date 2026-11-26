@@ -142,6 +142,13 @@ export interface HubConfig {
    */
   deliveryAlertMinutes: number;
   /**
+   * hub.delivery_stale_hours (default 6, 0: off; hours, any
+   * number 0 or more): the comment stream open but no delivery for this
+   * long, with comments waiting in Hub's list, and doctor and the bell say
+   * the cursor is stuck.
+   */
+  deliveryStaleHours: number;
+  /**
    * Issue 703 hub.delivery_stream_silence_seconds (default 75, three of
    * Hub's 25 s keep-alives; 0: off; else at least 5): no bytes on the
    * comment stream this long, and Den reopens it.
@@ -194,30 +201,9 @@ export interface HubConfig {
    * `agents.hub_tools_restart` (workspaces.yml) wins over it.
    */
   toolsRestart: boolean;
-  /**
-   * Issue 249 hub.agent_tokens (default true): each agent calls Hub with a
-   * token bound to it on Hub (minted under the install's grant), so Hub
-   * sees it as a verified actor. False: every agent uses the install's.
-   */
   agentTokens: boolean;
-  /**
-   * Issue 249 hub.agent_token_retry_seconds (default 600, at least 5): how
-   * long Den waits to ask again when Hub couldn't give an agent a token.
-   */
   agentTokenRetrySeconds: number;
-  /**
-   * Issue 249 hub.agent_token_revoke_retry_seconds (default 600, at least
-   * 5): how often Den tries again a revoke Hub didn't answer (a removed
-   * agent's token), besides at each start.
-   */
   agentTokenRevokeRetrySeconds: number;
-  /**
-   * Issue 249 hub.agent_token_max_age_days (default 30; 0: never): an
-   * agent's token older than this is replaced at its next Hub call, with
-   * no person act: Den mints the new one and uses it from then on. Den
-   * never revokes the old one: Hub ends it (the new one's first use, or
-   * Hub's grace period).
-   */
   agentTokenMaxAgeDays: number;
   /**
    * Issue 750 hub.groups_cache_seconds (default 30, at least 5): how long
@@ -266,6 +252,7 @@ type RawHub =
       delivery_held_bell_minutes?: unknown;
       delivery_answer_minutes?: unknown;
       delivery_alert_minutes?: unknown;
+      delivery_stale_hours?: unknown;
       delivery_stream_silence_seconds?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
@@ -290,8 +277,6 @@ function rawHub(den: unknown, user: unknown): RawHub {
   return { ...d, ...u };
 }
 
-// Issue 727: in its own module, so `create` can check it before any
-// distribution exists.
 export { hubUrlProblem };
 
 /**
@@ -409,6 +394,15 @@ export function readHubConfig(
     throw new Error(
       "hub.delivery_alert_minutes must be a number, 0 or more (0: off)",
     );
+  const sh = h.delivery_stale_hours;
+  if (
+    sh !== undefined &&
+    sh !== null &&
+    !(typeof sh === "number" && Number.isFinite(sh) && sh >= 0)
+  )
+    throw new Error(
+      "hub.delivery_stale_hours must be a number of hours, 0 or more (0: off)",
+    );
   const sil = h.delivery_stream_silence_seconds;
   if (
     sil !== undefined &&
@@ -503,6 +497,7 @@ export function readHubConfig(
     deliveryHeldBellMinutes: heldBell,
     deliveryAnswerMinutes: answer,
     deliveryAlertMinutes: typeof am === "number" ? am : 15,
+    deliveryStaleHours: typeof sh === "number" ? sh : 6,
     deliveryStreamSilenceSeconds: typeof sil === "number" ? sil : 75,
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
@@ -1800,18 +1795,6 @@ export async function hubRevoke(
   }
 }
 
-/**
- * Issue 249: a token bound to one agent of this install, minted by Hub
- * with the install's own token (the install's one grant covers its
- * agents): POST <url>/connect/agent {agent_id, agent_name}. Hub answers
- * {token, token_id, agent}; an answer for another agent is refused. A Hub
- * without agent tokens answers 404 or 405: a HubCallError ("refused") with
- * that status. A 403 is a HubCallError ("forbidden") whose `code` is Hub's
- * `error` value: agents_not_covered (the install's grant doesn't cover
- * agents) or install_token_required (an agent's token tried to mint). The
- * token never leaves Den's server: the caller keeps it in the server's
- * store.
- */
 export async function hubMintAgentToken(
   url: string,
   installToken: string,
@@ -1844,11 +1827,6 @@ export async function hubMintAgentToken(
   return { token, tokenId };
 }
 
-/**
- * Issue 249: revoke one agent's token with the install's token: POST
- * <url>/connect/revoke {token_id}. The install stays connected. True when
- * Hub revoked it now; false when Hub has no such live token (404).
- */
 export async function hubRevokeAgentToken(
   url: string,
   installToken: string,

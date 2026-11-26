@@ -16,7 +16,7 @@ import {
   catalogPath,
   localizePage,
   uiLanguage,
-} from "../../../src/ui/server/ui-language.js";
+} from "../../../src/shared/ui-language.js";
 import { EN_FALLBACK as TOPBAR_EN } from "../../../src/ui/server/public/topbar.js";
 import { EN_FALLBACK as APPEARANCE_EN } from "../../../src/ui/server/public/appearance.js";
 import { EN_FALLBACK as PICKER_EN } from "../../../src/ui/server/public/workspace-picker.js";
@@ -24,6 +24,7 @@ import {
   DEN_SETTINGS,
   DEN_SETTING_CATEGORIES,
 } from "../../../src/ui/server/public/settings-registry.js";
+import { readSettingsSources } from "./helpers/settings-sources.js";
 
 type Table = Record<string, string>;
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
@@ -322,7 +323,7 @@ describe("the Settings page in every language (0.4.45)", () => {
   // L("key", "English"); each is en's, word for word, so the parity test
   // above holds es and ja to it.
   it("every L(key, English) settings-registry.js draws is en's, word for word", () => {
-    const src = read("settings-registry.js");
+    const src = readSettingsSources();
     const found = [
       ...src.matchAll(/\bL\(\s*"([\w.-]+)",\s*"((?:[^"\\]|\\.)*)"/g),
     ];

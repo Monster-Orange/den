@@ -164,11 +164,6 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   return token ? { url: cfg.url, token } : null;
 }
 
-/**
- * Issue 249: post or take back the reconnect item, from the mark the agent
- * mint left (403 agents_not_covered) for Hub `url`. Whoami's features are
- * not read for it: connect.agents only says Hub can do agent grants.
- */
 async function syncAgentGrant(url: string): Promise<void> {
   try {
     const g = await import("../../shared/hub-agent-grant.js");
@@ -179,7 +174,7 @@ async function syncAgentGrant(url: string): Promise<void> {
       notCovered: g.agentsNotCovered(getStateDir(), url),
     });
   } catch {
-    /* a note that can't be kept never stops deliveries */
+    return;
   }
 }
 
@@ -549,8 +544,21 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       appendJournal(path.join(getStateDir(), "hub", "deliveries.jsonl"), e),
     // Issue 702: doctor reads the path's health from a file.
     onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
-    health0: {
-      lastDeliveryAt: readDeliveryHealth(healthFile())?.lastDeliveryAt ?? null,
+    health0: (() => {
+      const h0 = readDeliveryHealth(healthFile());
+      return {
+        lastDeliveryAt: h0?.lastDeliveryAt ?? null,
+        // A restart keeps how long the cursor has been still.
+        cursorAt: h0?.cursorAt ?? null,
+      };
+    })(),
+    // hub.delivery_stale_hours, read at each check.
+    staleMs: () => {
+      try {
+        return (hub.readHubConfig()?.deliveryStaleHours ?? 6) * 3_600_000;
+      } catch {
+        return 6 * 3_600_000;
+      }
     },
     // Issue 703: hub.delivery_stream_silence_seconds, read at each open.
     silenceMs: () => {
@@ -633,8 +641,6 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
       feedCarries = feedKinds(w.features);
-      // Issue 249: the one reconnect item, when the agent mint said this
-      // install's grant doesn't cover agents.
       void syncAgentGrant(a.url);
       noteWhoami(w);
     } catch {

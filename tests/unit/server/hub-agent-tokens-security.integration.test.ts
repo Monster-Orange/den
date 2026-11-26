@@ -1,25 +1,4 @@
-/**
- * Issue 50, clauses 3 and 4, on the real path: the real web server (its
- * real request checks and Hub proxy), two real agents started through its
- * API (scripted PTYs: nothing really runs), and a fake Hub that mints
- * known test-only token values.
- *
- *   Clause 3: agent A's call through Den's /hub proxy always carries A's
- *   own bound token, never agent B's, whatever A says about B: an
- *   X-Den-* header naming B, B's id in the path or in the query. A caller
- *   that proves no agent (no token, a person's, a bad one) never reaches
- *   Hub through the proxy, and Den's own calls for it carry the install
- *   token, never an agent's.
- *
- *   Clause 4: no Hub token (the install's or any agent's) is anywhere an
- *   agent can see: its environment as spawned, every file under the test's
- *   tree but the server's own token store (its agent-files folder and its
- *   MCP config among them), the CLI's output run as the agent, every
- *   read-only /api answer with an agent's token, and the server's log.
- *   A scan for the known values, as given and in base64.
- *
- * Temp dirs, invented names, test-only token values; the fake Hub only.
- */
+/** A real Den server and a stand-in Hub: an agent's Hub calls carry its own token, and no token reaches anything an agent can read. */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawn } from "child_process";
 import * as fs from "fs";
@@ -50,13 +29,11 @@ const hub = {
   url: "",
   server: null as http.Server | null,
   seen: [] as Seen[],
-  /** Bound token -> the agent Hub bound it to. */
   bound: new Map<string, string>(),
 };
 
 let s: AgentsPageServer;
 let tokenDir = "";
-/** The two agents: id, name, Den actor token, and its PTY's index. */
 const A = { id: "ada", name: "Ada", token: "", pty: -1 };
 const B = { id: "bea", name: "Bea", token: "", pty: -1 };
 
@@ -85,7 +62,7 @@ beforeAll(async () => {
       try {
         body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
       } catch {
-        /* not JSON */
+        body = {};
       }
       const p = new URL(req.url ?? "/", "http://x").pathname;
       if (p === "/connect/agent") {
@@ -140,7 +117,6 @@ beforeAll(async () => {
     ag.token = actorTokenOf(s.made[ag.pty].opts.env) ?? "";
     expect(ag.token).toBeTruthy();
   }
-  // Each makes a first call: Hub binds a token to each.
   for (const ag of [A, B])
     expect((await asAgent(ag, "/hub/mcp")).status).toBe(200);
   expect([...hub.bound.values()].sort()).toEqual([A.id, B.id]);
@@ -155,11 +131,9 @@ afterAll(async () => {
   if (tokenDir) fs.rmSync(tokenDir, { recursive: true, force: true });
 });
 
-/** The bound token Hub gave agent `id`. */
 const boundOf = (id: string) =>
   [...hub.bound].find(([, a]) => a === id)?.[0] ?? "";
 
-/** An MCP tools/call as agent `ag`, at Den path `p`, with more headers. */
 function asAgent(
   ag: { token: string },
   p: string,
@@ -183,7 +157,6 @@ function asAgent(
   });
 }
 
-/** Every X-Den-* header a caller could use to name agent B. */
 const namesB = (): Record<string, string> => ({
   "X-Den-Agent-Id": B.id,
   "X-Den-Agent": B.name,
@@ -250,8 +223,6 @@ describe("issue 50, clause 3: A's call through /hub carries A's own token, never
     }
     expect(hub.seen.slice(before)).toEqual([]);
 
-    // Den's own Hub calls, asked with no token and with a person's, B
-    // named in every header: Den calls Hub itself, with the install's token.
     for (const auth of [{}, denAuth(s.stateDir)])
       for (const p of [
         "/api/hub",
@@ -270,7 +241,6 @@ describe("issue 50, clause 3: A's call through /hub carries A's own token, never
   });
 });
 
-/** The known values, as given and in base64, with what each is. */
 function needles(): [string, string][] {
   const tokens: [string, string][] = [
     ["the install token", INSTALL],
@@ -286,14 +256,12 @@ function needles(): [string, string][] {
   ]);
 }
 
-/** The needles found in `text`, labelled with `where`. */
 function found(where: string, text: string): string[] {
   return needles()
     .filter(([, n]) => text.includes(n))
     .map(([what]) => `${what} in ${where}`);
 }
 
-/** Every regular file under `dir` (no symlinks followed). */
 function filesUnder(dir: string): string[] {
   const out: string[] = [];
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -304,17 +272,12 @@ function filesUnder(dir: string): string[] {
   return out;
 }
 
-/**
- * The CLI, run as agent `ag` runs it: its own env, as spawned, and the
- * distribution's root (its bin/<cli> sets that).
- */
 async function cliAs(ag: { pty: number }, args: string[]): Promise<string> {
   const env = {
     ...s.made[ag.pty].opts.env,
     DEN_ENGINE_ROOT: ENGINE,
     DEN_ROOT: path.join(s.tmp, "dist"),
   };
-  // Not spawnSync: the session host is this process's, and the CLI asks it.
   const p = spawn(
     process.execPath,
     [
@@ -335,8 +298,6 @@ async function cliAs(ag: { pty: number }, args: string[]): Promise<string> {
 
 describe("issue 50, clause 4: no Hub token anywhere an agent can see", () => {
   it("a scan of the agent's env, files, MCP config, CLI output, /api answers and the server's log finds none", async () => {
-    // Both tokens are in use, and the server's store has them (the scan
-    // looks for real values).
     expect(hub.bound.size).toBe(2);
     const store = path.join(s.stateDir, "hub", "agents");
     expect(fs.readFileSync(path.join(store, `${A.id}.json`), "utf8")).toContain(
@@ -344,15 +305,11 @@ describe("issue 50, clause 4: no Hub token anywhere an agent can see", () => {
     );
     const leaks: string[] = [];
 
-    // 1. Each agent's environment, as spawned.
     for (const ag of [A, B])
       leaks.push(
         ...found(`${ag.id}'s env`, JSON.stringify(s.made[ag.pty].opts.env)),
       );
 
-    // 2. Every file under the test's tree (home, state, workspaces, the
-    // distribution) but the server's own token store: the agent's files
-    // folder and its MCP config among them.
     const args = s.made[A.pty].args;
     const mcpConfig = args[args.indexOf("--mcp-config") + 1];
     expect(mcpConfig).toBeTruthy();
@@ -371,7 +328,6 @@ describe("issue 50, clause 4: no Hub token anywhere an agent can see", () => {
       leaks.push(...found(path.relative(s.tmp, f), text));
     }
 
-    // 3. The CLI, run as the agent.
     for (const cmd of [
       ["status"],
       ["hub", "link", "--suggested", "--json"],
@@ -379,12 +335,10 @@ describe("issue 50, clause 4: no Hub token anywhere an agent can see", () => {
       ["agents", "list", "-w", "north", "--json"],
     ]) {
       const out = await cliAs(A, cmd);
-      // The CLI answered as the agent (its list names it), not a crash.
       if (cmd[0] === "agents") expect(out).toContain(A.id);
       leaks.push(...found(`\`${cmd.join(" ")}\``, out));
     }
 
-    // 4. Every read-only /api GET, with an agent's token.
     const gets = ROUTES.filter(
       (r) =>
         r.methods.includes("GET") &&
@@ -415,15 +369,14 @@ describe("issue 50, clause 4: no Hub token anywhere an agent can see", () => {
           if (done) break;
           text += Buffer.from(value).toString("utf8");
         }
-      } catch {
-        /* a stream cut off at 4 s: what came is scanned */
+      } catch (e) {
+        if (!ac.signal.aborted) throw e;
       } finally {
         clearTimeout(t);
       }
       leaks.push(...found(`GET ${p}`, text));
     }
 
-    // 5. The server's log.
     leaks.push(...found("the server's log", s.log()));
 
     expect(leaks).toEqual([]);

@@ -208,7 +208,9 @@ export function accountLabel(
   a: Pick<SignInAccount, "id" | "name">,
   vendor: string,
 ): string {
-  return a.name ?? `${vendor} account ${defaultLetter(a.id)}`;
+  return a.name && !a.name.includes("@")
+    ? a.name
+    : `${vendor} account ${defaultLetter(a.id)}`;
 }
 
 /** The account's named ref under secrets.refs. */

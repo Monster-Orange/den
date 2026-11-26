@@ -1,16 +1,3 @@
-/**
- * Issue 249, end to end on Den's side: an agent's Hub calls through Den's
- * proxy go out with the token Hub bound to that agent; the server agent's
- * with the install's token; removing the agent revokes its token on Hub;
- * and an approval made with the bound token is one Hub can record as the
- * agent's own (verified).
- *
- * A fake Hub stands in for Hub's side: it mints a bound token under the
- * install's token (POST /connect/agent), revokes one by its id, and marks
- * an approval verified only when a bound token made it, as Hub does. Den's
- * side is the real proxy in front of a real agent (a scripted PTY) with its
- * real actor token. Temp dirs, invented names, test-only token values.
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
@@ -63,10 +50,8 @@ interface Seen {
   body: Record<string, unknown>;
 }
 
-/** A fake Hub with Hub's agent grant (C7b) and agent approvals. */
 async function fakeHub() {
   const seen: Seen[] = [];
-  /** Live bound tokens: token -> {tokenId, agent}. */
   const bound = new Map<string, { tokenId: string; agent: string }>();
   const approvals: { agent: string; verified: boolean }[] = [];
   let n = 0;
@@ -79,7 +64,7 @@ async function fakeHub() {
       try {
         body = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
       } catch {
-        /* not JSON */
+        body = {};
       }
       const auth = String(req.headers.authorization ?? "");
       seen.push({
@@ -119,7 +104,6 @@ async function fakeHub() {
       }
       if (req.url === "/mcp") {
         const params = (body.params ?? {}) as { name?: string };
-        // Hub's rule: verified only when a token bound to the agent made it.
         if (params.name === "hub_approve")
           approvals.push(
             asBound
@@ -148,12 +132,10 @@ async function fakeHub() {
   };
 }
 
-/** Den: agent Ada started in project north, and the proxy in front of Hub. */
 async function den(
   hubUrl: string,
   opts: {
     agentTokens?: boolean;
-    /** Runs while the agent's token is asked for (before it's given). */
     duringToken?: (r: Rig, agentId: string) => void;
   } = {},
 ) {
@@ -314,18 +296,15 @@ describe("issue 249: agents call Hub with their own bound token", () => {
     expect(boundToken).toBeDefined();
     expect(mcp[0].auth).toBe(`Bearer ${boundToken}`);
     expect(mcp[0].agentId).toBe(agentId);
-    // Minted once, under the install's token, for this agent.
     const mint = hub.seen.filter((x) => x.url === "/connect/agent");
     expect(mint).toHaveLength(1);
     expect(mint[0].auth).toBe(`Bearer ${INSTALL}`);
     expect(mint[0].body).toEqual({ agent_id: agentId, agent_name: "Ada" });
-    // A second call: the same token, no second mint.
     await call("hub_artifact_create");
     expect(hub.seen.filter((x) => x.url === "/connect/agent")).toHaveLength(1);
     expect(hub.seen.filter((x) => x.url === "/mcp")[1].auth).toBe(
       `Bearer ${boundToken}`,
     );
-    // The server agent: the install token, and nothing minted for it.
     const up = await hubUpstream(d, {
       agentId: SERVER_AGENT_ID,
       workspace: SERVER_SCOPE,
@@ -335,7 +314,6 @@ describe("issue 249: agents call Hub with their own bound token", () => {
       `Bearer ${INSTALL}`,
     );
     expect(hub.seen.filter((x) => x.url === "/connect/agent")).toHaveLength(1);
-    // The bound token is in the server's store only: never the agent's env.
     expect(JSON.stringify(r.made[0].opts.env)).not.toContain(boundToken);
     expect(
       fs.readFileSync(

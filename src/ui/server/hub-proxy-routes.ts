@@ -11,8 +11,6 @@
  *     an agent can't reach Hub's Settings, members or browser routes
  *     through Den. Hub's file links (/f/*) are GET and HEAD only (405).
  *   - The agent's own Authorization and any X-Den-* header it sent are
- *     dropped. Den sets Authorization (the agent's own Hub token, bound to
- *     it on Hub, else the install's: issue 249), X-Den-Agent,
  *     X-Den-Agent-Id, X-Den-Workspace, X-Den-Session, X-Den-Repos and X-Den-Project.
  *   - Redirects are not followed; Hub's status and body pass through as
  *     they are (its 413 says its own limit). Bodies stream both ways, with

@@ -18,9 +18,25 @@ import {
   type CoachRouteDeps,
 } from "./coach-routes.js";
 import { runCoach } from "../../shared/coach/run.js";
+import {
+  applyLinkOf,
+  applyStateOf,
+  applyViewOf,
+  type ApplyView,
+  linkApply,
+  readApplyLinks,
+  type ApplyState,
+} from "../../shared/coach/applies.js";
+import {
+  COACH_APPLY_ROUTES,
+  handleCoachApplyRoute,
+  type CoachApplyDeps,
+} from "./coach-apply-routes.js";
 import { readCoachReport } from "../../shared/coach/store.js";
 import {
   dismissFinding,
+  undismissFinding,
+  coachApplyFor,
   openFindings,
   readDismissals,
 } from "../../shared/coach/findings.js";
@@ -47,6 +63,7 @@ import {
 import {
   alertFeed,
   attentionDetail,
+  attentionActivity,
   attentionWaiting,
   notificationDeps,
 } from "./notification-service.js";
@@ -135,7 +152,13 @@ import {
   writeBridgeState,
   type BridgeOutcome,
 } from "../../shared/edge/bridge-listen.js";
-import { readCheckState as readCheckStateSync } from "../../shared/update-check-state.js";
+import {
+  firstCheckDelay,
+  readCheckState as readCheckStateSync,
+  scheduleUpdateChecks,
+  tickBegun,
+  writeCheckState as writeCheckStateSync,
+} from "../../shared/update-check-state.js";
 import { execFile, execFileSync, spawn, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { envSelector } from "../../shared/environment/env-selector.js";
@@ -194,7 +217,9 @@ import {
   scopeView,
   storedView,
 } from "../../shared/environment-manager/scope.js";
-import { findServiceContainer } from "../../shared/environment-manager/service-container.js";
+import { findServiceContainerAsync } from "../../shared/environment-manager/service-container.js";
+import { gitReadsAtOnce } from "../../shared/git-reads.js";
+import { readRepoHeads } from "./test-sources.js";
 import {
   resolveHistorySource,
   ensureSnapshot,
@@ -356,6 +381,7 @@ import {
 import { realDocker } from "../../shared/gates/ephemeral.js";
 import {
   gateBoxOps,
+  gateRunnerEntryOp,
   gateRunnerTokenOp,
   handleGateRoutes,
   isGatePath,
@@ -399,6 +425,7 @@ import {
   notAPersonOf,
   fixturePersonOf,
   markOperatorAct,
+  operatorActOf,
   bindRefusal,
   checkRequest,
   isEdgePeer,
@@ -416,6 +443,10 @@ import {
   type Via,
   viewAgent,
 } from "./request-guard.js";
+import {
+  fixtureGrantAccess,
+  testInstallsListAccess,
+} from "./test-installs-access.js";
 import {
   clientRequestId,
   createRequestLedger,
@@ -494,6 +525,7 @@ import {
   OPERATOR_PRINCIPAL,
   operatorAct,
   operatorRefusal,
+  testBedAsker,
   verifiedCreationRecord,
   writeCreationRecord,
 } from "../../shared/test-operator.js";
@@ -600,7 +632,15 @@ import {
   type ReportRouteDeps,
 } from "./report-routes.js";
 import { reportHeld } from "./report-held.js";
-import { publicRepoVisibility } from "./report-visibility.js";
+import { publicRepoVisibility, repoVisibilities } from "./report-visibility.js";
+import { orgMask, orgPatterns } from "../../shared/org-names.js";
+import {
+  filedTextHits,
+  filedTextRefusal,
+  needsFiledCheck,
+  type FiledHit,
+  type FiledText,
+} from "../../shared/filed-text-check.js";
 import {
   feedbackSettings,
   readFeedbackSettings,
@@ -669,6 +709,8 @@ import {
   agentsLayout,
   helpersShown,
   patchAgentsLayout,
+  coachCounts,
+  patchCoachCounts,
   patchHelpersShown,
 } from "./agents-layout-pref.js";
 import {
@@ -734,7 +776,7 @@ import {
   isUiLanguage,
   localizePage,
   uiLanguage,
-} from "./ui-language.js";
+} from "../../shared/ui-language.js";
 import { isTimeZone, timeZonePref, zonePage } from "./time-zone-pref.js";
 import { singleFlight } from "./single-flight.js";
 import { graphOrder } from "./graph-order.js";
@@ -878,7 +920,6 @@ import {
   LOG_SWEEP_INTERVAL_MS,
   DEFAULT_PORT,
   CLI_SPAWN_TIMEOUT_MS,
-  GIT_REMOTE_TIMEOUT_MS,
   DAEMON_QUICK_EXIT_MS,
   DAEMON_RETRY_DELAY_MS,
   DAEMON_SHUTDOWN_GRACE_MS,
@@ -1409,6 +1450,7 @@ import {
 import { setFixtureTestInstall } from "./fixture-projects.js";
 import {
   createApprovalQueue,
+  askHeld,
   handleApprovalRoutes,
   isApprovalPath,
   notePolicyRun,
@@ -1425,6 +1467,7 @@ import {
 import {
   IssueWriteLimit,
   issueWriteSettings,
+  ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "../../shared/issue-write.js";
 import { defaultInstallLabel } from "./hub-connect.js";
 import {
@@ -1493,7 +1536,7 @@ import {
   isSchedulePath,
   type ScheduleServerDeps,
 } from "./verify-schedule-routes.js";
-import { lookupTimeouts } from "../cli/proc-lookup.js";
+import { lookupTimeouts } from "../../shared/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import {
   serverLogMaxBytes,
@@ -1557,6 +1600,11 @@ import {
   checkProjectMode,
   checkProjectMcpAdd,
   runProjectMcpAdd,
+  checkEventFeedAdd,
+  runEventFeedAdd,
+  checkEventFeedRemove,
+  runEventFeedRemove,
+  undoEventFeed,
   checkProjectMcpRemove,
   runProjectMcpRemove,
   checkProjectMcpUpdate,
@@ -1679,18 +1727,6 @@ interface TestSource {
   workspace: string | null;
 }
 
-/** One git answer, async: slow git never holds up the server (issue 132). */
-function readGitField(gitArgs: string[], cwd: string): Promise<string | null> {
-  return new Promise((resolve) => {
-    execFile(
-      "git",
-      gitArgs,
-      { cwd, encoding: "utf-8", timeout: GIT_REMOTE_TIMEOUT_MS },
-      (err, stdout) => resolve(err ? null : stdout.trim() || null),
-    );
-  });
-}
-
 /** The pillars whose sources are a repo manifest's own sections. */
 type SourcePillar = Extract<
   Pillar,
@@ -1720,24 +1756,15 @@ function testSourceRepos(
   });
 }
 
-/** Those repos with their branch and short SHA, read in parallel. */
+/** Those repos with their branch and short SHA, git_reads.at_once at a time. */
 async function collectTestSources(pillar: SourcePillar): Promise<TestSource[]> {
   const workspace = getActiveWorkspace()?.name ?? null;
-  return Promise.all(
-    testSourceRepos(pillar).map(async (repo) => {
-      const [branch, shortSha] = await Promise.all([
-        readGitField(["rev-parse", "--abbrev-ref", "HEAD"], repo.repoPath),
-        readGitField(["rev-parse", "--short", "HEAD"], repo.repoPath),
-      ]);
-      return {
-        repoName: repo.repoName,
-        repoPath: repo.repoPath,
-        branch,
-        shortSha,
-        workspace,
-      };
-    }),
-  );
+  const repos = testSourceRepos(pillar).map((r) => ({
+    repoName: r.repoName,
+    repoPath: r.repoPath,
+  }));
+  const heads = await readRepoHeads(repos, gitReadsAtOnce());
+  return heads.map((h) => ({ ...h, workspace }));
 }
 
 function formatSourceLine(src: TestSource): string {
@@ -2622,6 +2649,72 @@ const issueWriteLimit = new IssueWriteLimit();
  * project's GitHub repos (the catalog's gh, else the project's org), the
  * settings from user.yml, pr_close's gh call path (runGh), and the audit.
  */
+/**
+ * Issue 1127: a repo's visibility (null: not known) no older than
+ * `maxAgeMs`, through the cache Report uses (feedback.visibility_timeout_
+ * seconds and _retry_seconds).
+ */
+async function repoVisibilityFor(
+  repo: string,
+  maxAgeMs: number,
+): Promise<"public" | "private" | "internal" | null> {
+  const fb = reportRouteDeps().settings();
+  const vis = await repoVisibilities(getStateDir(), [repo], {
+    gh: (a) => runGh(a),
+    anon: GITHUB.fake ? undefined : publicRepoVisibility(GITHUB.api),
+    ttlMs: maxAgeMs,
+    timeoutMs: fb.visibilityTimeoutSeconds * 1000,
+    retryMs: fb.visibilityRetrySeconds * 1000,
+  });
+  return vis[repo] ?? null;
+}
+
+/**
+ * Issue 1127: Report's listed-names check, as issue_write's: the listed
+ * names, the destination's visibility (agents.issue_writes_visibility_
+ * minutes old at most), then the refusal or null. A list file named but
+ * missing refuses: the check fails closed.
+ */
+async function reportWordsCheck(
+  repo: string,
+  texts: FiledText[],
+): Promise<{ error: string; hits: FiledHit[] } | null> {
+  let patterns: RegExp[];
+  try {
+    patterns = orgPatterns();
+  } catch {
+    // Fixed words: the error can quote a line of the list.
+    return {
+      error: "the names list can't be read; nothing was sent",
+      hits: [],
+    };
+  }
+  if (!patterns.length) return null;
+  let minutes: number = ISSUE_WRITES_VISIBILITY_MINUTES.default;
+  try {
+    minutes = issueWriteSettings(
+      () => readUserConfig(),
+      () => readDenConfig(),
+    ).visibilityMinutes;
+  } catch {
+    /* a wrong agents.* value: the default */
+  }
+  const vis = await repoVisibilityFor(repo, minutes * 60_000);
+  if (!needsFiledCheck(vis)) return null;
+  const hits = filedTextHits(texts, patterns, repo);
+  return hits.length ? { error: filedTextRefusal(hits), hits } : null;
+}
+
+/** Issue 1127: Den's own report sections, with listed names masked. */
+function reportMaskListed(text: string): string {
+  try {
+    return orgMask(text, orgPatterns());
+  } catch {
+    // An unreadable list: the person's check refuses the send anyway.
+    return text;
+  }
+}
+
 function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
   return {
     agentOf: (id) => {
@@ -2665,6 +2758,11 @@ function issueWriteDeps(req: http.IncomingMessage): IssueWriteDeps {
     limit: issueWriteLimit,
     gh: runGh,
     installLabel: () => defaultInstallLabel(),
+    // Issue 1127: the listed names, and the repo's visibility through the
+    // cache Report uses (feedback.visibility_timeout_seconds and
+    // _retry_seconds), no older than agents.issue_writes_visibility_minutes.
+    namePatterns: () => orgPatterns(),
+    visibility: repoVisibilityFor,
     audit: (e) => {
       try {
         recordAction(
@@ -4193,17 +4291,119 @@ function coachRouteDeps(): CoachRouteDeps {
     notAPerson: notAPersonOf,
     settings: coachSettingsNow,
     latest: () => readCoachReport(getStateDir()),
-    run: () =>
-      runCoach({ stateDir: getStateDir(), settings: coachSettingsNow() }),
+    run: (progress) =>
+      runCoach({
+        stateDir: getStateDir(),
+        settings: coachSettingsNow(),
+        ...(progress ? { progress } : {}),
+      }),
     audit: (req, e) =>
       void recordAction(auditActorOf(req), e, principalOf(req)),
     findings: (report) => ({
-      open: openFindings(getStateDir(), report?.findings ?? []),
+      open: withApplyState(openFindings(getStateDir(), report?.findings ?? [])),
       dismissed: readDismissals(getStateDir()),
     }),
+    // Issue 110: a finding whose Apply waits for Allow can't be dismissed.
     dismiss: (id, reason) =>
-      dismissFinding(getStateDir(), id, reason, "person"),
+      coachApplyState(id) === "waiting"
+        ? {
+            ok: false,
+            code: "apply_waiting",
+            error:
+              "This finding's change is waiting for a person's Allow: Deny it in the bell first.",
+          }
+        : dismissFinding(getStateDir(), id, reason, "person"),
+    undismiss: (id) => undismissFinding(getStateDir(), id),
     readBody,
+  };
+}
+
+/** Issue 110: whether Den has project `ws` (Apply names it only then). */
+function coachProjectExists(ws: string): boolean {
+  try {
+    return Object.hasOwn(readWorkspacesFile().workspaces ?? {}, ws);
+  } catch {
+    return false;
+  }
+}
+
+/** Issue 110: a held write's state, as its Coach finding's row shows it. */
+function coachHeldState(approval: string): ApplyState {
+  try {
+    return applyStateOf(approvalDeps().queue.get(approval));
+  } catch {
+    return "failed";
+  }
+}
+
+/** Issue 110: a held write as its finding's row says it (mock v3). */
+function coachHeldView(approval: string): ApplyView {
+  try {
+    // The owner's display name only: never a login, an id or an email
+    // (Den Design, issue 110); with none the row says "Allowed <time>".
+    return applyViewOf(
+      approvalDeps().queue.get(approval),
+      ownerIdentity()?.name,
+    );
+  } catch {
+    return { state: "failed" };
+  }
+}
+
+/** Issue 110: finding `id`'s Apply state, or null when it was never applied. */
+function coachApplyState(id: string): ApplyState | null {
+  const link = applyLinkOf(getStateDir(), id);
+  return link ? coachHeldState(link.approval) : null;
+}
+
+/**
+ * Issue 110: each finding with its Apply rebuilt in code (a stored one is
+ * never shown) and its Apply's state (`applied`), when it has one.
+ */
+function withApplyState<
+  T extends { id: string; kind: string; apply?: unknown },
+>(open: T[]) {
+  const links = readApplyLinks(getStateDir());
+  return open.map((raw) => {
+    const { apply: _stored, ...rest } = raw;
+    const apply = coachApplyFor(raw, coachProjectExists);
+    const f = { ...rest, ...(apply ? { apply } : {}) };
+    return Object.hasOwn(links, f.id)
+      ? {
+          ...f,
+          applied: {
+            ...coachHeldView(links[f.id].approval),
+            approval: links[f.id].approval,
+            at: links[f.id].at,
+          },
+        }
+      : f;
+  });
+}
+
+/** Issue 110: what Coach Apply's route needs from this server. */
+function coachApplyDeps(): CoachApplyDeps {
+  return {
+    sendJson,
+    notAPerson: notAPersonOf,
+    readBody,
+    audit: (req, e) =>
+      void recordAction(auditActorOf(req), e, principalOf(req)),
+    openFindings: () =>
+      openFindings(
+        getStateDir(),
+        readCoachReport(getStateDir())?.findings ?? [],
+      ),
+    linkOf: (id) => applyLinkOf(getStateDir(), id),
+    stateOf: coachHeldState,
+    ask: (req, body, o) => askHeld(req, approvalDeps(), body, o),
+    link: (id, approval, at) => linkApply(getStateDir(), id, approval, at),
+    projectExists: coachProjectExists,
+    // The line the finding passed, for the bell's Why (mock v3).
+    lineOf: (kind) =>
+      kind === "subagent_opus"
+        ? coachSettingsNow().findings.subagent_opus_pct
+        : undefined,
   };
 }
 
@@ -4389,25 +4589,22 @@ async function handleTestInstallsListRoute(
     return sendJson(res, { ok: false, error: "use GET" }, 405);
   }
   const g = checkRequest(req, GUARD, product().cli, product().title);
-  const p = g.ok ? g.principal : undefined;
-  const person =
-    !!p &&
-    (p.kind === "person" || p.kind === "person-browser") &&
-    !("testPerson" in p && p.testPerson) &&
-    !("fixture" in p && p.fixture) &&
-    !notAPersonOf(req);
   // Nobody signed in: 401, as other reads that need a sign-in answer. An
-  // agent, a fixture or a test person: 403.
-  if (!person)
+  // agent, a fixture or a test person: 403 (test-installs-access.ts).
+  const access = testInstallsListAccess(
+    g.ok ? g.principal : undefined,
+    notAPersonOf(req),
+  );
+  if (!access.ok)
     return sendJson(
       res,
       {
         ok: false,
-        code: p ? "person_only" : "signin_required",
+        code: access.code,
         error:
           "Only the signed-in person sees the test installs on this computer.",
       },
-      p ? 403 : 401,
+      access.status,
     );
   // Issue 816 review: probed and still waiting, so a forged announcement of
   // a real install never offers Set up.
@@ -4447,17 +4644,17 @@ async function handleFixtureGrantRoute(
     );
     return sendJson(res, { ok: false, code, error }, status);
   };
-  const person =
-    g.ok &&
-    g.principal?.kind === "person" &&
-    !g.principal.testPerson &&
-    !notAPersonOf(req);
-  if (person && g.beyond)
+  const access = fixtureGrantAccess(
+    g.ok ? g.principal : undefined,
+    notAPersonOf(req),
+    g.ok && !!g.beyond,
+  );
+  if (!access.ok && access.code === "not_this_machine")
     return refuse(
       "not_this_machine",
       `The ${FIXTURE_LABEL} is made from a grant only on this computer; never through the edge or the network.`,
     );
-  if (!person)
+  if (!access.ok)
     return refuse(
       "person_only",
       `Only your own ${product().title}, at your Allow, makes the ${FIXTURE_LABEL} from a grant: an agent or the ${FIXTURE_LABEL} itself can't.`,
@@ -4762,6 +4959,9 @@ function reportRouteDeps(): ReportRouteDeps {
       ),
     stateDir: () => getStateDir(),
     gh: runGh,
+    // Issue 1127: listed names, before a report is filed.
+    wordsCheck: reportWordsCheck,
+    maskListed: reportMaskListed,
     names: () => {
       const w = readWebUrl();
       let webHost: string | undefined;
@@ -4819,6 +5019,7 @@ type ApprovalDeps = {
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
   webUrl: () => string | null;
+  testBedAsker: (actor: string) => boolean;
 };
 let approvals: ApprovalDeps | null = null;
 /**
@@ -5194,6 +5395,10 @@ function approvalDeps(): ApprovalDeps {
               const m = await import("./hub-connect.js");
               return new m.HubConnect().disconnect(force);
             },
+            switching: async (s) => {
+              const m = await import("./hub-switch.js");
+              m.beginHubSwitch(await m.hubSwitchDeps(), s);
+            },
             // Issue 726: the old Hub's state is archived, its bell cleared.
             changed: async (url) => {
               const m = await import("./hub-change.js");
@@ -5250,6 +5455,15 @@ function approvalDeps(): ApprovalDeps {
       check: (a, who) => checkProjectMcpUpdate(agentWebDeps(), a, who),
       run: (a) => runProjectMcpUpdate(agentWebDeps(), a),
     },
+    // Issue 1480: an agent asks to add or remove an app's event feed.
+    eventFeedAdd: {
+      check: (a, who) => checkEventFeedAdd(agentWebDeps(), a, who),
+      run: (a, asked) => runEventFeedAdd(agentWebDeps(), a, asked),
+    },
+    eventFeedRemove: {
+      check: (a, who) => checkEventFeedRemove(agentWebDeps(), a, who),
+      run: (a) => runEventFeedRemove(agentWebDeps(), a),
+    },
     agentFolder: {
       check: (a, who) => checkAgentFolder(agentWebDeps(), a, who),
       run: (a) => runAgentFolder(agentWebDeps(), a),
@@ -5276,6 +5490,9 @@ function approvalDeps(): ApprovalDeps {
     })(),
     // Issue 869: Den's own agent proposes the address; the person Allows.
     webUrlSet: webUrlSetAction(webUrlSetDeps()),
+    // Issue 642: a runner entry (a repo's CI jobs on a test box), on the
+    // person's Allow. Settings only: nothing starts a runner yet.
+    gateRunnerEntry: gateRunnerEntryOp({ store: () => gates() }),
     // Issue 731: doctor's fix for a terminal host Den couldn't restart:
     // the web start's refresh (wait for idle, restart, resume, audit).
     terminalHostRestart: hostRestartOp({
@@ -5393,6 +5610,8 @@ function approvalDeps(): ApprovalDeps {
     changed: syncHeldWrites,
     // Issue 1016: an agent's held write carries its full Allow link.
     webUrl: () => peopleWebUrl(),
+    // What the test operator may Allow.
+    testBedAsker: (actor) => testBedAsker(getStateDir(), actor),
   };
   return approvals;
 }
@@ -6220,6 +6439,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return {
           probeSeconds: c.readyProbeSeconds,
           startSeconds: c.startWaitSeconds,
+          toolsProbeSeconds: c.toolsProbeSeconds,
         };
       } catch {
         return null;
@@ -6261,6 +6481,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       try {
         return {
           max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
+          max_per_project: readAgentsConfig(undefined, user).maxPerProject,
         };
       } catch {
         return null;
@@ -6285,6 +6506,9 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         watch_max_interval_seconds: g.maxIntervalSeconds,
         api_budget_floor: g.budgetFloor,
         watches_max: g.watchesMax,
+        watch_stale_minutes: g.staleMinutes,
+        watch_max_open_hours: g.maxOpenHours,
+        rerun_look_minutes: g.rerunLookMinutes,
       };
     })(),
     // den#156: the Agents list's waits (agents_list.*).
@@ -6300,7 +6524,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     agent_issue_writes: (() => {
       try {
         const c = issueWriteSettings(() => user, readDenConfig);
-        return { roles: c.roles, per_hour: c.perHour };
+        return {
+          roles: c.roles,
+          per_hour: c.perHour,
+          visibility_minutes: c.visibilityMinutes,
+        };
       } catch {
         return null;
       }
@@ -8843,12 +9071,13 @@ async function handleRequest(
     // `docker logs -f`. This gives REAL runtime logs for services with no (or
     // broken) manifest `logs.local` — no den daemon file needed. Returns
     // false when no such container is running.
-    const startDockerFallback = (): boolean => {
-      const container = findServiceContainer(
+    const startDockerFallback = async (): Promise<boolean> => {
+      const container = await findServiceContainerAsync(
         repoName,
         tailResolved?.repoPath,
         tailSubsystem,
       );
+      if (!active) return true;
       if (!container) return false;
       emit({
         type: "line",
@@ -8895,8 +9124,8 @@ async function handleRequest(
       );
     };
 
-    const startFallback = (): void => {
-      if (startDockerFallback()) return;
+    const startFallback = async (): Promise<void> => {
+      if (await startDockerFallback()) return;
       startDaemonFileFallback();
     };
 
@@ -8937,19 +9166,21 @@ async function handleRequest(
             clearTimeout(quickTimer);
             quickTimer = null;
             lineBuffer.length = 0; // discard noisy error output
-            if (startDockerFallback()) {
-              // streaming the conventional container's logs
-            } else if (fs.existsSync(daemonLogPath)) {
-              startDaemonFileFallback();
-            } else if (retryCount < MAX_RETRIES) {
-              retryCount++;
-              retryTimer = setTimeout(() => {
-                retryTimer = null;
-                if (active) tryManifestCmd();
-              }, RETRY_DELAY_MS);
-            } else {
-              startFallback();
-            }
+            void startDockerFallback().then(async (streaming) => {
+              if (streaming) {
+                // streaming the conventional container's logs
+              } else if (fs.existsSync(daemonLogPath)) {
+                startDaemonFileFallback();
+              } else if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                retryTimer = setTimeout(() => {
+                  retryTimer = null;
+                  if (active) tryManifestCmd();
+                }, RETRY_DELAY_MS);
+              } else {
+                await startFallback();
+              }
+            });
           } else if (exitCode !== 0) {
             // Ran for a while then exited with error.
             emit({
@@ -8971,7 +9202,7 @@ async function handleRequest(
     } else {
       // No manifest log source (e.g. shop-web, control-plane): conventional
       // container logs first, daemon startup log as last resort.
-      startFallback();
+      void startFallback();
     }
 
     res.on("close", () => {
@@ -9863,8 +10094,6 @@ async function handleRequest(
   // ── D52: Hub, for agents, through Den (hub-proxy.ts) ────────────────────
   if (
     await handleHubProxy(req, res, pathname, {
-      // Issue 249: each agent's own Hub token (bound to it on Hub). A mint
-      // that says agents_not_covered posts the one reconnect item.
       upstream: (who) =>
         hubUpstream(
           agentWebDeps({
@@ -9888,7 +10117,6 @@ async function handleRequest(
       onHubAnswer: (agentId, o) => {
         if (o.status === 401) {
           forgetHubToken();
-          // Issue 249: its own token, if it had one, is minted anew.
           serverHubAgentTokens().rejected(agentId);
         }
         if (o.sub === "/mcp")
@@ -9922,6 +10150,7 @@ async function handleRequest(
       {
         waitingAgents: waitingAgentIds,
         waitingWhy: waitingReasons,
+        activity: attentionActivity,
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),
@@ -9976,6 +10205,12 @@ async function handleRequest(
   if (
     (COACH_ROUTES as readonly string[]).includes(pathname) &&
     (await handleCoachRoute(req, res, pathname, coachRouteDeps()))
+  )
+    return;
+  // POST /api/coach/apply (issue 110): coach-apply-routes.ts.
+  if (
+    (COACH_APPLY_ROUTES as readonly string[]).includes(pathname) &&
+    (await handleCoachApplyRoute(req, res, pathname, coachApplyDeps()))
   )
     return;
 
@@ -10179,9 +10414,11 @@ async function handleRequest(
   //                             language? }
   //   graph: { direction, group, density, panelWidth } (see graph-prefs.ts)
   //   appearance: { theme: id | null, mode: system|dark|light } (appearance-prefs.ts)
-  //   shell: { pins, collapsed, hidden, order, dock, dockHeight } (shell-prefs.ts)
+  //   shell: { pins, collapsed, hidden, order, folded, dock, dockHeight } (shell-prefs.ts)
   //   agents_layout: focus | tabs | tile, the Agents tab's layout (AG-4b,
   //     agents-layout-pref.ts; user.yml agents.layout); null clears it
+  //   coach_counts: total | per_day, the Coach tab's "Show counts as"
+  //     (issue 52, user.yml agents.coach_counts); null clears it
   //   agents_helpers_shown: 1 | 3 | 5 | 10, the running helpers an open
   //     badge shows (#80, user.yml agents.helpers_shown); null clears it
   //   bell_kinds: {switch: true | false | null}, the bell's kinds (bell
@@ -10232,11 +10469,17 @@ async function handleRequest(
 
   // Issue 1371 Part 2: the bell's Undo of a setting an agent changed
   // without asking. The person's only: never an agent, never the fixture.
+  // And the test operator's, for a change one of the bed's own
+  // agents made (the request gate let it through as the act).
   if (pathname === "/api/settings/undo" && req.method === "POST") {
-    if (notAPersonOf(req) || fixturePersonOf(req))
+    const opUndo = operatorActOf(req) === "setting-undo";
+    if (!opUndo && (notAPersonOf(req) || fixturePersonOf(req)))
       return sendJson(
         res,
-        { ok: false, error: "only a person can undo a setting change" },
+        {
+          ok: false,
+          error: "only a person can undo a change made without asking",
+        },
         403,
       );
     let id = "";
@@ -10251,7 +10494,30 @@ async function handleRequest(
     if (!/^[A-Za-z0-9_-]{1,100}$/.test(id))
       return send400(res, "approval: the held write's id");
     const a = approvalDeps().queue.get(id);
+    // The operator is never told whether an id it may not undo exists.
+    if (opUndo && !(a && testBedAsker(getStateDir(), a.actor)))
+      return sendJson(
+        res,
+        {
+          ok: false,
+          error:
+            "the test operator may undo only what a test bed's own agent changed",
+        },
+        403,
+      );
     if (!a) return sendJson(res, { ok: false, error: "no such change" }, 404);
+    // Issue 1480: an event feed added or removed without asking.
+    if (a.action.startsWith("project_event_feed_")) {
+      const u = undoEventFeed(agentWebDeps(), a);
+      if (!u.ok) return sendJson(res, { ok: false, error: u.error }, 409);
+      auditConfig({ verb: "config-write", detail: `undo: ${u.note}` });
+      try {
+        notificationDeps().store.dropUndo(id);
+      } catch {
+        /* the bell is best effort: the change is undone */
+      }
+      return sendJson(res, { ok: true, note: u.note });
+    }
     const r = undoSettingChange(
       settingChangeDeps({
         userFile: userConfigPath(),
@@ -10297,6 +10563,7 @@ async function handleRequest(
         appearance: appearancePrefs(user.appearance),
         shell: shellPrefs(user.shell, pinProjects()),
         agents_layout: agentsLayout(user),
+        coach_counts: coachCounts(user),
         agents_helpers_shown: helpersShown(user),
         bell_kinds: bellKinds(user),
         bell_fold_days: bellFoldDays(user),
@@ -10315,6 +10582,7 @@ async function handleRequest(
         agents_default_mode: user.agents?.default_mode ?? null,
         // Issue 1022: how often the page polls health, visible and hidden.
         health_poll: healthPollSeconds(() => user),
+        git_reads: { at_once: gitReadsAtOnce(() => user) },
         // Issue 750: groups from Hub (user.yml hub.groups, auto by default).
         hub_groups: (() => {
           const h = (user as Record<string, unknown>).hub as
@@ -10404,6 +10672,7 @@ async function handleRequest(
           time_zone?: unknown;
           machine_name?: unknown;
           agents_layout?: unknown;
+          coach_counts?: unknown;
           agents_helpers_shown?: unknown;
           bell_kinds?: unknown;
           bell_fold_days?: unknown;
@@ -10444,6 +10713,7 @@ async function handleRequest(
           agents_limits?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
+          git_reads?: unknown;
           github?: unknown;
           embed?: unknown;
           approvals_policy?: unknown;
@@ -10518,6 +10788,7 @@ async function handleRequest(
             agents_limits: body.agents_limits,
             held_writes: body.held_writes,
             health_poll: body.health_poll,
+            git_reads: body.git_reads,
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
@@ -10652,6 +10923,11 @@ async function handleRequest(
         if (body.agents_layout !== undefined) {
           const l = patchAgentsLayout(user, body.agents_layout);
           if (!l.ok) return send400(res, l.error);
+        }
+        // Issue 52: the Coach tab's Total / Per day, a view preference only.
+        if (body.coach_counts !== undefined) {
+          const c = patchCoachCounts(user, body.coach_counts);
+          if (!c.ok) return send400(res, c.error);
         }
         // #80: how many running helpers an open badge shows.
         if (body.agents_helpers_shown !== undefined) {
@@ -10881,6 +11157,7 @@ async function handleRequest(
           time_zone: timeZonePref(user.time_zone),
           machine_name: machineNameSetting(user),
           agents_layout: agentsLayout(user),
+          coach_counts: coachCounts(user),
           agents_helpers_shown: helpersShown(user),
           bell_kinds: bellKinds(user),
           bell_fold_days: bellFoldDays(user),
@@ -11609,11 +11886,6 @@ void (async () => {
     );
 })();
 
-const prunedSnapshots = pruneDeadSnapshots();
-if (prunedSnapshots > 0) {
-  serverLog(`Pruned ${prunedSnapshots} orphaned log-history snapshot(s)`);
-}
-
 // #63: the edge's raw access log holds unmasked one-time tokens until Den
 // masks it into edge-access.log. Swept first at startup (lines left while
 // the server was down), then every second. Also swept when the access log
@@ -11862,6 +12134,13 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    void pruneDeadSnapshots()
+      .then((n) => {
+        if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
+      })
+      .catch((e: unknown) =>
+        serverLog(`Log-history snapshot prune failed: ${String(e)}`),
+      );
     // Issue 936: Turn on the agent sandbox for agents from before it.
     startSandboxOnAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public
@@ -11871,6 +12150,12 @@ void CRASH_GATE.then(() =>
       api: GITHUB.api,
       fake: GITHUB.fake,
       timeoutMs: WEB_AUTH.ownerNameTimeoutSeconds * 1000,
+      // Issue 1555: a start that keeps no name says why.
+      onSkip: (why) =>
+        serverLog(
+          `  Owner's GitHub display name not kept: ${why}`,
+          "lifecycle",
+        ),
     }).then((n) => {
       if (n) serverLog("  Owner's GitHub display name kept", "lifecycle");
     });
@@ -12101,9 +12386,6 @@ void CRASH_GATE.then(() =>
           log: (l) => serverLog(`  ${l}`, "warn"),
         }),
       );
-    // Issue 249: agent-token revokes Hub didn't answer are tried again now
-    // and every hub.agent_token_revoke_retry_seconds, with the install's
-    // token (a forced Disconnect's go on issue 726's record instead).
     void hubChecked
       .then(() => import("../../shared/hub-agent-tokens.js"))
       .then((m) =>
@@ -12256,11 +12538,13 @@ function startUpdateCheck(): void {
     return;
   }
   const everyMinutes = Math.round(every / 60_000);
+  const startedAt = Date.now();
+  const before = readCheckStateSync(getStateDir());
+  const firstMs = firstCheckDelay(before, every, startedAt);
   // SRV-P6: doctor and Settings say the last pass and the next.
   const noteState = (last?: import("./update-check.js").CheckState["last"]) =>
     void import("./update-check.js")
       .then((m) => {
-        // At a start, the pass before the restart stays the last one.
         const was = last ?? m.readCheckState(getStateDir())?.last;
         m.writeCheckState(getStateDir(), {
           everyMinutes,
@@ -12271,7 +12555,16 @@ function startUpdateCheck(): void {
       .catch(() => {
         /* best effort: doctor says "no check yet" */
       });
-  noteState();
+  try {
+    writeCheckStateSync(getStateDir(), {
+      everyMinutes,
+      next:
+        firstMs === null ? null : new Date(startedAt + firstMs).toISOString(),
+      ...(before?.last ? { last: before.last } : {}),
+    });
+  } catch {
+    /* best effort: doctor says "no check yet" */
+  }
   // #142: an update ask for a version this Den already runs (or passed)
   // is done with.
   try {
@@ -12327,6 +12620,19 @@ function startUpdateCheck(): void {
   const tick = async (): Promise<void> => {
     if (busy) return;
     busy = true;
+    try {
+      writeCheckStateSync(
+        getStateDir(),
+        tickBegun(
+          readCheckStateSync(getStateDir()),
+          everyMinutes,
+          every,
+          Date.now(),
+        ),
+      );
+    } catch {
+      /* best effort: doctor says "no check yet" */
+    }
     try {
       const u = await import("./den-update.js");
       const { updateCheck } = await import("./update-check.js");
@@ -12592,7 +12898,16 @@ function startUpdateCheck(): void {
     }
   };
   let check: import("./update-check.js").UpdateCheck | undefined;
-  setInterval(() => void tick(), every).unref();
+  scheduleUpdateChecks({
+    every,
+    prev: before,
+    now: startedAt,
+    tick: () => void tick(),
+    timers: {
+      once: (fn, ms) => void setTimeout(fn, ms).unref(),
+      every: (fn, ms) => void setInterval(fn, ms).unref(),
+    },
+  });
   // #176: just after an update to this version, one pass as soon as the
   // watch says it is verified ("good"), so the pin is committed and pushed
   // then, not a whole interval later. Bounded by the watch's own wait.

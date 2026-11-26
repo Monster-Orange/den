@@ -187,10 +187,6 @@ describe("start: den_url, this Den's https edge address", () => {
   });
 });
 
-// Issue 249 (b): agents=yes on every /connect (Hub ignores a field it
-// doesn't know). Whether the grant covers agents is learnt only from the
-// mint (403 agents_not_covered), never from whoami's connect.agents
-// feature: a capability, not this install's coverage.
 describe("the agents' grant on Connect", () => {
   it("the first Connect sends agents=yes, with no whoami before it", () => {
     const h = harness();
@@ -200,7 +196,6 @@ describe("the agents' grant on Connect", () => {
   it("whoami's connect.agents feature is never read as 'the grant took': nothing is kept from it", async () => {
     let whoami = 0;
     const h = harness({
-      // A dep the old code read whoami's features through; never asked now.
       ...({
         confirmAgents: async () => {
           whoami += 1;
@@ -467,7 +462,6 @@ describe("disconnect", () => {
     });
   });
 
-  // Issue 249: Disconnect revokes every agent's own Hub token first.
   it("revokes every agent's Hub token, then the install's; one Hub can't revoke stops it unless forced", async () => {
     const calls: string[] = [];
     let fail = 1;

@@ -1,15 +1,3 @@
-// Live check for issue 249: agents call Hub with their own bound token.
-// One bed stub agent, gate-249-bound, removed at the end (and in teardown).
-// Its turn end runs the settings' real Stop hooks (the driver's exit(),
-// "/stop"): the inbox check goes to Hub through Den's /hub proxy (with
-// hub.inbox_on_stop on, the default), the first Hub call for it, so Den
-// asks Hub for its own token. Its row then says it is bound and the
-// server's store holds <id>.json; the server agent's row never says bound
-// (the install's token). Then the CLI stop, then remove: its token file
-// goes (Den revokes it on Hub). The order matters: a.stop() kills the stub,
-// so no turn ends, and a.print() only writes text. The check reads no
-// token: only the row and the store's file names (ctx.listBed's "state:"
-// root is Den's state dir). Skipped when the bed's Hub isn't connected.
 export const issue = 249;
 export const clauses = [
   "with Hub connected, an agent's Hub calls go out with that agent's bound token, and the server agent's with the install token",
@@ -25,7 +13,6 @@ async function rows(ctx) {
   return Array.isArray(r?.sessions) ? r.sessions : [];
 }
 const rowOf = async (ctx, id) => (await rows(ctx)).find((x) => x.agent === id);
-/** Whether the server's store holds a token file for `id` (null: can't tell). */
 async function stored(ctx, id) {
   const names = await ctx.listBed("state:hub/agents");
   return Array.isArray(names) ? names.includes(`${id}.json`) : null;
@@ -46,9 +33,6 @@ export async function run(ctx, s) {
   if (!s.connected) return s;
   const r = { ...s };
   const a = ctx.agent(ID);
-  // A turn end: the real Stop hooks run (exit() is the stub's "/stop"),
-  // and their inbox check goes to Hub through Den. The stub's control
-  // channel takes ~17 s, so the wait is long.
   await a.exit();
   r.boundMs = await ctx.until(
     async () =>
@@ -61,7 +45,6 @@ export async function run(ctx, s) {
   r.server = srv ? { listed: true, hubBound: srv.hubBound ?? null } : null;
   r.storedBefore = await stored(ctx, ID);
 
-  // Then the CLI stop, then remove: the token file goes.
   await a.stop();
   await ctx.until(() => a.state() !== "running", 20000);
   r.remove = a.remove()?.code ?? null;
@@ -83,7 +66,6 @@ export function expect(r) {
         r.boundMs !== null &&
         r.row.hubBound === true &&
         r.storedBefore !== false &&
-        // The server agent keeps the install's token: never "bound".
         (r.server === null || r.server.hubBound !== true),
       detail: `start ${r.start}, running after ${r.runMs} ms; row bound after ${r.boundMs} ms (${r.row.hubBound}); token in the server's store: ${r.storedBefore}; server agent row: ${JSON.stringify(r.server)}`,
     },
