@@ -47,6 +47,27 @@ const asAgent = (body: unknown) =>
   });
 
 describe("MODE-5: Settings rows that were the command line's", () => {
+  it("web.tools_probe_seconds (issue 1664): saved from Settings, read back, cleared", async () => {
+    expect(await s.settings({ web_ready: { tools_probe_seconds: 90 } })).toBe(
+      200,
+    );
+    expect(user()).toMatchObject({ web: { tools_probe_seconds: 90 } });
+    const g = (await s.settingsGet()) as {
+      web_ready?: { toolsProbeSeconds?: number };
+    };
+    expect(g.web_ready?.toolsProbeSeconds).toBe(90);
+    expect(await s.settings({ web_ready: { tools_probe_seconds: 0 } })).toBe(
+      400,
+    );
+    expect(user()).toMatchObject({ web: { tools_probe_seconds: 90 } });
+    expect(await s.settings({ web_ready: { tools_probe_seconds: null } })).toBe(
+      200,
+    );
+    expect(
+      (user().web as Record<string, unknown> | undefined)?.tools_probe_seconds,
+    ).toBeUndefined();
+  });
+
   it("Local environment, Terminal tabs and Log pane lines: set, shown, cleared", async () => {
     expect(
       await s.settings({

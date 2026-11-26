@@ -17,6 +17,7 @@ import {
   armWriteGuard,
   guardedWrites,
   installWriteGuard,
+  linkedModulesEntry,
   writeGuardRoots,
   type WriteGuardRoots,
 } from "../../write-guard.js";
@@ -324,10 +325,63 @@ describe("setup.ts (issue 1356)", () => {
     guardedWrites().splice(0);
   });
 
-  it("pins DEN_ROOT to the checkout when node_modules resolves into another one", () => {
+  it("finds this checkout's Den root with no DEN_ROOT set, whatever node_modules links to (issue 1653)", async () => {
     const roots = writeGuardRoots();
-    const nm = fs.realpathSync(path.join(roots.checkout, "node_modules"));
-    if (!nm.startsWith(fs.realpathSync(roots.checkout) + path.sep))
-      expect(process.env.DEN_ROOT).toBe(roots.checkout);
+    expect(process.env.DEN_ROOT).toBeUndefined();
+    expect(process.env.DEN_ENGINE_ROOT).toBeUndefined();
+    const paths = await import("../../../src/shared/paths.js");
+    paths.resetDistRootCache();
+    expect(paths.getDistRoot()).toBe(roots.checkout);
+    expect(paths.getEngineRoot()).toBe(roots.checkout);
+  });
+
+  it("from a linked worktree, still refuses a write to the linked checkout's config/local (issue 1653)", () => {
+    const roots = writeGuardRoots();
+    const shared = path.dirname(
+      fs.realpathSync(path.join(roots.checkout, "node_modules")),
+    );
+    if (shared === roots.checkout) return;
+    const probe = path.join(shared, "config", "local", "zz-1653-probe.yml");
+    try {
+      expect(() => fs.writeFileSync(probe, "x")).toThrow(
+        /outside its temp folders/,
+      );
+    } finally {
+      try {
+        fs.rmSync(probe, { force: true });
+      } catch {
+        /* refused too: nothing was written */
+      }
+    }
+    guardedWrites().splice(0);
+  });
+});
+
+describe("a worktree whose node_modules is a link (issue 1653)", () => {
+  it("names an entry inside the worktree, so Den's root walk starts there", () => {
+    const r = rig();
+    fs.mkdirSync(path.join(r.other, "node_modules"), { recursive: true });
+    fs.symlinkSync(
+      path.join(r.other, "node_modules"),
+      path.join(r.checkout, "node_modules"),
+    );
+    const entry = linkedModulesEntry(r.checkout);
+    expect(entry).toBe(path.join(r.checkout, "tests", "setup.ts"));
+    expect(linkedModulesEntry(r.other)).toBeNull();
+    expect(linkedModulesEntry(path.join(r.home, "none"))).toBeNull();
+  });
+
+  it("the guard there still refuses the linked checkout's config/local", () => {
+    const r = rig();
+    fs.mkdirSync(path.join(r.other, "node_modules"), { recursive: true });
+    fs.symlinkSync(
+      path.join(r.other, "node_modules"),
+      path.join(r.checkout, "node_modules"),
+    );
+    const file = path.join(r.other, "config", "local", "user.yml");
+    expect(() => r.f.writeFileSync(file, "x")).toThrow(
+      /outside its temp folders/,
+    );
+    expect(r.refused).toEqual([file]);
   });
 });

@@ -717,8 +717,6 @@ function signInTag(r) {
   return `<span class="tagx" data-signin title="${esc(t("ag.signIn.tip", { label: r.signIn }))}">${esc(t("ag.signIn", { label: r.signIn }))}</span>`;
 }
 
-/**
- */
 function hubBoundTag(r) {
   if (r?.kind !== "agent" || typeof r.hubBound !== "boolean") return "";
   const [word, tip] = r.hubBound

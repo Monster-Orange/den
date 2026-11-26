@@ -1171,6 +1171,9 @@
     "set.server.ready_probe": "起動確認の待ち時間 (秒)",
     "set.server.ready_probe.d":
       "__DEN_TITLE__ が動いているかの確認 1 回が応答を待つ時間です。忙しいマシンは応答が遅れますが、遅い応答も数えます。__DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.tools_probe": "Den ツールによるこのインストールの確認 (秒)",
+    "set.server.tools_probe.d":
+      "エージェントの Den ツールが、__DEN_TITLE__ がこのインストールだと答えるのを待つ時間です。これを過ぎると呼び出しは拒否されます。忙しい __DEN_TITLE__ は遅れて答えますが、遅れた答えも有効です。次の呼び出しで再び確認します。__DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.start_wait": "起動の待ち時間 (秒)",
     "set.server.start_wait.d":
       "`web up` が __DEN_TITLE__ の準備完了を待つ時間です。これを過ぎると起動しなかったと伝えます。起動に失敗したときはすぐに待つのをやめます。__DEN_CLI__ config web.start_wait_seconds=120",
@@ -1634,6 +1637,11 @@
     "hub.addressMore": "Hub のアドレス…",
     "hub.justConnected":
       "{company}（{host}）に接続しました。別の会社のつもりでしたか？",
+    "hub.switching":
+      "{to} に切り替え中です。終えるにはそこでサインインしてください。それまで __DEN_TITLE__ は {from} のままです。",
+    "hub.switchEnded":
+      "{to} への切り替えはサインインを待ちすぎたため終了しました。__DEN_TITLE__ は {from} のままです。",
+    "hub.switchSignin": "新しい Hub にサインイン",
     "hub.reconnect": "再接続",
     "hub.cw.done": "Hub（{company}）に接続しました。",
     "hub.cw.doneNoCo": "Hub に接続しました。",
@@ -1867,6 +1875,8 @@
     "ag.none": "このプロジェクトにはまだエージェントがありません",
     "ag.personaOf": "ペルソナ {persona}",
     "ag.state.running": "実行中",
+    "ag.activity.working": "作業中",
+    "ag.activity.idle": "アイドル",
     "ag.state.stopping": "停止中…",
     "ag.state.stopped": "停止済み",
     "ag.state.ended": "終了",
@@ -2386,6 +2396,10 @@
       "その後 Den が再起動し、エージェントは次に再起動したときに Hub のツールを使えるようになります。",
     "ap.det.hub_connect.connect":
       "その後、設定 › Hub で接続します。そこで「接続」を押すと Hub にサインインします。",
+    "ap.det.hub_connect.keep":
+      "{url} にサインインするまで、Den は {was} とそのキーを使い続けます。",
+    "ap.det.hub_connect.signin":
+      "許可すると {url} のサインインが開きます。その Hub が応答したら Den はそちらに切り替わり、{was} はキーを無効にします。失敗した場合、Den は {was} のままで、理由を伝えます。",
     "ap.det.den_pin_commit.pr":
       "Den は package.json と package-lock.json をブランチ den/pin-{version} にコミットし、プルリクエストを開きます。",
     "ap.det.den_pin_commit.push":
@@ -2950,6 +2964,13 @@
       "{name} の質問を取り下げました。解決済み: {reason}（{text}）",
     "bell.m.settledLate":
       "{name} の質問は解決済みでした: {reason}。あなたの回答はその後に届き、エージェントに渡しました（{text}）",
+    "bell.m.hubSwitchWaits":
+      "Hub の切り替えを終えるには {to} にサインインしてください。それまで __DEN_TITLE__ は {from} のままです",
+    "bell.m.hubSwitchExpired":
+      "{to} への切り替えはサインインを {days} 日待ったため終了しました。__DEN_TITLE__ は {from} のままです。切り替えるにはもう一度依頼してください",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ は {to} に切り替えられませんでした: {why}。{from} のままです。設定 › Hub でもう一度サインインしてください",
+    "ap.hubSwitchSignin": "{url} のサインインを開いています…",
     "bell.m.pick": "{n} 件のプロジェクトで選択が必要です",
     "bell.pickBody":
       "Den はどの Hub プロジェクトが合うか判断できません。クリックして選んでください。それまで何も保存されません。",
