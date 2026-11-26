@@ -49,6 +49,7 @@
     "build:pw-guard": "node scripts/build-pw-guard.mjs",
     "test:unit": "jest --coverage --forceExit",
     "test:unit:watch": "jest --watch",
+    "test:load": "jest -c jest.load.config.js --runInBand --forceExit",
     "test:framework": "npm run test:unit",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
