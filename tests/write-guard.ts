@@ -202,6 +202,8 @@ export function refusedWrite(
   op?: string,
 ): boolean {
   const real = op && LINK_OPS.has(op) ? realLink(p) : realish(p);
+  const own = inside(real, roots.checkout);
+  if (own && hasConfigLocal(path.relative(roots.checkout, real))) return true;
   if (roots.temp.some((t) => inside(real, t))) return false;
   if (inside(real, "/dev")) return false;
   // Before any named root: no root a suite names covers a config/local.

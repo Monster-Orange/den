@@ -299,6 +299,7 @@ export interface GateSettings {
    * passed by another (0: none is). Plain waiters are always passed.
    */
   priorityPassLimitMinutes: number;
+  releasePassOtherKindMinutes: number;
   /** Issue 715: agents may ask for priority (else people only). */
   priorityAgents: boolean;
   /** Issue 739: CI runners (runner token) may ask for priority. */
@@ -389,6 +390,7 @@ export const GATE_DEFAULTS: GateSettings = {
   remoteMaxAsks: 4,
   priorityMax: 1,
   priorityPassLimitMinutes: 0,
+  releasePassOtherKindMinutes: 30,
   priorityAgents: true,
   priorityRunners: true,
   claimMinutes: 3,
@@ -422,7 +424,10 @@ export function byAsked(a: GateEntry, b: GateEntry): number {
 
 type PrioritySettings = Pick<
   GateSettings,
-  "priorityMax" | "priorityPassLimitMinutes" | "classes"
+  | "priorityMax"
+  | "priorityPassLimitMinutes"
+  | "releasePassOtherKindMinutes"
+  | "classes"
 >;
 
 /** What the queue's order and guesses read (issue 751 adds the beside count). */
@@ -575,10 +580,32 @@ export function queueOrder(
     }
     q.splice(to, 0, p);
   }
+  const otherMs =
+    (s.releasePassOtherKindMinutes ??
+      GATE_DEFAULTS.releasePassOtherKindMinutes) * 60_000;
+  const passesOther = (p: GateEntry, w: GateEntry) =>
+    otherMs > 0 &&
+    w.kind !== p.kind &&
+    !w.priority &&
+    (byAsked(p, w) < 0 || now - t(w.askedAt) <= otherMs);
+  for (const p of q.filter((e) => pri.has(e.id))) {
+    const from = q.indexOf(p);
+    let to = from;
+    for (let i = from - 1; i >= 0; i--) {
+      const w = q[i]!;
+      if (!passesOther(p, w)) break;
+      to = i;
+    }
+    q.splice(from, 1);
+    q.splice(to, 0, p);
+  }
   // Issue 795, below 715 and 803: a yield never passes a waiter that
-  // outranks the one moved, by priority (same kind) or by class.
+  // outranks the one moved, by priority or by class.
   const outranks = (w: GateEntry, m: GateEntry) =>
-    (pri.has(w.id) && !pri.has(m.id) && w.kind === m.kind) || rank(w) < rank(m);
+    (pri.has(w.id) &&
+      !pri.has(m.id) &&
+      (w.kind === m.kind || passesOther(w, m))) ||
+    rank(w) < rank(m);
   return windowLast(applyYields(q, outranks), entries, s, now);
 }
 
@@ -629,7 +656,7 @@ export function yieldedTo(e: GateEntry, entries: GateEntry[]): string[] {
   );
 }
 
-/** Issue 715: the same-kind waiters a priority run goes ahead of. */
+/** The waiters a priority run goes ahead of. */
 export function passedBy(
   entries: GateEntry[],
   id: string,
@@ -640,9 +667,19 @@ export function passedBy(
   if (!p || p.grantedAt) return [];
   const order = queueOrder(entries, s, now);
   const at = order.indexOf(p);
+  const before = queueOrder(
+    entries,
+    { ...s, releasePassOtherKindMinutes: 0 },
+    now,
+  );
+  const ahead = new Set(before.slice(0, before.indexOf(p)).map((w) => w.id));
   return order
     .slice(at + 1)
-    .filter((w) => w.kind === p.kind && byAsked(w, p) < 0)
+    .filter(
+      (w) =>
+        (w.kind === p.kind && byAsked(w, p) < 0) ||
+        (w.kind !== p.kind && ahead.has(w.id)),
+    )
     .map((w) => w.id);
 }
 

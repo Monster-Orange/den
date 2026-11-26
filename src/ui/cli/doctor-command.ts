@@ -591,6 +591,7 @@ export function strategyCheck(r: DoctorRow): OnboardCheck {
         ? "warn"
         : "ok",
     detail: `${sel} ${r.available ? "available" : r.idle ? "not in use yet, unavailable" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+    ...(r.notes?.length ? { notes: [...r.notes] } : {}),
   };
 }
 
@@ -2806,6 +2807,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const rr = await repoRootRows();
       r.checks.push(rr.check);
       if (rr.problem) r.ok = false;
+      {
+        const { osUserDoctorRow } = await import("./os-user-command.js");
+        const ou = osUserDoctorRow(product().cli);
+        if (ou) {
+          r.checks.push(ou.check);
+          if (ou.problem) r.ok = false;
+        }
+      }
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
       // Issue 1131: agents' refused calls in the last hour.
@@ -2982,6 +2991,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // Issue 583: a far too broad repo root, and why Validate refuses it.
   const roots = await repoRootRows();
   for (const l of roots.lines) console.log(l);
+  const { osUserDoctorRow } = await import("./os-user-command.js");
+  const osUser = osUserDoctorRow(product().cli);
+  if (osUser) console.log(osUser.line);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
   for (const l of (await tokenRefusalRow()).lines) console.log(l);
@@ -3149,7 +3161,8 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       roots.problem ||
       cfg.problem ||
       sign.problem ||
-      addr.problem
+      addr.problem ||
+      !!osUser?.problem
       ? 1
       : 0;
   }
@@ -3177,6 +3190,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     hm.problem ||
     roots.problem ||
     cfg.problem ||
+    !!osUser?.problem ||
     found
     ? 1
     : 0;

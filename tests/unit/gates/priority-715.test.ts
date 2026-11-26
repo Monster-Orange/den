@@ -110,7 +110,8 @@ describe("the queue rules (issue 715)", () => {
       entry("a", "browser", 2),
       entry("p", "browser", 3, { reason: "r" }),
     ];
-    expect(ids(queueOrder(q, GATE_DEFAULTS, at(4)))).toEqual(["c", "p", "a"]);
+    const own = { ...GATE_DEFAULTS, releasePassOtherKindMinutes: 0 };
+    expect(ids(queueOrder(q, own, at(4)))).toEqual(["c", "p", "a"]);
   });
 
   // Issue 751: a plain waiter is passed however long it has waited; the
