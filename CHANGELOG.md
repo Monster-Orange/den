@@ -52,6 +52,7 @@ config and manifest changes a distribution must make to move to it under
 - A relaunched agent's first prompt now says the current local time, so it counts times and ETAs from now, not from its handoff or older messages.
 - Doctor says when agents commit without a signing key. A self-update's pin commit is signed with the agents' key when one is set. When no key is set and the branch requires signed commits, the pin goes to a pull request instead of a push that would be refused, and the bell says why.
 - Den's own tests: the helper that starts a test server now reads a server's log file when its output goes there. A port another test took is tried again on a new port, and any other failed start shows the log's last 40 lines. (issue 1845)
+- The Agents list's switch now says Need, Project and Group, without "By" (es: Urgencia, Proyecto, Grupo; ja: プロジェクト, グループ), so it takes less room.
 
 ## [0.4.90] - 2026-11-25
 

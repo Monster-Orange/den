@@ -2164,8 +2164,8 @@
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.by.label": "一覧の表示",
     "ag.by.need": "対応順",
-    "ag.by.project": "プロジェクト別",
-    "ag.by.group": "グループ別",
+    "ag.by.project": "プロジェクト",
+    "ag.by.group": "グループ",
     "ag.grp.noHub": "グループは Den Hub の機能です。",
     "ag.grp.connect": "Den Hub に接続",
     "ag.grp.notInPlan":

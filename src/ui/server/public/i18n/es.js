@@ -2240,9 +2240,9 @@
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.by.label": "Mostrar la lista",
-    "ag.by.need": "Por urgencia",
-    "ag.by.project": "Por proyecto",
-    "ag.by.group": "Por grupo",
+    "ag.by.need": "Urgencia",
+    "ag.by.project": "Proyecto",
+    "ag.by.group": "Grupo",
     "ag.grp.noHub": "Los grupos vienen con Den Hub.",
     "ag.grp.connect": "Conectar Den Hub",
     "ag.grp.notInPlan":
