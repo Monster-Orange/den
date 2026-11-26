@@ -1,24 +1,3 @@
-/**
- * Issue 988 (slice 2 of issue 936), part 1: agents as a second OS user:
- * the setup, the remove and doctor's check, as data. Nothing here starts
- * a session or changes the machine: the launcher test runs the generated
- * script against a stand-in runtime in a temp folder.
- *
- * The five things pinned:
- *   1. the sudoers rule runs as the agents user only, never root, with no
- *      ALL and no wildcards in the command;
- *   2. the launcher is root-owned and not writable by the person or the
- *      agents user, nor is any folder above it (doctor fails if it is);
- *   3. the launcher takes only an agent id, checked against Den's pattern,
- *      scrubs the environment to an allowlist, and execs only the binary
- *      Den registered;
- *   4. the agents user has no sudo, no login shell and no home outside
- *      Den's agent files;
- *   5. remove leaves no user, group, rule or file behind, and doctor
- *      proves it.
- *
- * Invented names.
- */
 import { afterAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -125,7 +104,6 @@ describe("issue 988 (pin 1): the sudoers rule", () => {
 });
 
 describe("issue 988 (pin 3): the launcher", () => {
-  // A stand-in runtime: prints its argv and its environment.
   const fake = path.join(tmp, "runtime.sh");
   fs.writeFileSync(
     fake,
@@ -172,7 +150,6 @@ describe("issue 988 (pin 3): the launcher", () => {
     expect(out).toMatch(/^USER=den-agents-robin$/m);
     expect(out).toMatch(/^DEN_AGENT_ID=scout$/m);
     expect(out).toMatch(/^TERM=xterm-256color$/m);
-    // The nonce reaches only argv (issue 988 slice 2), never the env.
     expect(out.split("\n").slice(1).join("\n")).not.toContain(NONCE);
   });
 
@@ -232,7 +209,6 @@ describe("issue 988 (pin 3): the launcher", () => {
   });
 });
 
-/** Every argv a plan runs, as one line each. */
 const lines = (steps: { argv: string[] }[]) =>
   steps.map((s) => s.argv.join(" "));
 
@@ -276,8 +252,6 @@ describe("issue 988 (pins 2 and 4): the setup", () => {
       );
       const L = "/opt/den/robin/bin/den-agent-launch";
       const S = "/etc/sudoers.d/den-robin";
-      // Each goes to a .new file in a root-only folder, is read back,
-      // (the rule) checked by visudo, then moved into place.
       for (const [dest, mode] of [
         [L, "0555"],
         [S, "0440"],
@@ -296,7 +270,6 @@ describe("issue 988 (pins 2 and 4): the setup", () => {
       const visudo = l.indexOf(`visudo -c -f ${S}.new`);
       expect(visudo).toBeGreaterThan(l.indexOf(`cat ${S}.new`));
       expect(visudo).toBeLessThan(l.indexOf(`mv -f ${S}.new ${S}`));
-      // The launcher goes in before the rule that lets it run.
       expect(l.indexOf(`mv -f ${L}.new ${L}`)).toBeLessThan(
         l.indexOf(`mv -f ${S}.new ${S}`),
       );
@@ -307,7 +280,6 @@ describe("issue 988 (pins 2 and 4): the setup", () => {
       expect(l).toContain(
         `install -d -o ${n.user} -g ${n.group} -m 0700 /opt/den/robin/home`,
       );
-      // Every step says what it does, for the person to read first.
       for (const s of setupPlan(layout(platform), staged))
         expect(s.say.length).toBeGreaterThan(10);
     });
@@ -325,7 +297,7 @@ describe("issue 988: root installs nothing from a file anyone else can write", (
         /^\/bin\/sh$/,
         /^\/usr\/sbin\/nologin$/,
         /^\/usr\/bin\/false$/,
-        /^\/(Users|Groups)\//, // dscl record names
+        /^\/(Users|Groups)\//,
       ];
       for (const s of steps)
         for (const a of s.argv.slice(1))
@@ -352,7 +324,6 @@ describe("issue 988: root installs nothing from a file anyone else can write", (
       "/etc/sudoers.d/den-robin.new",
     ])
       expect(setupPaths(layout("linux"))).toContain(p);
-    // The check itself, on the real shell: a link fails it.
     const d = fs.mkdtempSync(path.join(tmp, "links-"));
     fs.mkdirSync(path.join(d, "real"));
     fs.symlinkSync(path.join(d, "real"), path.join(d, "home"));
@@ -389,7 +360,6 @@ describe("issue 988: root installs nothing from a file anyone else can write", (
 });
 
 describe("issue 988: runPlan", () => {
-  /** A stand-in for root: files in a map; `tamper` changes one after it is written. */
   function machine(tamper?: { path: string; to: string }) {
     const files = new Map<string, string>();
     const ran: string[] = [];
@@ -406,7 +376,6 @@ describe("issue 988: runPlan", () => {
           ? { ok: true, stdout: files.get(a!)! }
           : { ok: false, error: "no such file" };
       if (cmd === "mv") {
-        // mv -f <from> <to>
         const [from, to] = [argv[2]!, argv[3]!];
         files.set(to, files.get(from) ?? "");
         files.delete(from);
@@ -470,12 +439,10 @@ describe("issue 988 (pin 5): remove undoes everything setup makes", () => {
         expect(l).toContain(`dscl . -delete /Users/${n.user}`);
         expect(l).toContain(`dscl . -delete /Groups/${n.group}`);
       }
-      // The rule goes first, so no step after it can be run through it.
       expect(l.indexOf("rm -f /etc/sudoers.d/den-robin")).toBe(l.indexOf("rm"));
     });
 });
 
-/** Facts for a setup that is all as it should be (Linux). */
 function goodFacts(): OsUserFacts {
   const L = "/opt/den/robin/bin/den-agent-launch";
   const lay = layout("linux");
@@ -652,7 +619,6 @@ describe("issue 988: writableChain (the real folders)", () => {
     const chain = writableChain(f);
     expect(chain[0]!.path).toBe(fs.realpathSync(d));
     expect(chain[chain.length - 1]!.path).toBe("/");
-    // This test runs as a person, so the temp folders aren't root's.
     expect(chain.some((c) => c.uid !== 0)).toBe(true);
   });
 });

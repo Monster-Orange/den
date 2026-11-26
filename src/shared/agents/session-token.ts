@@ -1,45 +1,18 @@
-/**
- * Issue 988, slice 2: the runtime sign-in token's way into a session that
- * runs under the agents' own OS login.
- *
- * Why the terminal: sudo (and launchctl) close every file descriptor above
- * 2 when they switch to the other login, so no pipe Den opens survives into
- * the session. A token in argv shows in `ps`; one in a file stays where the
- * login could read it later; the launcher starts with `env -i`. The
- * session's own terminal is the one channel that reaches it, so:
- *
- *   1. `agents session` turns echo off (raw mode), drops any input already
- *      waiting, and prints a ready marker with Den's per-launch nonce.
- *   2. Den's host, which holds every other input to that session until
- *      then, sees its marker (stripped from the output) and writes the
- *      token as one line, past every input recorder.
- *   3. `agents session` reads that line (at most TOKEN_LINE_MAX bytes,
- *      within the timeout), turns echo back on, and puts the token only in
- *      the runtime's env.
- *
- * A marker with another nonce, or a second one, ends the launch with no
- * token written: the output can't forge it.
- */
 import { randomBytes } from "crypto";
 
-/** The command these messages come from. */
 const CMD = "`agents session`";
 
-/** The longest token line read: a sign-in token is far shorter. */
 export const TOKEN_LINE_MAX = 4096;
 const NONCE_RE = /^[0-9a-f]{32}$/;
-/** A token: printable ASCII, no space. */
 const TOKEN_RE = /^[\x21-\x7e]+$/;
 const MARK_HEAD = "\u001b]den-ready;";
 const MARK_TAIL = "\u0007";
 const MARK_LEN = MARK_HEAD.length + 32 + MARK_TAIL.length;
 
-/** A fresh nonce for one launch. */
 export function newLaunchNonce(): string {
   return randomBytes(16).toString("hex");
 }
 
-/** The marker `agents session` prints when it is ready (an OSC string). */
 export function readyMarker(nonce: string): string {
   return `${MARK_HEAD}${nonce}${MARK_TAIL}`;
 }
@@ -52,18 +25,11 @@ type TtyIn = NodeJS.ReadableStream & {
 };
 
 export interface ReadTokenOptions {
-  /** Den's per-launch nonce (from the launcher's argv). */
   nonce: string;
-  /** How long Den has to write the line (default 5 s). */
   timeoutMs?: number;
-  /** How long input already on its way is dropped before the marker. */
   settleMs?: number;
 }
 
-/**
- * `agents session`: the token line from the terminal on `input`. Echo is
- * off from before the marker until the line is read (or refused).
- */
 export async function readTokenLine(
   input: NodeJS.ReadableStream,
   write: (text: string) => void,
@@ -78,11 +44,8 @@ export async function readTokenLine(
     throw new Error(`${CMD}: the launch nonce is not Den's shape`);
   tty.setRawMode(true);
   try {
-    // Drop what was typed before: it is never the token.
     const drop = () => {
-      while (tty.read() !== null) {
-        /* dropped */
-      }
+      while (tty.read() !== null) {}
     };
     drop();
     tty.on("readable", drop);
@@ -129,7 +92,6 @@ export async function readTokenLine(
             );
           const line = got.subarray(0, end).toString("latin1");
           const rest = got.subarray(end + 1);
-          // What follows stays for the runtime.
           if (rest.length) tty.unshift(rest);
           if (!TOKEN_RE.test(line))
             return done(new Error(`${CMD}: that line is not a token`));
@@ -146,19 +108,8 @@ export async function readTokenLine(
 
 export type ReadyState = "waiting" | "ready" | "refused";
 
-/**
- * Den's host: watches a session's output for its marker. `show` is what
- * reaches the transcript (never a marker); `ready` once its own marker
- * came; `refused` for another nonce's or a second one, before or after
- * the token was written (the launch ends; nothing more is written). The
- * nonce shows in `ps` (the launcher's argv), so it is good for one write.
- */
 export function watchReady(nonce: string): {
   feed: (chunk: string) => { show: string; state: ReadyState };
-  /**
-   * True once, when its own marker came and nothing was refused: the host
-   * writes the token then, and never again for this nonce (single use).
-   */
   take: () => boolean;
 } {
   let state: ReadyState = "waiting";
@@ -178,7 +129,6 @@ export function watchReady(nonce: string): {
         const at = text.indexOf(MARK_HEAD);
         if (at === -1) break;
         if (text.length < at + MARK_LEN) {
-          // A marker cut off at the chunk's end: wait for the rest.
           show += text.slice(0, at);
           held = text.slice(at);
           text = "";
@@ -192,7 +142,6 @@ export function watchReady(nonce: string): {
             ? "ready"
             : "refused";
       }
-      // A tail that could start a marker is held for the next chunk.
       for (let k = Math.min(MARK_HEAD.length - 1, text.length); k > 0; k--)
         if (MARK_HEAD.startsWith(text.slice(-k))) {
           held = text.slice(-k) + held;

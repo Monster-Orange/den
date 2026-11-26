@@ -2806,7 +2806,6 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const rr = await repoRootRows();
       r.checks.push(rr.check);
       if (rr.problem) r.ok = false;
-      // Issue 988: agents as a second OS user.
       {
         const { osUserDoctorRow } = await import("./os-user-command.js");
         const ou = osUserDoctorRow(product().cli);
@@ -2991,7 +2990,6 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   // Issue 583: a far too broad repo root, and why Validate refuses it.
   const roots = await repoRootRows();
   for (const l of roots.lines) console.log(l);
-  // Issue 988: agents as a second OS user.
   const { osUserDoctorRow } = await import("./os-user-command.js");
   const osUser = osUserDoctorRow(product().cli);
   if (osUser) console.log(osUser.line);

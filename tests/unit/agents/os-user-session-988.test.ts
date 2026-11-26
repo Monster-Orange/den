@@ -1,11 +1,3 @@
-/**
- * Issue 988, slice 2: `agents session <id> <nonce>`, what the launcher
- * runs as the agents' own login. It reads the agent's launch files (and
- * refuses any that fail doctor's check, before any token is asked for),
- * takes the sign-in token on its terminal, makes its own temp folder, and
- * starts the runtime in the agent sandbox with the token in the runtime's
- * env only. Never unsandboxed: a sandbox that can't start ends the launch.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";

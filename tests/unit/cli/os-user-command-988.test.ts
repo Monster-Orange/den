@@ -1,18 +1,3 @@
-/**
- * Issue 988, part 1: `agents os-login setup | remove | check`, and the
- * facts doctor reads from the machine. The commands run through stand-ins:
- * nothing here calls sudo or changes the machine.
- *
- *   setup   shows every step, asks, then runs each with sudo; a failure
- *           stops it. Sets agents.os_login: on.
- *   remove  asks, runs each step (gone already is fine), sets
- *           agents.os_login: off, then checks nothing is left (pin 5).
- *   check   doctor's row.
- *
- * All three are a person's: an agent's session is refused.
- *
- * Invented names.
- */
 import { describe, expect, it } from "@jest/globals";
 import {
   cmdOsUser,
@@ -54,7 +39,6 @@ function rig(
     fail?: string;
     env?: NodeJS.ProcessEnv;
     facts?: OsUserFacts;
-    /** A same-login process rewrites this file right after root writes it. */
     tamper?: { path: string; to: string };
     platform?: NodeJS.Platform;
   } = {},
@@ -64,7 +48,6 @@ function rig(
   const err: string[] = [];
   const asked: string[] = [];
   const set: boolean[] = [];
-  // Root's files, as the stand-in sudo keeps them.
   const files = new Map<string, string>();
   const d: OsUserCommandDeps = {
     platform: o.platform ?? "linux",
@@ -72,7 +55,6 @@ function rig(
     layout: async () => LAYOUT,
     confirm: async (q) => {
       asked.push(q);
-      // Everything was shown before the question.
       asked.push(`shown:${out.length}`);
       return o.yes ?? false;
     },
@@ -355,7 +337,6 @@ describe("issue 988: readOsUserFacts reads the machine", () => {
       groups: ["_den_robin", "everyone"],
     });
     expect(f.group).toEqual({ exists: true, members: ["robin"] });
-    // sudo -n -l asked for a password: not known.
     expect(f.personRules).toBeNull();
   });
 

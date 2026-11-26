@@ -3087,13 +3087,11 @@ export async function cmdAgents(
         case "accounts":
           return await accountsCmd(rest, d, deps);
         case "session": {
-          // Issue 988: what the launcher runs as the agents' own login.
           const { runAgentSession, defaultAgentSessionDeps } =
             await import("../../shared/agents/os-user-session.js");
           return await runAgentSession(rest, defaultAgentSessionDeps(d.env));
         }
         case "os-login": {
-          // Issue 988: agents as a second OS user (a person's).
           const { cmdOsUser, defaultOsUserDeps } =
             await import("./os-user-command.js");
           return await cmdOsUser(rest, {

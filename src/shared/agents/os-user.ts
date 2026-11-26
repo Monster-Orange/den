@@ -1,50 +1,19 @@
-/**
- * Issue 988 (slice 2 of issue 936), part 1: agents as a second OS user.
- * The setup, the remove and doctor's check, as data: what `agents os-login
- * setup` shows the person and then runs with sudo, and what doctor reads.
- *
- * One agents user and one group per person:
- *
- *               agents user            group
- *   Linux       den-agents-<person>    den-<person>
- *   macOS       _den_agents_<person>   _den_<person>   (hidden, system ids)
- *
- * What setup makes, under <root>/<person> (root: /opt/den):
- *
- *   bin/                  root, 0755, as is every folder above it
- *   bin/den-agent-launch  root, 0555: the only thing the person may run as
- *                         the agents user (one sudoers rule, no password)
- *   home/                 agents' login, 0700: its home, and its only one
- *   agents/               person:group, 3770 (sticky): the agent files
- *   /etc/sudoers.d/den-<person>   root, 0440:
- *       <person> ALL=(<agents user>) NOPASSWD: <launcher>
- *
- * Den's state folder stays the person's at 0700: the agents user can read
- * none of it. The launcher takes one agent id (Den's pattern), scrubs the
- * environment to LAUNCH_ENV and execs only the runtime written into it at
- * setup. Starting sessions through it is part 2.
- */
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
 export type OsUserPlatform = "darwin" | "linux";
 
-/** The person's OS user name: plain, so it is safe in every name below. */
 const PERSON_RE = /^[a-z_][a-z0-9_-]{0,15}$/;
-/** A path written into the launcher or the rule: nothing a shell or sudo reads specially. */
 const SAFE_PATH_RE = /^\/[A-Za-z0-9._/@+-]*$/;
 
-/** Groups that give sudo (or root): the agents user is in none of them. */
 export const SUDO_GROUPS = ["sudo", "wheel", "admin", "root"] as const;
-/** Shells that refuse a login. */
 export const NO_LOGIN_SHELLS = [
   "/usr/sbin/nologin",
   "/sbin/nologin",
   "/usr/bin/false",
   "/bin/false",
 ] as const;
-/** The environment a session starts with: nothing else comes through. */
 export const LAUNCH_ENV = [
   "HOME",
   "USER",
@@ -54,20 +23,14 @@ export const LAUNCH_ENV = [
   "TERM",
   "DEN_AGENT_ID",
 ] as const;
-/** Den's agent id pattern (records.ts AGENT_ID_RE), as the launcher checks it in sh. */
 const LAUNCH_ID_MAX = 64;
 
 export interface OsUserLayout {
   platform: OsUserPlatform;
-  /** The person's OS user name. */
   person: string;
-  /** Where the per-person folders go (/opt/den). */
   root: string;
-  /** What the launcher execs: an interpreter and Den's CLI script. */
   runtime: { bin: string; script: string };
-  /** The agents user's shell (Linux: nologin where it exists). */
   noLogin: string;
-  /** macOS: the system uid and gid to create them with. */
   ids?: { uid: number; gid: number };
 }
 
@@ -98,7 +61,6 @@ export function osUserPaths(root: string, person: string) {
   };
 }
 
-/** The one sudoers rule: the person runs the launcher as the agents user. */
 export function sudoersLine(o: {
   person: string;
   user: string;
@@ -111,7 +73,6 @@ export function sudoersLine(o: {
   return `${o.person} ALL=(${o.user}) NOPASSWD: ${o.launcher}`;
 }
 
-/** Why `text` is not exactly the one rule for this person (null: it is). */
 export function sudoersRuleProblem(
   text: string,
   o: { person: string; user: string; launcher: string },
@@ -128,17 +89,11 @@ export function sudoersRuleProblem(
   return null;
 }
 
-/**
- * Why the person's sudo rules (as `sudo -n -l` lists them) let more than
- * the launcher run as the agents user; null when exactly the one rule is
- * there.
- */
 export function listedRulesProblem(
   rules: readonly string[],
   o: { user: string; launcher: string },
 ): string | null {
   const want = `(${o.user}) NOPASSWD: ${o.launcher}`;
-  // The rules whose run-as list names the agents user.
   const mine = rules
     .map((r) => r.trim())
     .filter((r) =>
@@ -156,13 +111,6 @@ export function listedRulesProblem(
 
 const shQuote = (s: string) => `'${s}'`;
 
-/**
- * The launcher (root's, 0555). Takes one agent id, by Den's pattern, and
- * Den's launch nonce (32 lower-case hex: the ready marker's, issue 988
- * slice 2; single use, so its showing in `ps` gives nothing); starts
- * `<runtime.bin> <runtime.script> agents session <id> <nonce>` with only
- * LAUNCH_ENV set.
- */
 export function launcherScript(o: {
   person: string;
   user: string;
@@ -224,28 +172,16 @@ exec /usr/bin/env -i HOME=${shQuote(o.home)} USER=${shQuote(o.user)} LOGNAME=${s
 }
 
 export interface PlanStep {
-  /** What it does, for the person to read before anything runs. */
   say: string;
-  /** Run with sudo. */
   argv: string[];
-  /** A failure doesn't stop the plan (remove: it may already be gone). */
   optional?: boolean;
-  /** Given on stdin, from Den's memory: never a file anyone else can write. */
   stdin?: string;
-  /** What it must print, exactly; anything else stops the plan. */
   expect?: string;
-  /** Run (each with sudo) when this step fails, before stopping. */
   cleanup?: string[][];
 }
 
 const rootGroup = (p: OsUserPlatform) => (p === "darwin" ? "wheel" : "root");
 
-/**
- * Root writes `text` (on stdin, from Den's memory) to `<dest>.new` in a
- * folder only root can write, makes it root's with `mode`, reads it back
- * (it must be exactly `text`), runs `check` on it, then moves it into
- * place and reads that back too. On any difference both are removed.
- */
 function rootWrite(
   what: string,
   dest: string,
@@ -294,7 +230,6 @@ function rootWrite(
   ];
 }
 
-/** Every path setup writes as root: none may be a link (checked first). */
 export function setupPaths(l: OsUserLayout): string[] {
   const p = osUserPaths(l.root, l.person);
   return [
@@ -310,11 +245,6 @@ export function setupPaths(l: OsUserLayout): string[] {
   ];
 }
 
-/**
- * The setup's steps, in order. `text` is the launcher and the rule as
- * shown to the person; root gets each on stdin. `have`: the login and the
- * group already exist (a re-run keeps them).
- */
 export function setupPlan(
   l: OsUserLayout,
   text: { launcher: string; sudoers: string },
@@ -336,7 +266,6 @@ export function setupPlan(
     },
   ];
   if (l.platform === "linux") {
-    // A re-run keeps the login and the group it made (doctor checks them).
     if (!have.group)
       steps.push({
         say: `Make the group ${n.group}, for you and your agents`,
@@ -372,7 +301,6 @@ export function setupPlan(
       say,
       argv: ["dscl", ".", "-create", ...a],
     });
-    // A re-run keeps the login and the group, and their ids.
     if (!have.group)
       steps.push(
         dscl(`Make the group ${n.group}, for you and your agents`, G),
@@ -498,11 +426,6 @@ export type PlanRunner = (
   stdin?: string,
 ) => { ok: boolean; stdout?: string; error?: string };
 
-/**
- * Runs `steps` with `run` (sudo). A failed step, or one whose output isn't
- * exactly what it must print, runs its cleanup and stops the plan (an
- * optional step without an expected output just goes on).
- */
 export function runPlan(
   steps: PlanStep[],
   run: PlanRunner,
@@ -524,7 +447,6 @@ export function runPlan(
   return { ok: true };
 }
 
-/** The remove's steps: the rule first, then the user, the group and the folders. */
 export function removePlan(l: OsUserLayout): PlanStep[] {
   const n = osUserNames(l.platform, l.person);
   const p = osUserPaths(l.root, l.person);
@@ -581,7 +503,6 @@ export interface StatFacts {
   mode: number;
 }
 
-/** What doctor reads from the machine (defaultOsUserFacts). */
 export interface OsUserFacts {
   user: {
     exists: boolean;
@@ -592,17 +513,13 @@ export interface OsUserFacts {
   };
   group: { exists: boolean; members?: string[] };
   personUid: number;
-  /** The rule file's owner and mode (its text is root's to read). */
   sudoers: StatFacts | null;
-  /** The person's sudo rules naming the agents user (`sudo -n -l`); null: it couldn't list them. */
   personRules: string[] | null;
   launcher: (StatFacts & { text: string }) | null;
-  /** Each folder above the launcher, nearest first, to /. */
   launcherChain: (StatFacts & { path: string })[];
   agentsDir: StatFacts | null;
   homeDir: StatFacts | null;
   stateDir: StatFacts | null;
-  /** Whether <root>/<person> exists. */
   dir: boolean;
 }
 
@@ -614,7 +531,6 @@ export interface OsUserCheck {
 
 const octal = (m: number) => (m & 0o7777).toString(8).padStart(4, "0");
 
-/** Doctor's row: as it should be when agents.os_login is on, gone when it is off. */
 export function osUserCheck(
   o: { on: boolean; layout: OsUserLayout; cli?: string },
   f: OsUserFacts,
@@ -661,7 +577,6 @@ export function osUserCheck(
     return { status: "fail", detail: problems.join("; "), problems };
   }
 
-  // Pin 4: no sudo, no login shell, no home outside the agent files.
   if (!f.user.exists) problems.push(`the agents' login ${n.user} is missing`);
   else {
     if (
@@ -687,7 +602,6 @@ export function osUserCheck(
   else if (!(f.group.members ?? []).includes(l.person))
     problems.push(`you (${l.person}) are not in ${n.group}`);
 
-  // Pin 1: the one rule, root's file, read-only.
   if (!f.sudoers) problems.push(`the sudo rule ${p.sudoers} is missing`);
   else if (f.sudoers.uid !== 0 || (f.sudoers.mode & 0o777) !== 0o440)
     problems.push(
@@ -703,7 +617,6 @@ export function osUserCheck(
     if (bad) problems.push(bad);
   }
 
-  // Pin 2: root's launcher, unchanged, and root's folders above it.
   if (!f.launcher) problems.push(`the launcher ${p.launcher} is missing`);
   else {
     if (f.launcher.uid !== 0)
@@ -761,7 +674,6 @@ export function osUserCheck(
   };
 }
 
-/** Each folder above `file`, nearest first, up to /: its owner and mode. */
 export function writableChain(file: string): (StatFacts & { path: string })[] {
   const out: (StatFacts & { path: string })[] = [];
   let d = fs.realpathSync(path.dirname(file));
@@ -776,18 +688,13 @@ export function writableChain(file: string): (StatFacts & { path: string })[] {
 }
 
 export interface OsUserReadDeps {
-  /** Runs a command (never with sudo), for its status and output. */
   exec: (cmd: string, args: string[]) => { status: number; stdout: string };
   personUid: number;
-  /** A path's owner and mode; null when it isn't there. */
   stat: (p: string) => StatFacts | null;
-  /** A file's text; null when it isn't there or can't be read. */
   read: (p: string) => string | null;
-  /** The folders above a file (writableChain). */
   chain: (p: string) => (StatFacts & { path: string })[];
 }
 
-/** What doctor checks, read from the machine as the person (no sudo). */
 export function readOsUserFacts(
   l: OsUserLayout,
   stateDir: string,
@@ -858,9 +765,6 @@ export function readOsUserFacts(
       };
   }
 
-  // `sudo -n -l` lists the person's rules without a password while one of
-  // them is NOPASSWD; otherwise it fails, and the rules are not known.
-  // Only when there is an agents user: a plain install never calls sudo.
   const listed = user.exists || group.exists ? ok("sudo", ["-n", "-l"]) : "";
   const personRules =
     listed === null
@@ -894,7 +798,6 @@ export function readOsUserFacts(
   };
 }
 
-/** readOsUserFacts' deps on this machine. */
 export function machineReadDeps(): OsUserReadDeps {
   return {
     exec: (cmd, args) => {
@@ -931,13 +834,6 @@ export function machineReadDeps(): OsUserReadDeps {
   };
 }
 
-/**
- * Issue 988, slice 2: why the agents' login could change what the
- * launcher runs: node, Den's CLI script, Den's own folder (node_modules
- * and all) and every folder above them. Each path the login owns, its
- * group can write, or anyone can write (a sticky folder above them, like
- * /tmp, is fine) is named. Empty: it is all someone else's.
- */
 export function runtimeWritableProblems(
   r: { bin: string; script: string; engineRoot: string },
   agents: { uid: number; gid: number },

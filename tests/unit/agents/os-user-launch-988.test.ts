@@ -1,20 +1,3 @@
-/**
- * Issue 988, slice 2: what the launcher runs is the person's, never the
- * agents' login's, and nothing from the login's home or the folder it was
- * started in is loaded as code.
- *
- *   runtimeWritableProblems  node, Den's CLI, Den's folder (node_modules
- *                            and all) and every folder above them: none
- *                            may be the agents' login's, writable by its
- *                            group or by anyone (a sticky folder like /tmp
- *                            is fine above them)
- *   the launcher             starts in the login's home, whatever folder
- *                            sudo was run from; NODE_OPTIONS, NODE_PATH,
- *                            a node_modules or a .npmrc there or in the
- *                            caller's folder load nothing
- *
- * Invented names.
- */
 import { afterAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -33,7 +16,6 @@ afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const AGENTS = { uid: 455, gid: 455 };
 
 describe("issue 988: nothing the launcher runs is the agents' login's to change", () => {
-  /** A fake engine: <engine>/dist/cli.js and <engine>/node_modules/dep/index.js. */
   function engine(name: string) {
     const e = path.join(tmp, name);
     fs.mkdirSync(path.join(e, "dist"), { recursive: true });
@@ -44,7 +26,6 @@ describe("issue 988: nothing the launcher runs is the agents' login's to change"
     return e;
   }
   type St = { uid: number; gid: number; mode: number };
-  /** The real stat, with some paths made to look otherwise. */
   const statWith =
     (over: Record<string, Partial<St>>) =>
     (p: string): St => {
@@ -147,7 +128,6 @@ describe("issue 988: nothing from the login's home or the caller's folder is loa
       "node-options=--require ./evil.cjs\n",
     );
   }
-  // The runtime: prints its folder, then tries the bare name "dep".
   const engineDir = path.join(tmp, "engine");
   fs.mkdirSync(engineDir, { recursive: true });
   const script = path.join(engineDir, "cli.cjs");

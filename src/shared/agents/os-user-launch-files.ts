@@ -1,28 +1,7 @@
-/**
- * Issue 988, slice 2: an agent's launch files under the agents' own login.
- *
- * Den's server runs as the person and owns /opt/den/<person>/agents (made
- * at setup, person:den-<person>, 3770). For each agent it writes:
- *
- *   agents/<id>/              person:den-<person>, 2750
- *   agents/<id>/launch.json   person, 0640: what `agents session` starts
- *   agents/<id>/own/          person:den-<person>, 2770: the agent's own
- *                             writable files (handoff.md, notes, counts)
- *
- * So the agents' login reads its launch file and can't change, rename or
- * add one (Reviewer D's pin 3). No sudo after setup: the person owns the
- * folders. launch.json never holds a secret: the sign-in token comes on
- * the session's terminal (session-token.ts), and an env name like a
- * secret's is refused before anything is written.
- *
- * Both sides check them: doctor (launchFileProblems) and `agents session`
- * (readAgentLaunch), which refuses to start from files that fail.
- */
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
 
-/** The command these messages come from. */
 const CMD = "`agents session`";
 
 export const LAUNCH_FILE = "launch.json";
@@ -32,23 +11,14 @@ const FILE_MODE = 0o640;
 const OWN_MODE = 0o2770;
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ENV_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-/** Names that hold a secret: never written to a launch file. */
 const SECRETISH =
   /TOKEN|SECRET|PASSW|API_?KEY|PRIVATE|CREDENTIAL|COOKIE|SESSION_?KEY/i;
 
 export interface AgentLaunchSpec {
   agentId: string;
-  /** The runtime's argv, as Den builds it (no secret in it). */
   argv: string[];
-  /** The agent's working folder. */
   cwd: string;
-  /** The session's env beyond the launcher's: never a secret. */
   env: Record<string, string>;
-  /**
-   * The env name the runtime reads its sign-in token from (the catalog's:
-   * CLAUDE_CODE_OAUTH_TOKEN for Claude Code). A name only: the token itself
-   * comes on the terminal.
-   */
   tokenEnv?: string;
 }
 
@@ -81,7 +51,6 @@ function checkSpec(s: AgentLaunchSpec): void {
   }
 }
 
-/** Makes `dir` with `mode` if absent; refuses a link or a non-folder there. */
 function ensureDir(dir: string, mode: number): void {
   const st = fs.lstatSync(dir, { throwIfNoEntry: false });
   if (st?.isSymbolicLink())
@@ -91,11 +60,9 @@ function ensureDir(dir: string, mode: number): void {
   if (st && !st.isDirectory())
     throw new Error(`launch files: ${dir} is not a folder`);
   if (!st) fs.mkdirSync(dir, { mode });
-  // The umask and the parent's setgid can change what mkdir made.
   fs.chmodSync(dir, mode);
 }
 
-/** Den's server: writes (or replaces) an agent's launch files. */
 export function writeAgentLaunch(agentsDir: string, s: AgentLaunchSpec): void {
   checkSpec(s);
   const dir = path.join(agentsDir, s.agentId);
@@ -106,7 +73,6 @@ export function writeAgentLaunch(agentsDir: string, s: AgentLaunchSpec): void {
     throw new Error(
       `launch files: ${file} is a link; Den writes nothing through it`,
     );
-  // 2750: the person (its owner) writes; the login only reads.
   writeFileAtomic(
     file,
     `${JSON.stringify({ agentId: s.agentId, argv: s.argv, cwd: s.cwd, env: s.env, ...(s.tokenEnv ? { tokenEnv: s.tokenEnv } : {}) }, null, 2)}\n`,
@@ -116,10 +82,6 @@ export function writeAgentLaunch(agentsDir: string, s: AgentLaunchSpec): void {
 
 const oct = (m: number) => `0${(m & 0o7777).toString(8)}`;
 
-/**
- * What is wrong with an agent's launch files, for doctor and for `agents
- * session` (none: they are safe to start from). `personUid` owns them.
- */
 export function launchFileProblems(
   agentsDir: string,
   agentId: string,
@@ -149,8 +111,6 @@ export function launchFileProblems(
     }
     if (st.uid !== personUid)
       out.push(`${name} is not the person's (owner uid ${st.uid})`);
-    // The permission bits decide who writes; setgid only passes the group
-    // down (macOS does that anyway), and a sandboxed caller can't set it.
     if ((st.mode & 0o777) !== (want & 0o777))
       out.push(
         `${name} is ${oct(st.mode & 0o777)}; it must be ${oct(want & 0o777)}`,
@@ -174,7 +134,6 @@ export function launchFileProblems(
   return out;
 }
 
-/** `agents session`: the launch spec, only from files that pass every check. */
 export function readAgentLaunch(
   agentsDir: string,
   agentId: string,

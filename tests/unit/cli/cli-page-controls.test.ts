@@ -199,10 +199,11 @@ const LISTING: Record<string, Entry> = {
   "agents folder": slot("0.4.50", "move a stopped agent to another folder"),
   "agents unlink": page("agents-page.js", 'agentPath(r, "link"'),
   "agents rm": page("agents-page.js", 'agentPath(r, "remove"'),
-  // Issue 988: setup and remove run sudo, which asks for the person's
-  // password at a terminal; check is doctor's row.
   "agents os-login": script(
     "the agents' own login, made and removed with sudo at a terminal",
+  ),
+  "agents session": script(
+    "what the launcher runs as the agents' own login to start one agent",
   ),
   "agents handback-check": script("a linter for agents' hand-backs"),
   "agents handoff-check": script("a linter for agents' hand-offs"),

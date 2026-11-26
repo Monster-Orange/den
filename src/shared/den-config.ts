@@ -653,7 +653,6 @@ export interface UserConfig {
      * for one agent. Only here: agents can't write this file.
      */
     sandbox?: unknown;
-    /** Issue 988: on or off: agents run as a second OS user. */
     os_login?: unknown;
     /**
      * agents.git.signing_key: per machine, so user.yml's wins over the
@@ -1207,11 +1206,6 @@ export function setUserSandboxOn(): void {
   } as UserConfig);
 }
 
-/**
- * Issue 988: agents.os_login in user.yml (on or off, true or false; unset is
- * off): agents run as a second OS user, which `agents os-login setup` makes.
- * Only user.yml holds it: agents can't write that file.
- */
 export function osUserSetting(userAgents: unknown): boolean {
   if (!isMapping(userAgents)) return false;
   const v = userAgents.os_login;
@@ -1222,7 +1216,6 @@ export function osUserSetting(userAgents: unknown): boolean {
   );
 }
 
-/** Issue 988: sets agents.os_login in user.yml, keeping everything else there. */
 export function setUserOsUser(on: boolean): void {
   const cfg = readUserConfig();
   writeUserConfig({

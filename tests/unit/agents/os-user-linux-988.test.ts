@@ -1,15 +1,3 @@
-/**
- * Issue 988 on a real Linux machine: the setup's steps run for real, the
- * sudo rule is tried, and the remove is checked. Only as root, in a
- * throwaway container, with DEN_OS_USER_E2E=1 (it makes logins and writes
- * /etc/sudoers.d); everywhere else it is skipped.
- *
- *   docker run --rm -e DEN_OS_USER_E2E=1 -v <checkout>:/den -w /den node:24 \
- *     sh -c 'apt-get update -qq && apt-get install -y -qq sudo >/dev/null &&
- *            npx jest --maxWorkers=1 tests/unit/agents/os-user-linux-988.test.ts'
- *
- * Invented names.
- */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -52,15 +40,11 @@ const layout: OsUserLayout = {
 const n = osUserNames("linux", PERSON);
 const p = osUserPaths(layout.root, PERSON);
 
-// jest's setup puts a sudo stand-in ahead of every spawn's PATH (the
-// real-CLI sentinel, tests/sentinel.ts), so no other test can run sudo.
-// This one, root in a throwaway container, means the real one: by full path.
 const SUDO = "/usr/bin/sudo";
 const SYSTEM_ENV = { PATH: "/usr/sbin:/usr/bin:/sbin:/bin" };
 const real = (argv: string[]) =>
   argv[0] === "sudo" ? [SUDO, ...argv.slice(1)] : argv;
 const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
-/** Runs `argv` as `who` (root su's to it; a no-login user gets /bin/sh). */
 function as(who: string, argv: string[]) {
   return spawnSync(
     "su",
@@ -74,7 +58,6 @@ function as(who: string, argv: string[]) {
 const root = (argv: string[]) =>
   spawnSync(argv[0]!, argv.slice(1), { encoding: "utf-8", env: SYSTEM_ENV });
 
-/** doctor's facts, with `sudo -n -l` run as the person, as doctor would. */
 function facts() {
   const m = machineReadDeps();
   return readOsUserFacts(layout, STATE, {
@@ -97,7 +80,6 @@ const TEXT = {
   }),
   sudoers: `${sudoersLine({ person: PERSON, user: n.user, launcher: p.launcher })}\n`,
 };
-/** sudo, as root here: stdin in, stdout back (runPlan compares it). */
 const rootRun: PlanRunner = (argv, stdin) => {
   const r = spawnSync(argv[0]!, argv.slice(1), {
     encoding: "utf-8",
@@ -204,7 +186,6 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
   it("the agents' login can't move its home or plant anything in root's folder", () => {
     expect(as(n.user, ["mv", p.home, `${p.dir}/h2`]).status).not.toBe(0);
     expect(as(n.user, ["ln", "-s", STATE, `${p.dir}/x`]).status).not.toBe(0);
-    // The agent files folder is sticky: it can't remove the person's files.
     const mine = path.join(p.agents, "person-file");
     expect(as(PERSON, ["touch", mine]).status).toBe(0);
     expect(as(n.user, ["rm", "-f", mine]).status).not.toBe(0);
@@ -215,7 +196,6 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
     expect(
       runPlan(setupPlan(layout, TEXT, { user: true, group: true }), rootRun),
     ).toEqual({ ok: true });
-    // A link planted where setup writes (only root could, here): refused.
     fs.rmSync(p.home, { recursive: true });
     fs.symlinkSync(STATE, p.home);
     const before = fs.statSync(STATE);

@@ -1,12 +1,3 @@
-/**
- * Issue 988, slice 2: the launch files. Den's server (the person) writes
- * what `agents session` needs into /opt/den/<person>/agents/<id>/: the
- * folder person:den-<person> 2750 and launch.json 0640, so the agents'
- * login reads them and can't change, rename or add any (Reviewer D's pin
- * 3). The agent's own writable files go in its own/ folder (2770). No
- * secret is ever in launch.json: the token comes on the terminal.
- * Temp folders, this process's uid as "the person".
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
@@ -23,8 +14,6 @@ let agents: string;
 const me = process.getuid!();
 beforeEach(() => {
   agents = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "d988lf-")));
-  // As setup makes it: a group the person is in (macOS drops a setgid
-  // bit on a folder whose group isn't one of the caller's).
   fs.chownSync(agents, me, process.getgid!());
   fs.chmodSync(agents, 0o3770);
 });
@@ -110,7 +99,6 @@ describe("issue 988: doctor and agents session check them", () => {
       expect.stringMatching(/scout is 0770; it must be 0750/),
     ]);
     fs.chmodSync(dir, 0o2750);
-    // Someone else's: the person's uid is not this file's.
     expect(launchFileProblems(agents, "scout", me + 1).join("\n")).toMatch(
       /not the person's/,
     );

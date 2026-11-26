@@ -1,13 +1,3 @@
-/**
- * Issue 988, slice 2: the runtime sign-in token reaches a session started
- * under the agents' own login as one line on its terminal. A session runs
- * in a PTY (sudo closes every fd above 2, so no pipe survives the switch to
- * the other login), so `agents session` first turns echo off, drops any
- * input already typed, and prints a ready marker carrying Den's per-launch
- * nonce. Only then does Den write the token. Never argv, a file or the
- * launcher's env. A line that is too long, or late, is refused; a marker
- * with the wrong nonce, or a second one, ends the launch.
- */
 import { describe, expect, it } from "@jest/globals";
 import { PassThrough } from "stream";
 import {
@@ -18,7 +8,6 @@ import {
   watchReady,
 } from "../../../src/shared/agents/session-token.js";
 
-/** A terminal-like stdin: records raw mode on and off, in order. */
 function tty() {
   const s = new PassThrough() as PassThrough & {
     isTTY: boolean;
@@ -42,12 +31,10 @@ describe("issue 988: the session reads the token", () => {
     const said: string[] = [];
     const p = readTokenLine(s, (t) => said.push(`${modes.length}:${t}`), opts);
     await new Promise((r) => setTimeout(r, 60));
-    // The marker went out after raw mode was on, and after the drop.
     expect(said).toEqual([`1:${readyMarker(N)}`]);
     s.write("tok-123\nrest");
     await expect(p).resolves.toBe("tok-123");
     expect(modes).toEqual([true, false]);
-    // What came after the line stays for the runtime.
     expect(String(s.read())).toBe("rest");
   });
 
@@ -131,7 +118,6 @@ describe("issue 988: Den's host waits for its marker", () => {
     w.feed(readyMarker(N));
     expect(w.take()).toBe(true);
     expect(w.take()).toBe(false);
-    // The same nonce again (argv shows it in ps): refused, nothing written.
     expect(w.feed(`x${readyMarker(N)}`)).toEqual({
       show: "x",
       state: "refused",

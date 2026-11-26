@@ -1,15 +1,3 @@
-/**
- * Issue 988, part 1: `agents os-login setup | remove | check`.
- *
- *   setup   shows every step and its command, asks, then runs each with
- *           sudo (a failure stops it), and sets agents.os_login: on
- *   remove  shows and asks the same, runs every step (a thing already gone
- *           is fine), sets agents.os_login: off, and checks nothing is left
- *   check   doctor's row for it
- *
- * A person's commands: an agent's session is refused before anything is
- * shown. Nothing here starts a session as the agents user (part 2).
- */
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -46,7 +34,6 @@ export interface OsUserCommandDeps {
   env: NodeJS.ProcessEnv;
   layout: () => Promise<OsUserLayout>;
   confirm: (question: string) => Promise<boolean>;
-  /** Runs `argv` with sudo, `stdin` on its stdin; its stdout comes back. */
   sudo: PlanRunner;
   facts: () => OsUserFacts;
   setOn: (on: boolean) => void;
@@ -109,8 +96,6 @@ export async function cmdOsUser(
       user: n.user,
       launcher: p.launcher,
     });
-    // Root gets both from here, on stdin: nothing it installs is ever in a
-    // file your login (or an agent running as it) could change.
     const text = {
       launcher: launcherScript({
         person: l.person,
@@ -153,7 +138,6 @@ export async function cmdOsUser(
     return 0;
   }
 
-  // remove
   const steps = removePlan(l);
   d.out(`These ${steps.length} steps run with sudo:`);
   show(d, steps);
@@ -180,10 +164,6 @@ export async function cmdOsUser(
   return 0;
 }
 
-/**
- * On macOS, the ids for the login and the group: the ones they already
- * have (a re-run), else a free id in the system range (401–499).
- */
 function macIds(person: string): { uid: number; gid: number } {
   const n = osUserNames("darwin", person);
   const read = (rec: string, key: string) => {
@@ -202,7 +182,6 @@ function macIds(person: string): { uid: number; gid: number } {
   return { uid: uid ?? free.uid, gid: gid ?? free.gid };
 }
 
-/** On macOS, a uid and gid in the system range (400–499) that no user or group has. */
 function freeSystemIds(): { uid: number; gid: number } {
   const used = (kind: string, key: string) =>
     new Set(
@@ -223,7 +202,6 @@ function freeSystemIds(): { uid: number; gid: number } {
 
 export const OS_USER_ROOT = "/opt/den";
 
-/** This machine's layout for the person running the CLI. */
 export function machineLayout(platform: NodeJS.Platform): OsUserLayout {
   const plat = platform === "darwin" ? "darwin" : "linux";
   const noLogin =
@@ -266,8 +244,6 @@ export function defaultOsUserDeps(cli: string): OsUserCommandDeps {
       }
     },
     sudo: (argv, stdin) => {
-      // stdout comes back (a read-back is compared); sudo asks for the
-      // password on the terminal itself, not on stdin.
       const r = spawnSync("sudo", ["--", ...argv], {
         input: stdin ?? "",
         stdio: ["pipe", "pipe", "inherit"],
@@ -291,10 +267,6 @@ export function defaultOsUserDeps(cli: string): OsUserCommandDeps {
   };
 }
 
-/**
- * Issue 988: doctor's row (macOS and Linux). Off and not set up is a quiet
- * ✓; anything wrong, or left behind by a remove, is ✗.
- */
 export function osUserDoctorRow(
   cli: string,
   d: Pick<OsUserCommandDeps, "platform" | "facts" | "on"> = defaultOsUserDeps(
