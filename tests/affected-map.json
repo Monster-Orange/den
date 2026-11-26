@@ -4542,7 +4542,7 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/time-zone-pref.ts"],
+      "when": ["src/shared/time-zone.ts", "src/ui/server/time-zone-pref.ts"],
       "run": ["tests/unit/server/time-zone.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
