@@ -25,6 +25,7 @@ import { proxyRoutes } from "../../../src/shared/edge/proxy-route.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
 import { settled } from "../helpers/find.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 jest.setTimeout(90_000);
 
@@ -111,13 +112,8 @@ async function open(e: (typeof ENGINES)[number], width: number): Promise<Page> {
     reducedMotion: "reduce",
   });
   await signIn(ctx, s!.stateDir, s!.base);
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
       st.textContent = "#cl-overlay{display:none!important}";
