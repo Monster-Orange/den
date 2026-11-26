@@ -1535,7 +1535,7 @@ export function readDenConfig(): DenConfig {
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
-      // 0.4.45: the Hub editions under Connect (shared/hub-editions.ts):
+      // 0.4.45: the Hub editions under Connect (shared/hub/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
       // Issue 1391: the distribution's den.yml, else this file.

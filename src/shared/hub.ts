@@ -80,7 +80,7 @@ export interface HubConfig {
   inboxOnStop: "nudge" | "off";
   /**
    * Issue 158 hub.delivery_loop (default true): every agent gets the Hub
-   * delivery loop in its instructions (shared/hub-loop.ts); a project's
+   * delivery loop in its instructions (shared/hub/hub-loop.ts); a project's
    * own setting wins.
    */
   deliveryLoop: boolean;
