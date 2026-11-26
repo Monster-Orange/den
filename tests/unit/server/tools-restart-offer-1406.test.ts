@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
+import type { RestartSelfCheck } from "../../../src/shared/agents/restart-self.js";
 import {
   offerToolsRestarts,
   type ToolsRestartOfferDeps,
@@ -35,7 +36,7 @@ function harness(
         action: "agent_restart_self",
         args: { agent: id },
       })),
-    check: (a) =>
+    check: (a): RestartSelfCheck =>
       over.stopped?.includes(String(a.agent))
         ? { ok: false, error: `${String(a.agent)} is stopped` }
         : {
@@ -44,7 +45,11 @@ function harness(
             params: { agent: String(a.agent), reason: String(a.reason) },
             details: ["Why: to run on the updated Den and its tools."],
             detailKeys: [],
-            args: { agent: a.agent, project: a.project, reason: a.reason },
+            args: {
+              agent: String(a.agent),
+              project: String(a.project),
+              reason: "update",
+            },
           },
     request: (r) => {
       if (over.failFor?.includes(String(r.args.agent))) throw new Error("full");

@@ -3933,6 +3933,7 @@
     "bell.m.rsJob":
       "{id} was not restarted: a background job is running ({cmd}, {min} min)",
     "bell.m.rsFailed": "{id} was not restarted",
+    "bell.m.rsMatched": "{id} asked to be restarted for new tools: it's in the restart card now",
     "bell.m.restartGroup": "Restart {n} agents when idle: {names}",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",

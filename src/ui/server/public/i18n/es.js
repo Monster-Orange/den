@@ -3012,6 +3012,7 @@
     "bell.m.rsJob":
       "{id} no se reinició: hay una tarea en segundo plano ({cmd}, {min} min)",
     "bell.m.rsFailed": "{id} no se reinició",
+    "bell.m.rsMatched": "{id} pidió reiniciarse por herramientas nuevas: ya está en la tarjeta de reinicio",
     "bell.m.restartGroup": "Reiniciar {n} agentes cuando estén libres: {names}",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",

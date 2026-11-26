@@ -1489,6 +1489,7 @@ import {
   type RestartSelfDeps,
 } from "../../shared/agents/restart-self.js";
 import { offerToolsRestarts } from "./tools-restart-offer.js";
+import { matchFreeTextRestarts } from "./free-text-restarts.js";
 import {
   checkSettingChange,
   runSettingChange,
@@ -5803,6 +5804,31 @@ async function offerToolsRestartsNow(): Promise<void> {
     recordAction(null, {
       verb: "approval-ask",
       detail: `agent_restart_self after the update: ${offered.join(", ")}`,
+    });
+}
+
+async function matchFreeTextRestartsNow(): Promise<void> {
+  const ap = approvalDeps();
+  try {
+    if (!ap.enabled()) return;
+  } catch {
+    return;
+  }
+  const op = ap.actions.agent_restart_self;
+  if (!op) return;
+  const store = notificationDeps().store;
+  const matched = await matchFreeTextRestarts({
+    rows: () => store.list(),
+    pending: () => ap.queue.pending(),
+    check: (a, who) =>
+      op.check(a, who) as RestartSelfCheck | Promise<RestartSelfCheck>,
+    request: (r) => ap.queue.request(r),
+    settle: (id, s, say) => store.settle(id, s, say),
+  });
+  if (matched.length)
+    recordAction(null, {
+      verb: "approval-ask",
+      detail: `agent_restart_self from waiting questions: ${matched.join(", ")}`,
     });
 }
 
@@ -12188,6 +12214,7 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    void matchFreeTextRestartsNow().catch(() => undefined);
     // Issue 936: Turn on the agent sandbox for agents from before it.
     startSandboxOnAsk();
     // Issue 406: an owner linked before names were kept: GitHub's public
