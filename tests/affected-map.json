@@ -861,12 +861,23 @@
       "src/ui/server/session-routes.ts",
       "src/ui/server/workspace-routes.ts",
       "src/ui/server/agent-routes.ts"
+    ],
+    "tests/unit/server/agents-states-773.browser.test.ts": [
+      "src/ui/server/agent-state.ts",
+      "src/shared/seen-mark.ts",
+      "src/ui/server/attention.ts",
+      "src/ui/server/notification-routes.ts",
+      "src/ui/server/session-routes.ts"
+    ],
+    "tests/unit/server/session-routes-needs-strict.integration.test.ts": [
+      "src/ui/server/session-routes.ts"
     ]
   },
   "subjectless": [],
   "rules": [
     {
       "when": [
+        "src/ui/server/public/agent-bands.js",
         "src/ui/server/public/agent-groups.js",
         "src/ui/server/public/agent-helpers.js",
         "src/ui/server/public/agent-order.js",
@@ -904,6 +915,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -1398,6 +1410,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -1506,6 +1519,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -1618,6 +1632,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -1713,6 +1728,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -2021,6 +2037,7 @@
         "tests/unit/server/agents-rotation.browser.test.ts",
         "tests/unit/server/agents-scope.browser.test.ts",
         "tests/unit/server/agents-signin.browser.test.ts",
+        "tests/unit/server/agents-states-773.browser.test.ts",
         "tests/unit/server/agents-subagents.browser.test.ts",
         "tests/unit/server/agents-tab-strip.browser.test.ts",
         "tests/unit/server/agents-tab.browser.test.ts",
@@ -2280,6 +2297,7 @@
         "tests/unit/cli/repo-add-no-run.integration.test.ts",
         "tests/unit/cli/repo-add.integration.test.ts",
         "tests/unit/cli/up-multi-service-dep.integration.test.ts",
+        "tests/unit/den-ui/attention-kit.test.ts",
         "tests/unit/den-ui/site-head-kit.test.ts",
         "tests/unit/den-ui/sketch-theme-788.test.ts",
         "tests/unit/edge/ca.test.ts",
@@ -2298,6 +2316,7 @@
         "tests/unit/scripts/pw-server-635.test.ts",
         "tests/unit/security/auto-targets.test.ts",
         "tests/unit/security/plan.test.ts",
+        "tests/unit/server/agent-bands-773.test.ts",
         "tests/unit/server/agent-groups-view.test.ts",
         "tests/unit/server/hub-change.test.ts",
         "tests/unit/server/hub-connect-648.test.ts",
@@ -2325,6 +2344,7 @@
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
         "tests/unit/gates/pw-guard-export-1010.test.ts",
         "tests/unit/scripts/changelog-line-1611.test.ts",
+        "tests/unit/scripts/changelog-line-placed-1769.test.ts",
         "tests/unit/scripts/release-dry-run.test.ts",
         "tests/unit/scripts/release-tree.test.ts",
         "tests/unit/server/hub-editions-den-yml.integration.test.ts",
@@ -2422,7 +2442,10 @@
     },
     {
       "when": ["scripts/changelog-line.mjs"],
-      "run": ["tests/unit/scripts/changelog-line-1611.test.ts"],
+      "run": [
+        "tests/unit/scripts/changelog-line-1611.test.ts",
+        "tests/unit/scripts/changelog-line-placed-1769.test.ts"
+      ],
       "why": "tests that run scripts/changelog-line.mjs"
     },
     {
@@ -3384,6 +3407,17 @@
     },
     {
       "when": [
+        "src/shared/seen-mark.ts",
+        "src/ui/server/agent-state.ts",
+        "src/ui/server/attention.ts",
+        "src/ui/server/notification-routes.ts",
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": ["tests/unit/server/agents-states-773.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
         "src/shared/agents/subagents.ts",
         "src/ui/server/session-routes.ts"
       ],
@@ -4297,6 +4331,13 @@
     {
       "when": ["src/ui/server/session-routes.ts", "src/ui/server/websocket.ts"],
       "run": ["tests/unit/server/session-io.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/session-routes.ts"],
+      "run": [
+        "tests/unit/server/session-routes-needs-strict.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {

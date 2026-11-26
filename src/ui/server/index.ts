@@ -11,11 +11,12 @@
  */
 
 // Issue 814: first, before anything writes to the state folder.
+import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import {
   takeTestInstallLaunchFlag,
+  takeTestResolveLaunch,
   testInstallRestartEnv,
 } from "../../shared/test-install-launch.js";
-import { BORN_AS_TEST_INSTALL } from "./test-install-birth.js";
 import { maskSecretLine } from "../../shared/secret-values.js";
 import { createLogRing } from "./log-ring.js";
 import {
@@ -67,6 +68,7 @@ import {
   isGithubWatchPath,
 } from "./github-watch-routes.js";
 import {
+  agentStateDeps,
   alertFeed,
   attentionDetail,
   attentionActivity,
@@ -3807,8 +3809,7 @@ const TEST_INSTALL_LAUNCH_FLAG = takeTestInstallLaunchFlag(getProfile());
  */
 const TEST_RESOLVE = (() => {
   const name = envName(getProfile(), TEST_RESOLVE_ENV_KEY);
-  const raw = readEnv(getProfile(), TEST_RESOLVE_ENV_KEY);
-  delete process.env[name];
+  const raw = takeTestResolveLaunch(getProfile());
   if (raw === undefined || raw.trim() === "") return null;
   const parsed = parseTestResolve(raw);
   if (!parsed.ok) return { name, ignored: parsed.error };
@@ -10261,6 +10262,7 @@ async function handleRequest(
         rotationPolicy: () => policyResolver(agentWebDeps()),
         restartResume: () => restartResolver(agentWebDeps()),
         modeOf: () => modeResolver(agentWebDeps()),
+        agentStates: agentStateDeps,
       },
     )
   )
@@ -11899,6 +11901,12 @@ void (async () => {
         records: listDaemons(),
         running: await listing().catch(() => null),
       }),
+    health: async (ws, addr) => {
+      const resolved = resolveService(addr, ws);
+      if (!resolved) return null;
+      const h = (await checkServiceHealth(resolved, "local")).health;
+      return h === "ok" || h === "error" ? h : null;
+    },
     log: (line, level) => serverLog(line, level ?? "lifecycle"),
   });
   // Issue 1225: the bell, and doctor's record of the last restore.

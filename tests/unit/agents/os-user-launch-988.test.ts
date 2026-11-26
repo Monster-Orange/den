@@ -176,6 +176,14 @@ describe("issue 988: every group the login is in, and every link under the engin
     ).toBe("");
   });
 
+  it("a link the agents' login owns is named, whatever its mode", () => {
+    const { e } = linked("linkowner");
+    const pkg = path.join(e, "node_modules", "pkg");
+    expect(run(e, fake({ [pkg]: { uid: 455, mode: 0o120755 } }))).toContain(
+      pkg,
+    );
+  });
+
   it("a link under the engine to nothing is named: the login might make what it points at", () => {
     const { e } = linked("dangling");
     const open = path.join(tmp, "dangling", "open");
