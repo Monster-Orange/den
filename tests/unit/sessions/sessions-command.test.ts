@@ -409,6 +409,36 @@ describe("sessions list", () => {
   });
 });
 
+describe("sessions start --json (issue 840)", () => {
+  it("prints the started session's record, and what was dropped from its environment", async () => {
+    const r = await rig();
+    expect(
+      await cmdSessions(
+        [
+          "start",
+          "--workspace",
+          "north",
+          "--name",
+          "planner",
+          "--json",
+          "--",
+          "sh",
+        ],
+        r.deps,
+      ),
+    ).toBe(0);
+    const v = JSON.parse(r.out.join("\n")) as {
+      session: Record<string, unknown>;
+      dropped: string[];
+    };
+    expect(Object.keys(v.session).sort()).toEqual(
+      ["name", "pid", "ref", "startedAt"].sort(),
+    );
+    expect(v.session.name).toBe("acme-north:planner");
+    expect(Array.isArray(v.dropped)).toBe(true);
+  });
+});
+
 describe("sessions kill", () => {
   it("--signal sends just that one", async () => {
     const r = await rig();

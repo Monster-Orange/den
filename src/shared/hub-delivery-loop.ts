@@ -19,6 +19,7 @@
  * but the ones `deps` gives.
  */
 import type { JournalEntry } from "./hub-delivery-journal.js";
+import { redactSecrets } from "./redact.js";
 import {
   ackBody,
   deliveryRaw,
@@ -229,8 +230,17 @@ export interface DeliveryLoopDeps {
    * delivery), or its last good read moved a minute on. Never per byte.
    */
   onHealth?: (h: DeliveryHealth) => void;
-  /** Issue 702: what a restart keeps (the last delivery's time). */
-  health0?: { lastDeliveryAt?: number | null };
+  /**
+   * What a restart keeps (the last delivery's time) and
+   * the cursor's last move.
+   */
+  health0?: { lastDeliveryAt?: number | null; cursorAt?: number | null };
+  /**
+   * hub.delivery_stale_hours: the stream open but the cursor
+   * still this long, and Hub's list read (once a poll interval) to see
+   * whether comments wait after it. 0 or none: never. Read each check.
+   */
+  staleMs?: () => number;
   /**
    * Issue 703: no bytes on an open stream for this long (Hub sends a
    * keep-alive every 25 s): closed, the list read once, reopened. 0: never.
@@ -389,6 +399,11 @@ export class DeliveryLoop {
    * answer keeps "refused": Hub without a stream reads the list each time).
    */
   private readonly troubleSaid = new Set<DeliveryTrouble>();
+  /** The last list result logged (its key), and the last stale check. */
+  private pollSaid = "";
+  private staleCheckedAt = Number.NEGATIVE_INFINITY;
+  /** The gap to the next stale check (0: the poll interval). */
+  private staleGap = 0;
 
   constructor(private readonly d: DeliveryLoopDeps) {
     this.hb = d.heartbeatMs ?? 15_000;
@@ -403,6 +418,10 @@ export class DeliveryLoop {
       lastDeliveryAt: d.health0?.lastDeliveryAt ?? null,
       trouble: null,
       troubleAt: null,
+      streamSince: null,
+      lastPoll: null,
+      cursorAt: d.health0?.cursorAt ?? this.now(),
+      stale: null,
     };
     this.restore();
   }
@@ -418,6 +437,9 @@ export class DeliveryLoop {
       this.h.streamOpen,
       this.h.trouble,
       this.h.lastDeliveryAt,
+      this.h.cursorAt,
+      this.h.stale?.waiting ?? null,
+      this.h.lastPoll ? [this.h.lastPoll.ok, this.h.lastPoll.count] : null,
     ]);
     const ok = this.h.lastOkAt ?? 0;
     if (key === this.healthSaid && ok - this.healthOkSaid < HEALTH_EVERY_MS)
@@ -465,9 +487,114 @@ export class DeliveryLoop {
     this.healthChanged();
   }
 
+  /** Each open and close logged, one line each. */
   private streamIs(open: boolean): void {
     if (this.h.streamOpen === open) return;
     this.h.streamOpen = open;
+    if (open) {
+      this.h.streamSince = this.now();
+      this.d.log?.("hub deliveries: the comment stream opened");
+    } else {
+      const lived = this.now() - (this.h.streamSince ?? this.now());
+      this.h.streamSince = null;
+      this.d.log?.(
+        `hub deliveries: the comment stream closed after ${Math.round(lived / 1000)}s`,
+      );
+    }
+    this.healthChanged();
+  }
+
+  /** The cursor moved (a delivery came): any stall is over. */
+  private cursorTo(id: string): void {
+    this.d.seen.setLast(id);
+    this.h.cursorAt = this.now();
+    this.staleGap = 0;
+    if (this.h.stale) {
+      this.h.stale = null;
+      this.d.log?.("hub deliveries: the comment cursor moved again");
+    }
+    this.healthChanged();
+  }
+
+  /**
+   * A list read's result, kept for doctor and logged when it
+   * changes: its count and last id, or its error (logged by troubled()).
+   * Ids and counts only, never a comment's text.
+   */
+  private notePoll(r: { list: unknown[] } | { error: string }): void {
+    const at = this.now();
+    if ("error" in r) {
+      this.h.lastPoll = {
+        at,
+        ok: false,
+        error: redactSecrets(r.error).slice(0, 200),
+      };
+      this.pollSaid = "error";
+      this.healthChanged();
+      return;
+    }
+    const n = r.list.length;
+    const lastId =
+      (n ? parseDelivery(r.list[n - 1])?.id : null) ?? this.d.seen.last ?? null;
+    this.h.lastPoll = { at, ok: true, count: n, lastId };
+    const key = n ? `${n}:${lastId}` : "none";
+    if (key !== this.pollSaid) {
+      this.pollSaid = key;
+      this.d.log?.(
+        n
+          ? `hub deliveries: the comment list answered: ${n}, last ${lastId}`
+          : "hub deliveries: the comment list answered: none waiting",
+      );
+    }
+    this.healthChanged();
+  }
+
+  /**
+   * The stream is open but the cursor hasn't moved for
+   * hub.delivery_stale_hours: read Hub's list (at most once a poll
+   * interval, doubling after an empty answer or an error up to
+   * max(staleMs / 6, 10 min); back to the interval when the cursor moves
+   * or comments wait). Not until the stream has been open a poll interval:
+   * after a restart its first chunks carry the backlog. Comments waiting
+   * after the cursor: stale, said once. Nothing waiting: a quiet Hub,
+   * never stale. A delivery that moves the cursor clears it (cursorTo),
+   * or an empty list.
+   */
+  private async checkStale(): Promise<void> {
+    const ms = this.d.staleMs?.() ?? 0;
+    const poll = this.d.pollMs ?? 30_000;
+    const now = this.now();
+    if (!(ms > 0) || now - (this.h.cursorAt ?? now) < ms) return;
+    if (this.h.streamSince == null || now - this.h.streamSince < poll) return;
+    if (now - this.staleCheckedAt < (this.staleGap || poll)) return;
+    this.staleCheckedAt = now;
+    const backOff = () =>
+      (this.staleGap = Math.min(
+        (this.staleGap || poll) * 2,
+        Math.max(ms / 6, 10 * 60_000),
+      ));
+    let list: unknown[];
+    try {
+      list = await this.d.hub.list(this.d.seen.last);
+    } catch (e) {
+      this.notePoll({ error: String((e as Error)?.message ?? e) });
+      backOff();
+      return;
+    }
+    this.notePoll({ list });
+    if (list.length) this.staleGap = 0;
+    else backOff();
+    if (!list.length) {
+      if (this.h.stale) ((this.h.stale = null), this.healthChanged());
+      return;
+    }
+    if (!this.h.stale) {
+      this.h.stale = { since: now, waiting: list.length };
+      const hours = Math.round((now - (this.h.cursorAt ?? now)) / 3_600_000);
+      this.d.log?.(
+        `hub deliveries: the comment cursor hasn't moved for ${hours}h with the stream open; ${list.length} waiting in Hub's list`,
+      );
+    } else this.h.stale.waiting = list.length;
     this.healthChanged();
   }
 
@@ -1193,6 +1320,7 @@ export class DeliveryLoop {
           arm();
           this.streamIs(true);
           this.readOk(chunks++ === 0 ? "open" : "bytes");
+          await this.checkStale();
           for (const ev of reader.feed(chunk)) {
             if (ev.event !== "delivery") continue;
             let v: unknown;
@@ -1203,7 +1331,7 @@ export class DeliveryLoop {
             }
             await this.take(v);
             const id = ev.id ?? parseDelivery(v)?.id;
-            if (id) this.d.seen.setLast(id);
+            if (id) this.cursorTo(id);
           }
           if (signal.aborted || silent) break;
         }
@@ -1258,6 +1386,7 @@ export class DeliveryLoop {
       list = await this.d.hub.list(this.d.seen.last);
     } catch (e) {
       // Issue 702: never swallowed: kept for doctor and the bell.
+      this.notePoll({ error: String((e as Error)?.message ?? e) });
       this.troubled(
         troubleOf(e),
         `the comment list: ${String((e as Error)?.message ?? e)}`,
@@ -1268,7 +1397,8 @@ export class DeliveryLoop {
     for (const v of list) {
       await this.take(v);
       const id = parseDelivery(v)?.id;
-      if (id) this.d.seen.setLast(id);
+      if (id) this.cursorTo(id);
     }
+    this.notePoll({ list });
   }
 }

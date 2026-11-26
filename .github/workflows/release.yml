@@ -261,6 +261,9 @@ jobs:
   # exists on npm (its first publish is by hand, from the den-ui/v<version> GitHub release's tarball) and a trusted
   # publisher for this file is set on it. Until then, and for a prerelease or a version npm has with the kit unchanged
   # since, it skips. The kit changed with its version already on npm fails the job (scripts/kit-version.mjs).
+  # Issue 1508: the stop for a kit version next/queue holds with other files is in the check job (release-promote.sh,
+  # kit-version.mjs queue), not here: a kit change merged to next/queue in the minutes between check and this publish
+  # isn't caught.
   den-ui:
     # Issue 296: the kit ships only once both test halves pass, as Den does.
     # Issue 922: only in a promoted release, from its commit (the kit's version is decided in the candidate).

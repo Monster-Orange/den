@@ -76,6 +76,8 @@ export const UI_MODULES: readonly string[] = [
   "/view-scope.js",
   // ON-6: the server agent's page.
   "/server-agent-page.js",
+  // Issue 52: the Coach tab on the server agent's page.
+  "/coach-tab.js",
   // 0.4.18: the service panel (rail pins, Graph ⋯, Services names).
   "/svc-panel.js",
   // D30: the shared searchable picker (Settings › Agents › Rotation).
@@ -173,6 +175,9 @@ export const KIT_FILES: readonly string[] = [
   // switch, with their looks.
   "panel-fold.js",
   "panel-fold.css",
+  // A non-modal popover anchored to what opened it, and its look.
+  "popover.js",
+  "popover.css",
   "switch.js",
   "switch.css",
   // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.

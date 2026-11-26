@@ -15,7 +15,10 @@
 #     be a person's own account, and the logs are public). docs/releasing.md;
 #   - it changes only the version (scripts/release-version-diff.mjs), so its
 #     tree is the dev tag's;
-#   - vV tags no other commit (a tag is never moved).
+#   - vV tags no other commit (a tag is never moved);
+#   - a UI kit it publishes has next/queue's kit files when next/queue has
+#     the same kit version (scripts/kit-version.mjs queue; KIT_QUEUE_REF
+#     names another ref than origin/next/queue).
 #
 #   sh scripts/release-promote.sh <commit>
 #
@@ -109,6 +112,9 @@ elif ! grep -q E404 "$err"; then
   cat "$err"
   fail "npm couldn't be asked about $name@$version"
 fi
+
+# Issue 1508: a kit it publishes carries next/queue's kit files at that version.
+node "$(dirname "$0")/kit-version.mjs" queue "$sha" || exit 1
 
 {
   echo "release=true"

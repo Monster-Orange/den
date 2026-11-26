@@ -10,6 +10,12 @@ import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import { restartResultHtml } from "../../../src/ui/server/public/settings-registry.js";
+import {
+  followRestarts,
+  mergeLive,
+  restartLine,
+  waitsOnPerson,
+} from "../../../src/ui/server/public/restart-result.js";
 
 const t = (k: string, v?: Record<string, unknown>) =>
   `[${k}${v ? `:${Object.values(v).join("|")}` : ""}]`;
@@ -86,6 +92,7 @@ describe("issue 1407: the page shows each agent's answer", () => {
       "rs.bar",
       "rs.barBtn",
       "rs.allName",
+      "rs.timedOut",
     ];
     for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {
       const src = fs.readFileSync(path.join(root, f), "utf-8");
@@ -96,5 +103,87 @@ describe("issue 1407: the page shows each agent's answer", () => {
           has: true,
         });
     }
+  });
+});
+
+describe("issue 1407 part 2: the page follows each agent live and clears", () => {
+  it("restarted and a wait that ran out have their own lines; a timed-out one waits on the person", () => {
+    expect(restartLine({ id: "ana", state: "restarted" }, t)).toBe(
+      "[rs.done:ana]",
+    );
+    expect(restartLine({ id: "bo", state: "timedOut", minutes: 30 }, t)).toBe(
+      "[rs.timedOut:bo|30]",
+    );
+    expect(waitsOnPerson({ state: "timedOut" })).toBe(true);
+    expect(waitsOnPerson({ state: "failed" })).toBe(true);
+    expect(waitsOnPerson({ state: "restarted" })).toBe(false);
+    const h = restartResultHtml(
+      [{ id: "bo", workspace: "north", state: "timedOut", minutes: 30 }],
+      t,
+    );
+    expect(h).toContain('data-rs-now="bo" data-rs-ws="north"');
+  });
+
+  it("mergeLive: the server's rows replace the page's for the same agents; one the server no longer lists has cleared", () => {
+    const shown = [
+      { id: "ana", workspace: "north", state: "now" },
+      { id: "bo", workspace: "north", state: "turn" },
+      { id: "cy", workspace: "south", state: "job" },
+    ];
+    const live = [
+      { id: "bo", workspace: "north", state: "timedOut", minutes: 30 },
+      { id: "cy", workspace: "south", state: "restarted" },
+      // Another run's agent: not this page's.
+      { id: "di", workspace: "south", state: "turn" },
+    ];
+    expect(mergeLive(shown, live)).toEqual([
+      { id: "bo", workspace: "north", state: "timedOut", minutes: 30 },
+      { id: "cy", workspace: "south", state: "restarted" },
+    ]);
+    expect(mergeLive(shown, [])).toEqual([]);
+  });
+
+  it("followRestarts polls while rows remain, hands each list over, and stops when it is empty", async () => {
+    const answers = [
+      { agents: [{ id: "ana", workspace: "north", state: "turn" }] },
+      { agents: [{ id: "ana", workspace: "north", state: "restarted" }] },
+      { agents: [] },
+    ];
+    const seen: unknown[] = [];
+    let calls = 0;
+    const done = new Promise<void>((resolve) => {
+      followRestarts({
+        api: async (m: string, p: string) => {
+          expect([m, p]).toEqual(["GET", "/api/agents/restart-status"]);
+          return answers[Math.min(calls++, answers.length - 1)];
+        },
+        everyMs: 5,
+        onRows: (rows: unknown[]) => {
+          seen.push(rows);
+        },
+        onEnd: resolve,
+      });
+    });
+    await done;
+    expect(calls).toBe(3);
+    expect(seen).toEqual(answers.map((a) => a.agents));
+  });
+
+  it("followRestarts stops when told, and on a failed read keeps going", async () => {
+    let calls = 0;
+    const f = followRestarts({
+      api: async () => {
+        calls++;
+        if (calls === 1) throw new Error("offline");
+        return { agents: [{ id: "ana", workspace: "north", state: "turn" }] };
+      },
+      everyMs: 5,
+      onRows: () => undefined,
+    });
+    while (calls < 3) await new Promise((r) => setTimeout(r, 5));
+    f.stop();
+    const at = calls;
+    await new Promise((r) => setTimeout(r, 30));
+    expect(calls).toBe(at);
   });
 });

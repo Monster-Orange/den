@@ -3616,7 +3616,7 @@ and logs to `<stateDir>/logs/<cli>/sessions-host.log`. The state dir is
 the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 
 ```
-<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>
+<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] [--json] -- <argv…>
 <cli> sessions list [-w <ws>] [--json]
 <cli> sessions attach <name|id>          # ctrl-] detaches; the session keeps running
 <cli> sessions kill <name|id> [--signal INT|TERM|HUP|KILL] [--grace <s>]
@@ -4700,6 +4700,8 @@ agents:
     active_minutes: 10 # no activity this long, not known done: idle
     row_max: 4 # deprecated (0.4.45): ignored
     read_max_mb: 64 # the most of an agent's transcript read for them
+    facts_cache_mb: 256 # what Den keeps of all agents' transcripts between reads
+    refresh_seconds: 5 # how old a helper row in the agents list may be
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
@@ -4708,6 +4710,8 @@ agents:
 | `active_minutes`        | minutes, above 0 to 100000 | 10      |
 | `row_max`               | deprecated, ignored        | 4       |
 | `read_max_mb`           | MB, above 0 to 4096        | 64      |
+| `facts_cache_mb`        | MB, above 0 to 4096        | 256     |
+| `refresh_seconds`       | seconds, 0 to 3600         | 5       |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
 
 `read_max_mb` (0.4.36): a helper's state comes partly from its agent's own
@@ -4715,6 +4719,22 @@ transcript (its notification, its result). Den reads only that much of the
 transcript's end, then only what is added, so a transcript of gigabytes
 costs what a 64 MB one does. A helper whose notification is further back
 gets its state from its own files.
+
+`facts_cache_mb` (0.4.90): what Den keeps from every agent's transcript
+between reads, so that each look at the agents list reads only what was
+added since the last. When it's full, the agent looked at least recently
+is dropped first. Before 0.4.90 Den kept 64 agents' facts. With more
+agents than that, each look at the list read every transcript again, and
+Den's pages and tools stalled for seconds. The facts are small, about 0.1
+MB for a busy agent, so the default holds thousands of agents.
+
+`refresh_seconds` (0.4.90): the agents list and the helpers count share
+one set of helper rows. A row is read again in the background once it is
+older than this, and the list shows the last one meanwhile, so a list
+never waits on transcripts. A new agent, or one whose state changed
+(started, stopped, cleared), is read before the list answers. The
+reading yields between agents, so Den keeps answering while it reads.
+At 0, every list reads its rows, as before 0.4.90.
 
 `row_max` no longer does anything (0.4.45): how many helpers show under
 an agent is each person's `agents.helpers_shown` (above).
@@ -5454,6 +5474,8 @@ category, description, runtime, model and its version, mode, allowed
 commands and the instructions. Every other key in the file (`subagent_model`,
 `persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was
 (issue 978).
+`persona_update` also takes `subagentModel`, written as `subagent_model`
+(issue 110: the Coach's Apply proposes it).
 
 **A persona's version** (issue 137) is the sha256 of its file, so any edit
 makes a new one; `persona_version` gives it a readable name. An agent
@@ -5562,7 +5584,7 @@ prompt gets them). They say:
 own settings file, `--settings <stateDir>/agent-files/<id>/settings.json`.
 Den never writes your `~/.claude`; your own hooks still run.
 
-- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no imports)
+- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no packages)
   blocks, with a reason Claude sees (exit 2):
   - reading all of a log or a large file into the conversation: a `Read`
     with no `limit`, or `cat`, `less`, or `tail` from a line (`tail +1`,
@@ -5577,8 +5599,30 @@ Den never writes your `~/.claude`; your own hooks still run.
     wait primitive. Recent Claude Code versions have their own sleep guard,
     which answers first (and also stops `sleep … &`). The sleep is blocked
     either way; Den's hook covers runtimes and versions without that guard.
-  - Nothing else. Quoted text, heredoc bodies and other tools always pass,
-    and a hook that can't read its input lets the call through.
+  - a `gh` write to a public repo whose title or body holds a listed name
+    (issue 1127): `gh pr create|edit|comment|review|merge|close|reopen`,
+    `gh issue create|edit|comment|close|reopen`, and `gh api` writes to
+    issues, pulls, comments or GraphQL mutations. The text comes from
+    `--title`, `--subject`, `--body`, `--comment`, `--body-file` (a file,
+    or `-` from a heredoc or a pipe), `-f`/`-F` `title=`/`body=` (and
+    `body=@file`) and `--input`. The list is the
+    org-name gate's (`DEN_ORG_NAMES`, `DEN_ORG_NAMES_FILE` or
+    `~/.config/den-dev/org-names.txt`); with none, nothing is checked.
+    GitHub is asked a repo's visibility only on a hit, and the answer is
+    kept 10 minutes (`--visibility-minutes`) in
+    `~/.cache/den/repo-visibility.json`. Private and internal repos pass;
+    a repo whose visibility can't be found is checked. The reason quotes
+    the agent's own phrase and offers neutral words ("the person", "the
+    project", "the company", "an internal host"), never the list. This
+    check runs with `--no-guardrails` too. A list that can't be read (a
+    missing `DEN_ORG_NAMES_FILE`, a line that isn't a valid regex) holds
+    `gh` writes with a message saying so, and the hook's other blocks
+    still run. Each list line is matched as written, so give a common
+    word its own `\b` (`\bacme\b`) to keep it from matching inside
+    other words.
+  - Nothing else. Quoted text, heredoc bodies and other tools always pass
+    (other than the `gh` writes above), and a hook that can't read its
+    input lets the call through.
 - `Stop` (`stop-hook.ts`) checks a turn's last message, which is what the
   person reads. With a `Hand-back` heading it gets the whole hand-back
   check; any other message gets the plain-writing part only (every ID
@@ -6250,6 +6294,21 @@ name and URL. `github_watch_list` and `github_watch_cancel` show and stop
 the agent's own watches. A pull request is watched at the head it has when
 asked: after a new push, the agent watches again.
 
+What counts:
+
+- Only the newest run of each check on the head, as the pull request's own
+  check list shows. A re-run, a label added or an edited description starts
+  a new run of a workflow; the older run's checks, cancelled or failed, are
+  superseded and not counted. Two workflows' jobs of one name are different
+  checks, and both count: Den reads which workflow each belongs to from the
+  head's runs first. Checks of another app are never merged.
+- A cancelled check or job isn't a failure, nor a pass: it is counted as
+  cancelled ("2 passed, 0 failed, 0 skipped, 1 cancelled") and listed as
+  "Cancelled, not passed". When a pull request's checks end with some
+  cancelled, Den first looks at the pull request: a push that moved its head
+  ends the watch as replaced, with no failures listed; on the same head, the
+  result is told.
+
 How the watcher paces itself:
 
 - One loop for the install. Each round, it asks GitHub at most once per
@@ -6266,12 +6325,41 @@ How the watcher paces itself:
   reset time.
 - `Retry-After` is honoured, and a 403 or 429 secondary limit waits a minute
   at least.
-- `github.watches_max` (50) watches at once, for every agent together.
+- `github.watches_max` (50) watches at once, for every agent together, at
+  least. The calls left over the floor until GitHub's reset raise it (one
+  look per watch per interval, the most a watch costs), up to 1000. Past
+  it, a new watch is queued ("queued, N ahead") and starts when one ends.
+- A queued watch takes its pull request's head when it starts, not when it
+  was asked: a push in between is the head it watches.
+- A pull request's watch asks about the pull request again every 10
+  minutes at most often. When it merges or closes, or a newer push replaces
+  its head ("replaced by <sha>"), the watch ends and its agent is told once.
+  Den asks about one pull request a round per repo, never two rounds
+  running, so with N watched pull requests in one repo each is asked about
+  once every 2N rounds at most often: at a 300-second interval a merged pull
+  request's watch can hold its slot for hours.
+- A watch with no progress for `github.watch_stale_minutes` (60) ends, and
+  its agent is told why. Its slot is freed. A check (or workflow run) still
+  queued or in progress counts as progress, up to a backstop: nothing
+  changed for 4 times the bound. Time while every check waits for a
+  runner counts toward neither. The bound is never shorter than twice the
+  interval in force, so a watch doesn't go stale only because Den didn't
+  look. The note says which bound fired.
+- A run's watch reads the run and its own jobs (the latest attempt, every
+  page), never the check runs on its head commit. A re-run within the hour
+  after it was told reopens the watch, and Den tells the new attempt's
+  result. Den looks for one at most every `github.rerun_look_minutes` (5).
+  A reopened watch takes no new slot from the cap. A pull request's watch
+  reads its head's check runs past the first page of 100.
+- Any watch open longer than `github.watch_max_open_hours` (24) ends,
+  whatever its checks say, and its agent is told why. This catches a check
+  that never reports.
 
-These four are Settings › Server rows, a person's only
+These seven are Settings › Server rows, a person's only
 (`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
 `<cli> github status` show one line: the calls left, the reset time, the
-active watches and the current interval.
+open and queued watches, the oldest open watch's age, the cap now and the
+current interval.
 
 ## Gate slots: heavy test runs taken in turn
 

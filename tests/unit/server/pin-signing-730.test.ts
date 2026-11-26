@@ -1,17 +1,3 @@
-/**
- * Issue 730: an install either signs its own commits, or says plainly that
- * it doesn't.
- *   1. doctor has a row for agent commit signing even when no key is in
- *      force, said as information;
- *   2. the key in force is agents.git.signing_key, else the install's own
- *      key (issue 1316) once it is made; doctor and the pin commit both use
- *      it, so with only the install's own key both say signed;
- *   3. when the pin's branch requires signed commits and no key is in
- *      force, Den opens a pull request instead of pushing, and says why.
- *
- * Real git and ssh-keygen in temp dirs only (HOME and the global config
- * point into them); a fake gh. Invented names.
- */
 import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
 import { execFileSync } from "child_process";
 import * as fs from "fs";
@@ -65,13 +51,11 @@ beforeEach(() => {
   git(root, "commit", "-q", "-m", "the distribution");
   git(root, "remote", "add", "origin", remote);
   git(root, "push", "-q", "-u", "origin", "main");
-  // The new pin, as a verified self-update leaves it.
   fs.writeFileSync(path.join(root, "package.json"), '{"v":"1.1.0"}\n');
   fs.writeFileSync(path.join(root, "package-lock.json"), '{"v":"1.1.0"}\n');
 });
 afterEach(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
-/** A fake gh that answers `pr create` with an address and logs its calls. */
 function fakeGh(): { argv: string[]; calls: () => string[][] } {
   const log = path.join(tmp, "gh.jsonl");
   const script = path.join(tmp, "gh.cjs");
@@ -101,7 +85,6 @@ describe("1. doctor: a row for agent commit signing, in force or not", () => {
     expect(text).toMatch(/signing {2}ℹ {2}not signed: no agents' signing key/);
     expect(text).toMatch(/agents\.git\.signing_key/);
     expect(text).not.toMatch(/agent_signing_key_create|⚠/);
-    // The JSON says what the text says: information is not a warning.
     expect(r.checks[0]).toMatchObject({ id: "agents:signing", status: "ok" });
     expect(r.problem).toBe(false);
   });
@@ -182,7 +165,6 @@ describe("3. a branch that requires signed commits, and no key", () => {
       signaturesRequired: async () => true,
     });
     expect(step).toMatchObject({ did: "pr", unsignedRequired: true });
-    // main on the remote never moved; the pin is on its own branch.
     expect(git(remote, "rev-parse", "main")).toBe(head);
     expect(git(remote, "rev-parse", "den/pin-1.1.0~1")).toBe(head);
     expect(gh.calls()[0].slice(0, 2)).toEqual(["pr", "create"]);
@@ -253,7 +235,6 @@ describe("3. a branch that requires signed commits, and no key", () => {
       await answer("[]", 404)("git@github.com:acme/dist.git", "main"),
     ).toBe(false);
     expect(await answer("[]", 404)("/srv/remote.git", "main")).toBeNull();
-    // No admin rights: classic protection answers 403: it can't tell.
     expect(
       await answer("[]", 403)("git@github.com:acme/dist.git", "main"),
     ).toBeNull();
