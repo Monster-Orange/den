@@ -1,6 +1,3 @@
-/**
- *
- */
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
@@ -60,8 +57,6 @@ interface Seen {
   body: Record<string, unknown>;
 }
 
-/**
- */
 type Mode =
   | "ok"
   | "absent"

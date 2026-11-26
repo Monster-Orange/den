@@ -14,6 +14,7 @@ import * as path from "path";
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { gateView } from "../../../src/shared/gates/view.js";
 import { cmdGate, type GateDeps } from "../../../src/ui/cli/gate-command.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const HOOK = path.resolve("src/shared/agents/guardrails/pretooluse.mjs");
 const root = fs.realpathSync(
@@ -278,7 +279,7 @@ describe("issue 1264: the CLI and the Settings page show and change routing", ()
   });
 
   it("the Settings rows: the two settings, and today's counts from the gate's view", () => {
-    const reg = read("settings-registry.js");
+    const reg = readSettingsSources();
     expect(reg).toContain('"gate_slots.route_agents"');
     expect(reg).toContain('"gate_slots.route_commands"');
     expect(reg).toContain('id: "server.gate_outside"');

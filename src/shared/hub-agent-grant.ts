@@ -1,7 +1,3 @@
-/**
- *
- *
- */
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
@@ -17,8 +13,6 @@ export function bestEffort(f: () => unknown): void {
 
 export const AGENTS_NOT_COVERED = "agents_not_covered";
 
-/**
- */
 export const AGENTS_MANAGE_MISSING = "agents_manage_missing";
 
 export const RECONNECT_CODES: readonly string[] = [
@@ -60,8 +54,6 @@ export const AGENT_GRANT_NOTE_SUBJECT = "record:hub-agent-grant";
 
 export const AGENT_GRANT_NOTE_LINK = "/settings#agents.hub";
 
-/**
- */
 export function syncAgentGrantNote(
   store: Pick<NotificationStore, "add" | "remove" | "list">,
   s: { connected: boolean; notCovered: boolean },
