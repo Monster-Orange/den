@@ -315,7 +315,7 @@ export const AGENTS_HELP = {
     "    the install's secrets store. status: whether it is there and when it was",
     "    set. clear: removes it from the store, the way set kept it (asks first",
     "    unless --yes). set and clear are a person's only",
-    "{cli} `agents accounts` list | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]",
+    "{cli} `agents accounts` list [--json] | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]",
     "    Claude accounts for agents (Claude account A, B, ... unless named); each token",
     "    its own item in the install's secrets store; set-token reads it like",
     "    token set. Agents sign in with the first in the order. The token that",
@@ -2134,7 +2134,29 @@ async function accountsCmd(
       );
     const flag = runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`;
     if (sub === "list") {
-      if (rest.length) throw new UsageError(`${where} takes only --runtime`);
+      const json = rest.includes("--json");
+      if (rest.some((a) => a !== "--json"))
+        throw new UsageError(`${where} takes only --runtime and --json`);
+      if (json) {
+        d.out(
+          JSON.stringify(
+            {
+              runtime: { id: runtimeId, name: rt.name },
+              accounts: A.accountsView(stateDir, runtimeId, refOf).map((v) => ({
+                id: v.id,
+                label: v.label,
+                tokenSet: v.configured,
+                setAt: v.setAt,
+                store: v.store,
+                first: v.first,
+              })),
+            },
+            null,
+            2,
+          ),
+        );
+        return 0;
+      }
       d.out(`${rt.name} (${runtimeId}):`);
       for (const v of A.accountsView(stateDir, runtimeId, refOf)) {
         const st = v.configured

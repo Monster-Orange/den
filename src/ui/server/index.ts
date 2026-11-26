@@ -1545,7 +1545,7 @@ import {
   isSchedulePath,
   type ScheduleServerDeps,
 } from "./verify-schedule-routes.js";
-import { lookupTimeouts } from "../cli/proc-lookup.js";
+import { lookupTimeouts } from "../../shared/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import {
   serverLogMaxBytes,
