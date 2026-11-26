@@ -2,11 +2,11 @@
 /**
  * The tests a pull request runs again on Node 22 (the supported range's low
  * end, with npm 10), in the `pr-node22` job. A pull request runs on Node 24
- * (npm 11) only (issue 998), so a test that reads what npm prints could
+ * (npm 11) only, so a test that reads what npm prints could
  * pass there and fail only in a release dry run, which runs Node 22:
- * PR 1145 changed tests/unit/scripts/org-names-not-packed.test.ts, npm 10
- * printed husky's prepare line before `npm pack --json`'s JSON, and
- * v0.4.90-dev.1's dry run went red.
+ * npm 10 prints husky's prepare line before `npm pack --json`'s JSON,
+ * so a test that parses that output (as
+ * tests/unit/scripts/org-names-not-packed.test.ts does) fails there alone.
  *
  * The version-sensitive tests are the ones over Den's own scripts
  * (tests/unit/scripts/) and any test that runs npm itself. Of those, the
