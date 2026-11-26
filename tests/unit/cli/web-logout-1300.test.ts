@@ -306,6 +306,28 @@ describe("a server write holding the lock (web.sessions_lock_wait_ms)", () => {
     expect(a.o.err).toMatch(/sign-ins file is in use/);
     expect(keys()).toEqual([one]);
   });
+
+  it("the offline fallback never writes the sign-ins file or an end row while the lock is held", async () => {
+    const one = store().create({ userAgent: "one" }).session.key;
+    const before = fs.readFileSync(webSessionsPath(tmp));
+    await holder(5_000);
+    const port = String(await freePort());
+    for (const args of [[one.slice(0, 8)], ["--all"], []]) {
+      const a = io();
+      expect(
+        await cmdWebLogout([...args, "--port", port], {
+          ...a.io,
+          lockWaitMs: 200,
+        }),
+      ).toBe(1);
+      expect(a.o.err).toMatch(/sign-ins file is in use/);
+    }
+    expect(fs.readFileSync(webSessionsPath(tmp)).equals(before)).toBe(true);
+    expect(keys()).toEqual([one]);
+    const trail = path.join(tmp, AUDIT_FILE);
+    const text = fs.existsSync(trail) ? fs.readFileSync(trail, "utf-8") : "";
+    expect(text.includes('"session-end"')).toBe(false);
+  });
 });
 
 describe("appendAuditRowWhenNoServer runs only when no Den server is running, so it skips the server's audit lock; its row is redacted (issue 1391)", () => {

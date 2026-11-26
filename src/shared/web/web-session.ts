@@ -1281,11 +1281,13 @@ export class WebSessionStore {
   private write<R>(
     change: (data: StoreFile) => { save: boolean; value: R },
     waitMs = this.waitMs(),
+    busyAsIs = false,
   ): R {
     let release: () => void;
     try {
       release = this.lock(waitMs);
     } catch (e) {
+      if (busyAsIs && e instanceof WebSessionsBusy) throw e;
       const code =
         e instanceof WebSessionsBusy
           ? "EBUSY"
@@ -1600,27 +1602,23 @@ export class WebSessionStore {
     why: SessionEndWhy,
     throwToChangeNothing?: () => void,
   ): SessionView[] {
-    const release = this.lock(this.waitMs());
-    try {
-      throwToChangeNothing?.();
-      this.cache = null;
-      const data = structuredClone(this.load());
-      if (this.unreadable !== null)
-        throw new SessionStoreUnreadable(this.unreadable);
-      const all = Object.entries(data.sessions).map(([key, r]) => ({
-        key,
-        ...r,
-      }));
-      const pick = new Set(choose(all));
-      const ended = all.filter((v) => pick.has(v.key));
-      if (ended.length === 0) return [];
-      for (const v of ended) delete data.sessions[v.key];
-      this.save(data);
-      this.told(ended, why);
-      return ended;
-    } finally {
-      release();
-    }
+    const ended = this.write(
+      (d) => {
+        throwToChangeNothing?.();
+        const all = Object.entries(d.sessions).map(([key, r]) => ({
+          key,
+          ...r,
+        }));
+        const pick = new Set(choose(all));
+        const gone = all.filter((v) => pick.has(v.key));
+        for (const v of gone) delete d.sessions[v.key];
+        return { save: gone.length > 0, value: gone };
+      },
+      this.waitMs(),
+      true,
+    );
+    this.told(ended, why);
+    return ended;
   }
 }
 
