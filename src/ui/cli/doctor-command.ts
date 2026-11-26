@@ -894,6 +894,16 @@ export function hubDeliveryLines(
       ? "no comment yet"
       : `last comment ${agoText(now - h.lastDeliveryAt)}`,
   ];
+  // The cursor's age, the last list read, and a stall.
+  if (h.cursorAt != null)
+    parts.push(`cursor moved ${agoText(now - h.cursorAt)}`);
+  if (h.lastPoll)
+    parts.push(
+      `last list read ${agoText(now - h.lastPoll.at)}: ${
+        h.lastPoll.ok ? `${h.lastPoll.count ?? 0} waiting` : h.lastPoll.error
+      }`,
+    );
+  if (h.stale) parts.push(`${h.stale.waiting} waiting in Hub`);
   if (journal) {
     const words: [keyof typeof journal.counts, string][] = [
       ["typed", "typed"],
@@ -969,6 +979,36 @@ async function hubDeliveryDoctor(): Promise<
       Date.now(),
     ),
   );
+}
+
+/**
+ */
+export function hubAgentTokenLines(
+  problems: readonly import("../../shared/hub-agent-tokens.js").AgentTokenProblem[],
+): { lines: string[]; checks: OnboardCheck[] } {
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const p of problems) {
+    const when = Number.isFinite(Date.parse(p.at))
+      ? new Date(p.at).toLocaleString()
+      : p.at;
+    const reconnect =
+      p.code === "agents_not_covered" || p.code === "agents_manage_missing";
+    const fix = reconnect
+      ? "Settings › Hub: Reconnect"
+      : p.what === "mint"
+        ? "Den asks Hub again after hub.agent_token_retry_seconds; the agent uses the install's token meanwhile"
+        : undefined;
+    const detail = `agent ${p.agentId}: ${p.detail} (${when})`;
+    lines.push(`  hub agent  ✗  ${detail}${fix ? `. ${fix}` : ""}`);
+    checks.push({
+      id: `hub:agent-token:${p.agentId}`,
+      status: "fail",
+      detail,
+      ...(reconnect ? { ask: "Reconnect to Hub in Settings › Hub" } : {}),
+    });
+  }
+  return { lines, checks };
 }
 
 /**
@@ -2775,6 +2815,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (st.configured) {
         const dl = await hubDeliveryDoctor();
         if (dl.check) r.checks.push(dl.check);
+        const { readAgentTokenProblems } =
+          await import("../../shared/hub-agent-tokens.js");
+        r.checks.push(
+          ...hubAgentTokenLines(readAgentTokenProblems(getStateDir())).checks,
+        );
       }
       // Issue 726: state and tokens from an earlier Hub.
       r.checks.push(...(await previousHubRows()).checks);
@@ -2942,8 +2987,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const { hubStatus } = await import("../../shared/hub.js");
     const st = await hubStatus();
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
-    if (st.configured)
+    if (st.configured) {
       for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
+      const { readAgentTokenProblems } =
+        await import("../../shared/hub-agent-tokens.js");
+      for (const l of hubAgentTokenLines(readAgentTokenProblems(getStateDir()))
+        .lines)
+        console.log(l);
+    }
     // Issue 726: state and tokens from an earlier Hub.
     for (const l of (await previousHubRows()).lines) console.log(l);
     for (const l of hubProjectLines(

@@ -2710,6 +2710,9 @@
     "set.server.health_poll_hidden": "Health checks in a hidden tab",
     "set.server.health_poll_hidden.d":
       "How often a page in a hidden tab checks health: 10 to 3600 seconds. With no page in view, the checks run at most this often. Back in view, the page checks at once. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "Git reads at once",
+    "set.server.git_reads.d":
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
       "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -3867,7 +3870,6 @@
     "ag.waiting.input": "waiting for you",
     "ag.waiting.asked": "asked you",
     "ag.waiting.trust": "Waiting: trust this folder?",
-    // Four agent states, one list sorted by who needs you.
     "ag.band.needs": "Needs you",
     "ag.band.done": "Done, not seen",
     "ag.band.working": "Working",
@@ -3977,6 +3979,11 @@
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. Terminals that ended: {terminals}. Cut mid-turn, and told to check their last step and carry on: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ restarted its terminal host on the installed version, so new agents and terminals start again. Agents resumed: {names}. No terminal was running. Cut mid-turn, and told to check their last step and carry on: {cut}.",
+    "bell.m.rsTimedOut":
+      "{id} was not restarted: still working after {min} min",
+    "bell.m.rsJob":
+      "{id} was not restarted: a background job is running ({cmd}, {min} min)",
+    "bell.m.rsFailed": "{id} was not restarted",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
@@ -3999,6 +4006,8 @@
     "bell.m.vschedExpire.one":
       'The Allow for the schedule "{name}" expires in {n} day.',
     "bell.m.heldAllowAsk": "Waiting for your Allow: {what}",
+    "bell.m.heldAllowClaimed":
+      "Waiting for your Allow: {what}. You asked, as {name} (not verified).",
     "bell.m.shared": "{actor} shared {title} with you",
     "bell.m.sharedNote": "{actor} shared {title} with you: {note}",
     "bell.m.sharedAgent": "The agent {actor} shared {title} with you",
@@ -4022,6 +4031,7 @@
     "bell.ap.h": "Waiting for your Allow",
     "bell.ap.row": "{name} asks: {what}",
     "bell.ap.rowAsk": "Asked: {what}",
+    "bell.ap.rowClaimed": "You asked, as {name} (not verified): {what}",
     "bell.ap.waits": "Waiting {ago} · expires {time}",
     "bell.ap.allow": "Allow",
     "bell.ap.deny": "Deny",
@@ -4039,6 +4049,8 @@
     "rs.barBtn": "Restart all {n} at their next idle",
     "rs.allName": "the agents",
     "rs.done": "{id}: restarted, in the same conversation.",
+    "rs.timedOut":
+      "{id}: not restarted, still working after {min} min. Restart now ends its turn.",
     "rs.failed": "{id}: not restarted. Restart it from the Agents page.",
     "bell.ap.denied": "Denied: {what}",
     "bell.ap.failed": "That didn't work: {error}",
@@ -4107,6 +4119,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ couldn't update to {v}: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent is waiting on your Allow",
+    "bell.m.hubAgentsReconnect":
+      "Reconnect to Hub so your agents sign their own work",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__'s update to {v} waits: the __DEN_TITLE__ agent asked you a question",
     "bell.m.updateWaitsWhat":
@@ -4163,6 +4177,8 @@
       "Hub comments aren't arriving: Hub keeps closing the comment stream",
     "bell.m.hubCommentsSilent":
       "Hub comments aren't arriving: the comment stream went silent",
+    "bell.m.hubCommentsStale":
+      "Hub comments aren't arriving: the comment stream is open, but Hub lists comments it hasn't sent",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} didn't come up here and went back to {from}: {why}",
     "bell.m.turn": "{name} finished its turn",
@@ -4561,6 +4577,12 @@
     "ag.signIn": "on {label}",
     "ag.signIn.tip":
       "It signs in with {label}, whose token is in this install's secrets store, so it keeps running after logout.",
+    "ag.hub.bound": "Verified on Hub",
+    "ag.hub.bound.tip":
+      "It calls Hub with its own token, so Hub counts its work and approvals as its own.",
+    "ag.hub.unbound": "Not verified on Hub",
+    "ag.hub.unbound.tip":
+      "It calls Hub with this install's token for now, so Hub can't tell its approvals from the install's. Den asks Hub for its own token when it next calls Hub.",
     "ag.tabs": "Open terminals",
     "ag.hint.focus":
       "Click shows one terminal. Shift- or ⌘-click adds it alongside.",
@@ -4666,6 +4688,11 @@
     "gate.leftoversH": "Stopped after their run ended",
     "gate.leftovers": "{n} leftover processes of {label} ({cmd})",
     "gate.leftovers.one": "{n} leftover process of {label} ({cmd})",
+    "gate.removedH": "Throwaway containers removed after their run",
+    "gate.removed": "{n} containers of {label} ({images})",
+    "gate.removed.one": "{n} container of {label} ({images})",
+    "gate.removedBare": "{n} containers of {label}",
+    "gate.removedBare.one": "{n} container of {label}",
     "busy.setUndoW": "Putting the setting back…",
     "busy.setUndoS": "The setting is back as it was.",
     "busy.setUndoF": "Couldn't put the setting back.",
@@ -4924,6 +4951,9 @@
     "env.run.title": "The deploy run on GitHub",
     "env.run": "run",
     "env.timedOut": "timed out after {s} s",
+    "env.fetchFailed": "No answer: is it running?",
+    "env.fetchFailedWhy":
+      "{url} didn't answer. Check that it is running and that this computer can reach it.",
     "env.up": "up",
     "env.down": "down",
     "env.service": "Service",
@@ -5674,7 +5704,6 @@
     down: 0,
     openLogs: 0,
     helpersRunning: 0,
-    // The agents that need the person (the rail's Agents count).
     agentsNeedYou: 0,
     // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
     hub: null,
@@ -6529,10 +6558,7 @@
       order: 17,
       href: "/agents",
       keywords: ["sessions", "terminal"],
-      // The agents that need you (not Done); else (D32) the
-      // helpers the agents started that run now.
       badge: function (s) {
-        // Mock v3: an amber pill.
         if (s.agentsNeedYou > 0)
           return { n: s.agentsNeedYou, what: "waiting", warn: true };
         return s.helpersRunning > 0
@@ -10173,7 +10199,6 @@
           function (b) {
             var n = b && typeof b.running === "number" ? b.running : 0;
             if (n !== state.helpersRunning) setState({ helpersRunning: n });
-            // The agents that need you, for the rail's count.
             var w = b && typeof b.needs === "number" ? b.needs : 0;
             if (w !== state.agentsNeedYou) setState({ agentsNeedYou: w });
           },

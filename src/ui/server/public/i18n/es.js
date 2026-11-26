@@ -1515,6 +1515,9 @@
       "Comprobaciones de salud en una pestaña oculta",
     "set.server.health_poll_hidden.d":
       "Cada cuánto una página en una pestaña oculta comprueba la salud: de 10 a 3600 segundos. Sin ninguna página a la vista, las comprobaciones se ejecutan como mucho con esa frecuencia. Al volver a la vista, la página comprueba enseguida. __DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "Lecturas de git a la vez",
+    "set.server.git_reads.d":
+      "Cuántos procesos de git ejecuta Den a la vez cuando una página lee sus repos, como la rama y el commit de la página de Pruebas: de 1 a 64. __DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "Las solicitudes esperan tu permiso",
     "set.agents.held_wait.d":
       "Cuánto espera tu permiso la solicitud de un agente antes de vencer: de 10 minutos a 7 días (10080). Se queda en la campana todo ese tiempo y sobrevive a un reinicio. Al permitir una antigua, se vuelve a comprobar primero. __DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -2527,7 +2530,8 @@
       "Esto amplía lo que pueden hacer los agentes: solo tu propio Permitir lo ejecuta.",
     "ap.det.setting_change.key": "Ajuste: {key}",
     "ap.det.setting_change.now": "Ahora: {value}",
-    "ap.det.setting_change.nowDefault": "Ahora: {value} (el valor predeterminado de Den)",
+    "ap.det.setting_change.nowDefault":
+      "Ahora: {value} (el valor predeterminado de Den)",
     "ap.det.setting_change.nowDen": "Ahora: {value} (de den.yml)",
     "ap.det.setting_change.new": "Nuevo: {value}",
     "ap.det.setting_change.why": "Por qué: {why}",
@@ -2946,7 +2950,6 @@
     "ag.waiting.input": "te espera",
     "ag.waiting.asked": "te preguntó",
     "ag.waiting.trust": "En espera: ¿confiar en esta carpeta?",
-    // Four agent states, one list sorted by who needs you.
     "ag.band.needs": "Te necesitan",
     "ag.band.done": "Terminado, sin ver",
     "ag.band.working": "Trabajando",
@@ -3055,6 +3058,11 @@
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. Terminales que terminaron: {terminals}. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ reinició su anfitrión de terminales con la versión instalada, así que los agentes y terminales nuevos vuelven a arrancar. Agentes reanudados: {names}. No había ninguna terminal en marcha. Interrumpidos a mitad de turno, y avisados de revisar su último paso y seguir: {cut}.",
+    "bell.m.rsTimedOut":
+      "{id} no se reinició: seguía trabajando tras {min} min",
+    "bell.m.rsJob":
+      "{id} no se reinició: hay una tarea en segundo plano ({cmd}, {min} min)",
+    "bell.m.rsFailed": "{id} no se reinició",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.unaskedExit":
@@ -3077,6 +3085,8 @@
     "bell.m.vschedExpire.one":
       'El permiso de la programación "{name}" vence en {n} día.',
     "bell.m.heldAllowAsk": "Espera tu permiso: {what}",
+    "bell.m.heldAllowClaimed":
+      "Espera tu permiso: {what}. Lo pediste tú, como {name} (sin verificar).",
     "bell.m.shared": "{actor} compartió {title} contigo",
     "bell.m.sharedNote": "{actor} compartió {title} contigo: {note}",
     "bell.m.sharedAgent": "El agente {actor} compartió {title} contigo",
@@ -3103,6 +3113,7 @@
     "bell.ap.h": "Esperan tu permiso",
     "bell.ap.row": "{name} pide: {what}",
     "bell.ap.rowAsk": "Pedido: {what}",
+    "bell.ap.rowClaimed": "Lo pediste tú, como {name} (sin verificar): {what}",
     "bell.ap.waits": "Espera desde hace {ago} · vence {time}",
     "bell.ap.allow": "Permitir",
     "bell.ap.deny": "Denegar",
@@ -3122,6 +3133,8 @@
     "rs.barBtn": "Reiniciar los {n} en su próxima pausa",
     "rs.allName": "los agentes",
     "rs.done": "{id}: reiniciado, en la misma conversación.",
+    "rs.timedOut":
+      "{id}: no se reinició, seguía trabajando tras {min} min. Reiniciar ahora termina su turno.",
     "rs.failed": "{id}: no se reinició. Reinícialo desde la página Agentes.",
     "bell.ap.denied": "Denegado: {what}",
     "bell.ap.failed": "No funcionó: {error}",
@@ -3190,6 +3203,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
     "bell.m.updateWaits":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.hubAgentsReconnect":
+      "Vuelve a conectar Hub para que tus agentes firmen su propio trabajo",
     "bell.m.updateWaitsAsked":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "bell.m.updateWaitsWhat":
@@ -3248,6 +3263,8 @@
       "Los comentarios de Hub no llegan: Hub cierra una y otra vez el flujo de comentarios",
     "bell.m.hubCommentsSilent":
       "Los comentarios de Hub no llegan: el flujo de comentarios dejó de enviar datos",
+    "bell.m.hubCommentsStale":
+      "Los comentarios de Hub no llegan: el flujo de comentarios está abierto, pero Hub tiene comentarios que no ha enviado",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} no arrancó aquí y volvió a {from}: {why}",
     "bell.m.turn": "{name} terminó su turno",
@@ -3661,6 +3678,12 @@
     "ag.signIn": "con {label}",
     "ag.signIn.tip":
       "Inicia sesión con {label}, cuyo token está en el almacén de secretos de esta instalación, así que sigue en marcha tras cerrar la sesión.",
+    "ag.hub.bound": "Verificado en Hub",
+    "ag.hub.bound.tip":
+      "Llama a Hub con su propio token, así que Hub reconoce su trabajo y sus aprobaciones como suyos.",
+    "ag.hub.unbound": "Sin verificar en Hub",
+    "ag.hub.unbound.tip":
+      "Por ahora llama a Hub con el token de esta instalación, así que Hub no distingue sus aprobaciones de las de la instalación. Den le pide a Hub su propio token la próxima vez que llame a Hub.",
     "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
       "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",
@@ -3765,6 +3788,11 @@
     "gate.leftoversH": "Detenidos al terminar su ejecución",
     "gate.leftovers": "{n} procesos sobrantes de {label} ({cmd})",
     "gate.leftovers.one": "{n} proceso sobrante de {label} ({cmd})",
+    "gate.removedH": "Contenedores desechables quitados tras su ejecución",
+    "gate.removed": "{n} contenedores de {label} ({images})",
+    "gate.removed.one": "{n} contenedor de {label} ({images})",
+    "gate.removedBare": "{n} contenedores de {label}",
+    "gate.removedBare.one": "{n} contenedor de {label}",
     "busy.setUndoW": "Devolviendo el ajuste…",
     "busy.setUndoS": "El ajuste vuelve a estar como antes.",
     "busy.setUndoF": "No se pudo devolver el ajuste.",
@@ -4912,6 +4940,9 @@
     "env.run.title": "La ejecución del despliegue en GitHub",
     "env.run": "ejecución",
     "env.timedOut": "se agotó el tiempo tras {s} s",
+    "env.fetchFailed": "Sin respuesta: ¿está en marcha?",
+    "env.fetchFailedWhy":
+      "{url} no respondió. Comprueba que está en marcha y que este ordenador llega a esa dirección.",
     "env.up": "activo",
     "env.down": "caído",
     "env.service": "Servicio",

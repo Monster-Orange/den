@@ -26,10 +26,17 @@
  * really runs. DEN_AGENTS_SHOTS=<dir> writes screenshots.
  * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import type { Browser, Page } from "playwright";
+import type { Browser, Page, BrowserContext } from "playwright";
 import {
   connectHost,
   type HostClient,
@@ -118,6 +125,17 @@ const ptys: Record<string, AgentsPageServer["made"][number]> = {};
 const ptyOf = (id: string) => ptys[id];
 const all = () => AGENTS.map(([id]) => sid[id]).join(",");
 
+/**
+ * Every page a test opened, closed after it whatever happened. A page
+ * still open stays attached to the agents' sessions, so the next test's
+ * panes count another viewer and follow that view's size (D54) instead
+ * of fitting their boxes.
+ */
+const contexts: BrowserContext[] = [];
+afterEach(async () => {
+  for (const c of contexts.splice(0)) await c.close().catch(() => {});
+});
+
 async function page(
   url: string,
   opts: { width?: number; height?: number; waiting?: string } = {},
@@ -126,6 +144,7 @@ async function page(
     viewport: { width: opts.width ?? 1440, height: opts.height ?? 900 },
     reducedMotion: "reduce",
   });
+  contexts.push(ctx);
   await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
@@ -379,6 +398,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       viewport: { width: 1440, height: 900 },
       reducedMotion: "reduce",
     });
+    contexts.push(ctx);
     await signIn(ctx, s!.stateDir, s!.base);
     const p = await ctx.newPage();
     // A slow terminal module (a loaded machine): the panes after the first
@@ -551,8 +571,6 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await termsUp(p, 2);
     expect(await shown(p)).toEqual([sid.reviewer, sid.builder]);
     await expectFits(p);
-    // The list's row says it needs you with its mark as well as its chip
-    // (the "!" mark, in the Needs you band).
     expect(
       await p.locator(`button[data-id="${sid.builder}"] [data-mark=needs]`).count(),
     ).toBe(1);
@@ -775,6 +793,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
               colorScheme: scheme,
               reducedMotion: "reduce",
             });
+            contexts.push(ctx);
             await signIn(ctx, s!.stateDir, s!.base);
             await ctx.addInitScript((v) => {
               try {
@@ -881,6 +900,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     });
+    contexts.push(ctx);
     await signIn(ctx, s!.stateDir, s!.base);
     await ctx.addInitScript((v) => {
       try {
@@ -1025,6 +1045,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     });
+    contexts.push(ctx);
     await signIn(ctx, s!.stateDir, s!.base);
     await ctx.addInitScript((v) => {
       try {

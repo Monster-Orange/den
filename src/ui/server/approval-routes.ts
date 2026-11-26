@@ -20,12 +20,14 @@
  * again (the world may have changed while it waited). Every ask and every
  * decision is in the activity trail.
  */
+import { actorFromHeaders } from "../../shared/agent-actor.js";
 import type * as http from "http";
 import { agentTokenLive } from "../../shared/actor-token.js";
 import {
   APPROVAL_TICKET_HEADER,
   ApprovalQueue,
   approverAllowed,
+  claimantIsPerson,
   newApprovalTicket,
   type Approval,
   type AskedBy,
@@ -46,9 +48,14 @@ import { allowLink } from "../../shared/agent-links.js";
 import {
   agentPrincipalOf,
   auditActorOf,
+  operatorActOf,
   principalOf,
   type GuardResult,
 } from "./request-guard.js";
+import {
+  OPERATOR_HELD_ACTIONS,
+  OPERATOR_PRINCIPAL,
+} from "../../shared/test-operator.js";
 
 export type HeldCheck =
   | {
@@ -194,6 +201,21 @@ function askerOf(req: http.IncomingMessage): string {
 }
 
 /**
+ * The agent a request with no agent token claims to be (the
+ * audit headers a person's own `mcp --actor agent:<id>` sends), kept only
+ * when well-formed (actorFromHeaders drops a malformed id). Never verified.
+ */
+function claimedAgentOf(req: http.IncomingMessage): { claimedAs?: string } {
+  // Only on a verified person's own ask (a person's token or the OS user's
+  // browser). Anonymous asks ("loopback": any local program with no
+  // credential), the fixture person, the test operator and an agent's view
+  // send the headers too, but their claim would read as "You asked".
+  if (!claimantIsPerson(principalOf(req))) return {};
+  const c = actorFromHeaders(req.headers);
+  return c?.kind === "agent" && c.agent ? { claimedAs: c.agent } : {};
+}
+
+/**
  * Issue 621: a run result's part for its asker only (a new runner token),
  * `forAsker`. Every view leaves it out; the asker's own read of the
  * request has it once, merged into the result (forgetForAsker after).
@@ -225,6 +247,9 @@ export function approvalView(
     id: a.id,
     action: a.action,
     ...(a.agent ? { agent: a.agent } : {}),
+    ...(a.claimedAs && claimantIsPerson(a.actor)
+      ? { claimedAs: a.claimedAs }
+      : {}),
     summary: a.summary,
     ...(a.params ? { params: a.params } : {}),
     ...(a.details ? { details: a.details } : {}),
@@ -421,6 +446,8 @@ export async function askHeld(
       ...(ticket ? { ticketHash: ticket.hash } : {}),
       actor: askerOf(req),
       ...(agent ? { agent: agent.actor.slice("agent:".length) } : {}),
+      // A person's own scoped server's --actor, unverified.
+      ...(agent ? {} : claimedAgentOf(req)),
       action,
       args: stored,
       summary: checked.summary,
@@ -605,6 +632,12 @@ export async function handleApprovalRoutes(
      * link on it, never a guessed one.
      */
     webUrl?: () => string | null;
+    /**
+     * Whether a held write's asker (`agent:<id>`) is one of a
+     * test bed's own agents (test-operator.ts testBedAsker). Only then may
+     * the test operator Allow it. Not given: the operator Allows nothing.
+     */
+    testBedAsker?: (actor: string) => boolean;
   },
 ): Promise<boolean> {
   if (!isApprovalPath(pathname)) return false;
@@ -627,6 +660,20 @@ export async function handleApprovalRoutes(
       sendJson(res, {
         ok: true,
         mine: deps.queue.ofActor(agent.actor).map((x) => approvalView(x)),
+      });
+      return true;
+    }
+    // `?mine=1`, a person's own requests by its bearer or
+    // session (`<cli> approvals list --mine`), never another's. Nobody
+    // signed in falls through to the refusal below.
+    const mineOf = principalOf(req);
+    if (
+      new URL(req.url ?? "/", "http://x").searchParams.get("mine") === "1" &&
+      mineOf
+    ) {
+      sendJson(res, {
+        ok: true,
+        mine: deps.queue.ofActor(mineOf).map((x) => approvalView(x)),
       });
       return true;
     }
@@ -703,9 +750,85 @@ export async function handleApprovalRoutes(
     return true;
   }
 
+  /**
+   * Whether the test operator's Allow may run held write `a`:
+   * its check, run again now (as the run does), passes, says nothing
+   * person-only, and is not critical on this install's mode. Anything that
+   * throws: no.
+   */
+  async function operatorMayRun(a: Approval): Promise<boolean> {
+    try {
+      const act = Object.hasOwn(deps.actions, a.action)
+        ? deps.actions[a.action]
+        : undefined;
+      if (!act) return false;
+      const again = await act.check({ ...a.args }, undefined, { again: true });
+      if (!again.ok || again.personOnly === true) return false;
+      const mode = deps.installMode?.() ?? "strict";
+      return !isCriticalWrite(a.action, false, again.areas, mode);
+    } catch {
+      return false;
+    }
+  }
+
   const dec = DECIDE_PATH.exec(pathname);
   if (dec && method === "POST") {
-    const who = approverAllowed(req, guard);
+    // The test operator's Allow (the request gate let this
+    // fixture request through as the act: an operator install, loopback,
+    // unforwarded). Allow only, and only a held write one of the bed's own
+    // agents asked for. Anything else: refused, as the fixture person is.
+    const opAllow = operatorActOf(req) === "approval-allow";
+    const who: ReturnType<typeof approverAllowed> = opAllow
+      ? { ok: true, session: OPERATOR_PRINCIPAL }
+      : approverAllowed(req, guard);
+    let opBody: Awaited<ReturnType<typeof jsonBody>> = null;
+    if (opAllow) {
+      opBody = await jsonBody(req);
+      const body = opBody;
+      const held = deps.queue.get(dec[1]);
+      let bed = false;
+      try {
+        bed = !!held && deps.testBedAsker?.(held.actor) === true;
+      } catch {
+        bed = false;
+      }
+      let refusal: string | null =
+        body?.decision !== "allow"
+          ? "operator_allow_only"
+          : !bed
+            ? "operator_not_test_bed"
+            : !OPERATOR_HELD_ACTIONS.includes(held!.action)
+              ? "operator_action_not_allowed"
+              : null;
+      // Builder 2, Reviewer C: never a person-only or critical one, judged
+      // now from the held record (the ask's answer may be stale).
+      if (!refusal && !(await operatorMayRun(held!))) {
+        refusal = "operator_action_not_allowed";
+      }
+      if (refusal) {
+        recordAction(
+          auditActorOf(req),
+          {
+            verb: "approval-decide",
+            detail: dec[1],
+            outcome: "refused",
+            reason: refusal,
+          },
+          principalOf(req),
+        );
+        refuse(
+          res,
+          403,
+          refusal,
+          refusal === "operator_allow_only"
+            ? "The test operator may only Allow."
+            : refusal === "operator_action_not_allowed"
+              ? "The test operator may Allow only a routine setting change: this one is the person's."
+              : "The test operator may Allow only what a test bed's own agent asked for.",
+        );
+        return true;
+      }
+    }
     if (!who.ok) {
       recordAction(
         auditActorOf(req),
@@ -720,7 +843,7 @@ export async function handleApprovalRoutes(
       refuse(res, 403, who.code, who.error);
       return true;
     }
-    const body = await jsonBody(req);
+    const body = opAllow ? opBody : await jsonBody(req);
     const decision = body?.decision;
     if (decision !== "allow" && decision !== "deny") {
       refuse(res, 400, "bad_decision", 'decision is "allow" or "deny".');

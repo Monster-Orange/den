@@ -11,7 +11,9 @@ jest.mock("fs");
 jest.mock("child_process");
 jest.mock("../../../src/shared/environment-manager/opctl.js", () => ({
   findConventionalContainer: jest.fn(),
+  pickConventionalContainer: jest.fn(),
   runningDockerNames: jest.fn(),
+  runningDockerNamesAsync: jest.fn(),
 }));
 jest.mock("../../../src/shared/environment-manager/service-runner.js", () => ({
   resolveService: jest.fn(),
@@ -32,11 +34,12 @@ jest.mock("../../../src/shared/environment-manager/workspaces.js", () => ({
 }));
 
 import * as fs from "fs";
+import * as path from "path";
 import { EventEmitter } from "events";
 import { execFile, spawn, spawnSync } from "child_process";
 import {
-  findConventionalContainer,
-  runningDockerNames,
+  pickConventionalContainer,
+  runningDockerNamesAsync,
 } from "../../../src/shared/environment-manager/opctl.js";
 import {
   resolveService,
@@ -53,11 +56,11 @@ import {
   pruneDeadSnapshots,
 } from "../../../src/ui/server/log-history.js";
 
-const mockFind = findConventionalContainer as jest.MockedFunction<
-  typeof findConventionalContainer
+const mockFind = pickConventionalContainer as jest.MockedFunction<
+  typeof pickConventionalContainer
 >;
-const mockDockerNames = runningDockerNames as jest.MockedFunction<
-  typeof runningDockerNames
+const mockDockerNames = runningDockerNamesAsync as jest.MockedFunction<
+  typeof runningDockerNamesAsync
 >;
 const mockResolve = resolveService as jest.MockedFunction<
   typeof resolveService
@@ -95,6 +98,7 @@ beforeEach(() => {
     mode: "dev-managed",
   } as never);
   mockLogPath.mockReturnValue("/home/.den/logs/shop/db.log");
+  mockDockerNames.mockResolvedValue([]);
 });
 
 // ── isSafeServiceName ─────────────────────────────────────────────────────────
@@ -167,7 +171,7 @@ describe("resolveHistorySource", () => {
       services: { webapp: {}, backend: {} },
       compose: { routes: { app: "frontend:80" } },
     } as never);
-    mockDockerNames.mockReturnValue([
+    mockDockerNames.mockResolvedValue([
       "webapp-main-frontend-1",
       "webapp-main-backend-1",
     ]);
@@ -306,30 +310,68 @@ describe("pruneDeadSnapshots", () => {
     typeof fs.readdirSync
   >;
   const mockRm = fs.rmSync as jest.MockedFunction<typeof fs.rmSync>;
+  const mockStat = fs.statSync as jest.MockedFunction<typeof fs.statSync>;
+  const writtenAt = (at: Record<string, number> = {}) =>
+    mockStat.mockImplementation(((p: string) => ({
+      mtimeMs: at[path.basename(String(p))] ?? 0,
+    })) as never);
 
-  it("returns 0 when the history dir is missing or docker is unavailable", () => {
+  const dockerAll = (out: string | null) =>
+    mockExecFile.mockImplementation((...args: unknown[]) => {
+      const cb = args.find((a) => typeof a === "function") as (
+        e: Error | null,
+        stdout: string,
+      ) => void;
+      setImmediate(() =>
+        out === null ? cb(new Error("no docker"), "") : cb(null, out),
+      );
+    });
+
+  it("returns 0 when the history dir is missing or docker is unavailable", async () => {
     mockReaddir.mockImplementation(() => {
       throw new Error("ENOENT");
     });
-    expect(pruneDeadSnapshots()).toBe(0);
+    expect(await pruneDeadSnapshots()).toBe(0);
 
     mockReaddir.mockReturnValue(["a.log"] as never);
-    mockSpawnSync.mockReturnValue({ status: 1 } as never);
-    expect(pruneDeadSnapshots()).toBe(0);
+    dockerAll(null);
+    expect(await pruneDeadSnapshots()).toBe(0);
   });
 
-  it("removes snapshots for dead containers, keeps live ones and non-log files", () => {
+  it("removes snapshots for dead containers, keeps live ones and non-log files", async () => {
     mockReaddir.mockReturnValue([
       "alive.log",
       "dead.log",
       "notes.txt",
     ] as never);
-    mockSpawnSync.mockReturnValue({ status: 0, stdout: "alive\n" } as never);
-    expect(pruneDeadSnapshots()).toBe(1);
+    dockerAll("alive\n");
+    writtenAt();
+    expect(await pruneDeadSnapshots()).toBe(1);
     expect(mockRm).toHaveBeenCalledTimes(1);
     expect(mockRm).toHaveBeenCalledWith(expect.stringMatching(/dead\.log$/), {
       force: true,
     });
+  });
+
+  it("keeps a snapshot written since the prune began: a container that restarted while docker answered", async () => {
+    mockReaddir.mockReturnValue(["dead.log", "restarted.log"] as never);
+    dockerAll("");
+    writtenAt({ "restarted.log": Date.now() + 60_000 });
+    expect(await pruneDeadSnapshots()).toBe(1);
+    expect(mockRm).toHaveBeenCalledTimes(1);
+    expect(mockRm).toHaveBeenCalledWith(expect.stringMatching(/dead\.log$/), {
+      force: true,
+    });
+  });
+
+  it("keeps a snapshot it can't stat", async () => {
+    mockReaddir.mockReturnValue(["gone.log"] as never);
+    dockerAll("");
+    mockStat.mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+    expect(await pruneDeadSnapshots()).toBe(0);
+    expect(mockRm).not.toHaveBeenCalled();
   });
 });
 

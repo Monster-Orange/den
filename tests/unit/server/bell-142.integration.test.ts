@@ -112,9 +112,6 @@ describe("issue 142 on the real server", () => {
     expect((await call("GET", "/api/notifications")).json.unread).toBe(0);
   }, 60_000);
 
-  // The approved mock (v3, section 4) replaces clause 2's "goes to Updates":
-  // an unseen finished turn shows once, in the bell's Done, not seen;
-  // Earlier (the updates) holds only what was seen. Still no badge.
   it("clause 2: a plain turn end, page just closed, shows once, in Done (no badge; issue 773)", async () => {
     await looking();
     expect((await turnEnd("Noted.")).status).toBe(200);

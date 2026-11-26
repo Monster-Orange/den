@@ -100,7 +100,6 @@ const listed = (p: Page) =>
       .filter((e) => e.matches("div[data-state][data-ws]") || !e.closest("div[data-state][data-ws]"))
       .map(
         (e) =>
-          // A running row names its project itself (data-ws).
           `${((e.closest("div[data-state][data-ws]") ?? e.closest("[data-ws]")) as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
       ),
   );

@@ -1,11 +1,3 @@
-/**
- * The Agents list's bands (public/agent-bands.js), as the
- * approved mock draws them: one list across projects in four bands, Needs
- * you, Done not seen, Working, Idle, each with its own mark and chip; the
- * project tag on All projects only; the server agent ranked like any other
- * with a "Server" tag; Done turns Idle the moment the person opens it; the
- * sub-line names each state above zero.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 
 const g = globalThis as unknown as { window?: unknown };
@@ -100,11 +92,9 @@ describe("issue 773: a row's state", () => {
     const r = ag("builder", "done", { attnSince: T(1) });
     const seenNow = new Set(["s-builder"]);
     expect(rowState(r, seenNow)).toBe("idle");
-    // A need stays a need when opened: only its answer ends it.
     expect(rowState(ag("p", "needs", { id: "s-builder" }), seenNow)).toBe(
       "needs",
     );
-    // The Done band goes when it is empty.
     expect(bandsOf([r], { seenNow }).map((x) => x.state)).toEqual(["idle"]);
   });
 });
@@ -128,8 +118,6 @@ describe("issue 773: marks and chips", () => {
 
   it("the chip says the state, and for Needs you which need", async () => {
     const { chipHtml } = await mod();
-    // Mock v3: the reason on a wide screen, just "Needs you" on a phone
-    // (CSS shows one of the two).
     expect(chipHtml(ag("p", "needs", { waitingWhy: "permission" }))).toBe(
       '<span class="cp need" data-attn="needs"><span class="cpw">[ag.chip.needsWhy:[ag.why.permission]]</span><span class="cpn">[ag.chip.needs]</span></span>',
     );
@@ -240,7 +228,6 @@ describe("issue 773 + issue 96: the person's drag order inside a band", () => {
       ag("planner", "needs", { attnSince: T(3) }),
     ];
     expect(bandGroup(rows, rows[0])).toEqual(["zeta", "alpha"]);
-    // Needs you and Done keep the longest wait first: nothing moves there.
     expect(bandGroup(rows, rows[3])).toEqual([]);
     const done = [
       ag("b1", "done", { attnSince: T(1) }),
@@ -335,9 +322,6 @@ describe("issue 773 + issue 96 (Vision's ruling): your drag order inside Working
       ag("beta", "idle"),
       ag("omega", "idle"),
     ]);
-    // A to Z: alpha beta omega zeta. Your two (alpha, zeta) hold their
-    // slots in your order (zeta, alpha); beta and omega, not dragged,
-    // keep their A-to-Z places.
     expect(b[0].rows.map((r) => r.agent)).toEqual([
       "zeta",
       "beta",
@@ -355,7 +339,6 @@ describe("issue 773 + issue 96 (Vision's ruling): your drag order inside Working
       ag("planner", "needs", { attnSince: T(3) }),
     ];
     expect(bandGroup(rows, rows[0])).toEqual(["zeta", "alpha"]);
-    // Needs you keeps the longest wait first: nothing moves there.
     expect(bandGroup(rows, rows[3])).toEqual([]);
   });
 });

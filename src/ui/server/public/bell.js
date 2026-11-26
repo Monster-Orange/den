@@ -243,15 +243,9 @@ function subjectHtml(scope, s, ui) {
     .join("");
 }
 
-/**
- * One Done row: "<name> finished", its project, when. `seen`
- * (mock v3's Earlier): "<project> · seen" under it, and its own kind.
- */
 function doneRowHtml(d, seen = false) {
   const link = safeLink(d.link);
   const text = tr("bell.doneRow", { name: d.name || d.agent });
-  // Mock v3: "Server" for the server agent, as everywhere else; else the
-  // project's name as the person sees it.
   const where = d.server ? tr("ag.tag.server") : d.project || d.workspace || "";
   return (
     `<div class="den-bell-row" data-kind="${seen ? "seen-done" : "done"}" data-agent="${esc(d.agent)}">` +
@@ -283,9 +277,12 @@ export function allowsOf(b) {
 function allowRowHtml(w, open) {
   if (w.coach && typeof w.coach === "object") return coachRowHtml(w);
   const what = allowWhat(w);
+  // The person asked, under an unverified agent claim.
   const text = w.agent
     ? tr("bell.ap.row", { name: w.agent, what })
-    : tr("bell.ap.rowAsk", { what });
+    : w.claimedAs
+      ? tr("bell.ap.rowClaimed", { name: w.claimedAs, what })
+      : tr("bell.ap.rowAsk", { what });
   const waits =
     typeof w.since === "string" && typeof w.expiresAt === "string"
       ? tr("bell.ap.waits", {
@@ -313,7 +310,6 @@ function allowRowHtml(w, open) {
   );
 }
 
-/** The badge's count: Needs you plus Done, not seen. */
 export function bellCountOf(b) {
   return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
 }
@@ -551,7 +547,6 @@ export function bellPanel(b, ui = {}) {
         allowsHtml(allows, u.reviews) +
         overrunsHtml(overrunsOf(b)) +
         groupsHtml(groups, u, true),
-      // Done, not seen, under Needs you (when there is any).
       ...(done.length
         ? { done: done.map((d) => doneRowHtml(d)).join("") }
         : {}),
@@ -856,11 +851,15 @@ export function initBell(doc = document) {
       lost = "";
     } else if (loose()) lost = want;
   };
+  let asked = 0;
+  let drawn = 0;
   const refresh = async () => {
+    const n = ++asked;
     const b = await load();
-    // Issue 1339: a refresh while Mark all read or Clear read runs would
-    // put back what the person just saw go.
-    if (!b || ui.busy) return;
+    // None while Mark all or Clear read runs, and none older than the
+    // answer drawn last: answers can land out of order.
+    if (!b || ui.busy || n < drawn) return;
+    drawn = n;
     last = b;
     // Issue 993: an overrun slot counts until it ends (it has no item).
     bell.setCount(bellCountOf(b) + overrunsOf(b).length);
@@ -905,7 +904,6 @@ export function initBell(doc = document) {
     }
     const what = el.dataset.bell;
     if (what === "settings") return;
-    // A Done row opens the agent; opening it is seen.
     if (what === "open" || what === "page" || what === "open-done") {
       const rowEl = el.closest("[data-id]");
       const id = rowEl?.dataset.id;

@@ -1,17 +1,3 @@
-/**
- * Four agent states for each person, from the attention hooks
- * and the seen mark. One test per rule of the approved mock that the
- * server owns, and per acceptance clause 1, 2, 3, 6 and 7:
- *   Done, not seen   a turn finished after this person last opened it
- *   Done → Idle      opening the agent (POST /api/notifications/looking)
- *   Seen per person  the same person's two sessions agree; a second
- *                    person still sees Done; it survives a restart
- *   Working again    a new turn is Working; its end, unseen, is Done again
- *   Needs you        a permission, a question or an Allow, before the rest
- *   Stopped          outside the four states
- *   Bell             Done agents for the person, oldest first
- * A temp state folder and a fake clock. Invented names only.
- */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -84,7 +70,6 @@ const row = (agent: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-/** A request as the route sees it: a body, and who it proved to be. */
 function req(
   method: string,
   url: string,
@@ -164,7 +149,6 @@ describe("issue 773 clause 3: seen is per person", () => {
   it("one person's two sessions agree; a second person still sees Done", async () => {
     const d = mk();
     await d.a.event("builder", "north", { event: "finished" });
-    // The phone opens it: the desktop (the same person) sees Idle too.
     await look(d, ["builder"], "person:a");
     const phone = withAgentStates([row("builder")], "person:a", d.deps)[0];
     const desk = withAgentStates([row("builder")], "person:a", d.deps)[0];
@@ -185,10 +169,8 @@ describe("issue 773 clause 3: seen is per person", () => {
       ...(fixture ? { fixture } : {}),
     });
     expect(personKey(req("GET", "/", undefined, browser("s1")))).toBe(me);
-    // A loopback page (no session) and no credential: the same person.
     expect(personKey(req("GET", "/", undefined, browser()))).toBe(me);
     expect(personKey(req("GET", "/", undefined))).toBe(me);
-    // The test install's fixture person: never the human's marks.
     expect(personKey(req("GET", "/", undefined, browser("f1", true)))).toBe(
       FIXTURE_PRINCIPAL,
     );
@@ -223,7 +205,6 @@ describe("issue 773 clause 3: seen is per person", () => {
     expect(of({ kind: "person-browser" })).toBe("idle");
     expect(of(fixture)).toBe("done");
     expect(of("person:b")).toBe("done");
-    // The fixture opening it doesn't mark the human's.
     await d.a.event("builder", "north", { event: "finished" });
     clock += 1000;
     await d.a.event("builder", "north", { event: "finished" });
@@ -293,7 +274,6 @@ describe("issue 773: Needs you", () => {
     );
     expect(s?.attn).toBe("needs");
     expect(s?.attnSince).toBe(new Date(clock).toISOString());
-    // Mock v3: what it asks to do ("asks to run a command" for Bash).
     expect(s?.attnWhat).toBe("Bash");
     for (const why of ["asked", "approval", "trust"])
       expect(
@@ -376,8 +356,6 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
       workspace: "south",
       link: "/agents?project=south&agent=early",
     });
-    // Mock v3: each row names its project as the person sees it, and the
-    // server agent is "Server".
     const named = doneAgents(recs, "person:a", d.deps, new Set(), (ws) =>
       ws === "south" ? "South Shop" : ws,
     );
@@ -390,7 +368,6 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
       d.deps,
     );
     expect(srv[0]).toMatchObject({ server: true, project: "den-server" });
-    // A second person has seen none of them.
     expect(doneAgents(recs, "person:b", d.deps).map((x) => x.agent)).toEqual([
       "early",
       "looked",
@@ -411,10 +388,8 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
       workspace: "north",
     }));
     const seen = seenDoneAgents(recs, "person:a", d.deps, new Set(["a6"]));
-    // Newest first; a6 is busy (working or waiting again), fresh is unseen.
     expect(seen.map((x) => x.agent)).toEqual(["a5", "a4", "a3", "a2", "a1"]);
     expect(seen[0]).toMatchObject({ project: "north", workspace: "north" });
-    // Another person has seen none.
     expect(seenDoneAgents(recs, "person:b", d.deps)).toEqual([]);
   });
 
@@ -430,7 +405,6 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
         store: d.store,
         attention: d.a,
         seen: d.seen,
-        // Not this machine's own bell switches.
         prefs: () => ({ off: [], foldDays: 7 }),
         doneAgents: (person) =>
           doneAgents([{ id: "builder", workspace: "north" }], person, d.deps),
@@ -441,7 +415,6 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
       seenDone: { agent: string }[];
     };
     expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
-    // No seenDone list given: none.
     expect(b.seenDone).toEqual([]);
   });
 
@@ -490,12 +463,10 @@ describe("issue 773 clause 6: the bell's Done, not seen", () => {
   it("a Done agent shows once: in Done, not again in Earlier's updates", async () => {
     const d = mk();
     await d.a.event("builder", "north", { event: "finished" });
-    // "other" isn't one of the person's agents' records: not in Done.
     await d.a.event("other", "north", { event: "finished" });
     expect(d.store.list().filter((n) => n.kind === "finished").length).toBe(2);
     const b = await bell(d);
     expect(b.done.map((x) => x.agent)).toEqual(["builder"]);
-    // The one not in Done stays in the updates; the Done one doesn't.
     expect(finishedIn(b.updates.groups)).toEqual([agentSubject("other")]);
   });
 

@@ -40,7 +40,12 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
-import { restartResultHtml, wireRestartNow } from "./restart-result.js";
+import {
+  followRestarts,
+  mergeLive,
+  restartResultHtml,
+  wireRestartNow,
+} from "./restart-result.js";
 
 export { restartResultHtml };
 import { dialogHtml, mountDialog } from "./dialog-den.js";
@@ -5186,6 +5191,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ health_poll: { hidden_seconds: v } }),
   },
   {
+    id: "server.git_reads",
+    category: "server",
+    label: "Git reads at once",
+    description:
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
+    keywords: ["git", "repos", "processes", "parallel", "concurrency", "tests"],
+    scope: "user",
+    keys: ["git_reads.at_once"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.git_reads?.at_once ?? 16,
+    write: (v, ctx) => ctx.post({ git_reads: { at_once: v } }),
+  },
+  {
     // issue_write: which persona roles write GitHub issues in their
     // project's repos (user.yml agents.issue_writes). A person's only.
     id: "agents.issue_writes",
@@ -6912,6 +6930,31 @@ function wireRestartResult(box, ctx) {
   });
 }
 
+/**
+ * The answer box follows its agents live (restarted,
+ * a wait that ran out, failed) and goes once they are all done.
+ */
+function followRestartResult(box, ctx, plan) {
+  let shown = Array.isArray(plan) ? plan : [];
+  if (!shown.length) return;
+  const f = followRestarts({
+    api: (...a) => ctx.shell.api(...a),
+    onRows: (rows) => {
+      if (!box.isConnected) return f.stop();
+      const next = mergeLive(shown, rows);
+      if (JSON.stringify(next) === JSON.stringify(shown)) return;
+      shown = next;
+      if (!shown.length) {
+        f.stop();
+        box.remove();
+        return;
+      }
+      box.innerHTML = restartResultHtml(shown, (k, v) => ctx.shell.t(k, v));
+      wireRestartResult(box, ctx);
+    },
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6933,6 +6976,7 @@ function offerRestart(host, ctx, fresh) {
               ctx.shell.t(k, v),
             );
             wireRestartResult(box, ctx);
+            followRestartResult(box, ctx, x?.agents);
           })
           .catch((e) => {
             box.insertAdjacentHTML(

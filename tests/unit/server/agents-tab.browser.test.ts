@@ -205,9 +205,6 @@ describe("the Agents tab", () => {
     expect(
       Math.abs(agr.x + agr.width - (agx.x + agx.width)),
     ).toBeLessThanOrEqual(1);
-    // The prototype's panes were 845 wide beside its 300px list; mock v3's
-    // list is 80 wider, so they are 765 (a tolerance for the rail and the
-    // scrollbar: it is the remainder, not a constant).
     expect(Math.abs(agr.width - 765)).toBeLessThanOrEqual(24);
     // The rail: Agents under Develop, after Graph, current here.
     expect(
@@ -231,7 +228,6 @@ describe("the Agents tab", () => {
   it("issue 482: Agents lists agents only (the revoked token marked), Terminals the shells; each count says its own; ?ws= narrows it", async () => {
     if (skip()) return;
     const p = await page("/agents");
-    // One list across projects; each row names its project.
     expect(
       await p.$$eval("#agl div[data-band] button[data-id][data-ws]", (bs) => [
         ...new Set(bs.map((b) => (b as HTMLElement).dataset.ws)),
@@ -659,7 +655,6 @@ describe("the Agents tab", () => {
     await p.waitForSelector(head);
     expect(await p.getAttribute(head, "href")).toBe("/local-dev?project=north");
     expect(await p.textContent(head)).toBe("north");
-    // The list has no project heading now (one list in bands).
     // ⌘K: an agent's name finds its workspace.
     await p.click("#den-search");
     await p.fill("#den-pal-q", "scout");

@@ -164,6 +164,22 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   return token ? { url: cfg.url, token } : null;
 }
 
+/**
+ */
+async function syncAgentGrant(url: string): Promise<void> {
+  try {
+    const g = await import("../../shared/hub-agent-grant.js");
+    const { getStateDir } = await import("../../shared/paths.js");
+    const { notificationDeps } = await import("./notification-service.js");
+    g.syncAgentGrantNote(notificationDeps().store, {
+      connected: true,
+      notCovered: g.agentsNotCovered(getStateDir(), url),
+    });
+  } catch {
+    return;
+  }
+}
+
 /** The body of a fetch Response as text chunks. */
 async function* chunks(res: Response): AsyncIterable<string> {
   const reader = res.body!.getReader();
@@ -530,8 +546,21 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       appendJournal(path.join(getStateDir(), "hub", "deliveries.jsonl"), e),
     // Issue 702: doctor reads the path's health from a file.
     onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
-    health0: {
-      lastDeliveryAt: readDeliveryHealth(healthFile())?.lastDeliveryAt ?? null,
+    health0: (() => {
+      const h0 = readDeliveryHealth(healthFile());
+      return {
+        lastDeliveryAt: h0?.lastDeliveryAt ?? null,
+        // A restart keeps how long the cursor has been still.
+        cursorAt: h0?.cursorAt ?? null,
+      };
+    })(),
+    // hub.delivery_stale_hours, read at each check.
+    staleMs: () => {
+      try {
+        return (hub.readHubConfig()?.deliveryStaleHours ?? 6) * 3_600_000;
+      } catch {
+        return 6 * 3_600_000;
+      }
     },
     // Issue 703: hub.delivery_stream_silence_seconds, read at each open.
     silenceMs: () => {
@@ -613,6 +642,8 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.login ? { ownerLogin: w.login } : {}),
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
+      feedCarries = feedKinds(w.features);
+      void syncAgentGrant(a.url);
       noteWhoami(w);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */

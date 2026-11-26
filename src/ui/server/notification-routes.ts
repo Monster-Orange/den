@@ -129,9 +129,7 @@ export interface NotificationRouteDeps {
    */
   gateOverruns?: () => readonly GateOverrunWaiting[];
   seen?: SeenMarks;
-  /** The agents Done, not seen, for `person` (the bell). */
   doneAgents?: (person: string) => DoneAgent[];
-  /** Mock v3's Earlier: the agents whose finished work `person` has seen. */
   seenDone?: (person: string) => DoneAgent[];
 }
 
@@ -452,8 +450,6 @@ export async function handleNotificationRoutes(
     const prefs = (deps.prefs ?? bellPrefs)(null);
     const all = bellView(deps.store.list(), prefs);
     let done: DoneAgent[] = [];
-    // Done follows the "finished" switch when the person turned
-    // it off; its default (off for the updates) leaves Done on (mock v3).
     if (!prefs.finishedChosenOff)
       try {
         done = deps.doneAgents?.(personKey(req)) ?? [];
@@ -467,8 +463,6 @@ export async function handleNotificationRoutes(
       } catch {
         /* best effort: no seen rows this time */
       }
-    // An agent in Done (or its seen row in Earlier) shows once:
-    // its "finished" item is left out of the updates and Older.
     const inDone = new Set(
       [...done, ...seenDone].map((d) => agentSubject(d.agent)),
     );
@@ -478,9 +472,7 @@ export async function handleNotificationRoutes(
     sendJson(res, {
       ok: true,
       unread: v.unread,
-      // Done, not seen, for this person (its own section).
       done,
-      // Mock v3: the ones seen, first in Earlier.
       seenDone,
       // Issue 746: a held write waiting for the person's Allow first,
       // then (issue 327) each agent waiting, what on, since when.
@@ -577,8 +569,6 @@ export async function handleNotificationRoutes(
       ? b.agents.filter((x): x is string => typeof x === "string").slice(0, 16)
       : [];
     deps.attention.lookingAt(agents);
-    // Opening the agent (or its terminal) is seen, for this
-    // person: Done turns into Idle.
     if (deps.seen) {
       const person = personKey(req);
       for (const a of agents)

@@ -126,8 +126,6 @@ describe("issue 101: Needs you first, then Earlier", () => {
     );
     expect(p.sections.done).toContain('data-agent="builder"');
     expect(p.sections.done).toContain(">acme<");
-    // Mock v3: the project's display name, and "Server" for the server
-    // agent (as everywhere else).
     const named = bellPanel({
       groups: [],
       unread: 0,
@@ -148,9 +146,7 @@ describe("issue 101: Needs you first, then Earlier", () => {
     expect(named.sections.done).toContain(">Acme Shop<");
     expect(named.sections.done).toContain(">[ag.tag.server]<");
     expect(named.sections.done).not.toContain("[bell.server]");
-    // Counts: the bell shows Needs you plus Done, not seen.
     expect(bellCountOf(b)).toBe(2);
-    // Nothing else: Done alone still shows (no empty state).
     const only = bellPanel({ groups: [], unread: 0, done: b.done });
     if (!("sections" in only)) throw new Error("no sections");
     expect(only.sections.done).toContain('data-kind="done"');

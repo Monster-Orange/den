@@ -200,9 +200,6 @@ beforeAll(async () => {
   );
   server = started.server;
   PORT = started.port;
-  // Den's own terminal host refresh runs at the server's start
-  // and records how it ended in DEN_HOME/host-refresh.json. On a slow
-  // runner it ended between a test's two snapshots: wait for it first.
   const refresh = path.join(tmp, "home", ".den", "host-refresh.json");
   const until = Date.now() + 30_000;
   while (Date.now() < until) {

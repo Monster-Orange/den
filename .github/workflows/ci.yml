@@ -342,9 +342,13 @@ jobs:
       # never block. It runs the base's copy, so a change can't edit the
       # rules that judge it (the change that adds the copy runs its own).
       # The PR's title and body stay with pr-text.yml.
+      # A pull request is checked out as its merge into today's base, so it
+      # is judged against that merge's first parent (HEAD^1): the event's
+      # base.sha can be older, and the queue's newer lines would count as
+      # the PR's. .guardrail-lint.json is read from the base's tree.
       - name: Guardrail lint
         env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || 'HEAD^1' }}
         run: |
           lint=scripts/guardrail-lint
           if git cat-file -e "$BASE:scripts/guardrail-lint/mo-gates.mjs" 2>/dev/null; then

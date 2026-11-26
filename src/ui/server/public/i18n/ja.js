@@ -1463,6 +1463,9 @@
     "set.server.health_poll_hidden": "非表示タブでのヘルスチェック",
     "set.server.health_poll_hidden.d":
       "非表示のタブにあるページがヘルスを確認する間隔: 10〜3600 秒。表示中のページがないとき、チェックは最大でもこの間隔でしか実行されません。表示に戻ると、すぐに確認します。__DEN_CLI__ config health_poll.hidden_seconds=60",
+    "set.server.git_reads": "同時に実行する git の読み取り",
+    "set.server.git_reads.d":
+      "ページがリポジトリを読むとき (テストページのブランチやコミットなど) に Den が同時に実行する git プロセスの数: 1〜64。__DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
       "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
@@ -2878,7 +2881,6 @@
     "ag.waiting.input": "入力待ち",
     "ag.waiting.asked": "質問があります",
     "ag.waiting.trust": "待機中: このフォルダを信頼しますか?",
-    // Four agent states, one list sorted by who needs you.
     "ag.band.needs": "対応が必要",
     "ag.band.done": "完了・未確認",
     "ag.band.working": "作業中",
@@ -2984,6 +2986,11 @@
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。終了したターミナル: {terminals} 件。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
     "bell.m.hostRestartedAgentsCut":
       "__DEN_TITLE__ はターミナルホストをインストール済みのバージョンで再起動しました。新しいエージェントとターミナルが再び起動できます。再開したエージェント: {names}。実行中のターミナルはありませんでした。作業の途中で中断され、最後の手順を確認して続けるよう伝えたエージェント: {cut}。",
+    "bell.m.rsTimedOut":
+      "{id} は再起動されませんでした: {min} 分後も作業中でした",
+    "bell.m.rsJob":
+      "{id} は再起動されませんでした: バックグラウンドのジョブが実行中です ({cmd}、{min} 分)",
+    "bell.m.rsFailed": "{id} は再起動されませんでした",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.unaskedExit":
@@ -3001,6 +3008,8 @@
     "bell.m.vschedExpire":
       "スケジュール「{name}」の許可はあと {n} 日で切れます。",
     "bell.m.heldAllowAsk": "あなたの許可を待っています: {what}",
+    "bell.m.heldAllowClaimed":
+      "あなたの許可を待っています: {what}。あなたが {name} として依頼しました（未確認）。",
     "bell.m.shared": "{actor} さんが {title} を共有しました",
     "bell.m.sharedNote": "{actor} さんが {title} を共有しました: {note}",
     "bell.m.sharedAgent": "エージェント {actor} が {title} を共有しました",
@@ -3026,6 +3035,7 @@
     "bell.ap.h": "あなたの許可待ち",
     "bell.ap.row": "{name} の依頼: {what}",
     "bell.ap.rowAsk": "依頼: {what}",
+    "bell.ap.rowClaimed": "あなたが {name} として依頼（未確認）: {what}",
     "bell.ap.waits": "{ago} 待機中 · 期限 {time}",
     "bell.ap.allow": "許可",
     "bell.ap.deny": "拒否",
@@ -3043,6 +3053,8 @@
     "rs.barBtn": "{n} 件すべてを次の待機時に再起動",
     "rs.allName": "エージェント",
     "rs.done": "{id}: 同じ会話のまま再起動しました。",
+    "rs.timedOut":
+      "{id}: 再起動されませんでした。{min} 分後も作業中でした。今すぐ再起動するとターンが終わります。",
     "rs.failed":
       "{id}: 再起動できませんでした。エージェントのページから再起動してください。",
     "bell.ap.denied": "拒否しました: {what}",
@@ -3086,6 +3098,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ を {v} に更新できませんでした: {why}",
     "bell.m.updateWaits":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたの許可を待っています",
+    "bell.m.hubAgentsReconnect":
+      "エージェントが自分の作業に署名できるよう、Hub に接続し直してください",
     "bell.m.updateWaitsAsked":
       "__DEN_TITLE__ の {v} への更新は待機中です: __DEN_TITLE__ エージェントがあなたに質問しました",
     "bell.m.updateWaitsWhat":
@@ -3142,6 +3156,8 @@
       "Hub のコメントが届いていません: Hub がコメントのストリームを何度も閉じています",
     "bell.m.hubCommentsSilent":
       "Hub のコメントが届いていません: コメントのストリームが途絶えました",
+    "bell.m.hubCommentsStale":
+      "Hub のコメントが届いていません: コメントのストリームは開いていますが、Hub に未送信のコメントがあります",
     "bell.m.rolledBack":
       "__DEN_TITLE__ {v} はここで起動せず、{from} に戻りました: {why}",
     "bell.m.turn": "{name} のターンが終わりました",
@@ -3541,6 +3557,12 @@
     "ag.signIn": "{label} で実行",
     "ag.signIn.tip":
       "{label} でサインインします。そのトークンはこのインストールのシークレットストアにあるので、ログアウト後も動き続けます。",
+    "ag.hub.bound": "Hub で確認済み",
+    "ag.hub.bound.tip":
+      "自分のトークンで Hub を呼び出すので、Hub はその作業と承認をこのエージェント自身のものとして数えます。",
+    "ag.hub.unbound": "Hub で未確認",
+    "ag.hub.unbound.tip":
+      "今はこのインストールのトークンで Hub を呼び出すため、Hub はその承認をインストールのものと区別できません。次に Hub を呼び出すとき、Den が Hub にこのエージェント専用のトークンを求めます。",
     "ag.tabs": "開いているターミナル",
     "ag.hint.focus":
       "クリックで 1 つのターミナルを表示します。Shift か ⌘ を押しながらクリックすると横に追加します。",
@@ -3643,6 +3665,9 @@
       "枠を確保済み。負荷 ({load}) が {limit} 未満に下がるまで開始を待っています",
     "gate.leftoversH": "実行の終了後に止めたもの",
     "gate.leftovers": "{label} ({cmd}) の残りのプロセス {n} 個",
+    "gate.removedH": "実行の終了後に削除した使い捨てコンテナ",
+    "gate.removed": "{label} のコンテナ {n} 個 ({images})",
+    "gate.removedBare": "{label} のコンテナ {n} 個",
     "busy.setUndoW": "設定を元に戻しています…",
     "busy.setUndoS": "設定を元に戻しました。",
     "busy.setUndoF": "設定を元に戻せませんでした。",
@@ -4781,6 +4806,9 @@
     "env.run.title": "GitHub 上のデプロイ実行",
     "env.run": "実行",
     "env.timedOut": "{s} 秒でタイムアウト",
+    "env.fetchFailed": "応答なし: 起動していますか?",
+    "env.fetchFailedWhy":
+      "{url} が応答しませんでした。起動しているか、このコンピューターからそのアドレスに届くかを確認してください。",
     "env.up": "稼働中",
     "env.down": "停止中",
     "env.service": "サービス",

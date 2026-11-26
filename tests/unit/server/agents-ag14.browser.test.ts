@@ -1122,7 +1122,6 @@ describe("D37: Stopped (n), one line each, at the bottom", () => {
     expect((await group(p).locator("summary").textContent())?.trim()).toBe(
       "Stopped (3)",
     );
-    // Last in the list, after every band of running ones.
     expect(
       await p.evaluate(() => {
         const g = document.querySelector("#agl details[data-stopped]")!;

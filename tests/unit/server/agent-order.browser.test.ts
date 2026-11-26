@@ -18,12 +18,6 @@
  *      44 px Up and Down on each stopped agent that can move; a stopped
  *      agent moves, and the order holds through a reload.
  *
- * The approved mock: running agents are in the four bands. The
- * bands set the order between bands; inside a band the person's order
- * holds: a drag by the grip, or Alt+arrow, moves a row among its
- * project's agents in its band, and a reload keeps it. The Stopped group
- * keeps the person's order (4).
- *
  * The demo distribution with a session host in this process and a
  * scripted PTY: nothing really runs. DEN_PW_WS connects to a running
  * Playwright server; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names
@@ -155,7 +149,6 @@ async function open(
 
 const row = (id: string) => `#agl button.agr[data-id="${id}"]`;
 
-/** North's running agents as the list shows them (the bands), by name. */
 async function order(p: Page): Promise<string[]> {
   const ids = await p.$$eval(
     '#agl div[data-band] button.agr[data-kind="agent"]',
@@ -165,7 +158,6 @@ async function order(p: Page): Promise<string[]> {
   return ids.map((x) => by[x] ?? x);
 }
 
-/** A mouse drag of row `from` by its grip onto `to`'s upper half. */
 async function mouseDrag(p: Page, from: string, to: string): Promise<void> {
   await p.hover(row(from));
   const g = (await p.locator(`${row(from)} [data-grip]`).boundingBox())!;
@@ -177,7 +169,6 @@ async function mouseDrag(p: Page, from: string, to: string): Promise<void> {
   await p.mouse.up();
 }
 
-/** Waits until north's running agents show `want` (a poll may lag). */
 async function until(p: Page, want: string[]): Promise<void> {
   for (let i = 0; i < 60; i++) {
     if (JSON.stringify(await order(p)) === JSON.stringify(want)) return;
@@ -258,19 +249,15 @@ describe.each(ENGINES)(
       if (skip()) return;
       resetOrder();
       const p = await open(engine);
-      // No order saved: the Idle band's own order, A to Z.
       await until(p, ["ada", "bo", "cy"]);
-      // Every row of the band has its grip, with an accessible name.
       expect(await p.locator("#agl div[data-band] [data-grip]").count()).toBe(3);
       expect(
         await p.locator(`${row(sid.cy)} [data-grip]`).getAttribute("aria-label"),
       ).toBeTruthy();
-      // Dragged onto ada's upper half: cy goes before ada.
       await moved(p, () => mouseDrag(p, sid.cy, sid.ada));
       await until(p, ["cy", "ada", "bo"]);
       const north = userYml().agents?.order?.north ?? [];
       expect(north.indexOf("cy")).toBeLessThan(north.indexOf("ada"));
-      // Alt+↑ on bo: one up, focus stays on it.
       await p.locator(row(sid.bo)).focus();
       await moved(p, () => p.keyboard.press("Alt+ArrowUp"));
       await until(p, ["cy", "bo", "ada"]);
@@ -279,7 +266,6 @@ describe.each(ENGINES)(
           () => (document.activeElement as HTMLElement | null)?.dataset.id,
         ),
       ).toBe(sid.bo);
-      // The bands are still the bands: one, Idle.
       expect(
         await p.$$eval("#agl div[data-band]", (bs) =>
           bs.map((b) => (b as HTMLElement).dataset.band),
@@ -359,7 +345,6 @@ describe.each(ENGINES)(
       );
       // No working pop-up for a quick move.
       expect(await p.locator("den-busy[open]").count()).toBe(0);
-      // The first can't go up: no save is asked, nothing changes.
       let posts = 0;
       p.on("request", (r) => {
         if (r.method() === "POST" && /\/order$/.test(r.url())) posts++;

@@ -1,5 +1,5 @@
 /**
- * Issue 1127, clause 4: Den's PreToolUse hook holds an agent's `gh` write
+ * Den's PreToolUse hook holds an agent's `gh` write
  * (pr/issue create, edit, comment, review; gh api writes) whose title or
  * body holds a listed name, before it runs, on a public repo only. The
  * refusal quotes the agent's own phrase and offers neutral words; it never
