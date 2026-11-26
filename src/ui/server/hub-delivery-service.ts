@@ -94,6 +94,7 @@ interface StartOpts {
   stateTimeoutSeconds?: number;
   typeTimeoutSeconds?: number;
   heldBellMinutes?: number;
+  goneKeepDays?: number;
   answerMinutes?: number;
   log: (line: string) => void;
 }
@@ -346,6 +347,33 @@ type HeldStore = Pick<
   "add" | "withdraw"
 >;
 
+export function goneBell(
+  agent: string,
+  items: readonly { project: string }[],
+  at: number,
+  o: { store?: HeldStore } = {},
+): void {
+  const n = items.length;
+  if (!n || !items[0]) return;
+  const project = items[0].project;
+  const go = (s: HeldStore) =>
+    s.add({
+      kind: "service",
+      subject: `record:delivery-gone:${agent}:${at}`,
+      scope: `workspace/${project}`,
+      text: `Not delivered: ${agent} was removed. ${n} message${n === 1 ? " for it is" : "s for it are"} kept.`,
+      msg: { key: "bell.m.deliveryGone", vars: { name: agent, n } },
+      link: `/agents?project=${encodeURIComponent(project)}`,
+    });
+  if (o.store) {
+    go(o.store);
+    return;
+  }
+  void import("./notification-service.js")
+    .then(({ notificationDeps }) => go(notificationDeps().store))
+    .catch(() => undefined);
+}
+
 /**
  * Issue 664: the bell's item for text held because `agent` isn't at its
  * input prompt: added once it has waited `afterSeconds`, said again each
@@ -497,6 +525,8 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     // Issue 701: and for every other reason, after
     // hub.delivery_held_bell_minutes.
     // Issue 1311: held on a draft, after agents.draft_hold_max_minutes.
+    gone: (agent, items, at) => goneBell(agent, items, at),
+    goneKeepMs: () => (lastOpts?.goneKeepDays ?? 30) * 86_400_000,
     heldNote: (agent, n, waitedMs, why) =>
       heldBell(
         agent,

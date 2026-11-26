@@ -68,6 +68,7 @@ describe("readHubConfig", () => {
       deliveryStateTimeoutSeconds: 60,
       deliveryTypeTimeoutSeconds: 120,
       deliveryHeldBellMinutes: 5,
+      deliveryGoneKeepDays: 30,
       deliveryAnswerMinutes: 30,
       deliveryAlertMinutes: 15,
       deliveryStaleHours: 6,

@@ -3122,6 +3122,10 @@
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
+    "bell.m.deliveryGone":
+      "No entregado: {name} se eliminó. Se guardan {n} mensajes para él.",
+    "bell.m.deliveryGone.one":
+      "No entregado: {name} se eliminó. Se guarda {n} mensaje para él.",
     "bell.m.notAtPrompt":
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en su indicador de entrada",
     "bell.m.notAtPrompt.one":

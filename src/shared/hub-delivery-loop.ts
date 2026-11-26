@@ -220,6 +220,8 @@ export interface DeliveryLoopDeps {
    * a body or a name), for the file doctor reads.
    */
   journal?: (e: JournalEntry) => void;
+  gone?: (agent: string, items: readonly Delivery[], at: number) => void;
+  goneKeepMs?: () => number;
   /** NT: the agent finished its Hub comments (done, not failed). */
   finished?: (
     agent: string,
@@ -608,8 +610,14 @@ export class DeliveryLoop {
     const h = this.d.seen.held as {
       queue?: Record<string, unknown[]>;
       active?: Record<string, Partial<Active>>;
+      gone?: unknown[];
     } | null;
     if (!h || typeof h !== "object") return;
+    for (const r of Array.isArray(h.gone) ? h.gone : []) {
+      const dv = parseHeld(r);
+      const at = (r as { gone_at?: unknown } | null)?.gone_at;
+      if (dv && typeof at === "number") this.gone.set(dv.id, { dv, at });
+    }
     for (const [agent, list] of Object.entries(h.queue ?? {})) {
       if (!Array.isArray(list)) continue;
       const q = list
@@ -645,6 +653,7 @@ export class DeliveryLoop {
       this.d.log?.(
         `hub delivery: restored ${a.ids.length} typed Hub item${a.ids.length === 1 ? "" : "s"} for ${agent}; done when its turn ends`,
       );
+    this.pruneGone();
   }
 
   /** Save what's held, for restore(). */
@@ -660,8 +669,15 @@ export class DeliveryLoop {
         });
     const active: Record<string, Active> = {};
     for (const [a, v] of this.active) active[a] = v;
-    const empty = !Object.keys(queue).length && !Object.keys(active).length;
-    const next = empty ? null : { queue, active };
+    const gone = [...this.gone.values()].map((g) => ({
+      ...deliveryRaw(g.dv),
+      gone_at: g.at,
+    }));
+    const empty =
+      !Object.keys(queue).length && !Object.keys(active).length && !gone.length;
+    const next = empty
+      ? null
+      : { queue, active, ...(gone.length ? { gone } : {}) };
     // The tick calls this every 2 s: write only what changed.
     const key = JSON.stringify(next);
     if (key === this.persisted) return;
@@ -834,6 +850,27 @@ export class DeliveryLoop {
     return id.startsWith(FEED_PREFIX) && this.d.feedSeen
       ? this.d.feedSeen
       : this.d.seen;
+  }
+
+  private readonly gone = new Map<string, { dv: Delivery; at: number }>();
+
+  private pruneGone(): void {
+    const keep = this.d.goneKeepMs?.() ?? 30 * 86_400_000;
+    if (!(keep > 0)) return;
+    const now = this.now();
+    let dropped = false;
+    for (const [id, g] of this.gone)
+      if (now - g.at > keep) dropped = this.gone.delete(id) || dropped;
+    if (dropped) this.persist();
+  }
+
+  goneItems(): { id: string; agent: string; project: string; at: number }[] {
+    return [...this.gone.values()].map((g) => ({
+      id: g.dv.id,
+      agent: g.dv.agent,
+      project: g.dv.project,
+      at: g.at,
+    }));
   }
 
   /** Issue 459: whether `id` waits in a queue or is in a running turn. */
@@ -1094,6 +1131,26 @@ export class DeliveryLoop {
     const waiting = this.queue.get(agent);
     if (!waiting?.length) {
       this.queue.delete(agent);
+      return;
+    }
+    if (s === "missing") {
+      this.queue.delete(agent);
+      const at = this.now();
+      this.pruneGone();
+      for (const dv of waiting) {
+        this.heldReason.delete(dv.id);
+        this.gone.set(dv.id, { dv, at });
+        this.note(dv.id, "refused", dv);
+        await this.ack(dv.id, "refused", { reason: ACK_WORDS.missing });
+      }
+      try {
+        this.d.gone?.(agent, waiting, at);
+      } catch {
+        this.d.log?.(`hub delivery: the bell for ${agent}'s gone items failed`);
+      }
+      this.d.log?.(
+        `hub delivery: ${waiting.length} held item${waiting.length === 1 ? "" : "s"} for ${agent} not delivered: ${ACK_WORDS.missing}`,
+      );
       return;
     }
     if (s === "stopped") {

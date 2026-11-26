@@ -4029,6 +4029,10 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
+    "bell.m.deliveryGone":
+      "Not delivered: {name} was removed. {n} messages for it are kept.",
+    "bell.m.deliveryGone.one":
+      "Not delivered: {name} was removed. {n} message for it is kept.",
     "bell.m.notAtPrompt":
       "{name}: {n} messages wait for {m} min. Waiting: the agent isn't at its prompt",
     "bell.m.notAtPrompt.one":
