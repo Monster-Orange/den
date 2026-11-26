@@ -9105,7 +9105,14 @@
   }
 
   // R26d: the server unreachable.
-  var server = { up: true, delay: 0, timer: null, tick: null, nextAt: 0 };
+  var server = {
+    up: true,
+    downs: 0,
+    delay: 0,
+    timer: null,
+    tick: null,
+    nextAt: 0,
+  };
   var baseFetch =
     typeof window.fetch === "function" ? window.fetch.bind(window) : null;
   // A same-origin refusal or error (4xx, 5xx) is read in full here and
@@ -9185,6 +9192,7 @@
   }
   function serverUnreachable() {
     if (!server.up) return;
+    server.downs++;
     serverState(false);
     server.delay = 1000;
     scheduleProbe();
@@ -9424,6 +9432,7 @@
   }
   if (rawFetch && !window.fetch.__denShell) {
     var wrapped = function (input, init) {
+      var sentDown = server.up ? -1 : server.downs;
       var p =
         CSRF_METHODS[methodOf(input, init)] && sameOrigin(input)
           ? csrfFetch(input, init)
@@ -9431,7 +9440,8 @@
       if (!p || typeof p.then !== "function") return p;
       return p.then(
         function (r) {
-          if (!server.up && sameOrigin(input)) serverBack();
+          if (!server.up && sentDown === server.downs && sameOrigin(input))
+            serverBack();
           if (r && r.status === 422 && !configBad && sameOrigin(input))
             r.clone()
               .json()
