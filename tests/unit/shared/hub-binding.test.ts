@@ -163,6 +163,7 @@ describe("issue 726 clause 2: the old Hub's cursor, ids and held comments stay b
     put("tools-seen.json", { a1: "hash" });
     put("links-seen.json", { web: { id: OLD_ID, slug: "web-old", at: "t" } });
     put("deliveries-health.json", { lastDeliveryAt: 5 });
+    put("deliveries.jsonl", { id: "d1", url: `${OLD}/doc` });
     bindHub(deps(), { url: OLD });
     bindHub(deps(), { url: NEW });
 

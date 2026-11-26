@@ -15,6 +15,8 @@
  *     offered again: "N projects need your pick" (Connect links the clear
  *     ones and counts the rest).
  */
+import * as fs from "fs";
+import * as path from "path";
 import {
   bindHub,
   decideHubBinding,
@@ -53,6 +55,33 @@ export interface HubChangeDeps {
   config: () => HubConfig | null;
   readUser: () => Record<string, unknown>;
   writeUser: (u: Record<string, unknown>) => void;
+  closeHeld?: (from: string, to: string) => Promise<number>;
+}
+
+const LEFTOVER_FILES = ["hub-den-url.json", "hub-names-check.json"];
+const AGENT_LEFTOVERS = ["hub-mcp.json", "hub-inbox.json"];
+
+export function forgetHubLeftovers(stateDir: string): void {
+  for (const f of LEFTOVER_FILES)
+    fs.rmSync(path.join(stateDir, f), { force: true });
+  const agents = path.join(stateDir, "agent-files");
+  let ids: string[] = [];
+  try {
+    ids = fs.readdirSync(agents);
+  } catch {
+    ids = [];
+  }
+  for (const id of ids)
+    for (const f of AGENT_LEFTOVERS)
+      fs.rmSync(path.join(agents, id, f), { force: true });
+}
+
+let heldCloser: ((from: string, to: string) => Promise<number>) | null = null;
+
+export function registerHubHeldCloser(
+  f: ((from: string, to: string) => Promise<number>) | null,
+): void {
+  heldCloser = f;
 }
 
 /** Where a person picks after a change: Settings › Hub, to Connect first. */
@@ -115,11 +144,20 @@ export async function noteHub(
   );
   if (r.kind !== "change" || !r.archived) return { kind: r.kind, repick: 0 };
   const store = d.bell();
-  store.remove(isHubBellItem);
+  store.remove(
+    (n) => isHubBellItem(n) || n.subject === "record:agents-without-hub",
+  );
+  forgetHubLeftovers(stateDir);
+  const from = bound?.url ?? bound?.origin ?? "";
+  const closed = from
+    ? await (d.closeHeld ?? heldCloser ?? (async () => 0))(from, now.url).catch(
+        () => 0,
+      )
+    : 0;
   const repick = r.archived.projects.length;
   if (repick) store.add({ ...pickNote(repick), link: HUB_CHANGE_PICK_LINK });
   d.audit(
-    `Hub changed: ${hubWords(bound)} → ${hubWords({ url: now.url, company: now.company })}; its state is archived in ${r.archived.dir}; ${repick} project${repick === 1 ? "" : "s"} unlinked, to pick again`,
+    `Hub changed: ${hubWords(bound)} → ${hubWords({ url: now.url, company: now.company })}; its state is archived in ${r.archived.dir}; ${repick} project${repick === 1 ? "" : "s"} unlinked, to pick again${closed ? `; ${closed} held write${closed === 1 ? "" : "s"} for the old Hub closed` : ""}`,
   );
   return { kind: "change", archived: r.archived, repick };
 }

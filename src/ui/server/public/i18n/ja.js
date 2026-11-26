@@ -2963,6 +2963,10 @@
       "{name} の依頼は応答がないまま期限切れになりました: {what}。何も実行していません。エージェントにもう一度依頼するよう伝えました。",
     "bell.m.heldLapsedAsk":
       "依頼が応答のないまま期限切れになりました: {what}。何も実行していません。",
+    "bell.m.heldClosedHub":
+      "{name} の依頼は {from} の Hub を指していたため、__DEN_TITLE__ は {to} に移るときにそれを閉じました: {what}。この依頼からは何も実行していません。",
+    "bell.m.heldClosedHubAsk":
+      "ある依頼は {from} の Hub を指していたため、__DEN_TITLE__ は {to} に移るときにそれを閉じました: {what}。この依頼からは何も実行していません。",
     "bell.m.heldLost":
       "{name} の依頼は再起動で失われました: {what}。この依頼からは何も実行していません。エージェントにもう一度依頼するよう伝えました。",
     "bell.m.heldLostAsk":

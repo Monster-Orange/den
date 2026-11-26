@@ -5606,6 +5606,26 @@ function approvalDeps(): ApprovalDeps {
     // What the test operator may Allow.
     testBedAsker: (actor) => testBedAsker(getStateDir(), actor),
   };
+  const queue = approvals.queue;
+  void import("./hub-change.js").then((hc) =>
+    hc.registerHubHeldCloser(async (from, to) => {
+      const { closeHubHeld } = await import("./hub-held-close.js");
+      return (
+        await closeHubHeld(
+          {
+            pending: () => queue.pending(),
+            end: (id, why) => queue.endBecause(id, why),
+            store: notificationDeps().store,
+            tell: tellHeldAsker,
+            projectOf: heldProjectOf,
+            synced: syncHeldWrites,
+          },
+          from,
+          to,
+        )
+      ).length;
+    }),
+  );
   return approvals;
 }
 /**
