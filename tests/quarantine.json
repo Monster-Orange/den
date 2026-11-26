@@ -94,19 +94,6 @@
       }
     },
     {
-      "file": "tests/unit/server/agents-terminal.browser.test.ts",
-      "test": "an agent's pane as a terminal (AG-4b) D40: picking an agent puts the keyboard in its terminal a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (click)",
-      "issue": 1832,
-      "added": "2026-11-26",
-      "evidence": {
-        "failed_run": 45878099265,
-        "failed_job": 140112164904,
-        "job": "pr-shards (24.13.0, 15)",
-        "sha": "1ef93a013b128efd333d63e927b5f9c3e9a4b5ff",
-        "note": "No CI run on this sha passed it (a red is never re-run). The pane took the keyboard after the person moved elsewhere (Expected false, Received true at the activeElement check). The Shift+Tab case of the same test is quarantined under issue 1832 already."
-      }
-    },
-    {
       "file": "tests/unit/server/bell-allow-review.browser.test.ts",
       "test": "the bell's Allow row: Review at 1440: a tap opens the lines and another closes them; Allow and Deny stay put",
       "issue": 1332,
