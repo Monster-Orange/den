@@ -328,6 +328,20 @@ describe("the map (tests/affected-map.json)", () => {
     expect(s.allBecause).toEqual(["src/ui/server/request-guard.ts"]);
     expect(Object.keys(s.files)).toHaveLength(TESTS.length);
   });
+
+  it("a pull request touching only a live check runs every live check's own test", () => {
+    const s = select({
+      changed: ["gate/252.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    const own = TESTS.filter((t) => t.startsWith("tests/unit/test-infra/gate-"));
+    expect(own).toContain("tests/unit/test-infra/gate-252-runner.test.ts");
+    expect(own).toContain("tests/unit/test-infra/gate-expect-shape.test.ts");
+    for (const t of own) expect([t, files.includes(t)]).toEqual([t, true]);
+  });
 });
 
 describe("tests that start Den as a process (issue 708)", () => {

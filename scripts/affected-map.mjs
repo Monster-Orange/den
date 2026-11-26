@@ -363,6 +363,11 @@ export function buildRules(map = readMap()) {
       run: others.filter((t) => /["'`]examples["'`/]/.test(read(t))),
       why: "tests that read examples/",
     },
+    {
+      when: ["gate/**"],
+      run: tests.filter((t) => t.startsWith("tests/unit/test-infra/gate-")),
+      why: "the live checks' own tests (runners, shape, clauses)",
+    },
   );
   // Scripts a test runs by path (a spawn is not an import).
   for (const f of fs
