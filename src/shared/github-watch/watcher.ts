@@ -192,6 +192,7 @@ interface Watch {
   suitesDue?: number[];
   /** Suites it asked for: never asked again (another app's has none). */
   suitesAsked?: number[];
+  dropSuites?: number[];
   /**
    * Issue 1166: a check (or workflow run) of it is still queued or in
    * progress: CI is working, so it counts as progress.
@@ -240,6 +241,26 @@ const RUNS_LOOKBACK_MS = 24 * 3600_000;
 const RUNS_PAGE = 100;
 
 const PASS = new Set(["success"]);
+const PR_EVENTS = new Set([
+  "pull_request",
+  "pull_request_target",
+  "merge_group",
+]);
+
+function forAnotherPr(r: Record<string, unknown>, pr: number): boolean {
+  const prs = Array.isArray(r.pull_requests) ? r.pull_requests : [];
+  return prs.length > 0 && !prs.some((p) => isObj(p) && asNum(p.number) === pr);
+}
+
+function runNewer(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): boolean {
+  const ta = Date.parse(asStr(a.created_at));
+  const tb = Date.parse(asStr(b.created_at));
+  if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta > tb;
+  return (asNum(a.id) ?? 0) > (asNum(b.id) ?? 0);
+}
 /** Issue 1166: a check or run not yet on a runner. */
 const QUEUED = new Set(["queued", "waiting", "pending", "requested"]);
 const SKIP = new Set(["skipped", "neutral"]);
@@ -942,7 +963,10 @@ export class GithubWatcher {
       const mine =
         w.kind === "run"
           ? runs.filter((r) => r.id === w.number)
-          : runs.filter((r) => r.head_sha === w.head);
+          : this.ownNewest(
+              w,
+              runs.filter((r) => r.head_sha === w.head),
+            );
       if (!mine.length && byHead && w.suitesDue?.length) {
         // Issue 1279: no runs for them: another app's checks.
         w.suitesAsked = [...(w.suitesAsked ?? []), ...w.suitesDue];
@@ -973,9 +997,8 @@ export class GithubWatcher {
       if (w.kind === "pr") {
         for (const r of mine) {
           const sid = asNum(r.check_suite_id);
-          const wf = asNum(r.workflow_id);
-          if (sid !== undefined && wf !== undefined)
-            (w.suites ??= {})[String(sid)] = wf;
+          const wf = asNum(r.workflow_id) ?? -(asNum(r.id) ?? sid ?? 0);
+          if (sid !== undefined) (w.suites ??= {})[String(sid)] = wf;
         }
         if (byHead && w.suitesDue?.length) {
           w.suitesAsked = [...(w.suitesAsked ?? []), ...w.suitesDue];
@@ -1000,12 +1023,44 @@ export class GithubWatcher {
     return changed;
   }
 
+  private ownNewest(
+    w: Watch,
+    onHead: Record<string, unknown>[],
+  ): Record<string, unknown>[] {
+    const newest = new Map<string, Record<string, unknown>>();
+    const drop = new Set(w.dropSuites ?? []);
+    for (const r of onHead) {
+      const ev = asStr(r.event);
+      if ((ev && !PR_EVENTS.has(ev)) || forAnotherPr(r, w.number)) {
+        const sid = asNum(r.check_suite_id);
+        if (sid !== undefined) drop.add(sid);
+        continue;
+      }
+      const key = String(asNum(r.workflow_id) ?? `run:${asNum(r.id)}`);
+      const had = newest.get(key);
+      if (!had || runNewer(r, had)) newest.set(key, r);
+    }
+    const kept = [...newest.values()];
+    const keptSuites = new Set(kept.map((r) => asNum(r.check_suite_id)));
+    for (const r of onHead) {
+      const sid = asNum(r.check_suite_id);
+      if (sid !== undefined && !keptSuites.has(sid)) drop.add(sid);
+    }
+    for (const sid of keptSuites) if (sid !== undefined) drop.delete(sid);
+    w.dropSuites = drop.size ? [...drop].sort((a, b) => a - b) : undefined;
+    return kept;
+  }
+
   private applyChecks(ws: Watch[], body: unknown, now: number): boolean {
-    const all = (
+    const every = (
       isObj(body) && Array.isArray(body.check_runs) ? body.check_runs : []
     ).filter(isObj);
     let changed = false;
     for (const w of ws) {
+      const dropped = new Set(w.kind === "pr" ? (w.dropSuites ?? []) : []);
+      const all = dropped.size
+        ? every.filter((c) => !dropped.has(suiteOf(c) ?? -1))
+        : every;
       const cs =
         w.kind === "run" && w.suite !== undefined
           ? all.filter(
@@ -1013,7 +1068,7 @@ export class GithubWatcher {
             )
           : latest(all, w.suites ?? {});
       if (w.kind === "pr") {
-        const due = unmapped(all, w.suites ?? {}).filter(
+        const due = unplaced(all, w.suites ?? {}).filter(
           (id) => !(w.suitesAsked ?? []).includes(id),
         );
         if (due.length) {
@@ -1022,8 +1077,7 @@ export class GithubWatcher {
           if (!w.suitesDue?.length) changed = true;
           w.suitesDue = due;
           w.phase = "running";
-          w.note =
-            "Some checks share a name across runs; Den reads which workflow each belongs to next.";
+          w.note = "Den reads which workflow run each check belongs to next.";
           continue;
         }
       }
@@ -1409,19 +1463,22 @@ function checkKey(
   return `app:${app}|${sid ?? `id:${asNum(c.id)}`}|${asStr(c.name)}`;
 }
 
-/** Suites (unplaced) holding a check whose name another suite has too. */
-function unmapped(
+function unplaced(
   cs: Record<string, unknown>[],
   suites: Record<string, number>,
 ): number[] {
   const by = new Map<string, Set<number>>();
+  const out = new Set<number>();
   for (const c of cs) {
     const sid = suiteOf(c);
     if (sid === undefined) continue;
     const n = asStr(c.name);
     by.set(n, (by.get(n) ?? new Set()).add(sid));
+    const done = asStr(c.status) === "completed";
+    const bad =
+      done && !PASS.has(asStr(c.conclusion)) && !SKIP.has(asStr(c.conclusion));
+    if (bad && suites[String(sid)] === undefined) out.add(sid);
   }
-  const out = new Set<number>();
   for (const ids of by.values())
     if (ids.size > 1)
       for (const id of ids) if (suites[String(id)] === undefined) out.add(id);
