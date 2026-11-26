@@ -86,15 +86,11 @@ function call(
   });
 }
 const bearer = () => denAuth(home);
-const SWEEP = /^ps (-a --filter label=|--format \{\{\.Names\}\}$)/;
 const marked = () =>
-  (fs.existsSync(marks) ? fs.readdirSync(marks).sort() : [])
-    .map((f) => ({
-      f,
-      args: fs.readFileSync(path.join(marks, f), "utf-8"),
-    }))
-    .filter(({ f, args }) => !(f.startsWith("docker-") && SWEEP.test(args)))
-    .map(({ f, args }) => (args ? `${f}: ${args}` : f));
+  (fs.existsSync(marks) ? fs.readdirSync(marks).sort() : []).map((f) => {
+    const args = fs.readFileSync(path.join(marks, f), "utf-8");
+    return args ? `${f}: ${args}` : f;
+  });
 
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-methods-")));
@@ -157,6 +153,11 @@ beforeAll(async () => {
   );
   write(path.join(repos, "shop", "broken.yml"), `a: [\n${INSIDE_TEXT}: {\n`);
 
+  const gates = path.join(tmp, "gates");
+  write(
+    path.join(gates, "settings.json"),
+    JSON.stringify({ throwaway_sweep: 0 }),
+  );
   const started = await startDenServer(
     path.join(ENGINE, "node_modules", ".bin", "tsx"),
     [path.join(ENGINE, "src", "ui", "server", "index.ts")],
@@ -170,6 +171,7 @@ beforeAll(async () => {
         DEN_ENGINE_ROOT: ENGINE,
         DEN_HOME: home,
         HOME: home,
+        DEN_GATE_DIR: gates,
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
         FORCE_COLOR: "0",

@@ -41,7 +41,7 @@
  *                                     user.yml agents.draft_hold_max_minutes
  *                                     (issue 1311)
  *   agent_issue_writes: { roles?: [role, …] | null, per_hour?,
- *     visibility_minutes? }           user.yml agents.issue_writes,
+ *     visibility_minutes?, public? }  user.yml agents.issue_writes,
  *                                     agents.issue_writes_per_hour and
  *                                     agents.issue_writes_visibility_minutes
  *                                     (issue_write; issue 1127)
@@ -51,7 +51,7 @@
  *   reports: { screenshot_keep_days?, screenshot_max_mb?,
  *              hub_screenshot_max_mb?, hub_timeout_seconds? }
  *                                     user.yml reports.* (issue 403)
- *   server_log: { max_mb? }          user.yml server_log.* (issue 707)
+ *   server_log: { max_mb?, slow_request_ms?, event_loop_lag_ms? }
  *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
  *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
@@ -115,7 +115,7 @@ import {
   ISSUE_WRITES_VISIBILITY_MINUTES,
 } from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
-import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
+import { LOOKUP_LIMITS } from "./proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
 import { SERVER_LOG_LIMITS } from "./server-log-file.js";
@@ -337,6 +337,18 @@ const SERVER_LOG: Record<string, Limit> = {
     min: SERVER_LOG_LIMITS.max_mb.min,
     max: SERVER_LOG_LIMITS.max_mb.max,
     int: false,
+  },
+  slow_request_ms: {
+    key: "slow_request_ms",
+    min: SERVER_LOG_LIMITS.slow_request_ms.min,
+    max: SERVER_LOG_LIMITS.slow_request_ms.max,
+    int: true,
+  },
+  event_loop_lag_ms: {
+    key: "event_loop_lag_ms",
+    min: SERVER_LOG_LIMITS.event_loop_lag_ms.min,
+    max: SERVER_LOG_LIMITS.event_loop_lag_ms.max,
+    int: true,
   },
 };
 
@@ -826,9 +838,22 @@ export function patchCliRows(
       return {
         ok: false,
         error:
-          "agent_issue_writes is an object: roles, per_hour, visibility_minutes",
+          "agent_issue_writes is an object: roles, per_hour, visibility_minutes, public",
       };
-    const { roles, ...rest } = iw;
+    const { roles, public: pub, ...rest } = iw;
+    if (pub !== undefined && pub !== null && typeof pub !== "boolean")
+      return {
+        ok: false,
+        error: "agent_issue_writes.public is true, false or null",
+      };
+    if (pub !== undefined)
+      apply.push(() => {
+        const a = isObj(user.agents) ? { ...user.agents } : {};
+        if (pub === null) delete a.issue_writes_public;
+        else a.issue_writes_public = pub;
+        if (Object.keys(a).length) user.agents = a;
+        else delete user.agents;
+      });
     if (
       roles !== undefined &&
       roles !== null &&

@@ -936,8 +936,13 @@ The top bar's search sits in the same place in every product (issue 303).
   which ends in "…".
 - **A gap after ⌕**: 8px between the search and the chips, and 8px more
   before the first chip.
-- **The search's words** are the kit's ("Search…", named "Search"; es,
-  ja): `searchHtml()` takes no placeholder or label.
+- **The search's words** are the kit's by default ("Search…", named
+  "Search"; es, ja). A host may set the placeholder with
+  `searchHtml({ placeholder })`: one word in the page's language, or words
+  per locale (`{ en, es, ja }`). The name (its aria-label) follows what it
+  shows (label in name): the kit's "Search", or the host's placeholder
+  without a trailing "…" ("Find work…" is named "Find work"). It takes no
+  label.
 - **Touch** (`pointer: coarse`): every control in the bar takes a 44×44px
   tap (an `::after` hit area, centred; the look is the same), and the
   key hints (⌘K, ⌘⇧F, any `.den-kbd`) hide.
@@ -995,8 +1000,9 @@ button)`. A crumb left out of the list draws nothing, and no separator
   opens on the field. Typing hides the links that don't hold the text, and
   "No match" shows when none do. ↓ goes to the links, Enter takes the first
   one shown, and Esc clears the text, then closes the menu.
-- **Search field**: `searchHtml({ id?, shortcut? })`, for the `start`
-  slot. It is the kit's placeholder ("Search…") with ⌘K inside the field. A
+- **Search field**: `searchHtml({ id?, shortcut?, placeholder? })`, for
+  the `start` slot. It is the kit's placeholder ("Search…"), or the
+  host's, with ⌘K inside the field. A
   click, Enter, ⌘K or Ctrl-K calls `onActivate(via)` (`"click"` or
   `"key"`) and fires `den-ui:search` on the field. The kit owns no
   palette.

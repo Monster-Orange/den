@@ -44,12 +44,17 @@ beforeAll(async () => {
     req.on("data", (c: Buffer) => (raw += c.toString("utf8")));
     req.on("end", () => {
       const auth = String(req.headers.authorization ?? "");
-      hub.seen.push({
-        method: req.method ?? "",
-        url: req.url ?? "",
-        auth,
-        agentId: String(req.headers["x-den-agent-id"] ?? ""),
-      });
+      const installFeedPoll =
+        (req.url ?? "").startsWith("/api/installs/self/deliveries") &&
+        auth === `Bearer ${INSTALL}` &&
+        !req.headers["x-den-agent-id"];
+      if (!installFeedPoll)
+        hub.seen.push({
+          method: req.method ?? "",
+          url: req.url ?? "",
+          auth,
+          agentId: String(req.headers["x-den-agent-id"] ?? ""),
+        });
       const json = (code: number, v: unknown) => {
         res.writeHead(code, { "content-type": "application/json" });
         res.end(JSON.stringify(v));
@@ -188,6 +193,22 @@ describe("issue 50, clause 3: A's call through /hub carries A's own token, never
       ],
     ],
   ];
+  it("the fake Hub leaves out only the install's own feed polls", async () => {
+    const before = hub.seen.length;
+    const feed = `${hub.url}/api/installs/self/deliveries`;
+    await fetch(feed, { headers: { authorization: `Bearer ${INSTALL}` } });
+    await fetch(feed, {
+      headers: {
+        authorization: `Bearer ${boundOf(A.id)}`,
+        "x-den-agent-id": A.id,
+      },
+    });
+    await fetch(feed, {
+      headers: { authorization: `Bearer ${INSTALL}`, "x-den-agent-id": B.id },
+    });
+    expect(hub.seen.slice(before).map((x) => x.agentId)).toEqual([A.id, B.id]);
+  });
+
   it.each(cases)("%s", async (_what, make) => {
     const [p, headers] = make();
     const before = hub.seen.length;

@@ -572,6 +572,7 @@ describe("the ⌘K palette (R17)", () => {
       "GitHub watch: most hours open SETTING",
       // Issue 403: fuzzy too ("S…h…o…p" in "Report screenshots, kept for").
       "Report screenshots, kept for SETTING",
+      "Terminal size hold after a page closes SETTING",
       // Issue 403: and its size limit, looser still (…p in "kept").
       "Report screenshots, largest kept SETTING",
       // Issue 1048: fuzzy too ("s…h…o…p" in "this load per").

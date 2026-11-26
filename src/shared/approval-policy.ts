@@ -135,6 +135,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "widens",
     why: "a looser mode lets agents act without asking; a stricter one only narrows",
   },
+  project_agent_cap: {
+    personal: "keep",
+    risk: "widens",
+    why: "a higher cap lets more of a project's agents run at once; a lower one only narrows",
+  },
   agent_mode: {
     personal: "keep",
     risk: "widens",
@@ -221,6 +226,14 @@ export const HELD_WRITE_RISK: Readonly<
     why: "gives the project's agents a repo they couldn't reach: wider access",
   },
   repo_clone: { risk: "routine", why: "clones a repo into a new folder" },
+  den_env_hold_on: {
+    risk: "critical",
+    why: "changes what every agent started before the hold gets at its next start: a person's own Allow (CRITICAL_HELD_ACTIONS)",
+  },
+  den_env_allow_keep: {
+    risk: "critical",
+    why: "lets every agent keep the named variables: it widens what agents get (CRITICAL_HELD_ACTIONS)",
+  },
   den_pin_commit: {
     risk: "routine",
     why: "commits and pushes the distribution's new Den pin (package.json, package-lock.json), nothing else",
@@ -260,6 +273,11 @@ export const HELD_WRITE_RISK: Readonly<
     risk: "critical",
     notAreas: ["deletes"],
     why: "removes a test box: a person's own Allow (CRITICAL_HELD_ACTIONS); on a personal install routine, since a box can be added back (issue 1403)",
+  },
+  state_folder_own: {
+    personal: "keep",
+    risk: "critical",
+    why: "moves this install onto a new, empty state folder and restarts Den: a person's own Allow",
   },
   web_url_set: {
     personal: "keep",

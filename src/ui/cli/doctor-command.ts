@@ -31,6 +31,11 @@ import { rankFindings, readWebUrl } from "../../shared/web/web-url.js";
 import { loopbackRefusal } from "../../shared/web/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
+import { envHoldLines, shellEnvNames } from "./doctor-env-hold.js";
+import { wouldHold } from "../../shared/agents/env-hold-rollout.js";
+import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
+import { listRecords as listAgentRecords } from "../../shared/agents/records.js";
+import { workspaceEntryRaw } from "../../shared/environment-manager/workspaces.js";
 import {
   agentsKeepRunningAfterLogout,
   readAgentsConfig,
@@ -60,8 +65,7 @@ import {
 } from "../../shared/credential-paths.js";
 import {
   checkAgentSigning,
-  existingAgentSigningKey,
-  resolveAgentSigning,
+  agentKeyInForce,
   signingKeyAddLine,
   signingReadFiles,
   type AgentGitSettings,
@@ -69,6 +73,10 @@ import {
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
 import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import {
+  ownStateDirProblem,
+  stateDirShared,
+} from "../../shared/state-folder.js";
 import {
   bothSpellings,
   readRulesCover,
@@ -1789,9 +1797,28 @@ export function sharedUserLines(
     unsandboxed?: () => { id: string; projects: string[] }[];
     /** A project's repo folders. */
     reposOf?: (project: string) => string[];
+    distRoot?: string;
   } = {},
 ): { lines: string[]; checks: OnboardCheck[] } {
   const stateDir = o.stateDir ?? getStateDir();
+  let folderShared = false;
+  try {
+    folderShared = stateDirShared(stateDir, o.distRoot ?? getDistRoot());
+  } catch {
+    folderShared = false;
+  }
+  let folderIgnored: string | null = null;
+  try {
+    folderIgnored = ownStateDirProblem(o.distRoot ?? getDistRoot());
+  } catch {
+    folderIgnored = null;
+  }
+  if (folderIgnored) folderShared = true;
+  const folderDetail =
+    folderIgnored ??
+    (folderShared
+      ? `another copy of ${title} on this computer uses this state folder too; Settings › Hub's Connect offers to give this one its own`
+      : "this install's state folder is its own");
   const reg = o.registry ?? registryDir();
   const home = o.home ?? process.env.HOME;
   const others = listOtherInstalls(reg, {
@@ -1892,6 +1919,7 @@ export function sharedUserLines(
       `  same login  ${mark(!others)}  ${shared}`,
       `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
+      `  state folder  ${mark(!folderShared)}  ${folderDetail}`,
       ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
     checks: [
@@ -1905,6 +1933,11 @@ export function sharedUserLines(
         id: "uncovered_files",
         status: looseWarn ? "warn" : "ok",
         detail: looseDetail,
+      },
+      {
+        id: "state_folder",
+        status: folderShared ? "warn" : "ok",
+        detail: folderDetail,
       },
       ...agentRows.map((r) => ({
         id: r.id,
@@ -1928,6 +1961,16 @@ function unsandboxedAgents(
   }
 }
 
+function hubTokenFiles(stateDir: string): boolean {
+  try {
+    return fs
+      .readdirSync(path.join(stateDir, "hub"))
+      .some((n) => n === "token" || /^token-[0-9a-f]{10}$/.test(n));
+  } catch {
+    return false;
+  }
+}
+
 /** The state folder's credentials that exist, by what they are. */
 function stateCredentialsPresent(stateDir: string): string[] {
   const has = (rel: string) => fs.existsSync(path.join(stateDir, rel));
@@ -1935,7 +1978,7 @@ function stateCredentialsPresent(stateDir: string): string[] {
     ...(has("web.secret") ? ["web.secret"] : []),
     ...(has("web-sessions.json") ? ["the browser sign-ins"] : []),
     ...(has("actor-token") ? ["the agents' tokens"] : []),
-    ...(has(path.join("hub", "token")) ? ["the Hub token"] : []),
+    ...(hubTokenFiles(stateDir) ? ["the Hub token"] : []),
     ...(has("push-vapid.json") ? ["the push key"] : []),
     ...(has("fixture-person.key") ? ["the test person's key"] : []),
     ...(has(SESSION_SIGNING_DIR) ? ["the agents' signing key"] : []),
@@ -2502,23 +2545,18 @@ export function instructionSizeLines(
 }
 
 /**
- * agents.git: whether agents' commits sign and verify with their key
- * (a commit in a temp repo, checkAgentSigning), and the line that adds its
- * .pub to GitHub as a signing key. The key is agents.git.signing_key, or
- * (issue 1316) the install's own once an agent start made it. Nothing when
- * signing is off, or the person's git doesn't sign and none is set.
+ * agents.git: whether agents' commits sign and verify with the key in
+ * force (agentKeyInForce: agents.git.signing_key, else the install's own
+ * once made), a commit in a temp repo (checkAgentSigning), and the line
+ * that adds its .pub to GitHub as a signing key. No key in force:
+ * "not signed", said as information, with the fix.
  */
 export function signingLines(
   title: string,
-  readGit: () => AgentGitSettings | undefined = () => {
+  readGit: () => AgentGitSettings | { off: true } | undefined = () => {
     try {
-      return resolveAgentSigning({
-        git: readAgentsConfig().git,
-        stateDir: getStateDir(),
-        cwd: process.cwd(),
-        env: process.env,
-        ensure: existingAgentSigningKey,
-      });
+      const git = readAgentsConfig().git;
+      return git?.off ? { off: true } : agentKeyInForce(git, getStateDir());
     } catch {
       // A bad agents: block is configLines' row.
       return undefined;
@@ -2526,8 +2564,30 @@ export function signingLines(
   },
   check: (g: AgentGitSettings) => SigningCheck = signingInSandbox,
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
-  const git = readGit();
-  if (!git) return { lines: [], problem: false, checks: [] };
+  const got = readGit();
+  if (!got || !("signingKey" in got)) {
+    const off = !!got && "off" in got;
+    const detail = off
+      ? "not signed: agents.git.signing is off"
+      : "not signed: no agents' signing key";
+    const fix = off
+      ? undefined
+      : "set agents.git.signing_key in config/local/user.yml to an SSH key with no passphrase, or turn on commit signing in your git (commit.gpgsign): the next agent start makes the agents' own key";
+    return {
+      lines: [
+        "",
+        `${title} doctor: agents' commit signing`,
+        "",
+        `  signing  ℹ  ${detail} (agents' commits and ${title}'s pin commits are unsigned)`,
+        ...(fix ? [`           fix: ${fix}`] : []),
+      ],
+      problem: false,
+      checks: [
+        { id: "agents:signing", status: "ok", detail, ...(fix ? { fix } : {}) },
+      ],
+    };
+  }
+  const git = got;
   const r = check(git);
   const add = signingKeyAddLine(git);
   const lines = [
@@ -2752,6 +2812,36 @@ function collapseDoneKey(): string[] {
           "agents.helpers.collapse_done_minutes no longer does anything (0.4.29): remove it. Finished helpers stay until a person clears them (Clear done).",
         ]
       : [];
+  } catch {
+    return [];
+  }
+}
+
+function envHoldDoctorLines(): string[] {
+  try {
+    const hold = readAgentsConfig().envHold;
+    if (!hold) return [];
+    const present = shellEnvNames();
+    const legacy = wouldHold(
+      listAgentRecords(getStateDir()),
+      hold,
+      present,
+      (ws) => {
+        try {
+          return checkProjectEnvAllow(
+            ws,
+            (
+              workspaceEntryRaw(ws) as
+                | { agents?: { env_allow?: unknown } }
+                | undefined
+            )?.agents?.env_allow,
+          );
+        } catch {
+          return [];
+        }
+      },
+    );
+    return envHoldLines(readBrand().name, hold, present, legacy).lines;
   } catch {
     return [];
   }
@@ -3058,6 +3148,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
+  for (const l of envHoldDoctorLines()) console.log(l);
   const checked = await doctorAddress(product().cli);
   const edges = await edgeAddresses();
   const addr = addressLines(
@@ -3262,7 +3353,13 @@ async function throwawayRows() {
     const checkouts = new Set(
       all.flatMap((e) => (e.checkout ? [e.checkout] : [])),
     );
-    return throwawayLines(list, live, storeTag(store.dir), checkouts);
+    return throwawayLines(
+      list,
+      live,
+      storeTag(store.dir),
+      checkouts,
+      store.settings().throwawaySweep,
+    );
   } catch {
     return throwawayLines(null, new Set());
   }

@@ -67,6 +67,8 @@ const NOT_TOOLS: Readonly<Record<string, string>> = {
   node_modules: "npm's folder",
   // A value of Den's update state (release_status's denUpdate.state).
   rolled_back: "an update's state",
+  pr_opened: "a pin step's state (release_status's denUpdate.pin.state)",
+  push_failed: "a pin step's state (release_status's denUpdate.pin.state)",
 };
 
 const cfg = (): ResolvedMcpConfig => ({

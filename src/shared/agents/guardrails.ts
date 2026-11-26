@@ -339,6 +339,56 @@ export function mergeHooks(
   return out;
 }
 
+export function envGuardHooks(
+  dir: string = GUARDRAILS_DIR,
+  node: string = process.execPath,
+): Record<string, unknown[]> {
+  return {
+    PreToolUse: [
+      {
+        matcher: "Bash",
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: node,
+              args: [path.join(dir, "pretooluse.mjs"), "--no-guardrails"],
+            }),
+            timeout: 10,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export const NO_ENV_GUARD_FLAG = "--no-env-guard";
+
+export function withEnvMask(
+  hooks: Record<string, unknown>,
+  args: readonly string[],
+): void {
+  const q = (a: string) => `'${a.replace(/'/g, `'\\''`)}'`;
+  const tail = args.map(q).join(" ");
+  const pre = hooks.PreToolUse as
+    | { hooks?: { command?: string }[] }[]
+    | undefined;
+  for (const m of pre ?? [])
+    for (const h of m.hooks ?? [])
+      if (typeof h.command === "string" && h.command.includes("pretooluse.mjs"))
+        h.command = `${h.command} ${tail}`;
+}
+
+export function withoutEnvGuard(hooks: Record<string, unknown>): void {
+  const pre = hooks.PreToolUse as
+    | { hooks?: { command?: string }[] }[]
+    | undefined;
+  for (const m of pre ?? [])
+    for (const h of m.hooks ?? [])
+      if (typeof h.command === "string" && h.command.includes("pretooluse.mjs"))
+        h.command = `${h.command} ${NO_ENV_GUARD_FLAG}`;
+}
+
 /**
  * D47 for an agent whose persona has no guardrail hooks: the PreToolUse
  * hook with the API-only check alone (`--no-guardrails`: no log or sleep

@@ -672,15 +672,20 @@ describe("Settings › Hub (HUB-1.7)", () => {
       expect(text).toContain(t);
     expect(new URL(p.url()).searchParams.get("hub")).toBeNull();
     // Kept in Den's own file, 0600; user.yml names the file, not the token.
-    const file = path.join(s!.stateDir, "hub", "token");
-    expect(fs.readFileSync(file, "utf-8").trim()).toBe(TOKEN);
-    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     const userYml = fs.readFileSync(
       path.join(s!.tmp, "dist", "config", "local", "user.yml"),
       "utf-8",
     );
     expect(userYml).toContain(hub.url);
     expect(userYml).not.toContain(TOKEN);
+    const named = /token: file:(\S+)/.exec(userYml)?.[1] ?? "";
+    expect(path.dirname(named)).toBe(
+      fs.realpathSync(path.join(s!.stateDir, "hub")),
+    );
+    expect(path.basename(named)).toMatch(/^token-[0-9a-f]{10}$/);
+    const file = named;
+    expect(fs.readFileSync(file, "utf-8").trim()).toBe(TOKEN);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     // The callback's state is single use: replaying it changes nothing.
     const replay = await fetch(
       `${s!.base}/hub/callback?state=${encodeURIComponent(asked.state)}&code=${CODE}`,

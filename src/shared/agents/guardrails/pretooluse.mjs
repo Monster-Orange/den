@@ -16,7 +16,7 @@
  * title or body holds a listed name (public-text.mjs), with or without
  * --no-guardrails, as the api-only rules are.
  *
- * Its guardrails block exactly two things, and nothing else:
+ * Its guardrails block these, plus emptying a linked node_modules:
  *
  *   1. Whole-file reads of a log or a large file into the conversation:
  *      - Read with no `limit`;
@@ -46,6 +46,7 @@ import {
   looksLikeGhWrite,
   publicTextDecision,
 } from "./public-text.mjs";
+import { linkedModulesReason } from "./linked-modules.mjs";
 import {
   apiOnlyDecision,
   apiOnlyMessage,
@@ -66,6 +67,160 @@ const SLEEP_HINT =
   "run_in_background (you are told when it ends), or use a wait primitive " +
   "(the Monitor tool with an until-condition, or the command's own --wait). " +
   "Do not loop on sleep.";
+
+const ENV_VALUE_OPTS = new Set([
+  "-u",
+  "--unset",
+  "-C",
+  "--chdir",
+  "-S",
+  "--split-string",
+  "-P",
+]);
+
+function envPrintsAll(args) {
+  for (let j = 0; j < args.length; j++) {
+    const a = args[j];
+    if (a === "--") return j + 1 >= args.length;
+    if (ENV_VALUE_OPTS.has(a)) {
+      if (a === "-S" || a === "--split-string") return false;
+      j++;
+      continue;
+    }
+    if (a.startsWith("-")) {
+      if (/^(-S|--split-string=)/.test(a)) return false;
+      continue;
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(a)) continue;
+    return false;
+  }
+  return true;
+}
+
+const operands = (args) =>
+  args.filter((a) => !a.startsWith("-") && !a.startsWith("+"));
+
+function dumpsEnv(words) {
+  let w = words;
+  for (;;) {
+    if (w.length && (base(w[0]) === "sudo" || base(w[0]) === "doas")) {
+      w = w.slice(1);
+      while (w.length && w[0].startsWith("-")) w = w.slice(1);
+    } else if (w[0] === "builtin") w = w.slice(1);
+    else break;
+  }
+  const cmd = base(w[0] ?? "");
+  const args = w.slice(1);
+  if (cmd === "env") return envPrintsAll(args);
+  if (cmd === "printenv") return true;
+  if (cmd === "set") return args.length === 0;
+  if (cmd === "export") return operands(args).length === 0;
+  if (cmd === "declare" || cmd === "typeset") {
+    if (args.some((a) => /^-[a-zA-Z]*[fF]/.test(a))) return false;
+    const names = operands(args);
+    if (names.some((a) => a.includes("="))) return false;
+    return names.length === 0 || args.some((a) => /^-[a-zA-Z]*p/.test(a));
+  }
+  if (["sh", "bash", "zsh", "dash", "ksh"].includes(cmd)) {
+    const c = args.indexOf("-c");
+    if (c >= 0 && args[c + 1] !== undefined) return printsEnv(args[c + 1]);
+  }
+  return false;
+}
+
+export function printsEnv(command) {
+  try {
+    return parseShell(String(command ?? "")).some((p) =>
+      p.some((st) => dumpsEnv(st.words)),
+    );
+  } catch {
+    return false;
+  }
+}
+
+const GRAMMAR = new Set([
+  "do",
+  "then",
+  "else",
+  "elif",
+  "while",
+  "until",
+  "if",
+  "!",
+  "{",
+  "}",
+]);
+
+const OUT_REDIRECT = /^(\d*|&)>>?&?$/;
+
+export const STATUS_MARK = "\\036den-status:";
+
+export function envMaskCommand(command, masker) {
+  const src = String(command ?? "");
+  let pipelines;
+  try {
+    pipelines = parseShell(src);
+  } catch {
+    return null;
+  }
+  const edits = [];
+  for (const stages of pipelines)
+    for (const st of stages) {
+      if (!dumpsEnv(st.words) || !st.spans?.length) continue;
+      let k = 0;
+      while (k < st.raw.length && GRAMMAR.has(st.raw[k])) k++;
+      const run = [];
+      const out = [];
+      for (let j = k; j < st.raw.length; j++) {
+        const text = src.slice(st.spans[j][0], st.spans[j][1]);
+        if (OUT_REDIRECT.test(st.raw[j])) {
+          out.push(text);
+          if (st.spans[j + 1]) {
+            out.push(src.slice(st.spans[j + 1][0], st.spans[j + 1][1]));
+            j++;
+          }
+        } else run.push(text);
+      }
+      if (!run.length) continue;
+      edits.push({
+        from: st.spans[k][0],
+        to: st.spans[st.spans.length - 1][1],
+        text: `{ ${run.join(" ")}; printf '${STATUS_MARK}%d' "$?"; } | ${masker}${out.length ? ` ${out.join(" ")}` : ""}`,
+      });
+    }
+  if (!edits.length) return null;
+  let r = src;
+  for (const e of edits.sort((x, y) => y.from - x.from))
+    r = r.slice(0, e.from) + e.text + r.slice(e.to);
+  return r;
+}
+
+export function maskerCommand(argv = process.argv, node = process.execPath) {
+  const names = arg("--env-mask", argv);
+  const values = arg("--env-mask-values", argv);
+  const file = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "env-mask.mjs",
+  );
+  return [
+    word(node),
+    word(file),
+    ...(names === null ? [] : ["--names", word(names)]),
+    ...(values === null ? [] : ["--values", word(values)]),
+  ].join(" ");
+}
+
+export function envMaskRewrite(input, argv = process.argv) {
+  if (!input || typeof input !== "object" || input.tool_name !== "Bash")
+    return null;
+  const ti =
+    input.tool_input && typeof input.tool_input === "object"
+      ? input.tool_input
+      : null;
+  if (!ti || typeof ti.command !== "string") return null;
+  const c = envMaskCommand(ti.command, maskerCommand(argv));
+  return c === null ? null : { ...ti, command: c };
+}
 
 /** Is this path a log: *.log, .dev-metrics/*.jsonl, or a transcript? */
 export function isLogPath(p) {
@@ -108,19 +263,28 @@ export function parseShell(src) {
   const pipelines = [];
   let stages = [];
   let words = [];
+  let spans = [];
   let word = "";
   let inWord = false;
+  let wordStart = 0;
   const heredocs = [];
 
   const endWord = () => {
-    if (inWord) words.push(word);
+    if (inWord) {
+      words.push(word);
+      spans.push([wordStart, i]);
+    }
     word = "";
     inWord = false;
   };
+  const begin = () => {
+    if (!inWord) wordStart = i;
+  };
   const endStage = () => {
     endWord();
-    if (words.length) stages.push(stage(words));
+    if (words.length) stages.push({ ...stage(words), raw: words, spans });
     words = [];
+    spans = [];
   };
   const endPipeline = (background = false) => {
     endStage();
@@ -135,12 +299,14 @@ export function parseShell(src) {
   while (i < src.length) {
     const c = src[i];
     if (c === "\\" && i + 1 < src.length) {
+      if (src[i + 1] !== "\n") begin();
       if (src[i + 1] !== "\n") word += src[i + 1];
       inWord = inWord || src[i + 1] !== "\n";
       i += 2;
       continue;
     }
     if (c === "'") {
+      begin();
       const j = src.indexOf("'", i + 1);
       const end = j < 0 ? src.length : j;
       word += src.slice(i + 1, end);
@@ -149,6 +315,7 @@ export function parseShell(src) {
       continue;
     }
     if (c === '"') {
+      begin();
       let j = i + 1;
       while (j < src.length && src[j] !== '"') {
         if (src[j] === "\\" && j + 1 < src.length) {
@@ -161,6 +328,7 @@ export function parseShell(src) {
       continue;
     }
     if (c === "$" && src[i + 1] === "(") {
+      begin();
       let depth = 0;
       let j = i + 1;
       for (; j < src.length; j++) {
@@ -173,6 +341,7 @@ export function parseShell(src) {
       continue;
     }
     if (c === "`") {
+      begin();
       const j = src.indexOf("`", i + 1);
       const end = j < 0 ? src.length : j;
       word += src.slice(i, end + 1);
@@ -205,6 +374,13 @@ export function parseShell(src) {
       i++;
       continue;
     }
+    if (c === "<" && src[i + 1] === "<" && src[i + 2] === "<") {
+      endWord();
+      words.push("<<<");
+      spans.push([i, i + 3]);
+      i += 3;
+      continue;
+    }
     if (c === "<" && src[i + 1] === "<" && src[i + 2] !== "<") {
       endWord();
       let j = i + 2;
@@ -214,6 +390,7 @@ export function parseShell(src) {
       while (j < src.length && !/[\s;&|<>()]/.test(src[j])) d += src[j++];
       heredocs.push(d.replace(/['"\\]/g, ""));
       words.push("<<");
+      spans.push([i, j]);
       i = j;
       continue;
     }
@@ -230,6 +407,7 @@ export function parseShell(src) {
     if (c === "&" && src[i + 1] === ">") {
       endWord();
       words.push(src[i + 2] === ">" ? "&>>" : "&>");
+      spans.push([i, i + (src[i + 2] === ">" ? 3 : 2)]);
       i += src[i + 2] === ">" ? 3 : 2;
       continue;
     }
@@ -251,6 +429,7 @@ export function parseShell(src) {
     if (c === ">" || c === "<") {
       // A redirection operator: its own word, with any fd before it.
       const fd = inWord && /^\d+$/.test(word) ? word : "";
+      const opStart = fd ? wordStart : i;
       if (fd) {
         word = "";
         inWord = false;
@@ -259,9 +438,11 @@ export function parseShell(src) {
       let j = i + 1;
       if (src[j] === ">" || src[j] === "&") op += src[j++];
       words.push(op);
+      spans.push([opStart, j]);
       i = j;
       continue;
     }
+    begin();
     word += c;
     inWord = true;
     i++;
@@ -320,7 +501,7 @@ function stage(raw) {
       j++;
       continue;
     }
-    if (w === "<<") {
+    if (w === "<<" || w === "<<<") {
       j++;
       continue;
     }
@@ -386,6 +567,8 @@ export function bashDecision(command, opts = {}) {
   } catch {
     return null;
   }
+  const linked = linkedModulesReason(command, parseShell, { cwd, home });
+  if (linked) return linked;
   for (const stages of pipelines)
     for (let s = 0; s < stages.length; s++) {
       const st = stages[s];
@@ -635,27 +818,37 @@ async function main() {
   // Issue 1264: a heavy run goes through the gate. The whole input comes
   // back with the new command and no permission decision, so the agent's
   // own permission rules still decide the rewritten command.
+  let masked = null;
+  try {
+    if (!process.argv.includes("--no-env-guard"))
+      masked = envMaskRewrite(JSON.parse(text));
+  } catch {
+    masked = null;
+  }
   let decision = null;
   try {
-    if (!process.argv.includes("--no-guardrails"))
+    if (!process.argv.includes("--no-guardrails")) {
+      const parsed = JSON.parse(text);
       decision = gateDecision(
-        JSON.parse(text),
+        masked ? { ...parsed, tool_input: masked } : parsed,
         arg("--gate"),
         arg("--gate-settings"),
       );
+    }
   } catch {
     decision = null;
   }
-  if (decision?.input)
+  const updated = decision?.input ?? masked;
+  if (updated)
     process.stdout.write(
       JSON.stringify({
         hookSpecificOutput: {
           hookEventName: "PreToolUse",
-          updatedInput: decision.input,
+          updatedInput: updated,
         },
       }),
     );
-  else if (decision?.outside)
+  if (decision?.outside)
     recordOutside(arg("--gate-settings"), decision.outside);
   process.exit(0);
 }
