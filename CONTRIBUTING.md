@@ -292,6 +292,27 @@ export function expect(cells) {
   the bed's settings for good, and never touches a live install.
 - Names stay neutral (the one rule above applies here too).
 
+### Evidence for a new or changed check
+
+A pull request that adds or changes a `gate/<issue>.mjs` runs that check
+once against a built install of the current dev tag before it merges.
+
+1. Ask the release bed for an evidence run: a queue request named for the
+   dev tag, with `why:`, `gates: <issue> ...` and `from: <sha>` (your
+   pull request's signed head). It never sets the bed's release state.
+2. Turn its `verdict.json` into the block and paste it into the pull
+   request:
+
+   ```sh
+   node scripts/gate-evidence.mjs verdict.json --base origin/next/queue
+   ```
+
+It prints the dev tag, the commit the checks came from, and each clause
+(FAIL and ERROR first) with its time, note and evidence file names. It
+exits 1 when a clause is FAIL or ERROR (NOT_RUN rows are listed with their
+reason and don't fail it), and refuses (exit 2) a verdict that misses a
+check the pull request adds or changes.
+
 ### Read-only checks
 
 A check that changes nothing in Den says so, with a one-line comment
