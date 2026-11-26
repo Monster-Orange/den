@@ -257,7 +257,7 @@ describe("the port Den states and every route's port are one (Den Design)", () =
         wanted: WANTED,
         key: KEY,
         settings: { timeoutMs: 1000, retries: 0, cacheMs: 0 },
-        probe: fakeProbe([denWebBase(webPort, undefined)], [WANTED]),
+        probe: fakeProbe([denWebBase(webPort, undefined), direct], [WANTED]),
         owner: () => ({
           owner: "nginx",
           kind: "container",
@@ -290,7 +290,7 @@ describe("the check", () => {
       wanted: WANTED,
       key: KEY,
       settings,
-      probe: fakeProbe([DIAL, WANTED]),
+      probe: fakeProbe([DIAL, DIRECT, WANTED]),
     });
     expect([
       s.address,
@@ -304,7 +304,7 @@ describe("the check", () => {
       wanted: WANTED,
       key: KEY,
       settings,
-      probe: fakeProbe([DIAL], [WANTED]),
+      probe: fakeProbe([DIAL, DIRECT], [WANTED]),
       owner: () => ({
         owner: "nginx",
         kind: "container",
