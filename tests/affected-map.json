@@ -2547,6 +2547,7 @@
     {
       "when": ["scripts/words-gate.mjs"],
       "run": [
+        "tests/unit/scripts/words-gate-moves.test.ts",
         "tests/unit/scripts/words-gate-vendored.test.ts",
         "tests/unit/test-infra/fast-checks.test.ts",
         "tests/unit/test-infra/shard-plan.test.ts"
@@ -2560,6 +2561,7 @@
         "tests/unit/den-ui/busy-kit.browser.test.ts",
         "tests/unit/den-ui/busy-kit.test.ts",
         "tests/unit/edge/address-455-parts.test.ts",
+        "tests/unit/scripts/words-gate-moves.test.ts",
         "tests/unit/scripts/words-gate-vendored.test.ts",
         "tests/unit/scripts/words.test.ts",
         "tests/unit/server/i18n-171-values.test.ts",
