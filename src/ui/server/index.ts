@@ -5352,6 +5352,13 @@ function approvalDeps(): ApprovalDeps {
             error: `gh pr close: ${(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" ")}`,
           };
     },
+    projectCap: {
+      read: (project) => ({
+        own: ownProjectCap(project),
+        install: readAgentsConfig().maxPerProject,
+      }),
+      write: (project, max) => setProjectCap(project, max),
+    },
     // Issue 160: an agent asks to change the approval policy (always asks).
     approvalPolicy: {
       read: (project) => {

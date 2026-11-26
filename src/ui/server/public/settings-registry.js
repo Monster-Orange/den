@@ -4792,6 +4792,21 @@ export const DEN_SETTINGS = [
   },
 
   {
+    id: "workspace.agents_max_per_project",
+    category: "workspace",
+    label: "Agents per project: this project",
+    description:
+      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
+    keywords: ["agents", "limit", "max_per_project", "project", "cap"],
+    scope: "workspace",
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.wsSettings?.agents_max_per_project ?? 0,
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        agents_max_per_project: Number(v) > 0 ? Number(v) : null,
+      }),
+  },
+  {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.
     // Issue 268: named as the override of the Den-wide default.

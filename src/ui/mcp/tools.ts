@@ -836,7 +836,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set, gate_runner_entry_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_agent_cap, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set, gate_runner_entry_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -2583,6 +2583,43 @@ const APPROVAL_TOOLS: DenTool[] = [
         "project_mode",
         "project_mode",
         { project, mode: mode === "none" ? null : mode },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_agent_cap",
+    title: "Set a project's agent cap",
+    description:
+      "Set how many of a project's agents may run at once (`max`, a whole number), or 0 to clear it and use the install's agents.max_per_project. It can only be lower than the install's when that is set. The person's Allow shows the change; raising it is always the person's own Allow. A start past the cap is refused and says so. A project's agent sets its own project's; Den's own agent any project's." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      max: z
+        .number()
+        .int()
+        .min(0)
+        .describe("Agents at once, or 0 for the install's"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("project_agent_cap", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `project_agent_cap: you work in project "${ctx.scope.workspace}" and can set its cap only, not project "${project}"'s; nothing was asked.`,
+        );
+      return askPerson(
+        "project_agent_cap",
+        "project_agent_cap",
+        { project, max: a.max as number } as Args,
         a,
         ctx,
       );
