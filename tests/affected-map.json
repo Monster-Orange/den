@@ -867,6 +867,9 @@
       "src/ui/server/notification-routes.ts",
       "src/ui/server/session-routes.ts"
     ],
+    "tests/unit/server/session-routes-needs-strict.integration.test.ts": [
+      "src/ui/server/session-routes.ts"
+    ],
     "tests/unit/server/peek.browser.test.ts": [
       "src/ui/server/public/peek.js",
       "src/ui/server/public/peek.css",
@@ -5163,6 +5166,15 @@
       ],
       "run": [
         "tests/unit/server/session-io.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/session-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/session-routes-needs-strict.integration.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
