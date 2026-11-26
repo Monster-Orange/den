@@ -488,7 +488,6 @@ async function attach(st) {
   st.term = term;
   st.fit = fit;
   const enc = new TextEncoder();
-  // Esc closes the panel, never sent to the agent; Shift+Enter is the runtime's soft newline.
   term.attachCustomKeyEventHandler((e) => {
     if (e.key === "Escape") return false;
     if (
