@@ -3041,6 +3041,12 @@
       "ログアウトしていた間（{min} 分）に止まったエージェント: {names}",
     "bell.m.keepOffer": "ログアウト後もエージェントを動かす: 適用",
     "bell.m.compacting": "{name} が圧縮を繰り返しています: {m} 分間に {n} 回",
+    "bell.m.deliveryFileBad":
+      "保留中の配信 {n} 件を読めませんでした。ファイルは {moved} として保存しました。",
+    "bell.m.deliveryFileBadUncounted":
+      "{file} を読めず、保留中の配信の数もわかりませんでした。ファイルは {moved} として保存しました。",
+    "bell.m.deliveryFileBadKept":
+      "Den は {file} を読めず、移すこともできませんでした。保留中だった内容なしで配信を続けます。",
     "bell.m.notAtPrompt":
       "{name}: {n} 件のメッセージが {m} 分待っています。待機中: エージェントが入力プロンプトにいません",
     "bell.m.held.busy":

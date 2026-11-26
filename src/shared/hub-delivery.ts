@@ -164,7 +164,13 @@ function readAuthor(v: unknown): DeliveryAuthor | null {
   };
 }
 
-/** A delivery from Hub's stream or list, or null when it isn't one. */
+export function heldCount(text: string): number | null {
+  const at = text.indexOf('"held":');
+  if (at < 0) return null;
+  const n = text.slice(at).match(/(?<!\\)"created_at":/g)?.length ?? 0;
+  return n > 0 ? n : null;
+}
+
 /** A Delivery back in Hub's shape, so parseDelivery reads it again. */
 export function deliveryRaw(d: Delivery): Record<string, unknown> {
   return {
@@ -686,9 +692,46 @@ export class SeenDeliveries {
   constructor(
     private readonly file: string,
     private readonly cap = 5000,
+    o: {
+      onBad?: (aside: string, held: number | null, code?: string) => void;
+      now?: () => number;
+    } = {},
   ) {
+    let text: string;
     try {
-      const v = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      text = fs.readFileSync(file, "utf-8");
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? "unknown";
+      if (code === "ENOENT") return;
+      try {
+        o.onBad?.(file, null, code);
+      } catch {
+        return;
+      }
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = undefined;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      let aside = `${file}.bad-${(o.now ?? Date.now)()}`;
+      try {
+        fs.renameSync(file, aside);
+      } catch {
+        aside = file;
+      }
+      try {
+        o.onBad?.(aside, heldCount(text));
+      } catch {
+        return;
+      }
+      return;
+    }
+    try {
+      const v = parsed as {
         ids?: unknown;
         last?: unknown;
       };
@@ -700,7 +743,7 @@ export class SeenDeliveries {
       this.last = typeof v.last === "string" ? v.last : null;
       this.held = (v as { held?: unknown }).held ?? null;
     } catch {
-      /* none yet, or broken: start empty */
+      /* a field Den can't use: start empty */
     }
   }
 
