@@ -8916,7 +8916,7 @@
   function updReload() {
     import("/restart-den.js")
       .then(function (m) {
-        return m.restartDen({ confirm: false });
+        return m.restartDen({ confirm: false, from: "update-pill" });
       })
       .then(function (info) {
         if (info) location.reload();
