@@ -35,6 +35,7 @@ const SELF = "tests/unit/test-infra/affected-tests.test.ts";
 /** The route a spec opens → the page file the server sends for it. */
 const PAGES = {
   agents: "agents.html",
+  terminals: "agents.html",
   settings: "settings.html",
   services: "services.html",
   "local-dev": "local-dev.html",
