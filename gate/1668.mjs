@@ -12,11 +12,10 @@ export const clauses = [
   `while that list is being made, /api/server-info answers within ${PROBE_MS} ms`,
 ];
 export const SEED_WAY =
-  "two real stub starts (a template and a keeper); the keeper's own session then writes the other agents' records, transcripts and helpers straight into the Den's state, so seeding takes seconds and /api/sessions reads them as it reads any agent";
+  "one real stub start makes a template agent; the gate process then writes the other agents' records, transcripts and helpers into that test Den's own state (the one home whose template record holds the token it just made), so seeding takes seconds and /api/sessions reads them as it reads any agent";
 export const timeoutMs = 600000;
 
 const WS = "proj-gate";
-const KEEPER = "g1668-keeper";
 const TEMPLATE = "g1668-template";
 const PREFIX = "g1668-a";
 const idOf = (i) => `${PREFIX}${String(i).padStart(3, "0")}`;
@@ -28,54 +27,103 @@ const median = (xs) => {
   return s.length ? s[Math.floor(s.length / 2)] : null;
 };
 
-const WRITE = `
-const fs = require("fs"), path = require("path"), crypto = require("crypto");
-const plan = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-const near = [...Object.entries(process.env).filter(([k, v]) => /_HOME$/.test(k) && v).map(([, v]) => v), ...fs.readdirSync(process.cwd()).map((n) => path.join(process.cwd(), n, "h"))];
-const mine = (h) => { try { return JSON.parse(fs.readFileSync(path.join(h, "agents", plan.keeper + ".json"), "utf8")).resumeToken === plan.keeperToken; } catch { return false; } };
-const homes = [...new Set(near.map((h) => path.resolve(h)))].filter(mine);
-if (homes.length !== 1) { console.log("found " + homes.length + " Den homes holding this keeper"); process.exit(2); }
-const home = homes[0], adir = path.join(home, "agents");
-const tpl = JSON.parse(fs.readFileSync(path.join(adir, plan.template + ".json"), "utf8"));
-const pad = "x".repeat(1800);
-let lines = [];
-for (let n = 0; n * 2000 < plan.mb * 1048576; n++) lines.push(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "toolu_s" + n, content: pad }] } }));
-const body = lines.join("\\n") + "\\n";
-const made = { home, ids: [], files: [] };
-for (const id of plan.ids) {
-  const token = crypto.randomUUID();
-  const rec = { ...tpl, id, displayName: id, resumeToken: token, stoppedAt: new Date().toISOString() };
-  for (const k of ["sessionName", "peerName"]) if (typeof rec[k] === "string") rec[k] = rec[k].split(plan.template).join(id);
-  delete rec.session;
-  const f = path.join(adir, id + ".json");
-  fs.writeFileSync(f + ".tmp", JSON.stringify(rec, null, 2));
-  fs.renameSync(f + ".tmp", f);
-  const t = path.join(plan.dir, token + ".jsonl");
-  fs.writeFileSync(t, body);
-  const sub = path.join(plan.dir, token, "subagents");
-  fs.mkdirSync(sub, { recursive: true });
-  fs.writeFileSync(path.join(sub, "agent-h1.meta.json"), JSON.stringify({ toolUseId: "toolu_s1", requestShape: "task" }));
-  fs.writeFileSync(path.join(sub, "agent-h1.jsonl"), JSON.stringify({ type: "assistant", timestamp: new Date().toISOString() }) + "\\n");
-  made.ids.push(id); made.files.push(t);
+function findHome(fs, path, cwd, token) {
+  let names = [];
+  try {
+    names = fs.readdirSync(cwd);
+  } catch {
+    return { error: `the template's folder ${cwd} can't be listed` };
+  }
+  const homes = names
+    .map((n) => path.join(cwd, n, "h"))
+    .filter((h) => {
+      try {
+        const rec = JSON.parse(
+          fs.readFileSync(path.join(h, "agents", `${TEMPLATE}.json`), "utf8"),
+        );
+        return rec.resumeToken === token;
+      } catch {
+        return false;
+      }
+    });
+  return homes.length === 1
+    ? { home: homes[0] }
+    : { error: `found ${homes.length} Den homes holding this template` };
 }
-fs.writeFileSync(plan.made, JSON.stringify(made));
-console.log("seeded " + made.ids.length);
-`
-  .replace(/\s*\n\s*/g, " ")
-  .trim();
 
-const CLEAN = `
-const fs = require("fs"), path = require("path");
-const plan = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-let made; try { made = JSON.parse(fs.readFileSync(plan.made, "utf8")); } catch { console.log("nothing seeded"); process.exit(0); }
-for (const id of made.ids) fs.rmSync(path.join(made.home, "agents", id + ".json"), { force: true });
-for (const f of made.files) { fs.rmSync(f, { force: true }); fs.rmSync(f.replace(/\\.jsonl$/, ""), { recursive: true, force: true }); }
-console.log("cleaned " + made.ids.length);
-`
-  .replace(/\s*\n\s*/g, " ")
-  .trim();
+function seed(fs, path, crypto, home, dir, made, mb = SEED_MB) {
+  const adir = path.join(home, "agents");
+  const tpl = JSON.parse(
+    fs.readFileSync(path.join(adir, `${TEMPLATE}.json`), "utf8"),
+  );
+  const pad = "x".repeat(1800);
+  const lines = [];
+  for (let n = 0; n * 2000 < mb * 1048576; n++)
+    lines.push(
+      JSON.stringify({
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: `toolu_s${n}`, content: pad },
+          ],
+        },
+      }),
+    );
+  const body = lines.join("\n") + "\n";
+  for (let i = 1; i <= SEED_AGENTS; i++) {
+    const id = idOf(i);
+    const token = crypto.randomUUID();
+    const rec = {
+      ...tpl,
+      id,
+      displayName: id,
+      resumeToken: token,
+      stoppedAt: new Date().toISOString(),
+    };
+    for (const k of ["sessionName", "peerName"])
+      if (typeof rec[k] === "string") rec[k] = rec[k].split(TEMPLATE).join(id);
+    delete rec.session;
+    const f = path.join(adir, `${id}.json`);
+    const t = path.join(dir, `${token}.jsonl`);
+    made.push({ id, record: f, transcript: t });
+    fs.writeFileSync(`${f}.tmp`, JSON.stringify(rec, null, 2));
+    fs.renameSync(`${f}.tmp`, f);
+    fs.writeFileSync(t, body);
+    const sub = path.join(dir, token, "subagents");
+    fs.mkdirSync(sub, { recursive: true });
+    fs.writeFileSync(
+      path.join(sub, "agent-h1.meta.json"),
+      JSON.stringify({ toolUseId: "toolu_s1", requestShape: "task" }),
+    );
+    fs.writeFileSync(
+      path.join(sub, "agent-h1.jsonl"),
+      JSON.stringify({
+        type: "assistant",
+        timestamp: new Date().toISOString(),
+      }) + "\n",
+    );
+  }
+}
 
-const q = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+function clean(fs, path, s) {
+  let n = 0;
+  const inside = (f, d) =>
+    path.resolve(f).startsWith(path.resolve(d) + path.sep);
+  for (const m of s?.made ?? []) {
+    if (!m.id.startsWith(PREFIX)) continue;
+    if (inside(m.record, path.join(s.home, "agents")))
+      fs.rmSync(m.record, { force: true });
+    if (inside(m.transcript, s.dir) && m.transcript.endsWith(".jsonl")) {
+      fs.rmSync(m.transcript, { force: true });
+      fs.rmSync(m.transcript.slice(0, -6), { recursive: true, force: true });
+    }
+    n++;
+  }
+  return n;
+}
+
+export const seedFiles = { findHome, seed, clean };
 
 async function timedList(d2) {
   const t = Date.now();
@@ -106,57 +154,49 @@ export async function setup(ctx) {
     return { error: `den2: ${msg(e)}` };
   }
   D2S.push(d2);
-  const s = {};
+  const s = { made: [] };
   const tpl = d2.agent(TEMPLATE, { workspace: WS });
   tpl.start("tester");
   s.templateMs = await tpl.running(30000);
   const tplFile = d2.transcriptPath(TEMPLATE);
   tpl.stop();
-  const keeper = d2.agent(KEEPER, { workspace: WS });
-  keeper.start("tester");
-  s.keeperMs = await keeper.running(30000);
-  if (s.templateMs == null || s.keeperMs == null || !tplFile) {
-    s.error = `the template or the keeper never ran (template ${s.templateMs} ms, transcript ${tplFile ? "found" : "none"}; keeper ${s.keeperMs} ms)`;
+  if (s.templateMs == null || !tplFile) {
+    s.error = `the template never ran (${s.templateMs} ms, transcript ${tplFile ? "found" : "none"})`;
     return s;
   }
-  let keeperToken = null;
+  let rec;
   try {
-    keeperToken = JSON.parse(
-      await d2.readBed(`state:agents/${KEEPER}.json`),
-    ).resumeToken;
+    rec = JSON.parse(await d2.readBed(`state:agents/${TEMPLATE}.json`));
   } catch (e) {
-    s.error = `the keeper's record can't be read: ${msg(e)}`;
+    s.error = `the template's record can't be read: ${msg(e)}`;
     return s;
   }
   const fs = await import("fs");
   const path = await import("path");
-  s.plan = ctx.evidence("1668-seed.json");
-  fs.writeFileSync(
-    s.plan,
-    JSON.stringify({
-      mb: SEED_MB,
-      keeper: KEEPER,
-      keeperToken,
-      template: TEMPLATE,
-      dir: path.dirname(tplFile),
-      ids: Array.from({ length: SEED_AGENTS }, (_, i) => idOf(i + 1)),
-      made: `${s.plan}.made`,
-    }),
-  );
+  const crypto = await import("crypto");
+  const found = findHome(fs, path, String(rec.cwd ?? ""), rec.resumeToken);
+  if (found.error) {
+    s.error = found.error;
+    return s;
+  }
+  s.home = found.home;
+  s.dir = path.dirname(tplFile);
   const t = Date.now();
-  const w = await keeper.sh(`node -e ${q(WRITE)} ${q(s.plan)}`, 60000);
+  try {
+    seed(fs, path, crypto, s.home, s.dir, s.made);
+    s.seed = { status: 0, said: `seeded ${s.made.length}` };
+  } catch (e) {
+    s.seed = { status: 1, said: msg(e) };
+  }
   s.seedMs = Date.now() - t;
-  s.seed = {
-    status: w.status,
-    said: String(`${w.out} ${w.err}`).trim().slice(0, 200),
-  };
   return s;
 }
 
 export async function run(ctx, s) {
-  if (s.error) return s;
+  if (s.error) return { error: s.error };
   const d2 = D2S[0];
   const r = { seed: s.seed, seedMs: s.seedMs };
+  if (s.seed?.status !== 0) return r;
   const warm = await timedList(d2);
   r.warmMs = warm.ms;
   r.helperRows = helperRows(warm.body);
@@ -182,28 +222,21 @@ export async function run(ctx, s) {
 }
 
 export async function teardown(ctx, s) {
+  const fs = await import("fs");
+  const path = await import("path");
   for (const d of D2S.splice(0)) {
     try {
-      if (s?.plan) {
-        const c = await d
-          .agent(KEEPER, { workspace: WS })
-          .sh(`node -e ${q(CLEAN)} ${q(s.plan)}`, 60000);
-        process.stderr.write(
-          `1668 teardown: ${String(c.out || c.err)
-            .trim()
-            .slice(0, 120)}\n`,
-        );
-      }
+      if (s?.home)
+        process.stderr.write(`1668 teardown: cleaned ${clean(fs, path, s)}\n`);
     } catch (e) {
       process.stderr.write(`1668 teardown: clean failed: ${msg(e)}\n`);
     }
-    for (const id of [KEEPER, TEMPLATE])
-      try {
-        if (d.agent(id, { workspace: WS }).state())
-          d.agent(id, { workspace: WS }).remove();
-      } catch {
-        continue;
-      }
+    try {
+      if (d.agent(TEMPLATE, { workspace: WS }).state())
+        d.agent(TEMPLATE, { workspace: WS }).remove();
+    } catch (e) {
+      process.stderr.write(`1668 teardown: ${msg(e)}\n`);
+    }
     await d.close().catch(() => {});
   }
 }
@@ -218,20 +251,25 @@ const row = (clause, ok, detail) => ({
 export function expect(cells) {
   const r =
     (Array.isArray(cells) ? cells.find((c) => c?.result)?.result : cells) ?? {};
-  if (r.error) return clauses.map((c) => row(c, false, r.error));
-  const seeded = r.seed?.status === 0 && r.helperRows === SEED_AGENTS;
-  const seedLine = `seeded ${SEED_AGENTS} agents in ${r.seedMs} ms by writing their records (${JSON.stringify(r.seed)}), rows with helpers ${r.helperRows}; ${SEED_WAY}`;
+  if (r.error) throw new Error(`1668 not measured: ${r.error}`);
+  if (r.seed?.status !== 0)
+    throw new Error(`1668 not measured: seed ${JSON.stringify(r.seed)}`);
+  if (r.helperRows !== SEED_AGENTS)
+    throw new Error(
+      `1668 not measured: the list showed helpers on ${r.helperRows} of ${SEED_AGENTS} seeded agents`,
+    );
+  const seedLine = `seeded ${SEED_AGENTS} agents in ${r.seedMs} ms, rows with helpers ${r.helperRows}; ${SEED_WAY}`;
   const allOk = (xs) =>
     (xs ?? []).length === TRIES && xs.every((t) => t.status === 200);
   return [
     row(
       clauses[0],
-      seeded && allOk(r.tries) && r.medianMs !== null && r.medianMs <= LIMIT_MS,
+      allOk(r.tries) && r.medianMs !== null && r.medianMs <= LIMIT_MS,
       `${seedLine}; warm-up ${r.warmMs} ms; tries ${JSON.stringify((r.tries ?? []).map((t) => t.ms))} ms, median ${r.medianMs} (limit ${LIMIT_MS})`,
     ),
     row(
       clauses[1],
-      seeded && allOk(r.probes) && r.maxProbeMs <= PROBE_MS,
+      allOk(r.probes) && r.maxProbeMs <= PROBE_MS,
       `${seedLine}; server-info during each list ${JSON.stringify((r.probes ?? []).map((p) => p.ms))} ms, max ${r.maxProbeMs} (limit ${PROBE_MS})`,
     ),
   ];
