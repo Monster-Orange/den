@@ -145,7 +145,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   },
   // issue_write: which roles write GitHub issues, and how many an hour.
   // Issue 1127: and how old a repo's visibility may be for the words check.
-  agent_issue_writes: { roles: true, per_hour: true, visibility_minutes: true },
+  agent_issue_writes: {
+    roles: true,
+    per_hour: true,
+    visibility_minutes: true,
+    public: true,
+  },
   // Issue 278: agents stuck compacting; instruction size.
   agent_context: {
     compaction_loop_count: true,
@@ -395,6 +400,7 @@ describe("the settings inventory (R21)", () => {
         "agent_issue_writes.roles",
         "agent_issue_writes.per_hour",
         "agent_issue_writes.visibility_minutes",
+        "agent_issue_writes.public",
         // Issue 278: agents stuck compacting; instruction size.
         "agent_context.compaction_loop_count",
         "agent_context.compaction_loop_minutes",
