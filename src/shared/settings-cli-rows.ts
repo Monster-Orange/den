@@ -51,7 +51,7 @@
  *   reports: { screenshot_keep_days?, screenshot_max_mb?,
  *              hub_screenshot_max_mb?, hub_timeout_seconds? }
  *                                     user.yml reports.* (issue 403)
- *   server_log: { max_mb? }          user.yml server_log.* (issue 707)
+ *   server_log: { max_mb?, slow_request_ms?, event_loop_lag_ms? }
  *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
  *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
@@ -337,6 +337,18 @@ const SERVER_LOG: Record<string, Limit> = {
     min: SERVER_LOG_LIMITS.max_mb.min,
     max: SERVER_LOG_LIMITS.max_mb.max,
     int: false,
+  },
+  slow_request_ms: {
+    key: "slow_request_ms",
+    min: SERVER_LOG_LIMITS.slow_request_ms.min,
+    max: SERVER_LOG_LIMITS.slow_request_ms.max,
+    int: true,
+  },
+  event_loop_lag_ms: {
+    key: "event_loop_lag_ms",
+    min: SERVER_LOG_LIMITS.event_loop_lag_ms.min,
+    max: SERVER_LOG_LIMITS.event_loop_lag_ms.max,
+    int: true,
   },
 };
 

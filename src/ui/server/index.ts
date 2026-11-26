@@ -450,6 +450,7 @@ import {
   sessionRequestAllowed,
   setPrincipal,
   signinMessage,
+  storedPrincipal,
   type GuardContext,
   type GuardResult,
   type Via,
@@ -546,7 +547,14 @@ import {
   TEST_PERSON_HEADER,
   testPersonCredentialRefusal,
 } from "../../shared/test-person.js";
-import { routeClass } from "./route-classes.js";
+import { routeClass, routePattern } from "./route-classes.js";
+import {
+  callerKind,
+  lagLine,
+  lagWatch,
+  rateLimit,
+  slowRequestLine,
+} from "./slow-log.js";
 import { envName, readEnv } from "../../shared/profile.js";
 import {
   clearSessionCookies,
@@ -1080,6 +1088,55 @@ const toWebLog = webLogWriter({
   path: () => webLogPath(getStateDir(), product().cli),
 });
 
+const slowOnce = rateLimit({ windowMs: 60_000, now: Date.now });
+
+function noteSlowRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  ms: number,
+  left = false,
+): void {
+  if (ms < SERVER_LOG_LIMITS.slow_request_ms.min) return;
+  if (ms < serverLogSetting(readUserConfigSafe(), "slow_request_ms")) return;
+  if (String(res.getHeader("content-type") ?? "").includes("event-stream"))
+    return;
+  const method = (req.method ?? "GET").toUpperCase();
+  const pattern = routePattern(method, pathname);
+  const more = slowOnce(`${method} ${pattern}`);
+  if (more === null) return;
+  const caller = callerKind(storedPrincipal(req));
+  serverLog(
+    slowRequestLine({ method, pattern, ms, caller, more, left }),
+    "warn",
+  );
+}
+
+function readUserConfigSafe(): unknown {
+  try {
+    return readUserConfig();
+  } catch {
+    return null;
+  }
+}
+
+function startLagWatch(): void {
+  const lagOnce = rateLimit({ windowMs: 60_000, now: Date.now });
+  lagWatch({
+    everyMs: 250,
+    now: () => performance.now(),
+    setInterval,
+    clearInterval: (t) => clearInterval(t as NodeJS.Timeout),
+    onLag: (late) => {
+      if (late < SERVER_LOG_LIMITS.event_loop_lag_ms.min) return;
+      if (late < serverLogSetting(readUserConfigSafe(), "event_loop_lag_ms"))
+        return;
+      const more = lagOnce("lag");
+      if (more !== null) serverLog(lagLine(late, more), "warn");
+    },
+  });
+}
+
 function serverLog(line: string, kind: string = "info", actor?: string): void {
   const msg = maskSecretLine(line);
   pushLog(kind, msg, actor);
@@ -1571,7 +1628,9 @@ import {
 import { lookupTimeouts } from "../../shared/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import {
+  SERVER_LOG_LIMITS,
   serverLogMaxBytes,
+  serverLogSetting,
   serverLogWriter,
 } from "../../shared/server-log-file.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
@@ -6642,7 +6701,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       };
     })(),
     // Issue 707: the server's warning lines on disk, capped (server_log.*).
-    server_log: { max_mb: serverLogMaxBytes(user) / (1024 * 1024) },
+    server_log: {
+      max_mb: serverLogMaxBytes(user) / (1024 * 1024),
+      slow_request_ms: serverLogSetting(user, "slow_request_ms"),
+      event_loop_lag_ms: serverLogSetting(user, "event_loop_lag_ms"),
+    },
     // Issue 403: how long a filed report's screenshot is kept (reports.*).
     reports: (() => {
       const l = shotLimits(user);
@@ -6714,7 +6777,12 @@ async function handleRequest(
     if (!isStatic && !isHealthPoll) {
       const start = Date.now();
       const method = bold((req.method ?? "GET").padEnd(4));
+      res.on("close", () => {
+        if (!res.writableFinished)
+          noteSlowRequest(req, res, pathname, Date.now() - start, true);
+      });
       res.on("finish", () => {
+        noteSlowRequest(req, res, pathname, Date.now() - start);
         const ms = dim(`${Date.now() - start}ms`);
         serverLog(
           `  ${logTimestamp()}  ${method}  ${loggedPath(pathname)}  →  ${logStatus(res.statusCode)}  ${ms}` +
@@ -11457,6 +11525,18 @@ async function handleRequest(
     }
   }
 
+  if (
+    process.env.DEN_DEBUG_ROUTES === "1" &&
+    (pathname === "/api/_den/slow" || pathname === "/api/_den/block")
+  ) {
+    const ms = Math.min(Number(url.searchParams.get("ms")) || 0, 10_000);
+    if (pathname === "/api/_den/block") {
+      const end = Date.now() + ms;
+      while (Date.now() < end);
+    } else await new Promise((r) => setTimeout(r, ms));
+    return sendJson(res, { ok: true });
+  }
+
   // A route that throws, for the error frame's tests and screenshots only
   // (DEN_DEBUG_ROUTES=1): a page and an API call.
   if (
@@ -12257,6 +12337,7 @@ try {
 }
 void CRASH_GATE.then(() =>
   server.listen(PORT, BIND_HOST, () => {
+    startLagWatch();
     void printBanner(ADDRESS ?? readWebUrl());
     // Issue 816: a waiting test install announces itself (opt-in).
     syncTestAnnouncement();

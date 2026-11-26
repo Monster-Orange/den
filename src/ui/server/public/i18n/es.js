@@ -1386,6 +1386,12 @@
     "set.server.server_log_max": "Registro de avisos, tamaño máximo",
     "set.server.server_log_max.d":
       "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "Petición lenta, registrar después de",
+    "set.server.slow_request_ms.d":
+      "Cuando una petición tarda más que esto, el registro de __DEN_TITLE__ recibe una línea con su ruta, quién la pidió y cuánto tardó. Nunca su dirección, consulta, cabeceras ni cuerpo. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "Bloqueo, registrar después de",
+    "set.server.event_loop_lag_ms.d":
+      "Cuando __DEN_TITLE__ está ocupado y no ejecuta nada más durante más tiempo que esto, su registro recibe una línea que dice cuánto. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max":
       "Capturas de informes, la más grande guardada",
     "set.server.report_screenshot_max.d":
