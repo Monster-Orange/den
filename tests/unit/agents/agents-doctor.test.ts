@@ -17,12 +17,16 @@ afterEach(async () => {
   await cleanupRigs();
 });
 
-const doctor = (r: Rig, ...args: string[]) =>
-  cmdAgents(["doctor", ...args], {
+const doctor = (r: Rig, ...args: string[]) => {
+  const sessionTmpBase = path.join(r.dir, "tmp");
+  fs.mkdirSync(sessionTmpBase, { recursive: true });
+  return cmdAgents(["doctor", ...args], {
+    sessionTmpBase,
     ...r.deps,
     loginPath: async () => {},
     apiOnly: () => ({ services: [] }),
   });
+};
 
 describe("agents doctor: subagents (den#3)", () => {
   it("the org's model and connectors, each persona that overrides it, and each agent as it last started", async () => {

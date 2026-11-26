@@ -4,12 +4,13 @@
  * the job summary says whether it passed. On main and in the release
  * nothing is left out: the switch (DEN_TEST_QUARANTINE) is off unless set.
  */
-import { describe, expect, it } from "@jest/globals";
+import { beforeAll, describe, expect, it } from "@jest/globals";
 import { execFileSync, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
+import { tempDirs } from "../../temp-dirs";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const q = require("../../quarantine.cjs") as {
@@ -43,6 +44,7 @@ type Entry = {
 type Doc = { max_age_days?: number; entries: Entry[] };
 
 const ROOT = path.join(__dirname, "../../..");
+const tmp = tempDirs();
 const FIXTURE = "tests/fixtures/quarantine/flaky.fixture.ts";
 const FLAKY = "quarantine fixture the flaky one";
 const ev = { failed_run: 1, passed_run: 2, sha: "abc" };
@@ -370,22 +372,26 @@ describe("in CI", () => {
 });
 
 describe("a quarantined test that fails (red first)", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-quarantine-"));
-  const list = path.join(dir, "quarantine.json");
-  fs.writeFileSync(
-    list,
-    JSON.stringify({
-      entries: [
-        {
-          file: FIXTURE,
-          test: FLAKY,
-          issue: 397,
-          added: "2026-11-17",
-          evidence: ev,
-        },
-      ],
-    }),
-  );
+  let dir = "";
+  let list = "";
+  beforeAll(() => {
+    dir = tmp("den-quarantine-");
+    list = path.join(dir, "quarantine.json");
+    fs.writeFileSync(
+      list,
+      JSON.stringify({
+        entries: [
+          {
+            file: FIXTURE,
+            test: FLAKY,
+            issue: 397,
+            added: "2026-11-17",
+            evidence: ev,
+          },
+        ],
+      }),
+    );
+  });
   /** The fixture in a child jest, with the flaky test failing. */
   const run = (mode: string) => {
     const out = path.join(dir, `${mode || "off"}.json`);
@@ -517,10 +523,7 @@ describe("scripts/flake-evidence.mjs (fake Actions API data, no network)", () =>
     };
   };
   const evidence = (rerun: boolean): Entry[] => {
-    const data = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "den-flake-")),
-      "api.json",
-    );
+    const data = path.join(tmp("den-flake-"), "api.json");
     fs.writeFileSync(data, JSON.stringify(fake(rerun)));
     const js = `
       import * as fs from "node:fs";
