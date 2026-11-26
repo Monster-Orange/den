@@ -1204,6 +1204,10 @@
     "set.server.ready_probe": "Comprobación de que está listo, en segundos",
     "set.server.ready_probe.d":
       "Cuánto espera cada comprobación de que __DEN_TITLE__ está en marcha a que responda. Una máquina ocupada responde tarde; una respuesta tardía también vale. __DEN_CLI__ config web.ready_probe_seconds=10",
+    "set.server.tools_probe":
+      "Comprobación de esta instalación por las herramientas de Den, en segundos",
+    "set.server.tools_probe.d":
+      "Cuánto esperan las herramientas de Den de un agente a que __DEN_TITLE__ diga que es esta instalación antes de rechazar una llamada. Un __DEN_TITLE__ ocupado responde tarde; una respuesta tardía también vale. La siguiente llamada vuelve a comprobarlo. __DEN_CLI__ config web.tools_probe_seconds=30",
     "set.server.start_wait": "Espera al arrancar, en segundos",
     "set.server.start_wait.d":
       "Cuánto espera `web up` a que __DEN_TITLE__ esté listo antes de decir que no arrancó. Un arranque que falla termina la espera enseguida. __DEN_CLI__ config web.start_wait_seconds=120",
@@ -1690,6 +1694,11 @@
     "hub.addressMore": "Dirección del Hub…",
     "hub.justConnected":
       "Conectado a {company} ({host}). ¿No es la empresa que querías?",
+    "hub.switching":
+      "Cambiando a {to}: inicia sesión allí para terminar. __DEN_TITLE__ sigue en {from} hasta entonces.",
+    "hub.switchEnded":
+      "El cambio a {to} esperó demasiado un inicio de sesión y terminó. __DEN_TITLE__ sigue en {from}.",
+    "hub.switchSignin": "Iniciar sesión en el nuevo Hub",
     "hub.reconnect": "Volver a conectar",
     "hub.cw.done": "Conectado a Hub ({company}).",
     "hub.cw.doneNoCo": "Conectado a Hub.",
@@ -2458,6 +2467,10 @@
       "Después Den se reinicia, y los agentes obtienen las herramientas de Hub cuando se reinicien.",
     "ap.det.hub_connect.connect":
       "Después te conectas en Ajustes › Hub: Conectar te inicia sesión en Hub allí.",
+    "ap.det.hub_connect.keep":
+      "Den sigue en {was} con su clave hasta que inicies sesión en {url}.",
+    "ap.det.hub_connect.signin":
+      "Tras tu permiso se abre el inicio de sesión de {url}. Cuando ese Hub responde, Den cambia a él y {was} revoca su clave; si falla, Den sigue en {was} y dice por qué.",
     "ap.det.den_pin_commit.pr":
       "Den hace commit de package.json y package-lock.json en la rama den/pin-{version} y abre una pull request.",
     "ap.det.den_pin_commit.push":
@@ -2984,6 +2997,13 @@
       "Retiraste la pregunta de {name}, resuelta: {reason} ({text})",
     "bell.m.settledLate":
       "La pregunta de {name} se resolvió: {reason}; tu respuesta llegó después y se le pasó ({text})",
+    "bell.m.hubSwitchWaits":
+      "Inicia sesión en {to} para terminar el cambio de Hub; __DEN_TITLE__ sigue en {from} hasta entonces",
+    "bell.m.hubSwitchExpired":
+      "El cambio a {to} esperó {days} días un inicio de sesión y terminó. __DEN_TITLE__ sigue en {from}; vuelve a pedirlo para cambiar",
+    "bell.m.hubSwitchFailed":
+      "__DEN_TITLE__ no pudo cambiar a {to}: {why}. Sigue en {from}; vuelve a iniciar sesión en Ajustes › Hub",
+    "ap.hubSwitchSignin": "Abriendo el inicio de sesión de {url}…",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",
@@ -3151,6 +3171,8 @@
     "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
     "bell.m.updateWaits":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso",
+    "bell.m.hubAgentsReconnect":
+      "Vuelve a conectar Hub para que tus agentes firmen su propio trabajo",
     "bell.m.updateWaitsAsked":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ te hizo una pregunta",
     "bell.m.updateWaitsWhat":
@@ -3624,6 +3646,12 @@
     "ag.signIn": "con {label}",
     "ag.signIn.tip":
       "Inicia sesión con {label}, cuyo token está en el almacén de secretos de esta instalación, así que sigue en marcha tras cerrar la sesión.",
+    "ag.hub.bound": "Verificado en Hub",
+    "ag.hub.bound.tip":
+      "Llama a Hub con su propio token, así que Hub reconoce su trabajo y sus aprobaciones como suyos.",
+    "ag.hub.unbound": "Sin verificar en Hub",
+    "ag.hub.unbound.tip":
+      "Por ahora llama a Hub con el token de esta instalación, así que Hub no distingue sus aprobaciones de las de la instalación. Den le pide a Hub su propio token la próxima vez que llame a Hub.",
     "ag.tabs": "Terminales abiertas",
     "ag.hint.focus":
       "Un clic muestra una terminal. Mayús o ⌘ y clic la añade al lado.",

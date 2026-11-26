@@ -36,6 +36,7 @@ import type {
 } from "../../shared/notifications.js";
 import type { WorkspacesFile } from "../../shared/types/index.js";
 import { pickNote } from "./hub-link-all-routes.js";
+import { clearHubSwitch, readHubSwitch } from "./hub-switch.js";
 
 export interface HubChangeDeps {
   stateDir: () => string;
@@ -125,6 +126,9 @@ export async function noteHub(
 }> {
   const stateDir = d.stateDir();
   const bound = readHubBinding(stateDir);
+  const sw = readHubSwitch(stateDir);
+  if (sw && (!now.url || hubOrigin(now.url) !== hubOrigin(sw.from)))
+    clearHubSwitch(stateDir);
   if (!now.url) {
     if (!bound) return { kind: "same", repick: 0 };
     d.bell().remove(isHubBellItem);
