@@ -164,6 +164,20 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   return token ? { url: cfg.url, token } : null;
 }
 
+async function syncAgentGrant(url: string): Promise<void> {
+  try {
+    const g = await import("../../shared/hub-agent-grant.js");
+    const { getStateDir } = await import("../../shared/paths.js");
+    const { notificationDeps } = await import("./notification-service.js");
+    g.syncAgentGrantNote(notificationDeps().store, {
+      connected: true,
+      notCovered: g.agentsNotCovered(getStateDir(), url),
+    });
+  } catch {
+    return;
+  }
+}
+
 /** The body of a fetch Response as text chunks. */
 async function* chunks(res: Response): AsyncIterable<string> {
   const reader = res.body!.getReader();
@@ -626,6 +640,8 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.login ? { ownerLogin: w.login } : {}),
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
+      feedCarries = feedKinds(w.features);
+      void syncAgentGrant(a.url);
       noteWhoami(w);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */

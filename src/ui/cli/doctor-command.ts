@@ -981,6 +981,34 @@ async function hubDeliveryDoctor(): Promise<
   );
 }
 
+export function hubAgentTokenLines(
+  problems: readonly import("../../shared/hub-agent-tokens.js").AgentTokenProblem[],
+): { lines: string[]; checks: OnboardCheck[] } {
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const p of problems) {
+    const when = Number.isFinite(Date.parse(p.at))
+      ? new Date(p.at).toLocaleString()
+      : p.at;
+    const reconnect =
+      p.code === "agents_not_covered" || p.code === "agents_manage_missing";
+    const fix = reconnect
+      ? "Settings › Hub: Reconnect"
+      : p.what === "mint"
+        ? "Den asks Hub again after hub.agent_token_retry_seconds; the agent uses the install's token meanwhile"
+        : undefined;
+    const detail = `agent ${p.agentId}: ${p.detail} (${when})`;
+    lines.push(`  hub agent  ✗  ${detail}${fix ? `. ${fix}` : ""}`);
+    checks.push({
+      id: `hub:agent-token:${p.agentId}`,
+      status: "fail",
+      detail,
+      ...(reconnect ? { ask: "Reconnect to Hub in Settings › Hub" } : {}),
+    });
+  }
+  return { lines, checks };
+}
+
 /**
  * H5: with Hub connected, each project's Hub project. Linked is ok; not
  * linked warns (Hub files that project's agents' work in Unfiled), with
@@ -991,6 +1019,25 @@ async function hubDeliveryDoctor(): Promise<
  * built-in `default`) is ✓ "nothing to link", never a warning: an agent
  * reading Doctor would ask the person for a link nobody needs.
  */
+async function hubAddressRows(
+  st: import("../../shared/hub.js").HubStatus,
+): Promise<{ lines: string[]; checks: OnboardCheck[] }> {
+  if (!st.configured || !st.connected) return { lines: [], checks: [] };
+  const [{ readDenUrlTell, denUrlTellRow }, { readWebUrl }] = await Promise.all(
+    [import("../../shared/hub-den-url.js"), import("../../shared/web-url.js")],
+  );
+  const row = denUrlTellRow(
+    readDenUrlTell(getStateDir()),
+    readWebUrl()?.url,
+    st.url,
+  );
+  if (!row) return { lines: [], checks: [] };
+  return {
+    lines: [`  hub address  ⚠  ${row.detail}`],
+    checks: [{ id: "hub:den-url", status: "warn", detail: row.detail }],
+  };
+}
+
 export function hubProjectLines(
   connected: boolean,
   projects: {
@@ -2785,7 +2832,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (st.configured) {
         const dl = await hubDeliveryDoctor();
         if (dl.check) r.checks.push(dl.check);
+        const { readAgentTokenProblems } =
+          await import("../../shared/hub-agent-tokens.js");
+        r.checks.push(
+          ...hubAgentTokenLines(readAgentTokenProblems(getStateDir())).checks,
+        );
       }
+      r.checks.push(...(await hubAddressRows(st)).checks);
       // Issue 726: state and tokens from an earlier Hub.
       r.checks.push(...(await previousHubRows()).checks);
       r.checks.push(
@@ -2952,8 +3005,15 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     const { hubStatus } = await import("../../shared/hub.js");
     const st = await hubStatus();
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
-    if (st.configured)
+    if (st.configured) {
       for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
+      const { readAgentTokenProblems } =
+        await import("../../shared/hub-agent-tokens.js");
+      for (const l of hubAgentTokenLines(readAgentTokenProblems(getStateDir()))
+        .lines)
+        console.log(l);
+    }
+    for (const l of (await hubAddressRows(st)).lines) console.log(l);
     // Issue 726: state and tokens from an earlier Hub.
     for (const l of (await previousHubRows()).lines) console.log(l);
     for (const l of hubProjectLines(

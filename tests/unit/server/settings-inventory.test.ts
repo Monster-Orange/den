@@ -44,7 +44,11 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // Issue 406: how long the start waits for the owner's GitHub name.
   web_github: { owner_name_timeout_seconds: true },
   // den#143: how long `web up` waits for the server.
-  web_ready: { probe_seconds: true, start_seconds: true },
+  web_ready: {
+    probe_seconds: true,
+    start_seconds: true,
+    tools_probe_seconds: true,
+  },
   // Issue 819: the new-device limits.
   web_pairing: {
     requests_per_minute: true,
@@ -213,6 +217,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   held_writes: { wait_minutes: true },
   // Issue 1022: how often the page polls health, visible and hidden.
   health_poll: { visible_seconds: true, hidden_seconds: true },
+  git_reads: { at_once: true },
   // Issue 750: groups from Hub (user.yml hub.groups, groups_cache_seconds).
   hub_groups: { mode: true, cache_seconds: true },
 };
@@ -330,6 +335,7 @@ describe("the settings inventory (R21)", () => {
         // den#143: how long `web up` waits for the server.
         "web_ready.probe_seconds",
         "web_ready.start_seconds",
+        "web_ready.tools_probe_seconds",
         // Issue 1299: how long a sessions write waits for another's lock.
         "web_sessions.lock_wait_ms",
         "gate_slots.box_check_timeout_seconds",
@@ -457,6 +463,7 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        "git_reads.at_once",
         // Issue 750: groups from Hub.
         "hub_groups.mode",
         "hub_groups.cache_seconds",
