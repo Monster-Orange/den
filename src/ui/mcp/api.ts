@@ -10,7 +10,7 @@
  * every tool says whose server it is instead of serving its data.
  */
 import { product } from "../../shared/product.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
 import {
   foreignServerMessage,
   identifyServer,

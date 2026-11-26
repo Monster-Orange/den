@@ -23,7 +23,7 @@ import {
   readWebOwner,
   syncWebOwnerName,
   writeWebOwner,
-} from "../../shared/web-owner.js";
+} from "../../shared/web/web-owner.js";
 import type {
   Decide,
   Decision,

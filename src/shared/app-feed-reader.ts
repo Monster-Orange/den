@@ -20,7 +20,7 @@
  * I/O is injected (tests use fakes).
  */
 import { createHash } from "node:crypto";
-import { SseReader } from "./hub-delivery.js";
+import { SseReader } from "./hub/hub-delivery.js";
 import { feedWord } from "./agents/app-feeds.js";
 
 export type FeedState =

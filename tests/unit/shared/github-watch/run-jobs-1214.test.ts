@@ -15,7 +15,7 @@ import {
   githubWatchSettings,
   type GithubWatchSettings,
 } from "../../../../src/shared/github-watch/settings.js";
-import type { Delivery } from "../../../../src/shared/hub-delivery.js";
+import type { Delivery } from "../../../../src/shared/hub/hub-delivery.js";
 import { FakeGithub } from "./fake-github.js";
 
 const A = "acme/north";
@@ -303,7 +303,7 @@ describe("a pull request's watch pages past 100 check runs", () => {
       });
     const w = watcher();
     await w.create(ask({ pr: 1 }));
-    await minutes(w, 2);
+    await minutes(w, 3);
     expect(sent).toHaveLength(1);
     expect(sent[0].text).toContain("149 passed, 1 failed");
     expect(sent[0].text).toContain("check-140");

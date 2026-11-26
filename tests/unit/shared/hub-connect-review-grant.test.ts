@@ -14,7 +14,7 @@ import {
   REVIEW_MAX_PROJECTS,
   parseGrantReview,
   reviewParam,
-} from "../../../src/shared/hub-connect-review-grant.js";
+} from "../../../src/shared/hub/hub-connect-review-grant.js";
 
 const P = [
   { key: "north", name: "North", repos: ["acme/web"] },
