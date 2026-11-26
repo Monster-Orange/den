@@ -30,7 +30,11 @@ describe("issue 988: nothing the launcher runs is the agents' login's to change"
     (over: Record<string, Partial<St>>) =>
     (p: string): St => {
       const s = fs.lstatSync(p);
-      return { uid: s.uid, gid: s.gid, mode: s.mode, ...(over[p] ?? {}) };
+      const real =
+        p === tmp || p.startsWith(tmp + path.sep)
+          ? { uid: s.uid, gid: s.gid, mode: s.mode }
+          : { uid: 0, gid: 0, mode: (s.mode & 0o170000) | 0o755 };
+      return { ...real, ...(over[p] ?? {}) };
     };
 
   it("all the person's: no problems", () => {
