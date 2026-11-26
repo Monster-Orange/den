@@ -1,7 +1,7 @@
 // A fake bed for gate/252.mjs (tests/unit/test-infra/gate-252-runner.test.ts):
 // one stub agent in project "north" whose mode is set from a fake Agents
-// page's ⋯ › Mode. Den restarts it at its next idle (the stub's idle
-// prompt) in the new mode, in a new session, with an audit row. `den`:
+// page's ⋯ › Mode. Den restarts it once its turn is quiet (two looks with
+// nothing typed) in the new mode, in a new session, with an audit row. `den`:
 //   "good":       as Den does;
 //   "noRestart":  the mode is saved but the agent never restarts;
 //   "noAudit":    it restarts, but no audit row is written;
@@ -48,6 +48,8 @@ const ROW_NAME = `${t("ag.openName", { id: `${WS} / tester` })} · idle`;
 const ROW_TEXT = `tester ${ID} idle`;
 
 export function fakeBed({ den = "good" } = {}) {
+  const RENAME_HELP =
+    "  x agents rename <id> <name>\n      Other sessions see it as x-<ws>:<name> from its next start or resume.";
   const st = {
     agent: null,
     session: 1,
@@ -62,6 +64,7 @@ export function fakeBed({ den = "good" } = {}) {
           ]
         : [],
     pendingIdle: 0,
+    quiet: 0,
   };
   const want = () => st.own ?? "auto";
   const source = () => (st.own ? "own" : "install");
@@ -88,9 +91,13 @@ export function fakeBed({ den = "good" } = {}) {
           : "more";
   }
 
+  function typed() {
+    st.quiet = 0;
+  }
+
   function idle() {
     if (den === "noRestart" || want() === st.running) return;
-    if (--st.pendingIdle > 0) return;
+    if (++st.quiet < 2) return;
     st.running = want();
     st.session++;
     if (den !== "noAudit" && den !== "oldAudit")
@@ -267,13 +274,14 @@ export function fakeBed({ den = "good" } = {}) {
         out:
           args[1] === "--help"
             ? den === "oldCli"
-              ? "one agent's mode: a running agent takes it from its next start"
-              : "A running agent\n    restarts at its next idle, on the same conversation, to take it."
+              ? `${RENAME_HELP}\n  x agents permission <id> [ask|edits]\n      one agent's mode: a running agent takes it from its next start`
+              : `${RENAME_HELP}\n  x agents permission <id> [ask|edits]\n      one agent's mode. A running agent\n      restarts at its next idle, on the same conversation, to take it.\n  x agents permission -w <ws> [ask|edits]\n      the project's mode`
             : "",
         err: "",
       };
     },
     async api(p) {
+      if (p === "/api/sessions") idle();
       if (p === "/api/sessions")
         return {
           sessions:
@@ -319,7 +327,7 @@ export function fakeBed({ den = "good" } = {}) {
         async running() {
           return 10;
         },
-        idlePrompt: idle,
+        idlePrompt: typed,
         state() {
           return st.agent ? { id: ID } : null;
         },
