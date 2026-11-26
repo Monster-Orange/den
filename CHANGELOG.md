@@ -13,11 +13,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- On a test install, a live check can now set one of the test's own agents to "ask" or "edits", or back to its project's mode, from the agent's row. Before, the request was refused, so the row's mode switch couldn't be checked there. Wider modes, agents the test didn't start and the server agent are still refused.
 - After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.
 
 ### Fixed
 
 - When an agent's Den tools can't confirm this install's server, the refusal now says why (no answer within the wait, the connection's error, or an empty answer) and how long it waited, and that the next call checks again. The wait is a new setting, Settings › Server › Den tools' check of this install (`web.tools_probe_seconds`, default 30 s, was a fixed 5 s) (issue 1664).
+- An app feed whose event store was removed (the feed taken out and added again, or its folder lost) gets its next events to its agent again. Before, the new store numbered its events from 1, and the agent's pointers to them looked like ones it had already been sent, so nothing was typed and the person wasn't told. Each new store now has its own random id, kept in its meta file, and every pointer carries it. A store from before this keeps its old pointer ids, so nothing the agent was already sent is typed again. (issue 1672)
 - A delivery file Den can't read (`hub/deliveries-seen.json` or `hub/feed-pointers-seen.json`, truncated or garbled) is no longer emptied silently. Den moves it to `<name>.bad-<time>`, logs it, and the bell says so once, naming both files. Delivery goes on. Before, everything it held was lost with no trace.
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
