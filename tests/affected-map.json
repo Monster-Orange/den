@@ -724,6 +724,9 @@
       "src/ui/server/agent-routes.ts",
       "src/shared/agents/runtime-search.ts"
     ],
+    "tests/unit/server/start-prefill.browser.test.ts": [
+      "src/ui/server/public/agents-page.js"
+    ],
     "tests/unit/server/stop-ends-wait.integration.test.ts": [
       "src/ui/server/login-waits.ts",
       "src/ui/server/agent-routes.ts"
@@ -928,6 +931,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1417,6 +1421,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1546,6 +1551,7 @@
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/shell-rail.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1641,6 +1647,7 @@
         "tests/unit/server/shell-close.browser.test.ts",
         "tests/unit/server/shell-poll-in-flight.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1769,6 +1776,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -2095,6 +2103,7 @@
         "tests/unit/server/signin-token-nostore.browser.test.ts",
         "tests/unit/server/signin-token.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
+        "tests/unit/server/start-prefill.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -4145,6 +4154,11 @@
         "src/ui/server/agent-routes.ts"
       ],
       "run": ["tests/unit/server/start-dialog.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/agents-page.js"],
+      "run": ["tests/unit/server/start-prefill.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
