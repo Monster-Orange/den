@@ -124,6 +124,7 @@ describe("gate/1668 seed files", () => {
         }),
       );
     }
+    fs.mkdirSync(path.join(d, "cwd", "abc123", "proj-gate"));
     fs.mkdirSync(path.join(d, "stub"));
     return d;
   }
@@ -133,11 +134,12 @@ describe("gate/1668 seed files", () => {
     const got = JSON.parse(
       seedJs(
         d,
-        `console.log(JSON.stringify([f.findHome(fs, path, D + "/cwd", "t-mine"), f.findHome(fs, path, D + "/cwd", "t-none")]));`,
+        `console.log(JSON.stringify([f.findHome(fs, path, D + "/cwd", "t-mine"), f.findHome(fs, path, D + "/cwd", "t-none"), f.findHome(fs, path, D + "/cwd/abc123/proj-gate", "t-mine")]));`,
       ),
     );
     expect(got[0].home).toBe(path.join(d, "cwd", "abc123", "h"));
     expect(got[1].error).toMatch(/found 0 Den homes/);
+    expect(got[2].home).toBe(path.join(d, "cwd", "abc123", "h"));
     fs.rmSync(d, { recursive: true, force: true });
   });
 

@@ -28,24 +28,32 @@ const median = (xs) => {
 };
 
 function findHome(fs, path, cwd, token) {
-  let names = [];
-  try {
-    names = fs.readdirSync(cwd);
-  } catch {
-    return { error: `the template's folder ${cwd} can't be listed` };
+  if (!cwd) return { error: "the template's record names no folder" };
+  const ups = [];
+  for (let a = path.resolve(cwd), k = 0; k < 4; k++, a = path.dirname(a)) {
+    ups.push(a);
+    if (path.dirname(a) === a) break;
   }
-  const homes = names
-    .map((n) => path.join(cwd, n, "h"))
-    .filter((h) => {
-      try {
-        const rec = JSON.parse(
-          fs.readFileSync(path.join(h, "agents", `${TEMPLATE}.json`), "utf8"),
-        );
-        return rec.resumeToken === token;
-      } catch {
-        return false;
-      }
-    });
+  const list = (d) => {
+    try {
+      return fs.readdirSync(d).map((n) => path.join(d, n, "h"));
+    } catch {
+      return [];
+    }
+  };
+  const holds = (h) => {
+    try {
+      const rec = JSON.parse(
+        fs.readFileSync(path.join(h, "agents", `${TEMPLATE}.json`), "utf8"),
+      );
+      return rec.resumeToken === token;
+    } catch {
+      return false;
+    }
+  };
+  const homes = [
+    ...new Set(ups.flatMap((a) => [path.join(a, "h"), ...list(a)])),
+  ].filter(holds);
   return homes.length === 1
     ? { home: homes[0] }
     : { error: `found ${homes.length} Den homes holding this template` };
