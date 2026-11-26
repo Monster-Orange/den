@@ -204,6 +204,7 @@ import {
   type PinRecord,
 } from "../../shared/pin-record.js";
 import { ownerCheck, ownerLine } from "./doctor-owner.js";
+import { skillPackLines } from "./doctor-skill-packs.js";
 import {
   formatWhere,
   launchdJobPid,
@@ -2927,6 +2928,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 278: instruction files over the share of the context.
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
+    r.checks.push(...skillPackLines(readBrand().name).checks);
     // Issue 1333: sign-in requests in the last day.
     r.checks.push(signinRequestLines(readBrand().name).check!);
     // Issue 1369: audit entries that came in as reports.
@@ -3121,6 +3123,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of repoSecretLines().lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
+  for (const l of skillPackLines(readBrand().name).lines) console.log(l);
   for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
   for (const l of auditReportLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);

@@ -35,6 +35,10 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/subagent-limits-settings-1631.integration.test.ts": [
+      "src/shared/den-config.ts",
+      "src/ui/server/public/settings-registry.js"
+    ],
     "tests/unit/cli/repo-add-no-run.integration.test.ts": [
       "src/ui/cli/doctor-command.ts"
     ],
