@@ -163,6 +163,7 @@ describe("issue 963: each setting says what it means", () => {
     // Issue 1264.
     "route_agents",
     "route_commands",
+    "throwaway_sweep",
   ];
 
   it.each(["en", "es", "ja"] as UiLanguage[])(
