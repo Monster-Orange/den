@@ -933,10 +933,6 @@ export async function hubUpstream(
   }
   let name = who.agentId;
   let linked: string | undefined;
-  // Issue 1222: an agent other than the server agent calls Hub only while
-  // its record is there and readable, before its token and after it. A
-  // missing record is a removed agent (its Den token may outlive it for a
-  // moment); an unreadable one is refused too (fails closed, try again).
   const guarded = who.agentId !== SERVER_AGENT_ID;
   const check = (): "agent_removed" | "agent_unreadable" | null => {
     try {
@@ -968,8 +964,6 @@ export async function hubUpstream(
       { id: who.agentId, name, workspace: who.workspace },
     )
     .catch(() => null);
-  // Issue 1222: removed while its token was asked for (its new token was
-  // revoked, issue 249): this call is refused, never sent on the install's.
   if (guarded) {
     const no = check();
     if (no) return { refused: no };

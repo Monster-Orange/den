@@ -237,8 +237,6 @@ export async function handleHubProxy(
       session: p.session.id ?? p.session.name,
     })
     .catch(() => null);
-  // Issue 1222: the agent was removed (before this call or while it waited
-  // for its token), or Den couldn't read its record: nothing goes to Hub.
   if (up && "refused" in up) {
     const gone = up.refused === "agent_removed";
     answered(null, gone ? "agent removed" : "agent record unreadable");
