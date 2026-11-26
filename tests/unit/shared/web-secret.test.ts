@@ -16,7 +16,7 @@ import {
   verifyPersonToken,
   webSecretPath,
   WebSecretStore,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import { cmdWebToken } from "../../../src/ui/cli/web-command.js";
 
 const tmp = fs.realpathSync(

@@ -36,7 +36,7 @@ import {
   type ScriptedPty,
 } from "../../sessions/helpers/fake-pty.js";
 import { denAuth } from "./den-auth.js";
-import { ensureWebSecret } from "../../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../../src/shared/web/web-secret.js";
 import { setupFixturePerson } from "../../../../src/shared/fixture-person.js";
 import { writeCreationRecord } from "../../../../src/shared/test-operator.js";
 import { writeTestEdgeProof } from "./edge-proof.js";

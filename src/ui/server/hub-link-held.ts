@@ -15,7 +15,7 @@
 import type {
   HubProjectChoice,
   HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import type { HeldAsker, HeldCheck } from "./approval-routes.js";
 import type { AskedBy } from "./approvals.js";
@@ -176,7 +176,7 @@ export async function runHubLinkHeld(
 export async function defaultHubLinkHeldDeps(): Promise<HubLinkHeldDeps> {
   const [hp, link, w] = await Promise.all([
     import("./hub-project-routes.js"),
-    import("../../shared/hub-project-link.js"),
+    import("../../shared/hub/hub-project-link.js"),
     import("../../shared/environment-manager/workspaces.js"),
   ]);
   return {

@@ -14,7 +14,7 @@ import {
   creationRecordPath,
   writeCreationRecord,
 } from "../../../src/shared/test-operator.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 
 const dirs: string[] = [];
 const tmp = () => {

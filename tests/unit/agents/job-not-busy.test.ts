@@ -23,11 +23,11 @@ import {
   resolveAgentsDeps,
   restartAgent,
 } from "../../../src/ui/cli/agent-ops.js";
-import { SeenDeliveries } from "../../../src/shared/hub-delivery.js";
+import { SeenDeliveries } from "../../../src/shared/hub/hub-delivery.js";
 import {
   DeliveryLoop,
   type DeliveryHub,
-} from "../../../src/shared/hub-delivery-loop.js";
+} from "../../../src/shared/hub/hub-delivery-loop.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 let tmp = "";
