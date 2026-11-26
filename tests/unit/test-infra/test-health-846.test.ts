@@ -35,7 +35,7 @@ interface Health {
   brittle: Record<string, number> | null;
 }
 
-const run = (o: Record<string, unknown>) => ({
+const run = (o: Record<string, unknown>): Record<string, unknown> => ({
   event: "pull_request",
   status: "completed",
   conclusion: "success",
