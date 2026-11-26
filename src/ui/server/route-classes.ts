@@ -1347,7 +1347,8 @@ export function routePattern(method: string, pathname: string): string {
   const e = routeEntry(method, pathname);
   if (e) return e.path;
   const seg = pathname.split("/").filter(Boolean);
-  return seg.length > 2 ? `/${seg.slice(0, 2).join("/")}/…` : pathname || "/";
+  if (!seg.length) return "/";
+  return seg.length > 1 ? `/${seg[0]}/…` : "/…";
 }
 
 function routeEntry(method: string, pathname: string): RouteEntry | null {

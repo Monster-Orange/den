@@ -19,10 +19,9 @@ describe("issue 1681: what a slow-request line names", () => {
       "/api/personas/:id",
     );
     expect(routePattern("DELETE", "/api/personas/x")).toBe("/api/personas/:id");
-    expect(routePattern("GET", "/api/nothing/sk-live-123/more")).toBe(
-      "/api/nothing/…",
-    );
-    expect(routePattern("GET", "/api/nothing")).toBe("/api/nothing");
+    expect(routePattern("GET", "/api/nothing/sk-live-123/more")).toBe("/api/…");
+    expect(routePattern("GET", "/api/sk-live-123")).toBe("/api/…");
+    expect(routePattern("GET", "/sk-live-123")).toBe("/…");
     expect(routePattern("GET", "/")).toBe("/");
   });
 
@@ -56,6 +55,16 @@ describe("issue 1681: what a slow-request line names", () => {
     ).toBe(
       "  ⚠ slow request: POST /api/x took 5000 ms (cli); 3 more like it not logged",
     );
+    expect(
+      slowRequestLine({
+        method: "GET",
+        pattern: "/",
+        ms: 30_000,
+        caller: "person",
+        more: 0,
+        left: true,
+      }),
+    ).toBe("  ⚠ slow request: GET / took 30000 ms (person, client left)");
     expect(lagLine(6012.2, 0)).toBe(
       "  ⚠ event loop blocked for 6012 ms: no request or timer ran",
     );

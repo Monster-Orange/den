@@ -24,9 +24,11 @@ export function slowRequestLine(o: {
   ms: number;
   caller: CallerKind;
   more: number;
+  left?: boolean;
 }): string {
+  const who = o.left ? `${o.caller}, client left` : o.caller;
   return (
-    `  ⚠ slow request: ${o.method.toUpperCase()} ${o.pattern} took ${Math.round(o.ms)} ms (${o.caller})` +
+    `  ⚠ slow request: ${o.method.toUpperCase()} ${o.pattern} took ${Math.round(o.ms)} ms (${who})` +
     held(o.more)
   );
 }

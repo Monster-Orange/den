@@ -1088,6 +1088,7 @@ function noteSlowRequest(
   res: http.ServerResponse,
   pathname: string,
   ms: number,
+  left = false,
 ): void {
   if (ms < SERVER_LOG_LIMITS.slow_request_ms.min) return;
   if (ms < serverLogSetting(readUserConfigSafe(), "slow_request_ms")) return;
@@ -1098,7 +1099,10 @@ function noteSlowRequest(
   const more = slowOnce(`${method} ${pattern}`);
   if (more === null) return;
   const caller = callerKind(storedPrincipal(req));
-  serverLog(slowRequestLine({ method, pattern, ms, caller, more }), "warn");
+  serverLog(
+    slowRequestLine({ method, pattern, ms, caller, more, left }),
+    "warn",
+  );
 }
 
 function readUserConfigSafe(): unknown {
@@ -6724,6 +6728,10 @@ async function handleRequest(
     if (!isStatic && !isHealthPoll) {
       const start = Date.now();
       const method = bold((req.method ?? "GET").padEnd(4));
+      res.on("close", () => {
+        if (!res.writableFinished)
+          noteSlowRequest(req, res, pathname, Date.now() - start, true);
+      });
       res.on("finish", () => {
         noteSlowRequest(req, res, pathname, Date.now() - start);
         const ms = dim(`${Date.now() - start}ms`);

@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
+import * as http from "http";
 import * as path from "path";
 import {
   startFrameServer,
   type FrameServer,
 } from "./helpers/error-frame-server.js";
+import { denAuth } from "./helpers/den-auth.js";
 
 let s: FrameServer | null = null;
 const QUERY_TOKEN = "sk-query-token-1681";
@@ -71,12 +73,45 @@ describe("issue 1681: the server names a slow request and a blocked event loop",
     await settle();
     expect(
       slowLines().some((l) =>
-        /slow request: POST \/api\/_den\/… took \d+ ms \(cli\)$/.test(l),
+        /slow request: POST \/api\/… took \d+ ms \(cli\)$/.test(l),
       ),
     ).toBe(true);
     expect(s!.log()).not.toContain(QUERY_TOKEN);
     expect(s!.log()).not.toContain(BODY_SECRET);
     expect(s!.log()).not.toContain("token=");
+  });
+
+  it("a client that leaves first is logged too, at the time it left", async () => {
+    await new Promise<void>((done) => {
+      const r = http.request({
+        host: "localhost",
+        port: s!.port,
+        method: "DELETE",
+        path: `/api/_den/slow?ms=3000&token=${QUERY_TOKEN}`,
+        headers: denAuth(path.join(s!.tmp, "den-home")),
+        agent: false,
+      });
+      r.on("error", () => done());
+      r.end();
+      setTimeout(() => {
+        r.destroy();
+        done();
+      }, 700);
+    });
+    await settle();
+    const left = slowLines().filter((l) => /slow request: DELETE /.test(l));
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatch(
+      /DELETE \/api\/… took (\d+) ms \(cli, client left\)$/,
+    );
+    const ms = Number(/took (\d+) ms/.exec(left[0])![1]);
+    expect(ms).toBeGreaterThanOrEqual(600);
+    expect(ms).toBeLessThan(2500);
+    await new Promise((r) => setTimeout(r, 2600));
+    expect(
+      slowLines().filter((l) => /slow request: DELETE /.test(l)),
+    ).toHaveLength(1);
+    expect(s!.log()).not.toContain(QUERY_TOKEN);
   });
 
   it("a short block logs no lag line; a long one logs one", async () => {
