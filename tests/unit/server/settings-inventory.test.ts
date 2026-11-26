@@ -91,6 +91,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // Issue 715: release priority.
     priority_max: true,
     priority_pass_limit_minutes: true,
+    release_pass_other_kind_minutes: true,
     priority_agents: true,
     // Issue 739: CI runners may ask for priority.
     priority_runners: true,
@@ -368,6 +369,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.priority_pass_limit_minutes",
         "gate_slots.priority_runners",
         "gate_slots.reap_grace_seconds",
+        "gate_slots.release_pass_other_kind_minutes",
         "gate_slots.route_agents",
         "gate_slots.route_commands",
         "gate_slots.remote_lapse_seconds",

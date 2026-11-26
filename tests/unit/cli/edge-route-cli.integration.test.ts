@@ -90,6 +90,20 @@ describe("edge route --for <proxy> through the real CLI", () => {
     expect(r.out).toMatch(/reverse_proxy /);
   });
 
+  it("--json (issue 840): the route as fields, and the same text as config", () => {
+    const text = den(["edge", "route", "--for", "nginx"]);
+    const r = den(["edge", "route", "--for", "nginx", "--json"]);
+    expect(r.code).toBe(0);
+    const v = JSON.parse(r.out) as Record<string, unknown>;
+    expect(Object.keys(v).sort()).toEqual(
+      ["config", "host", "kind", "listen", "upstream"].sort(),
+    );
+    expect(v.kind).toBe("nginx");
+    expect(v.host).toMatch(/acme\.localhost$/);
+    expect(v.upstream).toMatch(/^http:\/\/[^/]+:\d+$/);
+    expect(v.config).toBe(text.out.replace(/\n$/, ""));
+  });
+
   it("still refuses a flag the edge command doesn't know", () => {
     const r = den(["edge", "route", "--fro", "nginx"]);
     expect(r.code).not.toBe(0);
