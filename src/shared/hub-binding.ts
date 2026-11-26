@@ -35,6 +35,7 @@ export const HUB_STATE_FILES = [
   "tools-seen.json",
   "links-seen.json",
   "deliveries-health.json",
+  "deliveries.jsonl",
 ] as const;
 
 export interface HubBinding {

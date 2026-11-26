@@ -1006,6 +1006,18 @@ export class ApprovalQueue {
     return { ok: true, approval: { ...a } };
   }
 
+  endBecause(id: string, why: string): Approval | null {
+    const a = this.items.get(id);
+    if (!a) return null;
+    this.settle(a);
+    if (a.state !== "pending" || this.deciding.has(id)) return null;
+    a.state = "lost";
+    a.lostBecause = why;
+    a.decidedAt = this.now();
+    this.persist();
+    return { ...a };
+  }
+
   async decide(
     id: string,
     decision: Decision,

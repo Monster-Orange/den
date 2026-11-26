@@ -11,6 +11,10 @@ config and manifest changes a distribution must make to move to it under
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
 - An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
 
+### Changed
+
+- When this install moves to another Hub, what belonged to the old one is closed or cleared. Waiting requests to link a project to a Hub project, or to make one, are closed. Nothing runs from them, the bell says why, and the agent that asked is told. The old Hub's leftover answers and its delivery log are put away, and Doctor names the Hub each linked project is on.
+
 ### Fixed
 
 - After you sign in to a Hub, Den tells that Hub its address right away, so a Hub you've just moved to can link back to this Den. Before, it waited until Den's own address changed, which might never happen. A tell that fails is tried again at the next project sync until it gets through, and Doctor shows "Hub doesn't know this Den's address yet" until then.

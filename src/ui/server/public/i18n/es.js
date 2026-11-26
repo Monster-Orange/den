@@ -3070,6 +3070,10 @@
       "La solicitud de {name} venció sin respuesta: {what}. No se ejecutó nada; se le pidió al agente que vuelva a pedirlo.",
     "bell.m.heldLapsedAsk":
       "Una solicitud venció sin respuesta: {what}. No se ejecutó nada.",
+    "bell.m.heldClosedHub":
+      "La solicitud de {name} nombraba el Hub en {from}, así que __DEN_TITLE__ la cerró al pasar a {to}: {what}. No se ejecutó nada a partir de ella.",
+    "bell.m.heldClosedHubAsk":
+      "Una solicitud nombraba el Hub en {from}, así que __DEN_TITLE__ la cerró al pasar a {to}: {what}. No se ejecutó nada a partir de ella.",
     "bell.m.heldLost":
       "La solicitud de {name} se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella; se le pidió al agente que vuelva a pedirlo.",
     "bell.m.heldLostAsk":

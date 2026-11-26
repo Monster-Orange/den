@@ -1056,9 +1056,11 @@ export function hubProjectLines(
     empty?: boolean;
   }[],
   cli: string,
+  hubUrl?: string | null,
 ): { lines: string[]; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
+  const onHub = hubUrl ? ` on ${hubUrl.replace(/^https?:\/\//, "")}` : "";
   // Issue 646: a link to another Hub fails, connected or not.
   for (const { ws, link, elsewhere: e } of projects) {
     if (link || !e) continue;
@@ -1091,7 +1093,7 @@ export function hubProjectLines(
         : `${link.name} (${link.slug})`
       : "";
     const detail = link
-      ? `${ws}: linked to Hub project ${name}`
+      ? `${ws}: linked to Hub project ${name}${onHub}`
       : `${ws}: not linked to a Hub project, so Hub files its agents' work in Unfiled`;
     const fix = link ? undefined : `${cli} hub link -p ${ws}`;
     lines.push(
@@ -2846,6 +2848,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
           st.configured && st.connected,
           await projectsWithHubProject(),
           product().cli,
+          st.configured ? st.url : null,
         ).checks,
       );
       if (st.configured && st.connected) {
@@ -3020,6 +3023,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       st.configured && st.connected,
       await projectsWithHubProject(),
       product().cli,
+      st.configured ? st.url : null,
     ).lines)
       console.log(l);
     if (st.configured && st.connected) {

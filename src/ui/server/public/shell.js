@@ -3981,6 +3981,10 @@
     "bell.m.heldLapsed":
       "{name}'s request lapsed unanswered: {what}. Nothing ran; the agent was told to ask again.",
     "bell.m.heldLapsedAsk": "A request lapsed unanswered: {what}. Nothing ran.",
+    "bell.m.heldClosedHub":
+      "{name}'s request named the Hub at {from}, so __DEN_TITLE__ closed it on moving to {to}: {what}. Nothing ran from it.",
+    "bell.m.heldClosedHubAsk":
+      "A request named the Hub at {from}, so __DEN_TITLE__ closed it on moving to {to}: {what}. Nothing ran from it.",
     "bell.m.heldLost":
       "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
     "bell.m.heldLostAsk":
