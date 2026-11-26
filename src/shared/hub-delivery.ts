@@ -686,9 +686,36 @@ export class SeenDeliveries {
   constructor(
     private readonly file: string,
     private readonly cap = 5000,
+    o: { onBad?: (aside: string) => void; now?: () => number } = {},
   ) {
+    let text: string;
     try {
-      const v = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+      text = fs.readFileSync(file, "utf-8");
+    } catch {
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      parsed = undefined;
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      let aside = `${file}.bad-${(o.now ?? Date.now)()}`;
+      try {
+        fs.renameSync(file, aside);
+      } catch {
+        aside = file;
+      }
+      try {
+        o.onBad?.(aside);
+      } catch {
+        return;
+      }
+      return;
+    }
+    try {
+      const v = parsed as {
         ids?: unknown;
         last?: unknown;
       };
@@ -700,7 +727,7 @@ export class SeenDeliveries {
       this.last = typeof v.last === "string" ? v.last : null;
       this.held = (v as { held?: unknown }).held ?? null;
     } catch {
-      /* none yet, or broken: start empty */
+      /* a field Den can't use: start empty */
     }
   }
 

@@ -4008,6 +4008,10 @@
     "bell.m.noHub.one": "{n} agent started without Hub",
     "bell.m.compacting":
       "{name} is compacting repeatedly: {n} times in {m} minutes",
+    "bell.m.deliveryFileBad":
+      "Den couldn't read {file}, so it moved it to {moved}. Delivery goes on without what it held.",
+    "bell.m.deliveryFileBadKept":
+      "Den couldn't read {file} and couldn't move it aside. Delivery goes on without what it held.",
     "bell.m.notAtPrompt":
       "{name}: {n} messages wait for {m} min. Waiting: the agent isn't at its prompt",
     "bell.m.notAtPrompt.one":
