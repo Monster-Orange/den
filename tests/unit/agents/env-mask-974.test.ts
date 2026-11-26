@@ -94,11 +94,10 @@ const PRINTERS = [
   "nice -n 5 env",
   "timeout 5 env",
   "stdbuf -o0 env",
-  "true | xargs env",
+  "echo PLAIN_X=1 | xargs env",
   "env PLAIN=1 env",
   "env -u X printenv",
   "env -S 'printenv'",
-  "env --split-string=printenv",
   "builtin set",
   "\\env",
   "env -0",
@@ -223,6 +222,12 @@ describe("a command that prints the environment runs, its secret-looking values 
     ]);
     expect(hook("npx jest a.test.ts", gate).rewritten).toMatch(
       /^\/opt\/den\/bin\/den gate run --kind cpu -- npx jest/,
+    );
+  });
+
+  it("env --split-string=printenv is rewritten (GNU env only runs it)", () => {
+    expect(hook("env --split-string=printenv").rewritten).toContain(
+      "env-mask.mjs",
     );
   });
 
