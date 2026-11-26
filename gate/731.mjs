@@ -10,6 +10,7 @@
 // host is stale with no refresh under way: either is read when seen, else
 // skipped. The red-first tests (host-restart-row-731.test.ts) prove both,
 // and the held write's wait, restart and resume after an Allow, with fakes.
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 731;
 export const clauses = [
   "doctor's terminal host row, its text and its fix never name the command that stops every agent",
@@ -54,7 +55,7 @@ export async function run(ctx) {
         pid: typeof st.pid === "number",
       }
     : null;
-  const json = parse(ctx.cli(["doctor", "--json"]).out);
+  const json = { checks: doctorChecks(ctx.cli(["doctor", "--json"])) };
   const row = (Array.isArray(json?.checks) ? json.checks : []).find(
     (x) => x?.id === "terminal_host_module",
   );
@@ -67,11 +68,10 @@ export async function run(ctx) {
         refresh: row.refresh ?? null,
       }
     : null;
-  const text = ctx.cli(["doctor"]).out ?? "";
-  out.hostLine =
-    String(text)
-      .split("\n")
-      .find((l) => /^\s+Host\s/.test(l)) ?? null;
+  const said = /^[ \t]+Host[ \t].*$/m.exec(
+    String(ctx.cli(["doctor"]).out ?? ""),
+  );
+  out.hostLine = said ? said[0] : null;
   return out;
 }
 
