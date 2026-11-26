@@ -26,6 +26,7 @@ import {
 } from "../../../src/shared/settings-cli-rows.js";
 import { DEN_SETTINGS } from "../../../src/ui/server/public/settings-registry.js";
 import { SERVER_SCOPE } from "../../../src/shared/agents/server-agent.js";
+import { orgPatterns } from "../../../src/shared/org-names.js";
 import {
   runIssueWrite,
   type IssueWriteAudit,
@@ -47,10 +48,14 @@ function fakes(
     perHour?: number;
     gh?: (args: string[]) => { code: number; stdout: string; stderr: string };
     now?: () => number;
+    /** Issue 1127: the listed names (none: nothing refused). */
+    names?: string;
+    visibility?: "public" | "private" | "internal" | null;
   } = {},
 ) {
   const calls: GhCall[] = [];
   const audits: IssueWriteAudit[] = [];
+  const lookups: { repo: string; maxAgeMs: number }[] = [];
   const deps: IssueWriteDeps = {
     agentOf: (id) =>
       id === "a1"
@@ -68,8 +73,14 @@ function fakes(
     settings: () => ({
       roles: opts.roles ?? [...ISSUE_WRITE_DEFAULT_ROLES],
       perHour: opts.perHour ?? 60,
+      visibilityMinutes: 10,
     }),
     limit: new IssueWriteLimit(opts.now),
+    namePatterns: () => orgPatterns({ DEN_ORG_NAMES: opts.names ?? "" }),
+    visibility: async (repo, maxAgeMs) => {
+      lookups.push({ repo, maxAgeMs });
+      return opts.visibility === undefined ? "public" : opts.visibility;
+    },
     gh: async (args, stdin) => {
       calls.push({ args, ...(stdin !== undefined ? { stdin } : {}) });
       return (
@@ -86,7 +97,7 @@ function fakes(
     installLabel: () => "den on box",
     audit: (e) => audits.push(e),
   };
-  return { deps, calls, audits };
+  return { deps, calls, audits, lookups };
 }
 
 const agent = { agent: "a1", workspace: "north" };
@@ -306,12 +317,24 @@ describe("issue_write: who may (agents.issue_writes)", () => {
     expect(issueWriteSettings(() => ({}))).toEqual({
       roles: [...ISSUE_WRITE_DEFAULT_ROLES],
       perHour: 60,
+      visibilityMinutes: 10,
     });
     expect(
       issueWriteSettings(() => ({
         agents: { issue_writes: ["tester"], issue_writes_per_hour: 5 },
       })),
-    ).toEqual({ roles: ["tester"], perHour: 5 });
+    ).toEqual({ roles: ["tester"], perHour: 5, visibilityMinutes: 10 });
+    // Issue 1127: how long a repo's visibility is kept for the words check.
+    expect(
+      issueWriteSettings(() => ({
+        agents: { issue_writes_visibility_minutes: 3 },
+      })).visibilityMinutes,
+    ).toBe(3);
+    expect(() =>
+      issueWriteSettings(() => ({
+        agents: { issue_writes_visibility_minutes: 0 },
+      })),
+    ).toThrow(/agents\.issue_writes_visibility_minutes/);
     expect(() =>
       issueWriteSettings(() => ({ agents: { issue_writes_per_hour: 0 } })),
     ).toThrow(/agents\.issue_writes_per_hour/);
@@ -325,10 +348,11 @@ describe("issue_write: who may (agents.issue_writes)", () => {
     expect(issueWriteSettings(() => ({}), den)).toEqual({
       roles: ["sde"],
       perHour: 9,
+      visibilityMinutes: 10,
     });
     expect(
       issueWriteSettings(() => ({ agents: { issue_writes: [] } }), den),
-    ).toEqual({ roles: [], perHour: 9 });
+    ).toEqual({ roles: [], perHour: 9, visibilityMinutes: 10 });
   });
 });
 
@@ -579,7 +603,29 @@ describe("issue_write: its Settings rows", () => {
     expect(issueWriteSettings(() => user)).toEqual({
       roles: ["sde", "reviewer"],
       perHour: 30,
+      visibilityMinutes: 10,
     });
+    // Issue 1127: the words check's visibility age, its own row.
+    expect(
+      rows.find((r) =>
+        r.keys?.includes("agent_issue_writes.visibility_minutes"),
+      ),
+    ).toMatchObject({
+      category: "agents",
+      scope: "user",
+      control: { type: "number", min: 1, max: 1440 },
+    });
+    expect(
+      patchCliRows(user, { agent_issue_writes: { visibility_minutes: 5 } }),
+    ).toEqual({ ok: true });
+    expect(
+      (user.agents as Record<string, unknown>).issue_writes_visibility_minutes,
+    ).toBe(5);
+    expect(issueWriteSettings(() => user).visibilityMinutes).toBe(5);
+    expect(
+      patchCliRows(user, { agent_issue_writes: { visibility_minutes: 0 } }).ok,
+    ).toBe(false);
+    patchCliRows(user, { agent_issue_writes: { visibility_minutes: null } });
     for (const bad of [
       { per_hour: 0 },
       { per_hour: 1.5 },
@@ -590,5 +636,153 @@ describe("issue_write: its Settings rows", () => {
     // null clears both, back to the defaults; the rest of agents stays.
     patchCliRows(user, { agent_issue_writes: { roles: null, per_hour: null } });
     expect(user.agents).toEqual({ git: { key: "k" } });
+  });
+});
+
+describe("issue 1127: issue_write checks the text it files for listed names", () => {
+  const LISTED = "zorblax";
+
+  it("refuses a create whose title holds a listed name: nothing sent, the answer quotes the agent's phrase, the audit never holds it", async () => {
+    const f = fakes({ names: LISTED });
+    const r = await runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "Crash at Zorblax",
+      body: BODY,
+    });
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe("issue_write_words");
+    expect(String(r.body.error)).toContain('title line 1: "Zorblax"');
+    expect(String(r.body.error)).toMatch(/"the person"/);
+    expect(f.calls).toEqual([]);
+    expect(f.audits[0]).toMatchObject({ refused: true });
+    expect(JSON.stringify(f.audits)).toContain("title line 1");
+    expect(JSON.stringify(f.audits).toLowerCase()).not.toContain(LISTED);
+  });
+
+  it("refuses a body and a comment that hold one, and lets clean text through", async () => {
+    const f = fakes({ names: LISTED });
+    const body = await runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "A crash",
+      body: "Steps:\nopen zorblax.example",
+    });
+    expect(String(body.body.error)).toContain("body line 2");
+    const comment = await runIssueWrite(f.deps, agent, {
+      action: "comment",
+      repo: "acme/api",
+      issue: 7,
+      body: "Seen on ZORBLAX too",
+    });
+    expect(comment.body.code).toBe("issue_write_words");
+    expect(f.calls).toEqual([]);
+    const clean = await runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "A crash",
+      body: BODY,
+    });
+    expect(clean.status).toBe(200);
+    expect(f.calls).toHaveLength(1);
+  });
+
+  it("a private repo is not checked; a repo whose visibility isn't known is", async () => {
+    const priv = fakes({ names: LISTED, visibility: "private" });
+    const p = await runIssueWrite(priv.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "Crash at Zorblax",
+      body: BODY,
+    });
+    expect(p.status).toBe(200);
+    const unknown = fakes({ names: LISTED, visibility: null });
+    const u = await runIssueWrite(unknown.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "Crash at Zorblax",
+      body: BODY,
+    });
+    expect(u.body.code).toBe("issue_write_words");
+  });
+
+  it("asks for the repo's visibility no older than agents.issue_writes_visibility_minutes", async () => {
+    const f = fakes({ names: LISTED });
+    await runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "A crash",
+      body: BODY,
+    });
+    expect(f.lookups).toEqual([{ repo: "acme/api", maxAgeMs: 600_000 }]);
+  });
+
+  it("a refusal doesn't use up the hour's writes", async () => {
+    const f = fakes({ names: LISTED, perHour: 1 });
+    await runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "Crash at Zorblax",
+      body: BODY,
+    });
+    const ok = await runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "A crash",
+      body: BODY,
+    });
+    expect(ok.status).toBe(200);
+  });
+});
+
+describe("issue 1127: issue_write never echoes the list, and checks label and milestone names", () => {
+  it("a bad line in the list refuses with a fixed message: no part of the line", async () => {
+    const f = fakes({ names: "zorblax\nqx(secretword" });
+    const r = await runIssueWrite(f.deps, agent, {
+      action: "create",
+      repo: "acme/api",
+      title: "A crash",
+      body: BODY,
+    });
+    expect(r.status).toBe(500);
+    expect(JSON.stringify([r.body, f.audits])).not.toMatch(
+      /qx|secretword|zorblax/,
+    );
+    expect(f.calls).toEqual([]);
+  });
+
+  it("whatever the list reader throws, the refusal is a fixed message", async () => {
+    const f = fakes({ names: "zorblax" });
+    f.deps.namePatterns = () => {
+      throw new Error("Invalid regular expression: /qx(secretword/i");
+    };
+    const r = await runIssueWrite(f.deps, agent, {
+      action: "comment",
+      repo: "acme/api",
+      issue: 7,
+      body: BODY,
+    });
+    expect(r.status).toBe(500);
+    expect(JSON.stringify([r.body, f.audits])).not.toMatch(/qx|secretword/);
+  });
+
+  it("refuses a label or a milestone name that holds a listed name", async () => {
+    const f = fakes({ names: "zorblax" });
+    const label = await runIssueWrite(f.deps, agent, {
+      action: "label",
+      repo: "acme/api",
+      issue: 7,
+      add: ["zorblax-customer"],
+    });
+    expect(label.body.code).toBe("issue_write_words");
+    expect(String(label.body.error)).toContain("label line 1");
+    const ms = await runIssueWrite(f.deps, agent, {
+      action: "milestone",
+      repo: "acme/api",
+      issue: 7,
+      milestone: "Zorblax launch",
+    });
+    expect(ms.body.code).toBe("issue_write_words");
+    expect(f.calls).toEqual([]);
   });
 });
