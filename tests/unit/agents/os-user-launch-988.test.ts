@@ -167,6 +167,15 @@ describe("issue 988: every group the login is in, and every link under the engin
     expect(run(e, fake({ [above]: { mode: 0o40777 } }))).toContain(above);
   });
 
+  it("a link's own mode is no problem (Linux shows every link as 0777): its target and folder are what count", () => {
+    const { e } = linked("linkmode");
+    const pkg = path.join(e, "node_modules", "pkg");
+    const loop = path.join(e, "node_modules", "loop");
+    expect(
+      run(e, fake({ [pkg]: { mode: 0o120777 }, [loop]: { mode: 0o120777 } })),
+    ).toBe("");
+  });
+
   it("a link under the engine to nothing is named: the login might make what it points at", () => {
     const { e } = linked("dangling");
     const open = path.join(tmp, "dangling", "open");

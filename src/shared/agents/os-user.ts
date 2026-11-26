@@ -992,13 +992,14 @@ export function runtimeWritableProblems(
   };
   const walked = new Set<string>();
   const walk = (p: string) => {
-    check(p, false);
     let st: fs.Stats;
     try {
       st = fs.lstatSync(p);
     } catch {
+      check(p, false);
       return;
     }
+    if (!st.isSymbolicLink()) check(p, false);
     if (st.isSymbolicLink()) {
       let target: string;
       try {
