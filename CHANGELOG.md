@@ -32,6 +32,7 @@ config and manifest changes a distribution must make to move to it under
 - minimatch, used by the TypeScript lint parser, is now 11.0.9, past a denial-of-service flaw in its brace patterns (GHSA-g3hv-75wg-m249; below 11.0.1). It's dev-only, not in the published package: `npm ls minimatch --omit=dev` shows only 5.1.9, outside the flaw's range. The lock also no longer lists the PTY module (@lydell/node-pty) as a required dependency; package.json has it as optional only.
 - A test install stays a test install after Den restarts itself: from the agent tool, the page's Restart, a self-update, or a self-update's rollback. Before, the restarted server came back without its test-install mark. Agents, terminals and npm still never see the mark (issue 832).
 - A pull request's `github_watch` reports only that pull request's own checks. For each workflow it counts the newest run on the head: an older run a label or an edit replaced, a run cancelled by a newer one, and `workflow_dispatch` or `push` runs that only share the head's commit are left out. Before it reports a failure it checks which run the failure came from, which can add one interval. (issue 1279)
+- After a Den restart, an agent's question still shows on its wait: Den adopted the kept bell row but lost the question text, so the agent's row showed no question while the bell still did. Each kind of kept row is read for its own text, including rows from older Dens. (issue 1699)
 
 ## [0.4.90] - 2026-11-25
 
