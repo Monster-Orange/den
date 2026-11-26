@@ -2311,6 +2311,9 @@
     "set.workspace.hub_delivery_loop.o.install": "As everywhere",
     "set.workspace.hub_delivery_loop.o.on": "On",
     "set.workspace.hub_delivery_loop.o.off": "Off",
+    "set.workspace.agents_max_per_project": "Agents per project: this project",
+    "set.workspace.agents_max_per_project.d":
+      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
     "set.workspace.hub_delivery_loop_extra": "Added to the Hub delivery loop",
     "set.workspace.hub_delivery_loop_extra.d":
       "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
@@ -2593,6 +2596,12 @@
     "set.server.server_log_max": "Warnings log, largest size",
     "set.server.server_log_max.d":
       "While __DEN_TITLE__ runs as a service, its warnings also go to logs/server.log in its state folder, so they are still there after a restart. At this size it moves to server.log.1 (once) and starts again. __DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "Slow request, log after",
+    "set.server.slow_request_ms.d":
+      "When a request takes longer than this, __DEN_TITLE__'s log gets one line with its route, who asked, and how long it took. Never its address, query, headers or body. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "Stall, log after",
+    "set.server.event_loop_lag_ms.d":
+      "When __DEN_TITLE__ is busy and runs nothing else for longer than this, its log gets one line saying how long. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max": "Report screenshots, largest kept",
     "set.server.report_screenshot_max.d":
       "The largest masked screenshot __DEN_TITLE__ keeps with a report. A larger one is refused before anything is filed. __DEN_CLI__ config reports.screenshot_max_mb=8",
@@ -3255,6 +3264,9 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
+    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.det.project_agent_cap.now": "Now: {v}",
+    "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
     "ap.do.agent_folder": "Move agent {agent} to {where}",
     "ap.do.embed_key_create":
@@ -3521,6 +3533,20 @@
     "ap.hl.nowNone": "Now: not linked to a Hub project",
     "ap.hl.then": "Then: {hub}",
     "ap.hl.filed": "Its agents' Hub work is filed there from their next call.",
+    "ap.do.state_folder_own": "Give this install its own state folder",
+    "ap.sf.new":
+      "A new, empty state folder for this install, beside the shared one.",
+    "ap.sf.empty":
+      "Nothing is copied or moved: its agents, sign-ins and history stay with the other copy, and you sign in to this Den again.",
+    "ap.sf.other": "The other copy keeps the shared folder as it is.",
+    "ap.sf.restart":
+      "Den restarts on its own folder, then carries on with Connect to {hub}.",
+    "ap.sf.restartNone": "Den restarts on its own folder.",
+    "hub.sf.shared":
+      "Another copy of Den on this computer shares this install's state folder, and it is on another Hub.",
+    "hub.sf.offer": "Give this install its own state folder",
+    "hub.sf.allow":
+      "Allow it in the dialog. Den restarts, then carries on with Connect.",
     "ap.pm.now": "Now: {mode}",
     "ap.pm.then": "Then: {mode}",
     "ap.pm.thenNone":
@@ -4031,6 +4057,8 @@
       "{name}: Didn't start: this folder isn't trusted. Resume and choose Yes.",
     "bell.m.policyRan": "{name} did this without your Allow: {what}",
     "bell.m.heldAllow": "{name} waits for your Allow: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} withdrew its request: {what}. Withdrawn: {reason}",
     "bell.m.gateLapsed":
       '{name}\'s {kind} gate slot "{label}" lapsed: not renewed, and past its estimate. The next in line started.',
     "bell.m.vschedPass": "Scheduled run on {env}: {n} checks passed.",
@@ -4058,6 +4086,8 @@
       "{name}'s request was lost at a restart: {what}. Nothing ran from it; the agent was told to ask again.",
     "bell.m.heldLostAsk":
       "A request was lost at a restart: {what}. Nothing ran from it.",
+    "bell.m.capHeld":
+      "{name} didn't start: {n} of {limit} agents are running ({key}). Stop one, or raise {key}.",
     "bell.m.restartsWaiting": "{n} agents waiting to restart, a few at a time",
     "bell.m.heldLostAll":
       "Requests waiting for your Allow could not be read back after a restart. They are lost; agents that ask again are shown here.",
@@ -4201,6 +4231,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch}), not pushed: the branch requires signed commits and no agents' signing key is set (doctor says how)",
     "bell.m.pinPushedBehind":
       "__DEN_TITLE__ updated to {v}: its pin is pushed ({sha}), but the checkout is behind and has local changes, so pull to get the pin",
     "bell.m.pinPrAhead":

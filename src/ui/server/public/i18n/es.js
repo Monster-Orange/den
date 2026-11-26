@@ -1386,6 +1386,12 @@
     "set.server.server_log_max": "Registro de avisos, tamaño máximo",
     "set.server.server_log_max.d":
       "Mientras __DEN_TITLE__ funciona como servicio, sus avisos también van a logs/server.log en su carpeta de estado, así siguen ahí después de un reinicio. Al llegar a este tamaño pasa a server.log.1 (una vez) y empieza de nuevo. __DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "Petición lenta, registrar después de",
+    "set.server.slow_request_ms.d":
+      "Cuando una petición tarda más que esto, el registro de __DEN_TITLE__ recibe una línea con su ruta, quién la pidió y cuánto tardó. Nunca su dirección, consulta, cabeceras ni cuerpo. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "Bloqueo, registrar después de",
+    "set.server.event_loop_lag_ms.d":
+      "Cuando __DEN_TITLE__ está ocupado y no ejecuta nada más durante más tiempo que esto, su registro recibe una línea que dice cuánto. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max":
       "Capturas de informes, la más grande guardada",
     "set.server.report_screenshot_max.d":
@@ -1856,6 +1862,9 @@
     "set.workspace.hub_delivery_loop.o.install": "Como en todas partes",
     "set.workspace.hub_delivery_loop.o.on": "Activado",
     "set.workspace.hub_delivery_loop.o.off": "Desactivado",
+    "set.workspace.agents_max_per_project": "Agentes por proyecto: este proyecto",
+    "set.workspace.agents_max_per_project.d":
+      "Cuántos agentes de este proyecto pueden funcionar a la vez. Vacío o 0 usa Agentes por proyecto. Solo puede ser más bajo que eso. Un inicio por encima de esto se rechaza, y dice qué límite lo frena.",
     "set.workspace.hub_delivery_loop_extra":
       "Añadido al ciclo de entrega de Hub",
     "set.workspace.hub_delivery_loop_extra.d":
@@ -2328,6 +2337,9 @@
     "ap.det.den_sandbox_on.off":
       "Un agente puesto en off en user.yml sigue en off.",
     "ap.do.repo_clone": "Clonar {source} en {path}",
+    "ap.do.project_agent_cap": "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
+    "ap.det.project_agent_cap.now": "Ahora: {v}",
+    "ap.det.project_agent_cap.then": "Después: {v}",
     "ap.do.project_mode":
       "Cambiar el modo del proyecto {project}: {from} → {to}",
     "ap.do.agent_folder": "Mover el agente {agent} a {where}",
@@ -2603,6 +2615,22 @@
     "ap.hl.then": "Después: {hub}",
     "ap.hl.filed":
       "El trabajo de sus agentes en Hub se archiva allí desde su próxima llamada.",
+    "ap.do.state_folder_own":
+      "Dar a esta instalación su propia carpeta de estado",
+    "ap.sf.new":
+      "Una carpeta de estado nueva y vacía para esta instalación, junto a la compartida.",
+    "ap.sf.empty":
+      "No se copia ni se mueve nada: sus agentes, inicios de sesión e historial se quedan con la otra copia, y vuelves a iniciar sesión en este Den.",
+    "ap.sf.other":
+      "La otra copia conserva la carpeta compartida tal como está.",
+    "ap.sf.restart":
+      "Den se reinicia en su propia carpeta y luego sigue con la conexión a {hub}.",
+    "ap.sf.restartNone": "Den se reinicia en su propia carpeta.",
+    "hub.sf.shared":
+      "Otra copia de Den en esta computadora comparte la carpeta de estado de esta instalación, y está en otro Hub.",
+    "hub.sf.offer": "Dar a esta instalación su propia carpeta de estado",
+    "hub.sf.allow":
+      "Permítelo en el cuadro de diálogo. Den se reinicia y luego sigue con la conexión.",
     "ap.pm.now": "Ahora: {mode}",
     "ap.pm.then": "Después: {mode}",
     "ap.pm.thenNone":
@@ -3121,6 +3149,8 @@
       "{name}: No se inició: esta carpeta no es de confianza. Reanuda y elige Yes.",
     "bell.m.policyRan": "{name} lo hizo sin pedirte permiso: {what}",
     "bell.m.heldAllow": "{name} espera tu permiso: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} retiró su solicitud: {what}. Retirada: {reason}",
     "bell.m.gateLapsed":
       'El turno {kind} "{label}" de {name} caducó: no se renovó y pasó su estimación. Empezó el siguiente de la cola.',
     "bell.m.vschedPass": "Corrida programada en {env}: pasaron {n} pruebas.",
@@ -3149,6 +3179,8 @@
       "La solicitud de {name} se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella; se le pidió al agente que vuelva a pedirlo.",
     "bell.m.heldLostAsk":
       "Una solicitud se perdió en un reinicio: {what}. No se ejecutó nada a partir de ella.",
+    "bell.m.capHeld":
+      "{name} no se inició: hay {n} de {limit} agentes funcionando ({key}). Detén uno, o sube {key}.",
     "bell.m.restartsWaiting":
       "{n} agentes esperan para reiniciarse, unos pocos a la vez",
     "bell.m.heldLostAll":
@@ -3298,6 +3330,8 @@
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch}), sin enviar a la rama: la rama exige commits firmados y no hay clave de firma de los agentes (doctor dice cómo)",
     "bell.m.pinPushedBehind":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada se envió ({sha}), pero la copia local está atrasada y tiene cambios locales, así que haz pull para obtener la versión fijada",
     "bell.m.pinPrAhead":

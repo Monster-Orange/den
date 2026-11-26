@@ -96,6 +96,7 @@ export type PinStep =
       sha: string;
       branch: string;
       url: string;
+      unsignedRequired?: true;
       /** Issue 1189: set to push, it went this way, and why. */
       via?: PinVia;
     }
@@ -109,6 +110,7 @@ export type PinStep =
       /** Where to open it by hand (a GitHub remote), or null. */
       link: string | null;
       first: boolean;
+      unsignedRequired?: true;
       via?: PinVia;
     }
   /** Issue 160: held for the person's Allow (the approval policy). */
@@ -143,6 +145,11 @@ export interface PinCommitDeps {
   allow?: () => "run" | "ask";
   /** Issue 160: hold den_pin_commit of `version` for the person. */
   ask?: (version: string) => Promise<boolean> | boolean;
+  signed?: boolean;
+  signaturesRequired?: (
+    remoteUrl: string,
+    branch: string,
+  ) => Promise<boolean | null>;
 }
 
 /** The pull request's branch for `version`. */
@@ -298,6 +305,7 @@ export async function commitPin(
     return { did: "done", version };
   if (same?.state === "pr_opened") return { did: "done", version, how: "pr" };
   let mode: PinMode = d.mode ?? "push";
+  let unsignedRequired = false;
   // Issue 1189: a pull request this version fell back to stays one.
   let via: PinVia | undefined =
     same?.state === "branch_pushed" ? same.via : undefined;
@@ -318,6 +326,19 @@ export async function commitPin(
         why: "the distribution's checkout is on no branch (detached HEAD)",
       };
 
+    if (mode === "push" && d.signed === false && d.signaturesRequired) {
+      const u = await d.git(["remote", "get-url", up.remote]);
+      const req =
+        u.code === 0
+          ? await d
+              .signaturesRequired(u.out.trim(), up.branch)
+              .catch(() => null)
+          : null;
+      if (req === true) {
+        mode = "pr";
+        unsignedRequired = true;
+      }
+    }
     // Issue 1195: the remote branch's tip, fetched once per pass.
     let tipRead: Promise<RemoteTip | null> | undefined;
     const tipOf = () => (tipRead ??= remoteTip(d.git, up));
@@ -443,8 +464,13 @@ export async function commitPin(
       if (mode === "push") await takePin(d.git, tip, sha);
     }
 
-    if (mode === "pr")
-      return await openPr(version, sha, branch, up, same, d, at, via);
+    if (mode === "pr") {
+      const step = await openPr(version, sha, branch, up, same, d, at, via);
+      return unsignedRequired &&
+        (step.did === "pr" || step.did === "branch_pushed")
+        ? { ...step, unsignedRequired: true }
+        : step;
+    }
 
     const p = await d.git([
       "push",
@@ -820,6 +846,59 @@ export function pinGit(
   };
 }
 
+export function ghRepoOf(remoteUrl: string): string | null {
+  const m = remoteUrl
+    .trim()
+    .match(
+      /github\.com[:/]([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/,
+    );
+  return m ? `${m[1]}/${m[2]}` : null;
+}
+
+export function ghSignaturesRequired(
+  run: (argv: string[], cwd: string) => Promise<Ran>,
+  gh: string[] = ["gh"],
+  cwd: string = process.cwd(),
+): (remoteUrl: string, branch: string) => Promise<boolean | null> {
+  return async (remoteUrl, branch) => {
+    const repo = ghRepoOf(remoteUrl);
+    if (!repo || !/^[A-Za-z0-9._/-]+$/.test(branch)) return null;
+    const b = encodeURIComponent(branch);
+    const rules = await run(
+      [...gh, "api", `repos/${repo}/rules/branches/${b}`],
+      cwd,
+    ).catch(() => ({ code: null, out: "" }) as Ran);
+    if (rules.code !== 0) return null;
+    try {
+      const list = JSON.parse(rules.out) as { type?: unknown }[];
+      if (
+        Array.isArray(list) &&
+        list.some((r) => r?.type === "required_signatures")
+      )
+        return true;
+    } catch {
+      return null;
+    }
+    const classic = await run(
+      [
+        ...gh,
+        "api",
+        `repos/${repo}/branches/${b}/protection/required_signatures`,
+      ],
+      cwd,
+    ).catch(() => ({ code: null, out: "" }) as Ran);
+    if (classic.code !== 0)
+      return /\b404\b|Not Found/.test(classic.out) ? false : null;
+    try {
+      return (
+        (JSON.parse(classic.out) as { enabled?: unknown }).enabled === true
+      );
+    } catch {
+      return null;
+    }
+  };
+}
+
 /** The bell item for a pin step: its English text, its key and words, its link. */
 export interface PinBell {
   text: string;
@@ -872,6 +951,13 @@ export function pinBellMessage(step: PinStep, t: string): PinBell | null {
         { why: step.why },
       );
     case "pr": {
+      if (step.unsignedRequired)
+        return item(
+          `${t} updated to ${v}: its pin is in a pull request (${step.branch}), not pushed: the branch requires signed commits and no agents' signing key is set (doctor says how)`,
+          "bell.m.pinPrUnsigned",
+          { branch: step.branch },
+          step.url,
+        );
       if (step.via === "ahead") {
         const n = pullNumber(step.url) ?? "";
         return item(
