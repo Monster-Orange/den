@@ -6,7 +6,6 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.91] - unreleased
 
-- An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 - You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
 - More of Den's CLI has a `--json` form, for scripts and checks: `agents accounts list --json` (no token or account ref in it), `edge route --for <proxy> --json`, and `sessions start --json`. `doctor --json` also gives a check's notes, the lines the plain doctor marks healthy. The plain text is unchanged.
@@ -22,6 +21,7 @@ config and manifest changes a distribution must make to move to it under
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
 - minimatch, used by the TypeScript lint parser, is now 11.0.9, past a denial-of-service flaw in its brace patterns (GHSA-g3hv-75wg-m249; below 11.0.1). It's dev-only, not in the published package: `npm ls minimatch --omit=dev` shows only 5.1.9, outside the flaw's range. The lock also no longer lists the PTY module (@lydell/node-pty) as a required dependency; package.json has it as optional only.
+- An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 
 ## [0.4.90] - 2026-11-25
 
