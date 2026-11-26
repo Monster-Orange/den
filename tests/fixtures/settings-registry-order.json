@@ -137,6 +137,7 @@
     ["agents.issue_writes", "agents"],
     ["agents.issue_writes_per_hour", "agents"],
     ["agents.issue_writes_visibility_minutes", "agents"],
+    ["agents.issue_writes_public", "agents"],
     ["agents.default_mode", "agents"],
     ["agents.pane_reconnect", "agents"],
     ["agents.pane_reconnect_window", "agents"],
