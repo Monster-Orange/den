@@ -655,6 +655,8 @@ jobs:
           node-version: "24.13.0"
           cache: npm
       - run: npm ci
+      - name: Close /opt as on a real machine (the runner image leaves it 0777)
+        run: sudo chmod 0755 /opt
       - name: The OS-user test, as root
         run: |
           sudo env "PATH=$PATH" DEN_OS_USER_E2E=1 npx jest --ci --verbose --maxWorkers=1 \

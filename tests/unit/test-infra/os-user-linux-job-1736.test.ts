@@ -47,6 +47,12 @@ describe("the real-Linux OS-user test runs in CI (issue 1736)", () => {
     expect(runs).toMatch(/numPassedTests/);
   });
 
+  it("closes the runner's open /opt to 0755 before the test, as a real machine has it", () => {
+    const at = (re: RegExp) => runs.search(re);
+    expect(at(/sudo chmod 0755 \/opt\n/)).toBeGreaterThan(-1);
+    expect(at(/sudo chmod 0755 \/opt\n/)).toBeLessThan(at(/DEN_OS_USER_E2E=1/));
+  });
+
   it("runs on a pull request that touches the OS-user code, and by hand", () => {
     expect(job.needs).toEqual(["fast", "pr"]);
     expect(job.if).toMatch(/workflow_dispatch/);
