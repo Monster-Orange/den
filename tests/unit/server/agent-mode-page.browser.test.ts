@@ -320,38 +320,26 @@ describe("issue 252: one agent's mode, set in the page", () => {
     await p.waitForSelector(more);
     await p.click(more);
     await p
-      .locator('.den-pop[role="menu"] .den-mi', {
-        hasText: "Skill packs: Install's default",
-      })
+      .getByRole("menuitem", { name: "Skill packs: Install's default" })
       .click();
-    await p.waitForSelector('.den-pop[role="menu"] [role="menuitemradio"]');
+    const off = p.getByRole("menuitemradio", { name: "Off", exact: true });
+    await off.waitFor();
     expect(await menuItems(p)).toEqual([
       ["Install's default", "true"],
       ["Off", "false"],
       ["On", "false"],
     ]);
     const before = s!.made.length;
-    await p
-      .locator('.den-pop[role="menu"] [role="menuitemradio"]', {
-        hasText: /^Off$/,
-      })
-      .click();
-    await p
-      .getByText(
-        "lead's skill packs are set. It restarts after its turn, on the same conversation.",
-      )
-      .first()
-      .waitFor({ timeout: 15_000 });
-    const until = Date.now() + 30_000;
-    let hit: string[] | undefined;
-    while (!hit && Date.now() < until) {
-      hit = s!.made
-        .slice(before)
-        .find(
-          (m) => m.args.includes("--resume") && m.args.includes(TOKEN),
-        )?.args;
-      if (!hit) await new Promise((r) => setTimeout(r, 200));
-    }
+    await off.click();
+    await p.waitForFunction(
+      (m) => document.body.innerText.includes(m),
+      "lead's skill packs are set. It restarts after its turn, on the same conversation.",
+      { timeout: 15_000 },
+    );
+    await resumedIn("auto", before);
+    const hit = s!.made
+      .slice(before)
+      .find((m) => m.args.includes("--resume") && m.args.includes(TOKEN))?.args;
     expect(hit).toBeDefined();
     expect(hit).not.toContain("--plugin-dir");
     const rows = (await (
