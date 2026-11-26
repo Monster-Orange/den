@@ -109,7 +109,7 @@ import {
 import {
   hubProjectOf,
   type HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import { resolveWorkspaceInput } from "../../shared/environment-manager/workspaces.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
 import { edgeDomains } from "../../shared/edge/render.js";
@@ -205,7 +205,7 @@ import {
   checkAppFeed,
   type AppFeedConfig,
 } from "../../shared/agents/app-feeds.js";
-import { hubLoopPrompt, projectHubLoop } from "../../shared/hub-loop.js";
+import { hubLoopPrompt, projectHubLoop } from "../../shared/hub/hub-loop.js";
 import { namedSecretRef } from "../../shared/secrets/index.js";
 import {
   checkProjectMcpServer,
@@ -422,7 +422,7 @@ import {
   type Resolved,
   type SessionsDeps,
 } from "./sessions-command.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 import { personServerFor, type PersonServer } from "./person-server.js";
 import type { SecretRef, SecretsProvider } from "../../shared/secrets/types.js";
 import {
@@ -9340,6 +9340,7 @@ export async function markInterrupted(
     writeRecord(d.stateDir(), next);
     marked.push(next);
     found.interrupted.push(rec.id);
+    await new Promise<void>((r) => setImmediate(r));
   }
   if (opts.autoResume === false || !marked.length) return found;
   const find = personaLookup(d);

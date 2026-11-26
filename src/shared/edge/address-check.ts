@@ -27,10 +27,10 @@ import {
   probeIdentity,
   type ProbeResult,
 } from "../den-identity.js";
-import { localhostOrigin } from "../web-session.js";
-import { denWebBase } from "../web-dial.js";
-import { isLoopbackName } from "../web-url-check.js";
-import { readWebSecret } from "../web-secret.js";
+import { localhostOrigin } from "../web/web-session.js";
+import { denWebBase } from "../web/web-dial.js";
+import { isLoopbackName } from "../web/web-url-check.js";
+import { readWebSecret } from "../web/web-secret.js";
 import { portInUse } from "../port-pick.js";
 import { addressWord, type AddressWord } from "./address-words.js";
 import { portOwner, type PortOwner } from "./port-owner.js";

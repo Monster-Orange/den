@@ -7,7 +7,7 @@
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { readCoverage } from "../../../src/shared/hub-project-sync.js";
+import { readCoverage } from "../../../src/shared/hub/hub-project-sync.js";
 
 const tt = (k: string, v?: Record<string, unknown>) =>
   `[${k}${v ? `:${Object.values(v).join("|")}` : ""}]`;

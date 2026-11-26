@@ -17,7 +17,10 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { startDenServer, stopServer } from "../../child-servers.js";
-import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
+import {
+  personToken,
+  readWebSecret,
+} from "../../../src/shared/web/web-secret.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");

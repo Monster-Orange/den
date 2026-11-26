@@ -5,9 +5,7 @@ import * as path from "path";
 
 const ROOT = path.join(__dirname, "../../..");
 
-const KNOWN = [
-  "src/shared/health/rollup.ts -> src/ui/server/public/health-rollup.js",
-];
+const KNOWN: string[] = [];
 
 const SPEC =
   /(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*|\bjest\.(?:mock|unstable_mockModule)\s*\(\s*)(["'`])(\.{1,2}\/[^"'`\n]+?)\1/g;

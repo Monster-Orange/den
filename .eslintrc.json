@@ -41,11 +41,11 @@
           "error",
           {
             "selector": "TemplateElement[value.raw=/^https?:\\/\\/localhost:$/]",
-            "message": "Den's web server listens on 127.0.0.1 (DEN_BIND_HOST), and Node resolves localhost to ::1 first, so a dial can reach another program. Use denWebBase(port) from src/shared/web-dial.ts. A URL shown to a person (not dialled) may disable this line with a reason."
+            "message": "Den's web server listens on 127.0.0.1 (DEN_BIND_HOST), and Node resolves localhost to ::1 first, so a dial can reach another program. Use denWebBase(port) from src/shared/web/web-dial.ts. A URL shown to a person (not dialled) may disable this line with a reason."
           },
           {
             "selector": "CallExpression > CallExpression.arguments[callee.name='localhostOrigin'], NewExpression > CallExpression.arguments[callee.name='localhostOrigin']",
-            "message": "localhostOrigin(port) is the browser's origin: dialling it reaches ::1 first, where another program can answer. Dial denWebBase(port) from src/shared/web-dial.ts."
+            "message": "localhostOrigin(port) is the browser's origin: dialling it reaches ::1 first, where another program can answer. Dial denWebBase(port) from src/shared/web/web-dial.ts."
           },
           {
             "selector": "AssignmentExpression[left.property.name='hostname'][right.value='localhost']",
