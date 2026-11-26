@@ -3045,7 +3045,6 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
-  // Issue 974: what is held out of agent sessions, by name.
   try {
     const hold = readAgentsConfig().envHold;
     if (hold) {
@@ -3073,9 +3072,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         .lines)
         console.log(l);
     }
-  } catch {
-    // A bad agents: block is configLines' row.
-  }
+  } catch {}
   const checked = await doctorAddress(product().cli);
   const edges = await edgeAddresses();
   const addr = addressLines(

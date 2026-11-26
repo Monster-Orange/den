@@ -97,12 +97,6 @@ export function agentSessionEnv(
   declared: Record<string, string> = {},
   /** Issue 163 (b): the sign-in token's env (the always-on service only). */
   signIn: Record<string, string> = {},
-  /**
-   * Issue 974: secret-looking names held back from what the caller gives
-   * (agents.env_hold), and the exact names this agent keeps
-   * (agents.env_allow), which it gets from the caller even off the
-   * allowlist. Den's own, the declared and the sign-in env are not held.
-   */
   hold: { hold: readonly string[]; allow: readonly string[] } = {
     hold: DEFAULT_ENV_HOLD,
     allow: [],

@@ -843,8 +843,6 @@ function common(input: LaunchInput): {
           inbox && { ...inbox, files: input.filesDir },
         )
       : null;
-  // Issue 974: the env guard for every agent, whatever its persona's
-  // guardrails; agents.env_guard: false turns it off.
   const envGuard = input.envHold?.guard;
   const guarded =
     envGuard === true && !baseHooks?.PreToolUse
@@ -1103,13 +1101,6 @@ export function transcriptFile(
   return null;
 }
 
-/**
- * Issue 974: the script that holds secret-looking variables out of each
- * shell command, in the agent's files folder (written at every start), and
- * CLAUDE_ENV_FILE naming it (Claude Code runs that file before every Bash
- * command, after the shell's profile, and before any env file a hook
- * wrote). None when the launch has no hold, or the agent is from before it.
- */
 function envHold(input: LaunchInput): {
   env: Record<string, string>;
   files: Record<string, string>;
@@ -1119,8 +1110,6 @@ function envHold(input: LaunchInput): {
   const h = input.envHold;
   return {
     env: { CLAUDE_ENV_FILE: file },
-    // Den's git values come at the session's start (agent-ops
-    // rewriteEnvHold); until then, none.
     files: { [file]: envHoldScript(h.hold, h.allow, h.own, {}) },
   };
 }

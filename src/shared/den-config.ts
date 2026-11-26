@@ -719,7 +719,6 @@ export interface UserConfig {
      * (shared/issue-write.ts).
      */
     issue_writes?: unknown;
-    /** Issue 974 (agents/env-hold.ts): the hold on secret-looking variables. */
     env_hold?: unknown;
     env_allow?: unknown;
     env_allow_agents?: unknown;
@@ -1200,10 +1199,6 @@ export function setUserRuntimeBin(id: string, bin: string | null): void {
   writeUserConfig(next);
 }
 
-/**
- * Issue 974: agents.env_hold_existing: true in user.yml (the held write
- * den_env_hold_on), keeping everything else there.
- */
 export function setUserEnvHoldExisting(): void {
   const cfg = readUserConfig();
   writeUserConfig({
@@ -1212,10 +1207,6 @@ export function setUserEnvHoldExisting(): void {
   });
 }
 
-/**
- * Issue 974: add `names` to agents.env_allow in user.yml (den_env_allow_keep),
- * sorted, no repeats, keeping everything else there.
- */
 export function addUserEnvAllow(names: readonly string[]): void {
   const cfg = readUserConfig();
   const was = Array.isArray(cfg.agents?.env_allow)
@@ -2150,10 +2141,6 @@ export interface AgentsConfig {
    * `{ clis: [...], dirs: [...] }` (agents/api-only.ts).
    */
   api_only_engines?: { clis?: unknown; dirs?: unknown };
-  /**
-   * Issue 974: these live in config/local/user.yml only (agents/env-hold.ts);
-   * set here, the config is refused, naming the file.
-   */
   env_hold?: unknown;
   env_allow?: unknown;
   env_guard?: unknown;
@@ -2270,7 +2257,6 @@ export const AGENTS_RESERVED_KEYS = [
   "issue_writes",
   "issue_writes_per_hour",
   "issue_writes_visibility_minutes",
-  // Issue 974: secret-looking variables held out of agent sessions.
   "env_hold",
   "env_allow",
   "env_allow_agents",
@@ -2481,10 +2467,6 @@ export interface ResolvedAgentsConfig {
   roles?: RolesConfig;
   /** den#3: agents.subagents and agents.claude_ai_connectors, defaults applied. */
   subagents?: SubagentSettings;
-  /**
-   * Issue 974: agents.env_hold, env_allow and env_guard checked
-   * (agents/env-hold.ts); unset: the default list, the guard on.
-   */
   envHold?: EnvHoldSettings;
 }
 
@@ -2671,9 +2653,6 @@ export function readAgentsConfig(
     },
     path.relative(ROOT, USER_CONFIG_PATH),
   );
-  // Issue 974: the env hold, from user.yml only. Issue 1391: a personal
-  // install holds nothing back unless agents.env_hold is set; strict holds
-  // the default list.
   out.envHold = asConfigError(
     () => checkEnvHoldConfig((u.agents ?? {}) as Record<string, unknown>),
     path.relative(ROOT, USER_CONFIG_PATH),

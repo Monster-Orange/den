@@ -1,37 +1,9 @@
 #!/usr/bin/env node
-/**
- * Issue 974: Den's masker for commands that print the environment. Den's
- * PreToolUse hook rewrites such a command into `{ <it>; } | <this>`, ahead
- * of any pipe or redirect, so what reaches the transcript, a later stage or
- * a file has the values of secret-looking names replaced by a fixed mark:
- * `NAME=•••• (held)`. Nothing of a value is kept: no prefix, suffix, length
- * or hash.
- *
- * It guards against printing a secret into a transcript by accident. It is
- * not a boundary: an interpreter, `ps eww`, `$VAR` or eval still read a
- * value. On a strict install, the hold (env-hold.ts) is the real control:
- * a held variable isn't in the session at all.
- *
- * The masked set comes from env-hold.ts (envMaskArgs), passed as
- *   --names  P1,P2   name patterns, matched by the hold's own rule
- *   --values G1,G2   value globs (a person's credential, whatever its name)
- * With no --names, every value is masked (it fails closed).
- *
- * Two passes over stdin, which it reads whole:
- *   1. every value (and every line of it) of a variable in its own
- *      environment whose name or value matches, wherever it shows: a bare
- *      value from `printenv NAME`, or a value over several lines;
- *   2. every `NAME=…`, `export NAME=…`, `declare -x NAME=…` record (lines,
- *      or NUL-separated from `env -0`) whose name or value matches.
- * Plain Node, no imports beyond node:*. On any error it prints a line
- * saying the output was withheld, never the output.
- */
 import * as fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export const MARK = "••••";
 
-/** A pattern's regex, by the hold's rule (env-hold.ts globRegex). */
 function globRegex(p) {
   const body = String(p)
     .split("*")
@@ -48,7 +20,6 @@ function valueRegex(g) {
   return new RegExp(`^${body}$`, "s");
 }
 
-/** What is masked: names by `names`, values by `values`; null: everything. */
 export function maskMatcher(names, values = []) {
   if (names === null) return { name: () => true, value: () => true, all: true };
   const n = names.filter(Boolean).map(globRegex);
@@ -63,7 +34,6 @@ export function maskMatcher(names, values = []) {
 const RECORD =
   /^(\s*(?:(?:export|declare|typeset|local|readonly)(?:\s+-[A-Za-z-]+)*\s+)?)([A-Za-z_][A-Za-z0-9_]*)=(.*)$/s;
 
-/** `text` with the matched values masked (see the header). */
 export function maskEnvText(text, m, env = process.env) {
   const pieces = new Set();
   for (const [k, v] of Object.entries(env)) {
@@ -76,7 +46,6 @@ export function maskEnvText(text, m, env = process.env) {
   const parts = String(text).split(/(\r?\n|\0)/);
   for (let i = 0; i < parts.length; i += 2) {
     let rec = parts[i];
-    // A record that is a whole value: masked however short it is.
     if (ordered.includes(rec) || ordered.includes(rec.trim())) {
       parts[i] = MARK;
       continue;

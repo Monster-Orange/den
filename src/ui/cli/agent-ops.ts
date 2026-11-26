@@ -625,7 +625,6 @@ export interface AgentsDeps extends SessionsDeps {
    * when it has none.
    */
   workspaceHubLoop?: (ws: string) => unknown;
-  /** Issue 974: a project's agents.env_allow (workspaces.yml), as written. */
   workspaceEnvAllow?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
@@ -3701,7 +3700,6 @@ async function startSession(
   signingWarning?: string;
 }> {
   if (old?.exited) await c.forget(old.ref.id);
-  // Issue 974: read before the record is written (a new agent has none).
   const cfgNow = d.agentsConfig();
   const hold = agentEnvHold(
     d,
@@ -3741,15 +3739,12 @@ async function startSession(
     // the sandbox: bwrap binds only the folders that exist.
     try {
       signing = d.agentSigning(launch.rec.cwd);
-      // Issue 974: the exact git names Den sets for this key stay.
       hold.own.push(...Object.keys(agentGitEnv(signing)));
       if (signing?.made)
         signingWarning = `${launch.rec.id} signs its commits with the agents' new SSH key. GitHub shows them Verified once you add it: ${signingKeyAddLine(signing)}`;
     } catch (e) {
       signingWarning = `${launch.rec.id}'s commits can't be signed with the agents' key: ${e instanceof Error ? e.message : String(e)}`;
     }
-    // Issue 974: env-hold.sh again, now that the key is known: every
-    // GIT_CONFIG_* a profile left goes, and exactly Den's come back.
     rewriteEnvHold(d, launch.rec.id, hold, agentGitEnv(signing));
     // Issue 936: Den's state read-only to the session (the OS sandbox).
     // An agent from before the sandbox starts outside it until the person
@@ -3814,7 +3809,6 @@ async function startSession(
             // agents.git (issue 1316): its commits signed with its key.
             { ...agentGitEnv(signing), ...box.env },
             signIn.env,
-            // Issue 974: secret-looking names held back; its allowed kept.
             hold,
           ),
           cols: (tty && d.stdout.columns) || 80,
@@ -3859,7 +3853,6 @@ async function startSession(
   delete rec.trustDeclined;
   // Issue 252: it runs in `permission` now.
   delete rec.startedIn;
-  // Issue 974: whether this session holds secret-looking variables back.
   rec.envHold = envHoldMark(hold.on);
   // Issue 340: the sign-in this session runs on (its label only).
   if (signIn.account) rec.signIn = { ...signIn.account };
@@ -4082,8 +4075,6 @@ function launchInput(
       return sub.model ? { subagentModel: sub.model } : {};
     })(),
     ...(cfg.subagents?.claudeAiConnectors ? { claudeAiConnectors: true } : {}),
-    // Issue 974: secret-looking variables held out of each shell command,
-    // and the guard on commands that print the whole environment.
     envHold: {
       ...agentEnvHold(d, cfg.envHold, id, ws),
       guard: cfg.envHold?.guard ?? true,
@@ -4115,13 +4106,6 @@ function launchInput(
   };
 }
 
-/**
- * Issue 974: what this start of agent `id` holds back. `on`: a new agent,
- * one that has had the hold, or every one once agents.env_hold_existing is
- * true (env-hold-rollout.ts); an agent from before keeps its environment as
- * it was (nothing held). `allow`: the install's, its project's and its own
- * names, added up. `own`: the exact names Den sets for this launch.
- */
 export function agentEnvHold(
   d: Pick<AgentsResolved, "stateDir" | "env"> & {
     workspaceEnvAllow?: (ws: string) => unknown;
@@ -4139,7 +4123,6 @@ export function agentEnvHold(
       (d.workspaceEnvAllow ?? workspaceEnvAllowOf)(ws),
     );
   } catch {
-    // A bad entry is doctor's row; this start keeps none of it.
     project = [];
   }
   return {
@@ -4154,11 +4137,6 @@ export function agentEnvHold(
   };
 }
 
-/**
- * Issue 974: the agent's env-hold.sh written again at its start, with the
- * git config env Den set for the key it resolved (none: {}). Only when the
- * launch wrote one (an agent from before the hold has none).
- */
 function rewriteEnvHold(
   d: Pick<AgentsResolved, "stateDir">,
   id: string,
@@ -4173,7 +4151,6 @@ function rewriteEnvHold(
   });
 }
 
-/** workspaces.yml <project>.agents.env_allow, as written. */
 function workspaceEnvAllowOf(ws: string): unknown {
   const e = workspaceEntryRaw(ws) as
     | { agents?: { env_allow?: unknown } }

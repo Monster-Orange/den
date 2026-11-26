@@ -197,21 +197,12 @@ export interface LaunchInput {
    * API, and the audit file; absent: none is declared.
    */
   apiOnly?: { rules: string; audit: string };
-  /**
-   * Issue 974: whether this start holds secret-looking variables back
-   * (`on`: false for an agent from before the hold), the patterns
-   * (agents.env_hold), the names it keeps (install, project and its own
-   * agents.env_allow), Den's own exact names for this launch, whether
-   * commands that print the environment are masked (agents.env_guard), and
-   * the masked set (envMaskArgs). Absent: neither is set up.
-   */
   envHold?: {
     on: boolean;
     hold: string[];
     allow: string[];
     own: string[];
     guard: boolean;
-    /** The env guard's masked set, as the hook's arguments (envMaskArgs). */
     mask?: string[];
   };
   /**

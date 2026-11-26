@@ -117,11 +117,6 @@ export interface AgentRecord {
    * a token. Unset: none was picked (desktop sign-in, or no token).
    */
   signIn?: { id: string; label: string };
-  /**
-   * Issue 974: whether its session holds secret-looking variables back
-   * (agents/env-hold.ts). legacy: from before the hold, which keeps its
-   * environment until a person turns it on (env-hold-rollout.ts).
-   */
   envHold?: { applied: boolean; legacy?: true };
   /**
    * Issue 936: whether its session started in the OS sandbox (Den's state

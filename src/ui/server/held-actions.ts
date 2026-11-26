@@ -324,7 +324,6 @@ export interface HeldActionDeps {
   testPersonSetup?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
-  /** Issue 974: den_env_hold_on and den_env_allow_keep (env-hold-rollout.ts). */
   envHoldOn?: HeldOp;
   envAllowKeep?: HeldOp;
   /** Issue 936: den_sandbox_on (agents/sandbox-rollout.ts). */
@@ -364,7 +363,6 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
-  // Issue 974: which secrets agents get is the person's call, both ways.
   "den_env_hold_on",
   "den_env_allow_keep",
   "test_person_setup",

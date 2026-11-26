@@ -1,13 +1,3 @@
-/**
- * Issue 974: secret-looking variables are held out of agent sessions.
- * One known fake secret (CANARY) is put into each place a session could
- * see it, and each test checks it is not there: the session's env, the
- * shell after a profile set it again (exported or not), the launch command
- * and its first prompt, the script Den writes, and doctor's lines (names
- * only). Then the rollout: an agent from before keeps its environment, a
- * new one doesn't, the held writes turn it on, and the allow-list's three
- * levels (install, project, agent) add up.
- */
 import { afterAll, afterEach, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -60,13 +50,10 @@ describe("the rule a name is held by", () => {
     ["ANTHROPIC_API_KEY", true],
     ["DB_PASSWORD", true],
     ["OP_SESSION_myaccount", true],
-    // Den's prefix is no exemption.
     ["DEN_FOO_TOKEN", true],
     ["DEN_HUB_TOKEN", true],
-    // Case is ignored.
     ["my_token", true],
     ["Db_Password", true],
-    // A name may end in _ and a digit: AWS_KEY_2.
     ["AWS_KEY_2", true],
     ["API_TOKEN_10", true],
     ["PATH", false],
@@ -115,8 +102,6 @@ describe("the settings, in config/local/user.yml", () => {
     expect(s.holdExisting).toBe(false);
   });
 
-  // Issue 1391: a personal install is open unless the person sets it;
-  // strict (a team's or enterprise's install) holds the default list.
   it("a personal install (the default) holds nothing back unless agents.env_hold is set; the guard stays on", () => {
     const s = user({}).envHold!;
     expect(s.hold).toEqual([]);
@@ -222,7 +207,6 @@ describe("the session's own environment", () => {
     );
     expect(env).not.toHaveProperty("CANARY_TOKEN");
     expect(Object.values(env)).not.toContain(CANARY);
-    // Den's own variable stays.
     expect(env[ACTOR_TOKEN_FILE_ENV]).toBe("/state/actor-token/planner/token");
   });
 
@@ -242,7 +226,6 @@ describe("the session's own environment", () => {
   });
 });
 
-/** Run `holdFile` in `shell` as the runtime does: profile, Den's file, then the command. */
 function inShell(
   shell: string,
   profile: string,
@@ -251,7 +234,6 @@ function inShell(
 ): string | null {
   if (!fs.existsSync(shell)) return null;
   const zdot = fs.mkdtempSync(path.join(dir, "zdot-"));
-  // zsh reads $ZDOTDIR/.zshenv for every shell, as a person's ~/.zshenv.
   fs.writeFileSync(path.join(zdot, ".zshenv"), profile);
   const r = spawnSync(
     shell,
@@ -267,7 +249,6 @@ function inShell(
   return r.stdout;
 }
 
-/** `NAME=[value]` for each name, as the shell has it (exported or not). */
 const show = (names: string[]) =>
   names.map((n) => `printf '%s=[%s]\\n' ${n} "\${${n}-}"`).join("; ");
 
@@ -279,7 +260,6 @@ describe("the shell, after a profile sets the canary again", () => {
       DEFAULT_ENV_HOLD,
       ["KEEP_TOKEN", "DEN_PERSON_TOKEN"],
       [ACTOR_TOKEN_FILE_ENV, "GIT_CONFIG_KEY_0"],
-      // Den's own git value comes back as Den set it, not from the own list.
       { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.signingkey" },
     ),
   );
@@ -287,7 +267,6 @@ describe("the shell, after a profile sets the canary again", () => {
     `export CANARY_TOKEN=${CANARY}`,
     `export my_token=${CANARY}`,
     `export AWS_KEY_2=${CANARY}`,
-    // Not exported: still a shell variable a command can read.
     `GH_TOKEN=${CANARY}`,
     `export DEN_FOO_TOKEN=${CANARY}`,
     `export DEN_PERSON_TOKEN=${CANARY}`,
@@ -330,7 +309,6 @@ describe("the shell, after a profile sets the canary again", () => {
     const s = fs.readFileSync(file, "utf-8");
     expect(s).not.toContain(CANARY);
     expect(s).toContain("KEEP_TOKEN");
-    // It says which setting to ask for.
     expect(s).toContain("agents.env_allow");
   });
 
@@ -397,7 +375,6 @@ describe("agents start", () => {
     await agents(r, "start", "-w", "north", "--persona", "planner");
     r.made[0].exit(0);
     await settle();
-    // As a record from before 974 reads: no envHold.
     const rec = readRecord(r.stateDir, "planner")!;
     delete rec.envHold;
     writeRecord(r.stateDir, rec);
@@ -416,7 +393,6 @@ describe("agents start", () => {
       ),
     ).toEqual(["planner"]);
 
-    // "Remove": the held write sets agents.env_hold_existing: true.
     const turnedOn: string[] = [];
     const op = envHoldOnOp({
       rows: () => [{ id: "planner", names: ["OP_SERVICE_ACCOUNT_TOKEN"] }],
@@ -621,8 +597,6 @@ describe("git's config names: Den's own values for this start, never a profile's
     "GIT_CONFIG_VALUE_0",
     "GIT_CONFIG_VALUE_1",
   ];
-  // Den's launch once listed git's names as its own: they never exempt a
-  // profile's value.
   const own = ["GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"];
   const script = (
     name: string,

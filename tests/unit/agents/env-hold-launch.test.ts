@@ -1,11 +1,3 @@
-/**
- * Issue 974 in a den-claude launch: the script that holds secret-looking
- * variables out of each shell command is written to the agent's files
- * folder and named by CLAUDE_ENV_FILE; the env guard is in its PreToolUse
- * hook (on by default, --no-env-guard when agents.env_guard is false),
- * also for a persona whose other guardrails are off. No value reaches the
- * launch command or its prompt.
- */
 import { afterAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";

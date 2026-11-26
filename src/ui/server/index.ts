@@ -5546,7 +5546,6 @@ function approvalDeps(): ApprovalDeps {
     gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
-    // Issue 974: Keep these / Remove, for agents from before the env hold.
     envHoldOn: envHoldOnOp(envHoldOpDeps()),
     envAllowKeep: envAllowKeepOp(envHoldOpDeps()),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
@@ -6059,10 +6058,6 @@ async function runPinCommit(
   });
 }
 
-/**
- * Issue 974: the agents from before the env hold and the names each still
- * gets (names only), and the user.yml writes the two held writes make.
- */
 function envHoldOpDeps(): import("../../shared/agents/env-hold-rollout.js").EnvHoldOpDeps {
   return {
     rows: () => {
@@ -6093,11 +6088,6 @@ function envHoldOpDeps(): import("../../shared/agents/env-hold-rollout.js").EnvH
   };
 }
 
-/**
- * Issue 974, the rollout: Den asks once, in the bell, to keep or hold back
- * the variables agents from before the hold still get; then each hour,
- * should the person have let it lapse. Best effort.
- */
 function startEnvHoldAsk(): void {
   const ask = () => {
     try {
@@ -6111,9 +6101,7 @@ function startEnvHoldAsk(): void {
       ).then((asked) => {
         if (asked) syncHeldWrites();
       });
-    } catch {
-      /* no queue here: doctor still says it */
-    }
+    } catch {}
   };
   ask();
   setInterval(ask, 60 * 60_000).unref();
@@ -12208,7 +12196,6 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
-    // Issue 974: Keep these / Remove for agents from before the env hold.
     startEnvHoldAsk();
     void pruneDeadSnapshots()
       .then((n) => {

@@ -1,6 +1,3 @@
-// Issue 974: maskEnvText and maskMatcher (guardrails/env-mask.mjs) for a
-// jest test, which can't import an .mjs. Reads
-// { names, values, text, env, check } on stdin; prints { out, names }.
 import {
   maskEnvText,
   maskMatcher,

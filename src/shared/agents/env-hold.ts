@@ -1,84 +1,23 @@
-/**
- * Issue 974: secret-looking environment variables are held out of agent
- * sessions.
- *
- * Two places an agent could see one:
- *   1. The session's own environment. It already starts from an allowlist
- *      (sessions/env.ts); the hold is applied to what comes from the
- *      caller on top of it (the allowlist, the runtime's passthrough).
- *      Every runtime gets this layer.
- *   2. Each shell command it runs. The shell reads the person's profile
- *      first (zsh reads ~/.zshenv for every shell), which can set a token
- *      again. So Den writes a small script (`env-hold.sh` in the agent's
- *      files folder, rewritten at each start) that the runtime runs before
- *      each command. Only den-claude runs it (CLAUDE_ENV_FILE). It unsets
- *      every variable, exported or not, whose name matches, except the
- *      names the agent is allowed and the exact names Den set for this
- *      launch. A person's credential (DEN_PERSON_TOKEN, a person token, a
- *      path to web.secret) is unset first, whatever else is kept.
- *
- * The rule a name is matched by (case is ignored):
- *   - a pattern is a name with `*` wildcards: `*_TOKEN` matches GH_TOKEN;
- *   - a name may also end in `_` and a digit and anything after it:
- *     `*_KEY` matches AWS_KEY_2.
- *
- * Settings, in config/local (never a repo, which an agent can edit):
- *   user.yml agents.env_hold:         the patterns (unset: DEFAULT_ENV_HOLD;
- *                                     [] holds nothing back, said plainly by
- *                                     doctor)
- *   user.yml agents.env_allow:        names every agent here keeps
- *   user.yml agents.env_allow_agents: { <agent id>: [NAME] } names one
- *                                     agent keeps
- *   workspaces.yml <project>.agents.env_allow: names a project's agents keep
- *   user.yml agents.env_guard:        false stops masking secret-looking
- *                                     values in env, printenv, set and kin
- *   user.yml agents.env_hold_existing: true holds them back for agents
- *                                     started before the hold too (the
- *                                     held write den_env_hold_on sets it)
- * The three allow levels add up.
- *
- * The rollout: an agent started new has the hold. An agent from before it
- * keeps its environment as it was until a person turns the hold on for
- * those agents (env-hold-rollout.ts).
- *
- * Nothing here returns a variable's value: names only.
- */
-
-/** agents.env_hold when unset. */
 export const DEFAULT_ENV_HOLD: readonly string[] = [
   "*_TOKEN",
   "*_SECRET",
   "*_KEY",
   "*_PASSWORD",
-  // The password manager CLI's session variables (OP_SESSION_<account>).
   "OP_SESSION_*",
 ];
 
-/** Names unset in the shell before anything is kept: a person's credential. */
 export const PERSON_CREDENTIAL_NAMES: readonly string[] = [
   "DEN_PERSON_TOKEN",
   "DEN_TEST_PERSON",
 ];
 
-/**
- * Names held whenever the list isn't empty, the exact names Den set aside:
- * git reads its config from GIT_CONFIG_COUNT/KEY_n/VALUE_n, and a value can
- * carry a credential (an http.extraheader).
- */
 export const ALWAYS_HELD_PREFIXES: readonly string[] = ["GIT_CONFIG_"];
 
-/** Values that make a variable a person's credential, whatever its name. */
 export const PERSON_VALUE_GLOBS: readonly string[] = [
   "*den_pt_*",
   "*web.secret*",
 ];
 
-/**
- * Issue 974: the env guard's masked set, for Den's PreToolUse hook (it has
- * no list of its own): the hold's patterns (agents.env_hold, else the
- * default list, also on a personal install that holds nothing back) and a
- * person's credentials, by name and by value. `[]` set masks only those.
- */
 export function envMaskArgs(s: EnvHoldSettings): string[] {
   const names = [
     ...(s.holdSet ? s.hold : DEFAULT_ENV_HOLD),
@@ -92,35 +31,25 @@ export function envMaskArgs(s: EnvHoldSettings): string[] {
   ];
 }
 
-/** The file the agent's shell runs before each command. */
 export const ENV_HOLD_FILE = "env-hold.sh";
 
 const PATTERN_RE = /^[A-Za-z0-9_*]+$/;
-/** The names git reads its config from the environment by. */
 const GIT_ENV_RE = /^GIT_CONFIG_(COUNT|KEY_[0-9]+|VALUE_[0-9]+)$/;
 
-/** `v` as one single-quoted POSIX shell word. */
 function shellQuote(v: string): string {
   return `'${v.replace(/'/g, `'\\''`)}'`;
 }
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export interface EnvHoldSettings {
-  /** The patterns, as configured (or the default). */
   hold: string[];
-  /** Whether agents.env_hold was set (false: the default list). */
   holdSet: boolean;
-  /** agents.env_allow: names every agent keeps. */
   allowAll: string[];
-  /** agents.env_allow_agents: names each agent keeps, by agent id. */
   allow: Record<string, string[]>;
-  /** agents.env_guard (default true). */
   guard: boolean;
-  /** agents.env_hold_existing: the hold for agents from before it too. */
   holdExisting: boolean;
 }
 
-/** The settings when nothing is configured. */
 export function defaultEnvHold(): EnvHoldSettings {
   return {
     hold: [...DEFAULT_ENV_HOLD],
@@ -145,13 +74,11 @@ function names(key: string, v: unknown): string[] {
   return [...new Set(v as string[])];
 }
 
-/** A project's names (workspaces.yml <project>.agents.env_allow), checked. */
 export function checkProjectEnvAllow(project: string, v: unknown): string[] {
   if (v === undefined || v === null) return [];
   return names(`workspaces.${project}.agents.env_allow`, v);
 }
 
-/** user.yml's agents.env_* checked; a bad one throws naming it. */
 export function checkEnvHoldConfig(raw: {
   env_hold?: unknown;
   env_allow?: unknown;
@@ -196,7 +123,6 @@ export function checkEnvHoldConfig(raw: {
   return out;
 }
 
-/** The names agent `id` keeps: install, its project's and its own, added up. */
 export function allowedFor(
   s: EnvHoldSettings,
   id: string,
@@ -213,7 +139,6 @@ function globRegex(p: string): RegExp {
   return new RegExp(`^${body}(?:_[0-9].*)?$`, "i");
 }
 
-/** Whether `name` matches one of `patterns`, by the rule in the header. */
 export function matchesHold(
   name: string,
   patterns: readonly string[],
@@ -221,10 +146,6 @@ export function matchesHold(
   return patterns.some((p) => globRegex(p).test(name));
 }
 
-/**
- * What the hold does to a set of names: held back, and let through by an
- * allow. `own` are the exact names Den set for this launch (never held).
- */
 export function holdOutcome(
   list: Iterable<string>,
   hold: readonly string[],
@@ -248,7 +169,6 @@ export function holdOutcome(
   return { held: [...held].sort(), allowed: [...allowed].sort() };
 }
 
-/** `env` less the names the hold takes (allowed names stay). */
 export function applyEnvHold(
   env: Record<string, string>,
   hold: readonly string[],
@@ -260,7 +180,6 @@ export function applyEnvHold(
   return out;
 }
 
-/** A pattern as a case-insensitive shell glob: `*_key` → `*_[Kk][Ee][Yy]`. */
 function shellGlob(p: string): string {
   return [...p]
     .map((ch) =>
@@ -269,25 +188,10 @@ function shellGlob(p: string): string {
     .join("");
 }
 
-/**
- * The script the agent's shell runs before each command (sh, bash and zsh
- * alike). It walks the shell's own variable names (zsh: its parameters;
- * bash: compgen -v; sh: set), so a profile's variable is found exported or
- * not. A person's credential is unset first; then every name the patterns
- * match, the allowed names and Den's own exact names (`own`) aside.
- * Patterns and names are checked (checkEnvHoldConfig), so nothing here
- * can run as code.
- */
 export function envHoldScript(
   hold: readonly string[],
   allow: readonly string[] = [],
   own: readonly string[] = [],
-  /**
-   * The git config env Den set for this start (agentGitEnv), or {} when it
-   * set none. Every GIT_CONFIG_* a profile left is unset, and exactly these
-   * are exported again (a key path, "ssh", "true": no secret). With an
-   * empty list and none set, a profile's are left alone (the open default).
-   */
   git: Readonly<Record<string, string>> = {},
 ): string {
   const head = [
@@ -328,7 +232,6 @@ export function envHoldScript(
     "__den_names() {",
     "  if [ -n \"${ZSH_VERSION:-}\" ]; then eval 'print -rl -- ${(k)parameters}'",
     '  elif [ -n "${BASH_VERSION:-}" ]; then compgen -v',
-    // sh (dash): `set` lists unexported variables too, unlike `env`.
     "  else set | sed -n 's/^\\([A-Za-z_][A-Za-z0-9_]*\\)=.*/\\1/p'",
     "  fi",
     "}",

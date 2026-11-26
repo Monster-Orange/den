@@ -1,11 +1,3 @@
-/**
- * Issue 974 (2), as ruled: Den's PreToolUse hook never refuses a shell
- * command that prints the environment. It rewrites it (updatedInput) so the
- * values of secret-looking names are masked; agents.env_guard: false (the
- * hook's --no-env-guard) leaves it as it is. It runs even when a persona's
- * other guardrails are off (--no-guardrails). What the masked output holds
- * is env-mask-974.test.ts.
- */
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as path from "path";
@@ -94,7 +86,6 @@ describe("commands that print the environment run, masked", () => {
 
   it("it still masks with a persona's other guardrails off (--no-guardrails)", () => {
     expect(bash("env", ["--no-guardrails"]).rewritten).toMatch(/env-mask/);
-    // The other guardrails are off there: a sleep passes.
     expect(bash("sleep 5", ["--no-guardrails"]).code).toBe(0);
   });
 });

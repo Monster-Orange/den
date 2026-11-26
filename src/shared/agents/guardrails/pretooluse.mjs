@@ -75,7 +75,6 @@ const SLEEP_HINT =
   "(the Monitor tool with an until-condition, or the command's own --wait). " +
   "Do not loop on sleep.";
 
-/** env's options that take a value as the next word (or `--opt=value`). */
 const ENV_VALUE_OPTS = new Set([
   "-u",
   "--unset",
@@ -86,13 +85,11 @@ const ENV_VALUE_OPTS = new Set([
   "-P",
 ]);
 
-/** Whether `env <args>` runs no command, so prints the environment. */
 function envPrintsAll(args) {
   for (let j = 0; j < args.length; j++) {
     const a = args[j];
     if (a === "--") return j + 1 >= args.length;
     if (ENV_VALUE_OPTS.has(a)) {
-      // -S/--split-string's value is a command line to run.
       if (a === "-S" || a === "--split-string") return false;
       j++;
       continue;
@@ -107,14 +104,11 @@ function envPrintsAll(args) {
   return true;
 }
 
-/** The words after a command's leading options. */
 const operands = (args) =>
   args.filter((a) => !a.startsWith("-") && !a.startsWith("+"));
 
-/** Why this stage prints the whole environment, or null. */
 function dumpsEnv(words) {
   let w = words;
-  // sudo/doas run the rest, and `builtin` a builtin: look at that.
   for (;;) {
     if (w.length && (base(w[0]) === "sudo" || base(w[0]) === "doas")) {
       w = w.slice(1);
@@ -125,16 +119,13 @@ function dumpsEnv(words) {
   const cmd = base(w[0] ?? "");
   const args = w.slice(1);
   if (cmd === "env") return envPrintsAll(args);
-  // printenv NAME too: a value it prints is masked when it is held.
   if (cmd === "printenv") return true;
   if (cmd === "set") return args.length === 0;
   if (cmd === "export") return operands(args).length === 0;
   if (cmd === "declare" || cmd === "typeset") {
-    // -f/-F print functions, not variables.
     if (args.some((a) => /^-[a-zA-Z]*[fF]/.test(a))) return false;
     return operands(args).length === 0;
   }
-  // sh -c '...': the command line it runs.
   if (["sh", "bash", "zsh", "dash", "ksh"].includes(cmd)) {
     const c = args.indexOf("-c");
     if (c >= 0 && args[c + 1] !== undefined) return printsEnv(args[c + 1]);
@@ -142,7 +133,6 @@ function dumpsEnv(words) {
   return false;
 }
 
-/** Whether this Bash command has a stage that prints the environment. */
 export function printsEnv(command) {
   try {
     return parseShell(String(command ?? "")).some((p) =>
@@ -153,7 +143,6 @@ export function printsEnv(command) {
   }
 }
 
-/** Leading words that belong to the shell's grammar, not the command. */
 const GRAMMAR = new Set([
   "do",
   "then",
@@ -167,16 +156,8 @@ const GRAMMAR = new Set([
   "}",
 ]);
 
-/** An output redirection operator (`>`, `2>>`, `&>`, `>&`): it and its target move. */
 const OUT_REDIRECT = /^(\d*|&)>>?&?$/;
 
-/**
- * Issue 974: `command` with each stage that prints the environment
- * rewritten into `{ <stage>; } | <masker>`, its output redirections after
- * the masker, so the values are masked before any pipe or redirect sees
- * them (`env > f` writes masked values to f). Null when no stage prints
- * the environment, or the command can't be read.
- */
 export function envMaskCommand(command, masker) {
   const src = String(command ?? "");
   let pipelines;
@@ -217,7 +198,6 @@ export function envMaskCommand(command, masker) {
   return r;
 }
 
-/** Den's masker as a shell command, with the masked set (envMaskArgs). */
 export function maskerCommand(argv = process.argv, node = process.execPath) {
   const names = arg("--env-mask", argv);
   const values = arg("--env-mask-values", argv);
@@ -233,7 +213,6 @@ export function maskerCommand(argv = process.argv, node = process.execPath) {
   ].join(" ");
 }
 
-/** Issue 974: the Bash tool input with its printing stages masked, or null. */
 export function envMaskRewrite(input, argv = process.argv) {
   if (!input || typeof input !== "object" || input.tool_name !== "Bash")
     return null;
@@ -287,7 +266,6 @@ export function parseShell(src) {
   const pipelines = [];
   let stages = [];
   let words = [];
-  // Issue 974: where each word sits in `src` ([start, end)), for a rewrite.
   let spans = [];
   let word = "";
   let inWord = false;
@@ -785,8 +763,6 @@ async function main() {
   // own permission rules still decide the rewritten command.
   let decision = null;
   try {
-    // Issue 974: a command that prints the environment runs, masked,
-    // unless agents.env_guard is false (--no-env-guard).
     if (!process.argv.includes("--no-env-guard")) {
       const masked = envMaskRewrite(JSON.parse(text));
       if (masked) decision = { input: masked };

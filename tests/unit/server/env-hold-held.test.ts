@@ -1,8 +1,3 @@
-/**
- * Issue 974: the two bell writes for agents from before the env hold.
- * Both are the person's own: no approval policy runs one without their
- * Allow. And the Keep list never offers a person's credential.
- */
 import { describe, expect, it } from "@jest/globals";
 import { policyFor } from "../../../src/shared/approval-policy.js";
 import { CRITICAL_HELD_ACTIONS } from "../../../src/ui/server/held-actions.js";

@@ -1,11 +1,3 @@
-/**
- * Issue 974: doctor's rows on the variables held out of agents. Which
- * names a session would see (Den's environment and a shell's, after the
- * person's profile) are held back, which the allow-lists let through, each
- * agent from before the hold with the names it still gets (⚠), when the
- * list is empty or the guard is off, and which runtimes get the shell
- * layer. Names only: never a value.
- */
 import { spawnSync } from "child_process";
 import {
   holdOutcome,
@@ -13,11 +5,6 @@ import {
 } from "../../shared/agents/env-hold.js";
 import { agentsCount } from "../../shared/agents/env-hold-rollout.js";
 
-/**
- * The names a session's shell starts with: Den's own environment's, and
- * those a non-interactive shell has after the person's profile (zsh reads
- * ~/.zshenv for every shell). Names only; nothing is printed.
- */
 export function shellEnvNames(env: NodeJS.ProcessEnv = process.env): string[] {
   const names = new Set(Object.keys(env).filter((k) => env[k] !== undefined));
   const shell = env.SHELL;
@@ -36,15 +23,12 @@ export function shellEnvNames(env: NodeJS.ProcessEnv = process.env): string[] {
   return [...names];
 }
 
-/** The runtimes whose shell commands run Den's env-hold.sh. */
 export const SHELL_LAYER_RUNTIMES = ["den-claude"];
 
-/** The lines doctor prints for the hold. */
 export function envHoldLines(
   title: string,
   s: EnvHoldSettings,
   names: readonly string[],
-  /** Agents from before the hold, with the names each still gets. */
   legacy: readonly { id: string; names: string[] }[] = [],
 ): { lines: string[]; problem: boolean } {
   const lines = ["", `${title} doctor: secrets held out of agents`, ""];

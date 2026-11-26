@@ -1,14 +1,3 @@
-/**
- * Issue 974 (2), as ruled: a command that prints the environment runs, and
- * the values of secret-looking names are masked (`NAME=•••• (held)`) before
- * any pipe or redirect, so neither the transcript nor a file it writes gets
- * them. Den's PreToolUse hook rewrites the printing part into
- * `{ <it>; } | <Den's masker>`. The masked set is the hold's list
- * (agents.env_hold, else the default) and a person's credentials, from
- * agents/env-hold.ts, passed to the hook; the hook holds no list of its own.
- * A planted FAKE_TOKEN=abc123 never shows, its name does, and an ordinary
- * variable prints as before, in bash and zsh, on personal and strict.
- */
 import { afterAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -24,7 +13,6 @@ import { readAgentsConfig } from "../../../src/shared/den-config.js";
 
 const RUN = path.resolve("tests/unit/agents/env-mask-run.mjs");
 
-/** env-mask.mjs's own functions, run in node (jest can't import an .mjs). */
 function masker(q: {
   names: string[] | null;
   values?: string[];
@@ -51,7 +39,6 @@ const args = envMaskArgs(
 );
 const FLAGS = ["--no-guardrails", ...args];
 
-/** The hook's answer for one Bash command: its exit and rewritten command. */
 function hook(command: string, flags: string[] = FLAGS) {
   const r = spawnSync(process.execPath, [HOOK, ...flags], {
     input: JSON.stringify({
@@ -74,7 +61,6 @@ function hook(command: string, flags: string[] = FLAGS) {
 
 const SHELLS = ["/bin/bash", "/bin/zsh"].filter((s) => fs.existsSync(s));
 
-/** The rewritten command run in `shell`, with the planted variables. */
 function run(
   shell: string,
   command: string,
