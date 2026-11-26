@@ -5,10 +5,12 @@ export const IPAD = { width: 820, height: 1180 };
 export const DESK = { width: 1440, height: 900 };
 export const SLACK_MS = 5000;
 export const TAKE_MS = 15000;
+export const SETTLE_MS = 3000;
 
 export const clauses = [
   `WebKit at iPad size (${IPAD.width}x${IPAD.height}, touch) attaches to an agent's terminal and sizes it`,
-  `a desktop browser (${DESK.width}x${DESK.height}) takes over, then goes away with a 1001 close: the terminal is back at the iPad's size within the leave grace (+${SLACK_MS / 1000} s)`,
+  `while a desktop browser (${DESK.width}x${DESK.height}) holds the size after its Take over, the iPad's terminal socket closes and reattaches, then the iPad page reloads: the terminal keeps the desktop's size and the iPad pane shows "Sized by another view" (its Take over)`,
+  `a desktop browser takes over, then goes away with a 1001 close: the terminal is back at the iPad's size within the leave grace (+${SLACK_MS / 1000} s)`,
   `a desktop browser takes over, then the desktop's connection closes normally (1000): the terminal is back at the iPad's size within the claim grace (+${SLACK_MS / 1000} s)`,
   `a person's Take over in between (the desktop back within the claim grace): the terminal keeps the desktop's size past the grace`,
 ];
@@ -52,16 +54,49 @@ async function openPane(ctx, page, sid) {
     .catch(() => {});
 }
 
-async function desktop(ctx, sid) {
-  const d = await ctx.signedIn("chromium", DESK.width, { viewport: DESK });
+async function routed(page) {
   const link = { gone: false, now: null, opened: 0 };
-  await d.page.routeWebSocket(/\/api\/sessions\/[^/]+\/io/, (ws) => {
+  await page.routeWebSocket(/\/api\/sessions\/[^/]+\/io/, (ws) => {
     if (link.gone) return ws.close({ code: 4001, reason: "the bed holds it" });
     link.now = { ws, server: ws.connectToServer() };
     link.opened++;
   });
+  return link;
+}
+
+async function desktop(ctx, sid) {
+  const d = await ctx.signedIn("chromium", DESK.width, { viewport: DESK });
+  const link = await routed(d.page);
   await openPane(ctx, d.page, sid);
   return { ...d, link };
+}
+
+const followShown = async (page, sid) =>
+  (await page
+    .locator(`[data-id="${sid}"][data-cols] [data-act="take-size"]`)
+    .count()
+    .catch(() => 0)) > 0;
+
+async function ipadAfter(ctx, page, sid) {
+  await ctx.sleep(SETTLE_MS);
+  return { pty: await ptyOf(page, sid), follow: await followShown(page, sid) };
+}
+
+async function idleIpad(ctx, page, sid, ip) {
+  await leave({ link: ip }, 1000);
+  ip.gone = false;
+  await page.evaluate(() => globalThis.dispatchEvent(new Event("online")));
+  if ((await ctx.until(async () => Boolean(ip.now), TAKE_MS)) === null)
+    return { why: "the iPad page never reattached after its socket closed" };
+  const reattached = await ipadAfter(ctx, page, sid);
+  ip.now = null;
+  await page.reload().catch(() => {});
+  await page
+    .waitForSelector(`[data-id="${sid}"][data-cols]`, { timeout: 30000 })
+    .catch(() => {});
+  if ((await ctx.until(async () => Boolean(ip.now), TAKE_MS)) === null)
+    return { why: "the iPad page never reattached after its reload" };
+  return { reattached, reloaded: await ipadAfter(ctx, page, sid) };
 }
 
 async function takeOver(ctx, d, ipadPage, sid) {
@@ -114,7 +149,7 @@ export async function setup(ctx) {
   return s;
 }
 
-async function oneCase(ctx, ipad, s, how, r) {
+async function oneCase(ctx, ipad, s, how, r, ip) {
   const d = await desktop(ctx, s.sid);
   try {
     if (!d.link.opened)
@@ -130,6 +165,16 @@ async function oneCase(ctx, ipad, s, how, r) {
         why: t.why ?? "",
         pty: await ptyOf(ipad, s.sid),
       };
+    if (how === "idle") {
+      const got = await idleIpad(ctx, ipad, s.sid, ip);
+      await leave(d, 1001);
+      await ctx.until(
+        async () => same(await ptyOf(ipad, s.sid), r.ipad),
+        s.leaveMs + SLACK_MS,
+      );
+      if (got.why) return { measured: false, why: got.why };
+      return { measured: true, took: true, desk: t.desk, ...got };
+    }
     const t0 = Date.now();
     await leave(d, how === "1001" ? 1001 : 1000);
     if (how === "claimed") {
@@ -199,7 +244,9 @@ export async function run(ctx, s) {
   } catch (e) {
     return { error: `no WebKit page: ${msg(e)}` };
   }
+  let ip;
   try {
+    ip = await routed(ipad.page);
     await openPane(ctx, ipad.page, s.sid);
     r.sizedMs = await ctx.until(async () => {
       const z = await paneSizes(ipad.page, s.sid);
@@ -210,9 +257,9 @@ export async function run(ctx, s) {
     r.ipad = z?.own ?? null;
     r.firstPty = z?.pty ?? null;
     if (!r.pane || r.sizedMs === null) return r;
-    for (const how of ["1001", "normal", "claimed"]) {
+    for (const how of ["idle", "1001", "normal", "claimed"]) {
       try {
-        r[how] = await oneCase(ctx, ipad.page, s, how, r);
+        r[how] = await oneCase(ctx, ipad.page, s, how, r, ip);
       } catch (e) {
         r[how] = { measured: false, why: msg(e) };
       }
@@ -245,6 +292,25 @@ const row = (clause, ok, detail) => ({
   detail,
   evidence: ["1724-run.json"],
 });
+
+function idleRow(clause, c, r) {
+  if (!c?.measured)
+    throw new Error(`1724 not measured: ${c?.why ?? "the case never ran"}`);
+  if (!c.took)
+    return row(
+      clause,
+      false,
+      `the desktop's Take over never sized the terminal${c.why ? ` (${c.why})` : ""}: it stayed ${sz(c.pty)}, iPad ${sz(r.ipad)}`,
+    );
+  const ok = (x) => same(x?.pty, c.desk) && x?.follow === true;
+  const say = (x) =>
+    `${sz(x?.pty)}, ${x?.follow ? "the iPad shows Sized by another view" : "the iPad shows no Sized by another view"}`;
+  return row(
+    clause,
+    ok(c.reattached) && ok(c.reloaded),
+    `desktop ${sz(c.desk)}, iPad ${sz(r.ipad)}; after the iPad's socket reattached: ${say(c.reattached)}; after its reload: ${say(c.reloaded)}`,
+  );
+}
 
 function caseRow(clause, c, r, kept) {
   if (!c?.measured)
@@ -293,8 +359,9 @@ export function expect(cells) {
     ];
   return [
     first,
-    caseRow(clauses[1], r["1001"], r, false),
-    caseRow(clauses[2], r.normal, r, false),
-    caseRow(clauses[3], r.claimed, r, true),
+    idleRow(clauses[1], r.idle, r),
+    caseRow(clauses[2], r["1001"], r, false),
+    caseRow(clauses[3], r.normal, r, false),
+    caseRow(clauses[4], r.claimed, r, true),
   ];
 }

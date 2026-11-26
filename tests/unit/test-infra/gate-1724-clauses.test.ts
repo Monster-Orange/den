@@ -57,11 +57,18 @@ const good = {
     pty: ipad,
   },
   claimed: { measured: true, took: true, kept: true, desk, pty: desk },
+  idle: {
+    measured: true,
+    took: true,
+    desk,
+    reattached: { pty: desk, follow: true },
+    reloaded: { pty: desk, follow: true },
+  },
 };
 
 describe("gate/1724 rows", () => {
   it("each case back on time, and a Take over in between kept: all four pass", () => {
-    expect(rows(good).map((r) => r.ok)).toEqual([true, true, true, true]);
+    expect(rows(good).map((r) => r.ok)).toEqual([true, true, true, true, true]);
   });
 
   it("the size never coming back (v0.4.90: the desktop keeps it) fails that case", () => {
@@ -70,8 +77,8 @@ describe("gate/1724 rows", () => {
       "1001": { ...good["1001"], backMs: null, pty: desk },
       normal: { ...good.normal, backMs: null, pty: desk },
     });
-    expect(r.map((x) => x.ok)).toEqual([true, false, false, true]);
-    expect(r[1].detail).toContain("still 178x41");
+    expect(r.map((x) => x.ok)).toEqual([true, true, false, false, true]);
+    expect(r[2].detail).toContain("still 178x41");
   });
 
   it("back too late fails; the iPad taking it back over a Take over fails the last", () => {
@@ -80,7 +87,38 @@ describe("gate/1724 rows", () => {
       normal: { ...good.normal, backMs: 36000 },
       claimed: { ...good.claimed, kept: false, pty: ipad },
     });
-    expect(r.map((x) => x.ok)).toEqual([true, true, false, false]);
+    expect(r.map((x) => x.ok)).toEqual([true, true, true, false, false]);
+  });
+
+  it("the returning iPad keeping its place passes; taking the size back, or no Sized by another view, fails", () => {
+    expect(rows(good)[1].ok).toBe(true);
+    const took = rows({
+      ...good,
+      idle: { ...good.idle, reattached: { pty: ipad, follow: false } },
+    })[1];
+    expect(took.ok).toBe(false);
+    expect(took.detail).toContain("after the iPad's socket reattached: 101x72");
+    const reload = rows({
+      ...good,
+      idle: { ...good.idle, reloaded: { pty: ipad, follow: false } },
+    })[1];
+    expect(reload.ok).toBe(false);
+    expect(reload.detail).toContain("after its reload: 101x72");
+    const noChip = rows({
+      ...good,
+      idle: { ...good.idle, reloaded: { pty: desk, follow: false } },
+    })[1];
+    expect(noChip.ok).toBe(false);
+    expect(noChip.detail).toContain("no Sized by another view");
+    expect(() =>
+      rows({
+        ...good,
+        idle: {
+          measured: false,
+          why: "the iPad page never reattached after its reload",
+        },
+      }),
+    ).toThrow(/1724 not measured: the iPad page never reattached/);
   });
 
   it("a Take over that never sized the terminal fails its case", () => {
@@ -88,13 +126,13 @@ describe("gate/1724 rows", () => {
       ...good,
       "1001": { measured: true, took: false, pty: ipad },
     });
-    expect(r[1].ok).toBe(false);
-    expect(r[1].detail).toContain("never sized");
+    expect(r[2].ok).toBe(false);
+    expect(r[2].detail).toContain("never sized");
   });
 
   it("the iPad view not sizing first fails row 1 and skips the rest", () => {
     const r = rows({ ...good, sizedMs: null, firstPty: null });
-    expect(r.map((x) => x.ok)).toEqual([false, null, null, null]);
+    expect(r.map((x) => x.ok)).toEqual([false, null, null, null, null]);
     expect(r[1].skip).toBe("needs-ipad-sized-first");
   });
 
@@ -122,7 +160,7 @@ describe("gate/1724 rows", () => {
         `const g = await import("./gate/1724.mjs"); console.log(JSON.stringify({ way: g.CLOSE_WAY, n: g.clauses.length }));`,
       ),
     ) as { way: string; n: number };
-    expect(g.n).toBe(4);
+    expect(g.n).toBe(5);
     expect(g.way).toContain("1001");
     expect(g.way).toContain("does not cover a dead connection with no close");
   });
