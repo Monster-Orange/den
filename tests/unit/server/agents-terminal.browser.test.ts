@@ -1116,6 +1116,78 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.context().close();
   }, 60_000);
 
+  it("PR 1819: Restart all for tools stays disabled with its progress, and after a reload too", async () => {
+    if (skip()) return;
+    const p = await page(`/agents`);
+    await p.route("**/api/sessions*", async (r) => {
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mcpStale?: unknown }[];
+        };
+        for (const x of body.sessions)
+          if (x.agent === "planner" || x.agent === "coder")
+            x.mcpStale = {
+              adds: [],
+              drops: [],
+              den: { from: "0.0.1-old", to: "0.0.2-new" },
+            };
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
+    });
+    let run: { total: number; done: number } | null = null;
+    const rows = () =>
+      ["planner", "coder"].map((id) => ({
+        id,
+        workspace: "north",
+        state: "turn",
+      }));
+    await p.route("**/api/agents/restart-status*", (r) =>
+      r.fulfill({
+        contentType: "application/json",
+        json: { agents: run ? rows() : [], run },
+      }),
+    );
+    let posts = 0;
+    await p.route("**/api/agents/restart-stale", (r) => {
+      posts++;
+      run = { total: 2, done: 0 };
+      return r.fulfill({
+        status: 202,
+        contentType: "application/json",
+        json: { ok: true, pending: rows(), agents: rows(), run },
+      });
+    });
+    await p.reload();
+    const btn = `[data-note="tools-stale"] [data-act="tools-restart-all"]`;
+    await p.waitForSelector(`${btn}:not([disabled])`, { timeout: 15_000 });
+    const busy = (done: number) =>
+      p.evaluate(
+        (d) =>
+          (
+            window as unknown as {
+              denShell: { t: (k: string, v: object) => string };
+            }
+          ).denShell.t("rs.barBusy", { done: d, total: 2 }),
+        done,
+      );
+    await p.click(btn);
+    await p.waitForSelector(`${btn}[disabled][aria-busy="true"]`);
+    expect((await p.textContent(btn))?.trim()).toBe(await busy(0));
+    expect(posts).toBe(1);
+    run = { total: 2, done: 1 };
+    await p.reload();
+    await p.waitForSelector(`${btn}[disabled][aria-busy="true"]`, {
+      timeout: 15_000,
+    });
+    expect((await p.textContent(btn))?.trim()).toBe(await busy(1));
+    await p.click(btn, { force: true }).catch(() => undefined);
+    expect(posts).toBe(1);
+    await p.context().close();
+  }, 60_000);
+
   const JOB_CMD = "npm run dev";
   it("issue 1407: a stale agent with a background job: its row names the job, with Restart now (ends the job)", async () => {
     if (skip()) return;
