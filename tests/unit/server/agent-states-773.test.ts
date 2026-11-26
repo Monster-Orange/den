@@ -25,7 +25,7 @@ import {
   setPrincipal,
   type Principal,
 } from "../../../src/ui/server/request-guard.js";
-import { osUser } from "../../../src/shared/web-secret.js";
+import { osUser } from "../../../src/shared/web/web-secret.js";
 import { FIXTURE_PRINCIPAL } from "../../../src/shared/fixture-person.js";
 
 let dir = "";
