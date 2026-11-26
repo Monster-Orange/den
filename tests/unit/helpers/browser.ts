@@ -19,7 +19,7 @@
  *   context is held to the run's base URLs (DEN_GATE_ALLOW, Den's
  *   shared/gates/pw-guard), localhost names are pinned to 127.0.0.1, and
  *   each refused request is recorded (`boxGuardBlocks`) and printed. A
- *   "host:*" base URL covers only the ports this run serves (./own-ports:
+ *   "host:*" base URL covers only the ports this run serves (own-ports.ts, in the export:
  *   its servers while they listen, and child servers a helper saw answer).
  *   A box run with no base URLs opens no browser.
  *
@@ -27,15 +27,17 @@
  * this one launches or connects a browser itself.
  */
 import type { Browser, BrowserType, LaunchOptions, Page } from "playwright";
+// Issue 1010: from the package's own export, so it is used on every run.
 import {
   allowFromEnv,
   connectGuarded,
   guardBrowser,
+  type ConnectGuard,
+  ownPorts,
   pinLoopbackNames,
-} from "../../../src/shared/gates/pw-guard.js";
-import { ownPorts } from "./own-ports.js";
+} from "@monster-orange/den/pw-guard";
 
-export { boxOwnPort } from "./own-ports.js";
+export { boxOwnPort } from "@monster-orange/den/pw-guard";
 
 export type BrowserEngine = "chromium" | "firefox" | "webkit";
 
@@ -72,35 +74,45 @@ export function boxGuardBlocks(): string[] {
   return [...blocks];
 }
 
-/** On a box run, holds `browser` to the run's base URLs. */
+/** Records and prints a URL the box guard refused. */
+function reportBlock(allow: string[]): (url: string) => void {
+  return (url) => {
+    blocks.push(url);
+    console.error(
+      `box guard: refused ${url} (allowed: ${allow.join(", ")}; a "host:*" ` +
+        "entry covers only the ports this test process opened)",
+    );
+  };
+}
+
+function pinOnce(): void {
+  if (pinned) return;
+  pinLoopbackNames();
+  pinned = true;
+}
+
+/**
+ * On a box run, holds `browser` to the run's base URLs. guardBrowser
+ * guards newPage's own context too (issue 1205).
+ */
 function boxGuarded(browser: Browser, env: NodeJS.ProcessEnv): Browser {
   if (!env.DEN_GATE_BOX) return browser;
+  pinOnce();
   const allow = allowFromEnv(env);
-  if (!pinned) {
-    pinLoopbackNames();
-    pinned = true;
-  }
-  guardBrowser(
-    browser,
-    allow,
-    (url) => {
-      blocks.push(url);
-      console.error(
-        `box guard: refused ${url} (allowed: ${allow.join(", ")}; a "host:*" ` +
-          "entry covers only the ports this test process opened)",
-      );
-    },
-    ownPorts(),
-  );
-  // browser.newPage() makes its own context, not through newContext: give
-  // it a guarded one, closed with the page as Playwright's would be.
-  browser.newPage = async (o?: Parameters<Browser["newPage"]>[0]) => {
-    const ctx = await browser.newContext(o);
-    const page = await ctx.newPage();
-    page.once("close", () => void ctx.close().catch(() => {}));
-    return page;
-  };
-  return browser;
+  return guardBrowser(browser, allow, reportBlock(allow), ownPorts());
+}
+
+/**
+ * Issue 1205: the guard for a connected browser, which reaches this
+ * machine's loopback. A box run: its base URLs. Any other run (a
+ * Playwright container on this machine, as CI's nav job) declares none,
+ * so its pages load only the ports this test process serves.
+ */
+function connectGuard(env: NodeJS.ProcessEnv): ConnectGuard {
+  if (env.DEN_GATE_BOX) pinOnce();
+  const given = allowFromEnv(env);
+  const allow = given.length ? given : ["127.0.0.1:*"];
+  return { allow, onBlock: reportBlock(allow), ownPorts: ownPorts() };
 }
 
 /** A browser for a test: DEN_PW_WS's server, else a local launch. */
@@ -126,12 +138,15 @@ export async function launchBrowser(
     return boxGuarded(await type.launch(options), process.env);
   }
   try {
-    return boxGuarded(
-      // Issue 1033: DEN_PW_EXPOSE when the gate gave it; else the loopback.
-      await connectGuarded(type, ws, {
-        exposeNetwork: process.env.DEN_PW_EXPOSE?.trim() || "<loopback>",
-      }),
+    // Issue 1033: DEN_PW_EXPOSE when the gate gave it; else the loopback.
+    // Issue 1205: connectGuarded guards it (connectGuard above).
+    return await connectGuarded(
+      type,
+      ws,
+      { exposeNetwork: process.env.DEN_PW_EXPOSE?.trim() || "<loopback>" },
       process.env,
+      undefined,
+      connectGuard(process.env),
     );
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);

@@ -145,17 +145,19 @@ describe("pw-guard's connect reads it", () => {
   it("connectGuarded connects with it, and says nothing", async () => {
     const seen: unknown[] = [];
     const said: string[] = [];
+    // Issue 1205: the browser it gives back is guarded (connect-guarded-1205).
+    const browser = { newContext: async () => ({ route: async () => {} }) };
     const type = {
       connect: (ws: string, o: unknown) => {
         seen.push([ws, o]);
-        return Promise.resolve("browser");
+        return Promise.resolve(browser);
       },
     };
     expect(
       await connectGuarded(type, "ws://b1.test:3000", {}, BOX, (l) =>
         said.push(l),
       ),
-    ).toBe("browser");
+    ).toBe(browser);
     expect(seen).toEqual([
       ["ws://b1.test:3000", { exposeNetwork: "<loopback>" }],
     ]);

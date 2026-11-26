@@ -1,0 +1,4 @@
+test("expires after a day", () => {
+  const made = Date.parse("2026-11-23");
+  expect(Date.now() - made).toBeLessThan(86_400_000);
+});

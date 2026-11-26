@@ -18,7 +18,7 @@ import {
   readHubBinding,
   readUnrevoked,
   recordUnrevoked,
-} from "../../../src/shared/hub-binding.js";
+} from "../../../src/shared/hub/hub-binding.js";
 import {
   NotificationStore,
   type Notification,

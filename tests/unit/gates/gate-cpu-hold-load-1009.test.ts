@@ -22,6 +22,7 @@ import {
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { gateView } from "../../../src/shared/gates/view.js";
 import { slotLine } from "../../../src/ui/cli/gate-command.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const T0 = Date.parse("2026-11-22T17:00:00Z");
 const iso = (min: number) => new Date(T0 + min * 60_000).toISOString();
@@ -61,7 +62,11 @@ describe("the rule (pure)", () => {
   it("load 30 ≥ 24 with a release browser holder: the cpu ask waits", () => {
     expect(grants(release, S, at(2), 30)).toEqual([]);
     expect(assign(release, S, at(2), [], 30)).toEqual([]);
-    expect(loadHold(release, S, 30)).toEqual({ load: 30, limit: 24 });
+    expect(loadHold(release, S, 30)).toEqual({
+      why: "release",
+      load: 30,
+      limit: 24,
+    });
   });
 
   it("a release run on a test box holds too (its app runs here)", () => {
@@ -187,7 +192,7 @@ describe("the store, with a stubbed load", () => {
       "waiting: load 30 ≥ 24 while a release run holds the browser slot",
     );
     const v = gateView(store, T0).slots.find((s) => s.id === cpu.id)!;
-    expect(v.loadHold).toEqual({ load: 30, limit: 24 });
+    expect(v.loadHold).toEqual({ why: "release", load: 30, limit: 24 });
   });
 
   it("load drops: granted on the next pass; the holder never stopped", () => {
@@ -215,9 +220,7 @@ describe("the Gate page and the setting's words", () => {
   });
 
   it("the Settings row has its words in en, es and ja", () => {
-    expect(read("settings-registry.js")).toContain(
-      '"gate_slots.cpu_hold_load"',
-    );
+    expect(readSettingsSources()).toContain('"gate_slots.cpu_hold_load"');
     for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {
       expect(read(f)).toContain('"set.server.gate_cpu_hold_load":');
       expect(read(f)).toContain('"set.server.gate_cpu_hold_load.d":');

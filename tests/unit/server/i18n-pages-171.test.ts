@@ -33,6 +33,8 @@ const PAGES: Record<string, string[]> = {
   Logs: ["logs.html"],
   Environments: ["environments.html", "view-scope.js"],
   Services: ["services.html", "svc-panel.js"],
+  // Issue 806: Projects' Add Service dialog.
+  "Add Service": ["add-service.js"],
 };
 
 /**

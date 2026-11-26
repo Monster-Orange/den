@@ -16,30 +16,32 @@ import type { AgentsResolved } from "../cli/agent-ops.js";
 import {
   deliveryAlert,
   readDeliveryHealth,
+  toolsHeldAck,
   SeenDeliveries,
   writeDeliveryHealth,
   type Delivery,
   type DeliveryOwner,
-} from "../../shared/hub-delivery.js";
-import { appendJournal } from "../../shared/hub-delivery-journal.js";
+} from "../../shared/hub/hub-delivery.js";
+import { appendJournal } from "../../shared/hub/hub-delivery-journal.js";
 import { hubCommentsBell } from "./hub-comments-bell.js";
 import {
   DeliveryLoop,
   HELD_WORDS,
   type AgentHubWork,
   type HeldCode,
-} from "../../shared/hub-delivery-loop.js";
+} from "../../shared/hub/hub-delivery-loop.js";
 import {
   listRecords,
   readRecord,
   type AgentRecord,
 } from "../../shared/agents/records.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import { hubToolsFailed } from "../../shared/agents/hub-mcp-connect.js";
 import {
   feedKinds,
   InboxWatcher,
   type InboxSettings,
-} from "../../shared/hub-inbox-watch.js";
+} from "../../shared/hub/hub-inbox-watch.js";
 import { getStateDir } from "../../shared/paths.js";
 import { readUserConfig } from "../../shared/den-config.js";
 import { embedSettings } from "./embed-settings.js";
@@ -71,6 +73,8 @@ let ownerAskedAt = 0;
 let ownerWanted: () => void = () => undefined;
 /** #65: the inbox kinds Hub's feed carries (whoami features). */
 let feedCarries: ReadonlySet<string> = new Set();
+/** Issue 750: Hub takes the `held` ack (whoami lists deliveries.ack_held). */
+let ackHeldOn = false;
 interface StartOpts {
   heartbeatSeconds: number;
   pollSeconds: number;
@@ -108,7 +112,10 @@ const MARK_CODES: ReadonlySet<string> = new Set([
  * which the screen check reads as a dialog: the agent isn't at its prompt.
  */
 export async function heldWhyOf(
-  ops: Pick<typeof AgentOps, "agentDialogKind" | "agentScreenShowsDialog">,
+  ops: Pick<
+    typeof AgentOps,
+    "agentDialogKind" | "agentScreenShowsDialog" | "heldForDraft"
+  >,
   d: AgentsResolved,
   id: string,
   waitingWhy?: (id: string) => string | null,
@@ -117,6 +124,8 @@ export async function heldWhyOf(
   if (dialog) return dialog;
   const why = waitingWhy?.(id) ?? null;
   if (why && MARK_CODES.has(why)) return why as HeldCode;
+  // Issue 1311: its person's unsent draft on the line.
+  if (ops.heldForDraft(id)) return "draft";
   return (await ops.agentScreenShowsDialog(d, id)) ? "not_at_prompt" : null;
 }
 
@@ -126,6 +135,23 @@ function heldBellAfter(why: HeldCode | undefined): number {
   return (lastOpts?.heldBellMinutes ?? 5) * 60;
 }
 let lastOpts: StartOpts | null = null;
+
+/** Issue 1311: agents.draft_hold_max_minutes, in s (its default if unreadable). */
+function draftBellAfter(d: AgentsResolved): number {
+  try {
+    return (d.agentsConfig().draftHoldMaxMs ?? 30 * 60_000) / 1000;
+  } catch {
+    return 30 * 60;
+  }
+}
+
+/**
+ * Issue 1311: how many Hub items wait for agent `agent` on its person's
+ * unsent draft (the terminal's "N messages waiting").
+ */
+export function hubWaitingOnDraft(agent: string): number {
+  return loop?.waitingOnDraft(agent) ?? 0;
+}
 /** Issue 166: Hub's inbox, read for this install's agents. */
 let inbox: InboxWatcher | null = null;
 let inboxTimer: NodeJS.Timeout | null = null;
@@ -136,6 +162,20 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   if (!cfg) return null;
   const token = await hub.readHubToken(cfg);
   return token ? { url: cfg.url, token } : null;
+}
+
+async function syncAgentGrant(url: string): Promise<void> {
+  try {
+    const g = await import("../../shared/hub-agent-grant.js");
+    const { getStateDir } = await import("../../shared/paths.js");
+    const { notificationDeps } = await import("./notification-service.js");
+    g.syncAgentGrantNote(notificationDeps().store, {
+      connected: true,
+      notCovered: g.agentsNotCovered(getStateDir(), url),
+    });
+  } catch {
+    return;
+  }
 }
 
 /** The body of a fetch Response as text chunks. */
@@ -231,6 +271,7 @@ async function inboxSettings(): Promise<InboxSettings> {
         on: c.inboxWatch,
         pollSeconds: c.inboxPollSeconds,
         backoffMaxSeconds: c.inboxBackoffMaxSeconds,
+        readsPerSecond: c.inboxReadsPerSecond,
       };
   } catch {
     /* doctor says so; the defaults meanwhile */
@@ -271,10 +312,12 @@ function startHubNotes(log: (line: string) => void): void {
       const at = await hubAndToken().catch(() => null);
       if (!at) return;
       const hub = await import("../../shared/hub.js");
-      const { syncHubNotes } = await import("../../shared/hub-notes-sync.js");
+      const { syncHubNotes } =
+        await import("../../shared/hub/hub-notes-sync.js");
       const { notificationDeps } = await import("./notification-service.js");
       await syncHubNotes({
         store: notificationDeps().store,
+        hubUrl: at.url,
         owner: () => owner?.ownerLogin ?? null,
         list: () => hub.hubNotifications(at.url, at.token),
         markRead: (ids) => hub.hubMarkNotificationsRead(at.url, at.token, ids),
@@ -303,6 +346,50 @@ type HeldStore = Pick<
   import("../../shared/notifications.js").NotificationStore,
   "add" | "withdraw"
 >;
+
+export function badDeliveryFile(
+  aside: string,
+  o: {
+    held?: number | null;
+    code?: string;
+    store?: HeldStore;
+    log?: (line: string) => void;
+  } = {},
+): void {
+  const file = path.basename(aside).replace(/\.bad-\d+$/, "");
+  const moved = path.basename(aside);
+  const n = o.held ?? null;
+  const kept = moved !== file;
+  const key = !kept
+    ? "bell.m.deliveryFileBadKept"
+    : n === null
+      ? "bell.m.deliveryFileBadUncounted"
+      : "bell.m.deliveryFileBad";
+  const text = !kept
+    ? `Den couldn't read ${file} and couldn't move it aside; delivery goes on without what it held.`
+    : n === null
+      ? `Den couldn't read ${file} or count its held deliveries; kept the file as ${moved}.`
+      : `Den couldn't read ${n} held deliver${n === 1 ? "y" : "ies"}; kept the file as ${moved}.`;
+  const go = (s: HeldStore) =>
+    s.add({
+      kind: "service",
+      subject: `record:delivery-file-bad:${moved}`,
+      scope: "den",
+      text,
+      msg: { key, vars: n === null ? { file, moved } : { file, moved, n } },
+      link: "/settings",
+    });
+  if (o.store) go(o.store);
+  else
+    void import("./notification-service.js")
+      .then(({ notificationDeps }) => go(notificationDeps().store))
+      .catch(() => undefined);
+  try {
+    o.log?.(`hub delivery: ${text}${o.code ? ` (${o.code})` : ""}`);
+  } catch {
+    return;
+  }
+}
 
 /**
  * Issue 664: the bell's item for text held because `agent` isn't at its
@@ -410,9 +497,16 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     },
     agents: {
       state: (id) => ops.agentInputState(d, id, o.waiting()),
-      type: (id, text) => ops.typeIntoAgent(d, id, text),
+      // Issue 1311: a draft on the line: false at once; this queue keeps
+      // the items, in order, and types them once the draft is gone.
+      type: (id, text) => ops.typeIntoAgent(d, id, text, { onDraft: "refuse" }),
       notAtPrompt: (id) => ops.heldNotAtPrompt(id),
       why: (id) => heldWhyOf(ops, d, id, (x) => o.waitingWhy?.(x) ?? null),
+      // Issue 750: its Hub tools failed to load (issue 749's record).
+      hubTools: (id) => {
+        const rec = readRecord(getStateDir(), id);
+        return rec && hubToolsFailed(getStateDir(), rec) ? false : null;
+      },
     },
     // Issue 701: the person's comment answers the agent's question.
     answered: (agent) => {
@@ -447,8 +541,15 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     // keeps saying it (refreshed each minute) until it's typed.
     // Issue 701: and for every other reason, after
     // hub.delivery_held_bell_minutes.
+    // Issue 1311: held on a draft, after agents.draft_hold_max_minutes.
     heldNote: (agent, n, waitedMs, why) =>
-      heldBell(agent, n, waitedMs, heldBellAfter(why), { why }),
+      heldBell(
+        agent,
+        n,
+        waitedMs,
+        why === "draft" ? draftBellAfter(d) : heldBellAfter(why),
+        { why },
+      ),
     stateTimeoutMs: (o.stateTimeoutSeconds ?? 60) * 1000,
     typeTimeoutMs: (o.typeTimeoutSeconds ?? 120) * 1000,
     answerTimeoutMs: (o.answerMinutes ?? 30) * 60_000,
@@ -464,12 +565,23 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     },
     owner: () => owner,
     ownerWanted: () => ownerWanted(),
+    ackHeld: () => deliveryAckHeld(),
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
+      5000,
+      {
+        onBad: (aside, held, code) =>
+          badDeliveryFile(aside, { held, code, log: o.log }),
+      },
     ),
     // Issue 459: app feed pointers keep their own seen ids.
     feedSeen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "feed-pointers-seen.json"),
+      5000,
+      {
+        onBad: (aside, held, code) =>
+          badDeliveryFile(aside, { held, code, log: o.log }),
+      },
     ),
     // Issue 459: one paste holds at most embed.paste_max_kb.
     pasteMaxChars: () => {
@@ -487,8 +599,21 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       appendJournal(path.join(getStateDir(), "hub", "deliveries.jsonl"), e),
     // Issue 702: doctor reads the path's health from a file.
     onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
-    health0: {
-      lastDeliveryAt: readDeliveryHealth(healthFile())?.lastDeliveryAt ?? null,
+    health0: (() => {
+      const h0 = readDeliveryHealth(healthFile());
+      return {
+        lastDeliveryAt: h0?.lastDeliveryAt ?? null,
+        // A restart keeps how long the cursor has been still.
+        cursorAt: h0?.cursorAt ?? null,
+      };
+    })(),
+    // hub.delivery_stale_hours, read at each check.
+    staleMs: () => {
+      try {
+        return (hub.readHubConfig()?.deliveryStaleHours ?? 6) * 3_600_000;
+      } catch {
+        return 6 * 3_600_000;
+      }
     },
     // Issue 703: hub.delivery_stream_silence_seconds, read at each open.
     silenceMs: () => {
@@ -526,6 +651,24 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
 }
 
 /**
+ * Issue 750 step 4: what Hub's whoami lists, kept for the loop: the inbox
+ * kinds its feed carries (#65), and whether an agent whose Hub tools
+ * failed gets a `held` ack (deliveries.ack_held) or `queued` (an older
+ * Hub, or no answer). Reads only whoami: hub.groups never changes it.
+ */
+export function noteWhoami(
+  w: { features?: readonly string[] } | null | undefined,
+): void {
+  feedCarries = feedKinds(w?.features);
+  ackHeldOn = toolsHeldAck(w?.features).state === "held";
+}
+
+/** Issue 750 step 4: whether the loop acks `held` (else `queued`). */
+export function deliveryAckHeld(): boolean {
+  return ackHeldOn;
+}
+
+/**
  * Start (or restart) reading Hub's deliveries. `waiting`: the agents with
  * a held Allow, a permission prompt or an ask_human question waiting for
  * their person (never typed into then); an idle one is not among them.
@@ -553,6 +696,8 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
       feedCarries = feedKinds(w.features);
+      void syncAgentGrant(a.url);
+      noteWhoami(w);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */
     } finally {
@@ -563,8 +708,10 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
     if (Date.now() - ownerAskedAt >= o.pollSeconds * 1000) void askOwner();
   };
   // A new connection may be a different person: never keep the old one.
+  // Issue 750: nor the old Hub's features (until it says, `queued`).
   owner = null;
   loop?.ownerReset();
+  ackHeldOn = false;
   ownerAskedAt = 0;
   await askOwner();
   startHubNotes(o.log);

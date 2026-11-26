@@ -317,6 +317,37 @@ describe("the map (tests/affected-map.json)", () => {
     expect(files.length).toBeLessThan(TESTS.length / 10);
   });
 
+  it("a Settings row change runs the pin test and every test that reads the Settings files", () => {
+    const s = select({
+      changed: ["src/ui/server/public/settings-registry.js"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+      importersOf: {
+        "tests/unit/server/helpers/settings-sources.ts": [
+          "tests/unit/server/settings-sources.test.ts",
+        ],
+      },
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain(
+      "tests/unit/server/settings-registry-order.test.ts",
+    );
+    expect(files).toContain("tests/unit/server/settings-sources.test.ts");
+  });
+
+  it("a change to the Settings pin's fixture runs the pin test", () => {
+    const s = select({
+      changed: ["tests/fixtures/settings-registry-order.json"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(Object.keys(s.files)).toContain(
+      "tests/unit/server/settings-registry-order.test.ts",
+    );
+  });
+
   it("a pull request touching the request guard runs everything", () => {
     const s = select({
       changed: ["src/ui/server/request-guard.ts"],
@@ -328,14 +359,42 @@ describe("the map (tests/affected-map.json)", () => {
     expect(s.allBecause).toEqual(["src/ui/server/request-guard.ts"]);
     expect(Object.keys(s.files)).toHaveLength(TESTS.length);
   });
+
+  it("a pull request touching only a live check runs every live check's own test", () => {
+    const s = select({
+      changed: ["gate/252.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    const own = TESTS.filter((t) =>
+      t.startsWith("tests/unit/test-infra/gate-"),
+    );
+    expect(own).toContain("tests/unit/test-infra/gate-252-runner.test.ts");
+    expect(own).toContain("tests/unit/test-infra/gate-expect-shape.test.ts");
+    for (const t of own) expect([t, files.includes(t)]).toEqual([t, true]);
+  });
+
+  it("a live check's change also runs a test elsewhere that loads it by path", () => {
+    const s = select({
+      changed: ["gate/750.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain("tests/unit/gates/gate-750-hub-leg.test.ts");
+    expect(files).toContain("tests/unit/gates/gate-750-real-read.test.ts");
+  });
 });
 
 describe("tests that start Den as a process (issue 708)", () => {
   // Pull request 704's change: the server process sends the acks, and the
   // integration test reaches it over HTTP, never by an import.
   const PR_704 = [
-    "src/shared/hub-delivery-loop.ts",
-    "src/shared/hub-delivery.ts",
+    "src/shared/hub/hub-delivery-loop.ts",
+    "src/shared/hub/hub-delivery.ts",
     "src/ui/cli/agent-ops.ts",
     "src/ui/server/attention.ts",
     "src/ui/server/hub-delivery-service.ts",
@@ -345,6 +404,22 @@ describe("tests that start Den as a process (issue 708)", () => {
     "tests/unit/shared/hub-delivery-held-ack.test.ts",
     "tests/unit/shared/hub-delivery-loop.test.ts",
   ];
+
+  it("issue 728: a test declared in subjects runs on its subject, though it starts a scaffolded distribution's bin the pattern can't see", () => {
+    const s = select({
+      changed: ["src/ui/cli/doctor-command.ts"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(s.all).toBe(false);
+    expect(Object.keys(s.files)).toEqual(
+      expect.arrayContaining([
+        "tests/unit/server/no-secrets-store.integration.test.ts",
+        "tests/unit/cli/repo-add-no-run.integration.test.ts",
+      ]),
+    );
+  });
 
   it("a change to its subject runs it, with no import edge (704's change)", () => {
     const s = select({
@@ -384,9 +459,9 @@ describe("tests that start Den as a process (issue 708)", () => {
       call<string[]>(MAP_GEN, "subjectOf", t, text, {});
     expect(subj("tests/unit/server/hub-delivery.integration.test.ts")).toEqual(
       [
-        "src/shared/hub-delivery-journal.ts",
-        "src/shared/hub-delivery-loop.ts",
-        "src/shared/hub-delivery.ts",
+        "src/shared/hub/hub-delivery-journal.ts",
+        "src/shared/hub/hub-delivery-loop.ts",
+        "src/shared/hub/hub-delivery.ts",
         "src/ui/server/hub-delivery-service.ts",
       ].sort(),
     );
@@ -719,13 +794,15 @@ describe("ci.yml (issue 398)", () => {
     expect(pr.if).toBe(
       "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
     );
-    expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
+    // Issue 843: and the fast static checks.
+    expect(ci.jobs["pr-shards"].needs).toEqual(["fast", "pr"]);
     const text = runs(pr);
+    // Issue 843: the words gate and the kit copies run once, in `fast`,
+    // which the pr job waits for.
+    expect(ci.jobs.pr.needs).toEqual(["fast"]);
     for (const gate of [
       "npm run typecheck",
-      "scripts/words-gate.mjs",
       "npm run lint",
-      "gate:den-ui",
       "scripts/org-name-gate.mjs",
       "scripts/org-name-commits.mjs",
       "scripts/dist-smoke.sh",
@@ -760,13 +837,23 @@ describe("ci.yml (issue 398)", () => {
     }
   });
 
-  // Only checks and dist-smoke may name DEN_SELF_HOSTED
-  // (ci-runner-guard.test.ts); the pull-request jobs stay GitHub-hosted.
-  it("the pr jobs run GitHub-hosted", () => {
-    expect([ci.jobs.pr["runs-on"], ci.jobs["pr-shards"]["runs-on"]]).toEqual([
-      "ubuntu-latest",
-      "ubuntu-latest",
-    ]);
+  // Issue 1226: pr and pr-shards may use the self-hosted runners (every
+  // event is checked in ci-runner-guard.test.ts). A fork's pull request
+  // never does, and with the switch off they fall back to GitHub-hosted.
+  it("the pr jobs fall back to GitHub-hosted, and a fork's PR never leaves it", () => {
+    for (const job of ["pr", "pr-shards"]) {
+      const on = String(ci.jobs[job]["runs-on"]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining("|| 'ubuntu-latest'"),
+      ]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining(
+          "github.event.pull_request.head.repo.full_name == github.repository",
+        ),
+      ]);
+    }
   });
 });
 
@@ -862,7 +949,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
   it("shell.js, ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
     for (const f of [
       "src/ui/server/public/shell.js",
-      "src/ui/server/ui-language.ts",
+      "src/shared/ui-language.ts",
       "src/ui/server/ui-assets.ts",
       "tests/unit/server/helpers/en-catalog.ts",
       "tests/unit/server/helpers/kit-shell.ts",

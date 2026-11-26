@@ -85,7 +85,7 @@
 }
 .cl-divider {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border); /* issue 1137: a row divider stays solid */
   margin: 14px 0;
 }
 .cl-copy-group {
@@ -97,7 +97,7 @@
 .cl-copy-btn,
 .cl-slack-btn {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   color: var(--muted);
   padding: 3px 6px;
   border-radius: 4px;

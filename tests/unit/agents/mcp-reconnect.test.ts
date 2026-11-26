@@ -11,7 +11,10 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import { noteHubMcpInit } from "../../../src/shared/agents/hub-mcp-connect.js";
+import {
+  noteHubMcpInit,
+  noteHubMcpTools,
+} from "../../../src/shared/agents/hub-mcp-connect.js";
 import { readRecord } from "../../../src/shared/agents/records.js";
 import { readHubConfig } from "../../../src/shared/hub.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
@@ -21,6 +24,7 @@ import {
   typeIntoAgent,
 } from "../../../src/ui/cli/agent-ops.js";
 import {
+  LISTING_LINE,
   RECONNECTED_LINE,
   hubToolsMissing,
   mcpReconnect,
@@ -607,4 +611,64 @@ describe("0.4.46: Den reconnects an agent's Hub tools by itself", () => {
         readHubConfig({ hub: { url, mcp_retry_attempts: bad } }, {}, none),
       ).toThrow("hub.mcp_retry_attempts must be a whole number");
   });
+});
+
+describe("issue 749: a tool listing that keeps failing restarts the agent once, never in a loop", () => {
+  it("Hub up but tools/list fails after every restart: one restart with its own line, then the person is belled once; a listing that works clears it", async () => {
+    const r = await rig({ hub: async () => ({ url: HUB, token: TOKEN }) });
+    endOnTerm(r);
+    expect(
+      await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps),
+    ).toBe(0);
+    await settle();
+    const token = readRecord(r.stateDir, "planner")!.resumeToken!;
+    firstSession.set(r, readRecord(r.stateDir, "planner")!.session.id);
+    endedTurn(r, token);
+    const d = resolveAgentsDeps(r.deps);
+    // Its connect worked; listing Hub's tools didn't.
+    const failList = () => {
+      noteHubMcpInit(r.stateDir, "planner", { ok: true });
+      noteHubMcpTools(r.stateDir, "planner", {
+        ok: false,
+        error: "hub (500): Internal Server Error",
+      });
+    };
+    failList();
+    expect(await hubToolsMissing(d)).toEqual([
+      { id: "planner", workspace: "north", listing: true },
+    ]);
+    const gaveUp: string[] = [];
+    const listed: string[] = [];
+    const rc = mcpReconnect(d, {
+      hubUp: async () => true,
+      // 0: no limit, the default: a listing failure is still capped.
+      attempts: () => 0,
+      pollMs: 20,
+      gaveUp: (id, ws, error) => gaveUp.push(`${id}@${ws}: ${error}`),
+      listed: (id) => listed.push(id),
+      log: () => undefined,
+    });
+    expect(await rc.tick()).toEqual(["planner"]);
+    await restartDone(r);
+    r.made[1]?.emit("> ");
+    await rc.pending();
+    await until(() => rc.waiting().length === 0, 15_000);
+    expect(typed(r, 1)).toContain(LISTING_LINE);
+    expect(typed(r, 1)).not.toContain(RECONNECTED_LINE);
+    // While the new session hasn't listed yet, and after it fails again:
+    // no second restart, and the person is belled once.
+    expect(await rc.tick()).toEqual([]);
+    failList();
+    expect(await rc.tick()).toEqual([]);
+    expect(await rc.tick()).toEqual([]);
+    expect(r.made).toHaveLength(2);
+    expect(gaveUp).toEqual([
+      "planner@north: listing Hub's tools failed (hub (500): Internal Server Error)",
+    ]);
+    // A listing that works: not missing, and the bell item can go.
+    noteHubMcpTools(r.stateDir, "planner", { ok: true });
+    expect(await hubToolsMissing(d)).toEqual([]);
+    expect(await rc.tick()).toEqual([]);
+    expect(listed).toEqual(["planner"]);
+  }, 60_000);
 });

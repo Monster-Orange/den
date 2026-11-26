@@ -39,6 +39,7 @@ import { spawn } from "child_process";
 import { createHash, randomBytes } from "crypto";
 import * as fs from "fs";
 import * as net from "net";
+import * as os from "os";
 import * as path from "path";
 import { connect as tlsConnect } from "tls";
 import { writeFileAtomic } from "../atomic-write.js";
@@ -53,6 +54,8 @@ import {
 } from "./classes.js";
 import {
   loadHold,
+  memoryHold,
+  swapHold,
   localRoom,
   queueOrder,
   type GateEntry,
@@ -209,6 +212,29 @@ function versionSkip(
     : "";
 }
 
+/**
+ * Issue 1198: whether any test box could ever take a run (set, not turned
+ * off, and serving its Playwright version): a run that may take a box
+ * only waits for one when this is true, else it is refused at once.
+ */
+export function boxCouldServe(
+  boxes: GateBox[],
+  pwVersion: string | undefined,
+  only?: string[],
+): boolean {
+  return boxes.some(
+    (b) =>
+      b.enabled !== false &&
+      (!only || only.includes(b.name)) &&
+      !versionSkip(
+        pwVersion,
+        b.playwright_endpoints
+          ? { versions: Object.keys(b.playwright_endpoints) }
+          : { version: b.playwright_version },
+      ),
+  );
+}
+
 /** Issue 1033: a version's major.minor ("1.61.2" → "1.61"). */
 const majorMinor = (v: string) =>
   v.split("-")[0]!.split(".").slice(0, 2).join(".");
@@ -327,12 +353,36 @@ export function checkBox(
       error: `box ${name}: say how Den reaches it (ssh, or a playwright address)`,
     };
   for (const k of ["ssh_identity", "hold_file"] as const) {
-    const p = str(k);
+    let p = str(k);
     if (p === undefined) continue;
     if (!PLAIN_PATH.test(p))
       return {
         ok: false,
         error: `box ${name}: ${k} is a plain path (no quotes, wildcards or leading dash)`,
+      };
+    // Issue 1597: sftp never expands "~", so a "~/…" hold file was looked
+    // for under "<home>/~/…" and never found: a paused box read as open.
+    // sftp starts in the box user's home, so "~/" is read as that home.
+    if (k === "hold_file" && p.startsWith("~")) {
+      if (!p.startsWith("~/") || p.length === 2)
+        return {
+          ok: false,
+          error: `box ${name}: hold_file can start with ~ only as ~/ (the home folder of the box's ssh login); give a path in that folder, or an absolute one`,
+        };
+      p = p.slice(2);
+      // The rule again on what is saved: "~/-l" must not become "-l".
+      if (!PLAIN_PATH.test(p))
+        return {
+          ok: false,
+          error: `box ${name}: ${k} is a plain path (no quotes, wildcards or leading dash)`,
+        };
+    }
+    // Issue 1597: the check lists the hold file's folder; a file right
+    // under "/" has none it can list by name.
+    if (k === "hold_file" && /^\/+[^/]*$/.test(p))
+      return {
+        ok: false,
+        error: `box ${name}: hold_file goes in a folder, not right under /`,
       };
     box[k] = p;
   }
@@ -500,7 +550,11 @@ function placesOf(e: GateEntry, boxes: BoxCap[]): string[] {
       !versionSkip(e.pwVersion, b) &&
       (!e.onlyBoxes || e.onlyBoxes.includes(b.name)),
   );
-  if (w === "any") return ["local", ...fits.map((b) => b.name)];
+  if (w === "any") {
+    const names = fits.map((b) => b.name);
+    // Issue 1198: no browser of its own on a host that needs a container.
+    return e.boxesOnly ? names : ["local", ...names];
+  }
   return fits.some((b) => b.name === w) ? [w] : [];
 }
 
@@ -529,13 +583,22 @@ export function assign(
         | "localBrowserSlots"
         | "priorityMax"
         | "priorityPassLimitMinutes"
+        | "releasePassOtherKindMinutes"
         | "classes"
         | "cpuHoldLoad"
+        | "loadHoldPerCore"
+        | "memoryFreeMinPercent"
+        | "swapHoldGb"
       >
     >,
   now: number,
   boxes: BoxCap[] = [],
   load?: number,
+  cores?: number,
+  /** Issue 1274: this machine's free memory, percent. */
+  freeMem?: number | null,
+  /** Issue 1274: swap in use here, GB. */
+  swapGb?: number | null,
 ): { id: string; box?: string }[] {
   const holders = entries.filter((e) => e.grantedAt);
   const room = localRoom(entries, s);
@@ -547,16 +610,19 @@ export function assign(
   const reserved = new Set<string>();
   const out: { id: string; box?: string }[] = [];
   const cap = (n: string) => boxes.find((b) => b.name === n);
+  // Issue 1274: low memory here: new runs here wait; boxes still take theirs.
+  const memHeld =
+    !!memoryHold(entries, s, freeMem) || !!swapHold(entries, s, swapGb);
   const free = (place: string, w: GateEntry): boolean => {
     if (reserved.has(key(place, w.kind))) return false;
-    if (place === "local") return room.fits(w);
+    if (place === "local") return !memHeld && room.fits(w);
     const b = cap(place);
     return !!b && b.open && (used[place] ?? 0) < b.slots;
   };
   const held = windowHeld(entries, s.classes, now);
-  // Issue 1009: a loaded machine under a release browser run: plain cpu
-  // asks wait; a release one goes through.
-  const cpuHeld = !!loadHold(entries, s, load);
+  // Issues 1009, 1048: a loaded machine: plain cpu asks wait; a release
+  // one goes through.
+  const cpuHeld = !!loadHold(entries, s, load, cores);
   for (const w of queueOrder(entries, s, now)) {
     if (held.has(w.id)) continue; // issue 803: it waits for its window
     if (cpuHeld && w.kind === "cpu" && !w.priority) continue;
@@ -593,6 +659,7 @@ export function boxesWanted(
         | "localBrowserSlots"
         | "priorityMax"
         | "priorityPassLimitMinutes"
+        | "releasePassOtherKindMinutes"
         | "classes"
       >
     >,
@@ -736,6 +803,23 @@ export function memAvailableMb(text: string): number | undefined {
 }
 
 /**
+ * Issue 1381: free memory (MB) from a /proc/meminfo text: MemAvailable,
+ * else MemFree + Buffers + Cached (old kernels, some WSL kernels have no
+ * MemAvailable). Undefined when a part is missing: never a guess.
+ */
+export function linuxFreeMb(text: string): number | undefined {
+  const avail = memAvailableMb(text);
+  if (avail !== undefined) return avail;
+  const kb = (label: string) => {
+    const m = new RegExp(`^${label}:\\s+(\\d+)\\s*kB`, "m").exec(text);
+    return m ? Number(m[1]) : undefined;
+  };
+  const parts = [kb("MemFree"), kb("Buffers"), kb("Cached")];
+  if (parts.some((n) => n === undefined)) return undefined;
+  return (parts as number[]).reduce((a, b) => a + b, 0) / 1024;
+}
+
+/**
  * Issue 857: free memory on macOS (MB) from `vm_stat` and, after it,
  * `sysctl -n hw.pagesize`: free + inactive + speculative pages times the
  * page size (sysctl's, else the one in vm_stat's header). Undefined when
@@ -755,6 +839,84 @@ export function macFreeMb(text: string): number | undefined {
   const n = free + (pages("inactive") ?? 0) + (pages("speculative") ?? 0);
   return (n * size) / (1024 * 1024);
 }
+
+/**
+ * Issue 921: the folder on the box where each running CI job's runner
+ * leaves a mark (its runner id), next to the hold file. The box is held
+ * while any mark is there.
+ */
+/**
+ * Issue 1597: a box path as sftp and ssh are given it. Neither expands
+ * "~" in a quoted path, and both start in the box user's home, so "~/x"
+ * is "x". checkBox saves it that way; this covers a box that skipped it.
+ */
+export function homeRelative<T extends string | undefined>(p: T): T {
+  return (p && p.startsWith("~/") ? p.slice(2) : p) as T;
+}
+
+/**
+ * Issue 1597: the folder the hold file is in, checked with it; "" for a
+ * hold file in the box user's home (where sftp starts).
+ */
+export function holdDirOf(box: GateBox): string {
+  const f = homeRelative(box.hold_file);
+  if (!f) return "";
+  const i = f.lastIndexOf("/");
+  return i < 0 ? "" : f.slice(0, i) || "/";
+}
+
+export function marksDirOf(box: GateBox): string {
+  return `${homeRelative(box.hold_file) ?? "den-hold"}.jobs`;
+}
+
+/**
+ * Issue 1597: what the sftp batch says about the hold file, read on
+ * positive evidence only. The words are the sftp client's own (the gate's
+ * sftp prints them; the box's server only returns a status):
+ * - a folder: `-ls -1 "d"` prints `d/<name>` lines ("." prints `./<name>`);
+ * - a file: it prints the file's own bare name;
+ * - missing: `Can't ls: "<abs>/d" not found` on stderr;
+ * - unreadable: `remote readdir("<abs>/d/"): Permission denied`.
+ */
+export function holdReading(
+  holdFile: string,
+  holdDir: string,
+  marksDir: string,
+  r: { out: string; err: string },
+): { gone: true; why?: undefined } | { gone: false; why?: string } {
+  const folder = holdDir || ".";
+  const base = holdFile.slice(holdFile.lastIndexOf("/") + 1);
+  const cantSee = (what: string) => ({
+    gone: false as const,
+    why: `its hold file can't be checked (${what}), so it counts as held`,
+  });
+  // runOnce keeps at most 64 KB of stdout and 4 KB of stderr.
+  if (r.out.length >= 65536 || r.err.length >= 4096)
+    return cantSee("sftp said more than the gate reads");
+  const other = r.err
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        l &&
+        !/^open local /.test(l) &&
+        !l.includes("/proc/meminfo") &&
+        !(
+          /^Can't ls: ".*" not found$/.test(l) &&
+          (l.endsWith(`/${marksDir}" not found`) ||
+            l.endsWith(`"${marksDir}" not found`))
+        ),
+    );
+  if (other.length) return cantSee(`${folder}: ${oneLine(other[0])}`);
+  const out = r.out.split("\n").map((l) => l.trim());
+  if (holdDir && out.includes(holdDir))
+    return cantSee(`${holdDir} is a file, not a folder`);
+  if (out.includes(`${folder}/${base}`)) return { gone: false };
+  return { gone: true };
+}
+
+/** A runner's mark as sftp's `ls -1` lists it: "<folder>/<id>" or "<id>". */
+const MARK_LINE = /^(?:.*\.jobs\/)?([A-Za-z0-9][A-Za-z0-9_-]{0,63})$/;
 
 /** Issue 857: the one command a macOS box runs for its memory. */
 export const MAC_MEM_COMMAND =
@@ -816,7 +978,11 @@ function runOnce(
  * ssh that connects but stalls at the banner is unreachable and never
  * hangs its callers.
  */
-export function sftpProbe(start: typeof spawn): BoxProbe {
+export function sftpProbe(
+  start: typeof spawn,
+  /** Issue 1381: where the private folder is made (tests give one). */
+  tmpRoot: () => string = os.tmpdir,
+): BoxProbe {
   return async (box, timeoutMs) => {
     // Issue 1017: with several Playwright servers, the first is reached.
     // Issue 625: by a WebSocket upgrade, never a bare TCP connect.
@@ -838,15 +1004,70 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
       state: "unreachable" as const,
       reason: `no answer over ssh in ${secs} s`,
     };
-    // A leading "-" lets the batch go on when a file is absent.
-    const r = await runOnce(
-      start,
-      "sftp",
-      ["-q", "-b", "-", ...conn("-P")],
-      (box.hold_file ? `-ls "${box.hold_file}"\n` : "") +
-        "-get /proc/meminfo /dev/stdout\n",
-      capMs,
-    );
+    // Issue 1381: into a file in a new private folder, read, and removed.
+    // macOS sftp can't write a -get to a pipe (/dev/stdout): no text.
+    let dir: string;
+    try {
+      dir = fs.mkdtempSync(path.join(tmpRoot(), "den-box-"));
+      fs.chmodSync(dir, 0o700);
+    } catch (e) {
+      return {
+        state: "unknown",
+        reason: oneLine(
+          `memory unknown: no private folder: ${(e as Error).message}`,
+        ),
+      };
+    }
+    const meminfo = path.join(dir, "meminfo");
+    const holdDir = holdDirOf(box);
+    const holdFile = homeRelative(box.hold_file);
+    // The path goes into the batch in quotes: one with a quote, a backslash
+    // or a line break (TMPDIR is the environment's) could end it or add a
+    // command (a local `!` shell, a remote rm).
+    if (/["\\\r\n]/.test(meminfo)) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return {
+        state: "unknown",
+        reason:
+          "memory unknown: the temp folder's path can't go in an sftp batch",
+      };
+    }
+    let r: Awaited<ReturnType<typeof runOnce>>;
+    let memText = "";
+    try {
+      // A leading "-" lets the batch go on when a file is absent.
+      r = await runOnce(
+        start,
+        "sftp",
+        ["-q", "-b", "-", ...conn("-P")],
+        // Issue 1597: the hold file's folder is listed, never the hold
+        // file itself: sftp says "not found" for a file it can't read, so
+        // only a listing that worked can show the hold is gone.
+        (holdFile ? `-ls -1 "${holdDir || "."}"\n` : "") +
+          // Issue 921: the job marks folder, one name a line, on stdout.
+          `-ls -1 "${marksDirOf(box)}"\n` +
+          `-get /proc/meminfo "${meminfo}"\n`,
+        capMs,
+      );
+      try {
+        // At most 64 KB is read, whatever the box sent.
+        const fd = fs.openSync(meminfo, "r");
+        try {
+          const buf = Buffer.alloc(65536);
+          memText = buf.toString(
+            "utf-8",
+            0,
+            fs.readSync(fd, buf, 0, buf.length, 0),
+          );
+        } finally {
+          fs.closeSync(fd);
+        }
+      } catch {
+        // Not there (no /proc/meminfo, or the box wasn't reached).
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
     if (r.timedOut) return noAnswer;
     if (r.failed)
       return { state: "unreachable", reason: oneLine(`sftp: ${r.failed}`) };
@@ -857,22 +1078,53 @@ export function sftpProbe(start: typeof spawn): BoxProbe {
           oneLine(r.err.split("\n").filter(Boolean).pop() ?? "") ||
           `ssh to ${box.ssh} failed (exit ${r.code})`,
       };
-    const missing = r.err
+    // Issue 1381: each line read by what it is. A failed local copy
+    // ("open local …") is neither the hold gone nor no /proc/meminfo.
+    const lines = r.err.split("\n");
+    const marksDir = marksDirOf(box);
+    // Issue 1597: the hold is gone only on positive evidence: the folder's
+    // own listing worked (no error line sftp can print but the ones known
+    // to be about the marks folder or the memory), the folder is a folder
+    // (a file lists as its own bare name), nothing was cut short, and the
+    // hold file isn't in the listing. Anything else is held.
+    const holdCheck = holdFile
+      ? holdReading(holdFile, holdDir, marksDir, r)
+      : { gone: true as const };
+    const holdGone = holdCheck.gone;
+    const noMeminfo = lines.some(
+      (l) =>
+        !/^open local /.test(l) &&
+        l.includes("/proc/meminfo") &&
+        /not found|no such file/i.test(l),
+    );
+    const localFail = lines.find((l) => /^open local /.test(l));
+    const marks = r.out
       .split("\n")
-      .filter((l) => /not found|no such file/i.test(l));
-    const noMeminfo = missing.some((l) => l.includes("/proc/meminfo"));
-    const holdGone = missing.some((l) => !l.includes("/proc/meminfo"));
-    let freeMemMb = memAvailableMb(r.out);
+      .map((l) => l.trim())
+      .filter((l) => MARK_LINE.test(l));
+    let freeMemMb = linuxFreeMb(memText);
     const mem = () => (freeMemMb === undefined ? {} : { freeMemMb });
-    if (box.hold_file && !holdGone)
+    if (holdFile && !holdGone)
       return {
         state: "held",
-        reason: `its hold file (${box.hold_file}) is there`,
+        reason: holdCheck.why ?? `its hold file (${holdFile}) is there`,
+        ...mem(),
+      };
+    if (marks.length)
+      return {
+        state: "held",
+        reason: `a CI job is running on it (${marks.length} in ${marksDirOf(box)})`,
         ...mem(),
       };
     if ((box.min_free_mem_mb ?? BOX_MIN_FREE_MEM_MB) <= 0)
       return { state: "open", ...mem() };
-    let why = "/proc/meminfo has no MemAvailable";
+    let why = localFail
+      ? oneLine(
+          `the copy of /proc/meminfo couldn't be written here: ${localFail.replace(/^open local "[^"]*":\s*/, "")}`,
+        )
+      : memText.trim() === ""
+        ? "/proc/meminfo came back empty"
+        : "/proc/meminfo has neither MemAvailable nor MemFree, Buffers and Cached";
     if (freeMemMb === undefined && noMeminfo) {
       // Issue 857: no /proc (macOS): one fixed command, nothing else.
       const left = deadline - Date.now();

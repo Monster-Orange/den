@@ -19,6 +19,7 @@
 import { createHash, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "./atomic-write.js";
 
 /** The launcher's value, `<PREFIX>_FIXTURE_SETUP_SECRET` (profile readEnv). */
 export const FIXTURE_SETUP_SECRET_ENV_KEY = "FIXTURE_SETUP_SECRET";
@@ -149,9 +150,10 @@ export function setupSecretRefusal(
 }
 
 /** How the fixture key was made, kept beside it for doctor. */
-export type FixtureMadeBy = "setup-secret" | "settings" | "creation";
+export type FixtureMadeBy = "setup-secret" | "settings" | "creation" | "grant";
 export const FIXTURE_MADE_BY_FILE = "fixture-person.made-by";
 const MADE_BY = new Set<FixtureMadeBy>([
+  "grant",
   "setup-secret",
   "settings",
   "creation",
@@ -159,7 +161,7 @@ const MADE_BY = new Set<FixtureMadeBy>([
 
 export function writeFixtureMadeBy(stateDir: string, how: FixtureMadeBy): void {
   try {
-    fs.writeFileSync(path.join(stateDir, FIXTURE_MADE_BY_FILE), `${how}\n`, {
+    writeFileAtomic(path.join(stateDir, FIXTURE_MADE_BY_FILE), `${how}\n`, {
       mode: 0o600,
     });
   } catch {

@@ -14,6 +14,8 @@
 import { randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
+import { statSettled } from "../stat-settled.js";
 
 /** The request header the edge adds (Den deletes it once read). */
 export const EDGE_PROOF_HEADER = "x-den-edge-proof";
@@ -37,9 +39,7 @@ function writeProof(stateDir: string): string {
   const p = randomBytes(32).toString("hex");
   const f = edgeProofFile(stateDir);
   fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
-  const tmp = `${f}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, p + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, f);
+  writeFileAtomic(f, p + "\n", { mode: 0o600 });
   return p;
 }
 
@@ -81,18 +81,31 @@ export function edgeProofChecker(
   dir: () => string | null,
 ): (req: ProofRequest) => boolean {
   const seen = new WeakMap<ProofRequest, boolean>();
-  let cache: { key: string; proof: string | null } = { key: "", proof: null };
+  let cache: { key: string; proof: string | null; readAt: number } = {
+    key: "",
+    proof: null,
+    readAt: 0,
+  };
   const current = (): string | null => {
     const d = dir();
     if (!d) return null;
     let key: string;
+    // Issue 1592: when it last changed.
+    let changed: { mtimeMs: number; ctimeMs: number };
     try {
       const st = fs.statSync(edgeProofFile(d));
-      key = `${d}:${st.ino}:${st.mtimeMs}:${st.size}`;
+      key = `${d}:${st.ino}:${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
+      changed = { mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs };
     } catch {
       return null;
     }
-    if (key !== cache.key) cache = { key, proof: readEdgeProof(d) };
+    // Kept only while its stat stays the same, and (issue 1592) only once
+    // it was written more than a clock tick before the read: a proof
+    // rewritten in one tick (a rename onto a reused inode) is read again.
+    if (key !== cache.key || !statSettled(changed, cache.readAt)) {
+      const readAt = Date.now();
+      cache = { key, proof: readEdgeProof(d), readAt };
+    }
     return cache.proof;
   };
   return (req) => {

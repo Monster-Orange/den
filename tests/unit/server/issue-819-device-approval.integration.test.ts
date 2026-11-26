@@ -40,16 +40,17 @@ import * as path from "path";
 import { mintClaimCode } from "../../../src/shared/claim-code.js";
 import { mintActorToken } from "../../../src/shared/actor-token.js";
 import { newConfirmCode } from "../../../src/shared/confirm-code.js";
+import { MAX_LOGIN_WAITS } from "../../../src/ui/server/login-waits.js";
 import {
   approveKeyHash,
   checkLoginCode,
   mintLoginCode,
   WEB_SESSIONS_FILE,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 import {
   cliAuthHeaders,
   readWebSecret,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 
@@ -386,6 +387,26 @@ describe("3. first run, on an install that has never had a person signed in", ()
       } finally {
         fs.rmSync(rec, { force: true });
       }
+    });
+
+    it("hardening (issue 362): a `web login` link whose wait was pushed out by newer runs never signs in without its code", async () => {
+      const first = await webLoginLink();
+      // MAX_LOGIN_WAITS newer runs: the first one's wait is dropped, as a
+      // restart drops them all.
+      for (let i = 0; i < MAX_LOGIN_WAITS; i++) await webLoginLink();
+      const r = await call("GET", first.where, lan(page));
+      expect({
+        signedIn: cookieOf(r) !== "",
+        lead: signinOf(r).lead,
+      }).toEqual({ signedIn: false, lead: "err.signin.firstRunHere" });
+      // Its code, right as it is, signs nothing in either.
+      const typed = await call(
+        "POST",
+        first.where,
+        lan(),
+        JSON.stringify({ code: first.typed }),
+      );
+      expect([json(typed).ok === true, cookieOf(typed)]).toEqual([false, ""]);
     });
 
     it("item 4: from another computer, a first-run `web login` link asks for the code it printed: a wrong one signs nothing in, the right one (any case) does", async () => {
