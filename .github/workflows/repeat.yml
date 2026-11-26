@@ -11,7 +11,7 @@
 # otherwise GitHub-hosted. Issue 1492: the event check stays in the expression, so a
 # trigger added later can't bring someone else's code to the box.
 name: repeat
-run-name: "Evidence for issue 1833: shard 15 of run 45876385372 with a process sampler (not a re-run of the carry)"
+run-name: "Evidence for issue 1833: step timings of a server-agent start (not a re-run of the carry)"
 
 on:
   workflow_dispatch:
@@ -108,6 +108,8 @@ jobs:
             done
           ) > "$RUNNER_TEMP/samples.log" 2>&1 &
       - name: Run the files ${{ inputs.count }} times
+        env:
+          DEN_PROBE_1833: ${{ runner.temp }}/steps.txt
         run: |
           fails=0
           {
@@ -136,5 +138,6 @@ jobs:
           name: probe-1833-node${{ matrix.node }}
           path: |
             ${{ runner.temp }}/samples.log
+            ${{ runner.temp }}/steps.txt
             run-*.log
           retention-days: 14

@@ -45,6 +45,7 @@
  * (empty: none). And DEN_QUARANTINE_CHECK: "off", no file is read as
  * quarantined (tests set it).
  */
+import { mark, timed } from "../probe-1833.js";
 import { spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -233,7 +234,10 @@ let interactiveAsked: Promise<void> | null = null;
 export function ensureInteractivePath(
   o: Omit<LoginPathOptions, "flags"> = {},
 ): Promise<void> {
-  interactiveAsked ??= resolveLoginPath({ ...o, flags: "-ilc" }).then((p) => {
+  interactiveAsked ??= timed(
+    "login-shell PATH search",
+    resolveLoginPath({ ...o, flags: "-ilc" }),
+  ).then((p) => {
     if (p) interactiveDirs = absoluteDirs(p);
   });
   return interactiveAsked;
@@ -660,8 +664,10 @@ export function runtimeVersion(
   // Kept only once the CLI was written more than a clock tick
   // before it was asked: one rewritten in place in that tick is asked again.
   const known = versions.get(key);
-  if (known && statSettled({ mtimeMs: st.mtimeMs }, known.readAt))
+  if (known && statSettled({ mtimeMs: st.mtimeMs }, known.readAt)) {
+    mark(`--version cached ${path.basename(bin)}`);
     return known.p;
+  }
   const readAt = Date.now();
   const p = new Promise<string | undefined>((resolve) => {
     let out = "";
@@ -702,6 +708,7 @@ export function runtimeVersion(
     );
   });
   versions.set(key, { p, readAt });
+  void timed(`--version spawned ${path.basename(bin)}`, p);
   return p;
 }
 

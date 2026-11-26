@@ -13,6 +13,7 @@
  * when the runtime offers Sonnet (DEFAULT_SERVER_MODEL), else the
  * runtime's own default. Only the runtime's own models are offered.
  */
+import { timed } from "../../shared/probe-1833.js";
 import {
   AgentError,
   listAgents,
@@ -236,7 +237,9 @@ export async function serverAgentStatus(
   s: ServerAgentDeps = {},
 ): Promise<ServerAgentStatus> {
   const r = resolve(s);
-  const rows = (await listRuntimes(d)).filter((x) => x.denTools !== undefined);
+  const rows = (await timed("status: listRuntimes", listRuntimes(d))).filter(
+    (x) => x.denTools !== undefined,
+  );
   const setting = r.readSetting();
   const rt = pickRuntime(rows, setting);
   const models = (rt?.models ?? []).map((m) => ({
@@ -321,7 +324,10 @@ export async function startServerAgent(
   s: ServerAgentDeps = {},
 ): Promise<ServerAgentStarted> {
   const r = resolve(s);
-  const status = await serverAgentStatus(d, s);
+  const status = await timed(
+    "server: serverAgentStatus",
+    serverAgentStatus(d, s),
+  );
   if (
     (status.state === "running" || status.state === "stopping") &&
     status.sessionId
@@ -396,7 +402,10 @@ export async function freshServerAgent(
 ): Promise<ServerAgentStarted> {
   const rec = readRecord(d.stateDir(), SERVER_AGENT_ID);
   if (rec && rec.workspace === SERVER_SCOPE) {
-    const status = await serverAgentStatus(d, s);
+    const status = await timed(
+      "server: serverAgentStatus",
+      serverAgentStatus(d, s),
+    );
     if (status.state === "running" || status.state === "stopping") {
       const st = await stopAgent(d, SERVER_AGENT_ID, SERVER_SCOPE, {
         wait: true,

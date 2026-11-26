@@ -50,6 +50,7 @@
  * Nothing here takes a grant: grants come from user.yml only. The
  * host enforces agents.max_concurrent on every start, counting agents only.
  */
+import { mark, timed } from "../../shared/probe-1833.js";
 import type { RestartQueue } from "../../shared/agents/restart-queue.js";
 import {
   AUDIT_SET_ASIDE_DIR,
@@ -3349,6 +3350,7 @@ export async function listRuntimes(
     ids.map((id) => getRuntime(id)!),
     ws,
   );
+  mark("listRuntimes: after PATH search");
   const rows = await Promise.all(
     ids.map(async (id) => {
       const rt = getRuntime(id)!;
@@ -4510,7 +4512,10 @@ export async function startAgent(
   return lockAgent(d, id, async () => {
     syncCatalog(d);
     const rt = runtimeFor(req.runtime ?? persona.runtime ?? DEFAULT_RUNTIME_ID);
-    const det = await availableOrRefuse(d, rt, ws);
+    const det = await timed(
+      "start: availableOrRefuse",
+      availableOrRefuse(d, rt, ws),
+    );
     const ch = startChoices(req, persona, rt, followedPermissionOf(d, ws));
     const model = launchModel(ch.model, ch.version);
 
@@ -4547,7 +4552,7 @@ export async function startAgent(
       },
     );
     // HUB-1.5: Den Hub's MCP server, when hub.url is set.
-    const hub = await agentHub(d, ws);
+    const hub = await timed("start: agentHub", agentHub(d, ws));
     const input = {
       ...base,
       ...(hub ? { mcp: { ...base.mcp, hub } } : {}),
@@ -4572,8 +4577,10 @@ export async function startAgent(
           ]
         : [];
 
+    const tc = Date.now();
     return withClient(d, async (c) => {
-      const sessions = await c.list();
+      mark("start: host connect", Date.now() - tc, tc);
+      const sessions = await timed("start: host list", c.list());
       const old = prev ? sessionOf(sessions, prev) : undefined;
       if (old && !old.exited)
         throw new AgentError(`agent ${id} is running (${old.name})`, {
@@ -4601,6 +4608,7 @@ export async function startAgent(
         model: ch.model,
         version: ch.version,
       });
+      mark("start: before startSession");
       const { rec, info, signInWarning, sandboxWarning, signingWarning } =
         await startSession(
           d,
@@ -4683,7 +4691,11 @@ export async function startAgent(
             error: "Den couldn't read its Hub token",
           });
       }
-      const early = await exitedAtOnce(d, c, info);
+      mark("start: after startSession");
+      const early = await timed(
+        "start: exitedAtOnce",
+        exitedAtOnce(d, c, info),
+      );
       return {
         rec,
         info,
