@@ -91,7 +91,11 @@ what changed.
    macOS), so launchd doesn't start the session host again, and confirm `<cli> sessions list`
    shows nothing running. Keep the old host's web page and edge up until the new host answers.
 2. Copy the state dir to the new host, without its runtime files (`bin/`, `logs/`, `web.json`,
-   `sessions.sock`, `daemons.json`, `den-procs/`, `sessions/`, `web-boots.json`).
+   `sessions.sock`, `daemons.json`, `den-procs/`, `sessions/`, `web-boots.json`) and without
+   any `*.lock` file (`web-sessions.lock`, `sessions.lock`, `verify/schedules.lock`). A lock is
+   judged stale by whether its pid runs on this machine, so one copied from the old host can
+   hold up sign-in writes on the new one. A person who signs in on the old host after this copy
+   signs in again on the new one.
 3. Copy each agent's conversation file from the agent runtime's folder (for Claude Code, the
    transcript named by the agent's resume token, under `~/.claude/projects/<agent folder>/`).
    Without it the agent can't resume on the new host.
@@ -156,7 +160,8 @@ On the new host:
 
 ## Roll back
 
-1. On the new host: `<cli> edge down`, unload its web and sessions jobs.
+1. On the new host: `<cli> edge down`, then `<cli> service uninstall`, for the reason step 7
+   gives.
 2. Point the DNS answer back at the old host's mesh IP.
 3. On the old host: `<cli> service install`, then `<cli> edge up`.
 
