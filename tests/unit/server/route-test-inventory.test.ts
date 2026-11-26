@@ -15,13 +15,11 @@ import { ROUTES } from "../../../src/ui/server/route-classes.js";
 const UNTESTED: readonly string[] = [
   "GET/HEAD /agents.html",
   "GET/HEAD /api/app-url",
-  "GET/HEAD /api/catalog",
   "GET/HEAD /api/gate-slots/runners",
   "GET/HEAD /api/release/branches",
   "GET/HEAD /api/release/deploy/active",
   "GET/HEAD /api/runs/last",
   "GET/HEAD /api/security/latest",
-  "GET/HEAD /api/workspaces/:ws/agents/:id/details",
   "GET/HEAD /edge.html",
   "GET/HEAD /environments.html",
   "GET/HEAD /graph.html",
@@ -37,7 +35,6 @@ const UNTESTED: readonly string[] = [
   "GET/HEAD /settings.html",
   "GET/HEAD /verify.html",
   "POST /api/gate-slots/runners/revoke",
-  "POST /api/workspaces/:ws/agents/:id/handoff",
   "POST /api/workspaces/services/autostart",
 ];
 

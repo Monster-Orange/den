@@ -56,7 +56,7 @@ import {
 import { readWebPort } from "../../shared/edge/config.js";
 import { getDistRoot, getEngineRoot } from "../../shared/paths.js";
 import { product } from "../../shared/product.js";
-import { notSetLine, readWebUrl } from "../../shared/web-url.js";
+import { notSetLine, readWebUrl } from "../../shared/web/web-url.js";
 import { ALWAYS_CAVEAT } from "../../shared/launchd-session.js";
 import { HOST_JOB_FILE } from "../../shared/agents/signin-token.js";
 import {
@@ -69,7 +69,7 @@ import {
   type OwnServer,
   type ServerIdentity,
 } from "./server-identity.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 import { connectHost } from "../../shared/sessions/client.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";

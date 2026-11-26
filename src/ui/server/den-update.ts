@@ -105,7 +105,14 @@ export type UpdateResult =
       to?: string;
       /** Issue 1403: a routine update stopped; the person decides. */
       needsPerson?: true;
+      rollbackFailed?: RollbackFailed;
     };
+
+export interface RollbackFailed {
+  from: string;
+  root: string;
+  why: string;
+}
 
 export const UPDATE_SPEC_RE = /^(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 /** A state file newer than this, not finished, is an update in flight. */
@@ -349,6 +356,7 @@ export async function updateDen(
         error: `${both}. The rollback failed: Den ${from} may not start. A person must put the pin back on ${from} in ${d.root} and run npm install there.`,
         from,
         to,
+        rollbackFailed: { from, root: d.root, why: both },
       };
     }
     state("rolled_back", why);

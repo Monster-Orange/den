@@ -10,7 +10,7 @@ import {
   NotificationStore,
   parseHubNote,
 } from "../../../src/shared/notifications.js";
-import { syncHubNotes } from "../../../src/shared/hub-notes-sync.js";
+import { syncHubNotes } from "../../../src/shared/hub/hub-notes-sync.js";
 
 let dir = "";
 beforeEach(() => {

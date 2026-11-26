@@ -3022,6 +3022,8 @@
       "__DEN_TITLE__ no pudo cambiar a {to}: {why}. Sigue en {from}; vuelve a iniciar sesión en Ajustes › Hub",
     "ap.hubSwitchSignin": "Abriendo el inicio de sesión de {url}…",
     "bell.m.pick": "{n} proyectos necesitan tu elección",
+    "bell.m.hubMoved":
+      "El proyecto {project} se trasladó a {hub}. Cambia esta instalación a ese Hub para mantenerlo vinculado.",
     "bell.pickBody":
       "Den no sabe qué proyecto de Hub les corresponde. Haz clic para elegir. No se guarda nada de ellos hasta entonces.",
     "bell.pickBody.one":
@@ -3129,6 +3131,14 @@
     "bell.m.noHub.one": "{n} agente empezó sin Hub",
     "bell.m.compacting":
       "{name} se compacta una y otra vez: {n} veces en {m} minutos",
+    "bell.m.deliveryFileBad":
+      "Den no pudo leer {n} entregas retenidas; guardó el archivo como {moved}.",
+    "bell.m.deliveryFileBad.one":
+      "Den no pudo leer {n} entrega retenida; guardó el archivo como {moved}.",
+    "bell.m.deliveryFileBadUncounted":
+      "Den no pudo leer {file} ni contar sus entregas retenidas; guardó el archivo como {moved}.",
+    "bell.m.deliveryFileBadKept":
+      "Den no pudo leer {file} ni apartarlo; la entrega sigue sin lo que guardaba.",
     "bell.m.notAtPrompt":
       "{name}: {n} mensajes esperan desde hace {m} min. En espera: el agente no está en su indicador de entrada",
     "bell.m.notAtPrompt.one":
@@ -3181,6 +3191,8 @@
       "La app web de __DEN_TITLE__ se detuvo {n} veces en {m} minutos sin un cierre limpio; esperó {s} s antes de volver a arrancar",
     "bell.m.updateOut":
       "Salió __DEN_TITLE__ {v}. Permite la actualización cuando te venga bien (esta instalación usa {have})",
+    "bell.m.updateRollbackFailed":
+      "__DEN_TITLE__ no pudo actualizarse a {v}, y la reversión también falló: puede que __DEN_TITLE__ {from} no arranque. Vuelve a fijar la versión {from} en {root} y ejecuta npm install allí. Motivo: {why}",
     "bell.m.updateFailed": "__DEN_TITLE__ no pudo actualizarse a {v}: {why}",
     "bell.m.updateWaits":
       "La actualización de __DEN_TITLE__ a {v} espera: el agente de __DEN_TITLE__ espera tu permiso",
