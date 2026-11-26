@@ -10,7 +10,14 @@ class CapError extends Error {
   readonly code = "cap";
 }
 
-function world(o: { maxWaitMs?: number; stopped?: Set<string> } = {}) {
+function world(
+  o: {
+    maxWaitMs?: number;
+    stopped?: Set<string>;
+    stoppedAt?: Map<string, number>;
+  } = {},
+) {
+  let load = 0;
   const logs: string[] = [];
   const sleeps: Array<{ ms: number; go: () => void }> = [];
   let clock = 1_000_000;
@@ -21,13 +28,14 @@ function world(o: { maxWaitMs?: number; stopped?: Set<string> } = {}) {
     config: () => ({
       batch: 4,
       gapMs: 30_000,
-      loadCeiling: 0,
+      loadCeiling: o.stoppedAt ? 16 : 0,
       maxWaitMs: o.maxWaitMs ?? 600_000,
     }),
-    load: () => 0,
+    load: () => load,
     log: (l) => logs.push(l),
     sleep: (ms) => new Promise<void>((go) => sleeps.push({ ms, go })),
-    stillWanted: (id) => !o.stopped?.has(id),
+    stillWanted: (id, heldAt) =>
+      !o.stopped?.has(id) && !((o.stoppedAt?.get(id) ?? -1) >= heldAt),
     heldBy: (e) =>
       (e as { code?: string }).code === "cap" ? (e as Error).message : null,
   });
@@ -62,6 +70,8 @@ function world(o: { maxWaitMs?: number; stopped?: Set<string> } = {}) {
     flush,
     pass,
     free: () => (room += 1),
+    setLoad: (v: number) => (load = v),
+    now: () => clock,
     tick: (ms: number) => (clock += ms),
   };
 }
@@ -175,5 +185,29 @@ describe("issue 1694: a resume a cap refused waits in the restart queue", () => 
     expect(stillWanted(dir, "stopped-after", heldAt)).toBe(false);
     expect(stillWanted(dir, "removed", heldAt)).toBe(false);
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("stopped while its retry waits its turn, and the cap refuses that retry: still not started later", async () => {
+    const stoppedAt = new Map<string, number>();
+    const w = world({ stoppedAt });
+    await expect(w.capped("g")).rejects.toThrow(/max_concurrent/);
+    await w.flush();
+    w.setLoad(20);
+    w.tick(30_000);
+    await w.pass();
+    expect(w.q.waiting().map((x) => x.id)).toEqual(["g"]);
+    w.tick(1_000);
+    stoppedAt.set("g", w.now());
+    w.setLoad(0);
+    w.tick(30_000);
+    await w.pass();
+    await w.pass();
+    w.free();
+    for (let i = 0; i < 3; i++) {
+      w.tick(30_000);
+      await w.pass();
+    }
+    expect(w.started).toEqual([]);
+    expect(w.q.held()).toEqual([]);
   });
 });

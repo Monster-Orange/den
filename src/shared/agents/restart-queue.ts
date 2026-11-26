@@ -71,6 +71,7 @@ interface Entry extends RestartJob {
   seq: number;
   /** When it was added (ms): the most wait counts from here. */
   addedAt: number;
+  heldAt?: number;
   promise: Promise<unknown>;
   resolve: (v: unknown) => void;
   reject: (e: unknown) => void;
@@ -143,6 +144,7 @@ export class RestartQueue {
     if (i < 0) return null;
     const [e] = this.pending.splice(i, 1);
     if (run) e.run = run;
+    delete e.heldAt;
     this.d.changed?.(this.pending.length);
     this.start(e);
     return e.promise;
@@ -177,6 +179,14 @@ export class RestartQueue {
   }
 
   private start(e: Entry): void {
+    if (
+      e.heldAt !== undefined &&
+      this.d.stillWanted &&
+      !this.d.stillWanted(e.id, e.heldAt)
+    ) {
+      e.reject(new Error(`agent ${e.id} was stopped while it waited`));
+      return;
+    }
     let p: Promise<unknown>;
     try {
       p = Promise.resolve(e.run());
@@ -200,7 +210,8 @@ export class RestartQueue {
       );
       return;
     }
-    this.holding.set(e.id, { e, why, at: (this.d.now ?? Date.now)() });
+    e.heldAt ??= (this.d.now ?? Date.now)();
+    this.holding.set(e.id, { e, why, at: e.heldAt });
     this.retryLater();
   }
 
