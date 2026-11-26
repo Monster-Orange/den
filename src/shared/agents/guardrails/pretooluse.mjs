@@ -12,19 +12,6 @@
  * permission flow decide. Any error here exits 0: a broken hook never
  * blocks anything.
  *
- * Issue 974: a command that prints the environment (`env`, `printenv`,
- * `printenv NAME`, `set`, `export -p`, `declare -x`/`-p`, `typeset -x`/`-p`,
- * `builtin set`, `command env`, `/usr/bin/env`, anywhere in a pipeline or
- * list) runs with the values of secret-looking names masked: the printing
- * stage becomes `{ <it>; } | <env-mask.mjs>` (the hook's updatedInput),
- * ahead of any pipe or redirect. The masked set comes from env-hold.ts
- * (--env-mask, --env-mask-values). It guards against printing a secret into
- * a transcript by accident; it is not a boundary (an interpreter, `ps eww`,
- * `$VAR` or eval read a value). On a strict install the hold is the real
- * control: a held variable isn't in the session at all. It runs even with
- * the other guardrails off (--no-guardrails); --no-env-guard
- * (agents.env_guard: false) turns it off.
- *
  * It also holds an agent's `gh` write to a public repo whose
  * title or body holds a listed name (public-text.mjs), with or without
  * --no-guardrails, as the api-only rules are.

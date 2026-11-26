@@ -61,12 +61,6 @@
  *                     the distribution's new Den pin after a verified
  *                     self-update (pin-commit.ts). Den asks for it itself
  *                     when the approval policy says ask; routine
- *   den_env_hold_on   issue 974: agents.env_hold_existing: true in user.yml,
- *                     for agents started before the hold ("Remove"). Den
- *                     asks for it itself; critical, the person's own Allow
- *   den_env_allow_keep issue 974: adds the named variables to
- *                     agents.env_allow and turns the hold on ("Keep
- *                     these"); critical, the person's own Allow only
  *   den_sandbox_on    issue 936: agents.sandbox: on in user.yml, for the
  *                     agents that started before the sandbox. Den asks for
  *                     it itself; only the person's Allow runs it
