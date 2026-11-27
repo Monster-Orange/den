@@ -28,7 +28,7 @@ import { formatTime, formatTitle } from "/kit/time.js";
 import { bellPanelHtml } from "/kit/shell-html.js";
 import { hydrateBell } from "/kit/shell-client.js";
 import { openPeek, peekOpen, peekRefresh, peekTarget } from "/peek.js";
-import { listPagerHtml, pageQuery, watchPagers } from "/list-pager.js";
+import { listMoreHtml, watchPagers } from "/list-pager.js";
 
 const POLL_MS = 5000;
 
@@ -480,7 +480,8 @@ function askHtml(sw) {
  * rows or the empty state, then Updates and Older. `ui`: the ×N folds
  * open, whether Older is open, and the ⊘ being asked about.
  */
-export function bellPanel(b, ui = {}) {
+export function bellPanel(raw, ui = {}) {
+  const b = withExtra(raw, ui.extra);
   const u = {
     folds: ui.folds ?? new Set(),
     reviews: ui.reviews ?? new Set(),
@@ -488,10 +489,8 @@ export function bellPanel(b, ui = {}) {
     updates: !!ui.updates,
     ask: ui.ask,
     busy: ui.busy ?? null,
-    per: ui.per ?? {},
   };
-  const pager = (name, p, shown) =>
-    listPagerHtml(name, p, shown, u.per[name] ?? BELL_PER, { url: false });
+  const pager = (name, p, shown) => listMoreHtml(name, p, shown, BELL_STEP);
   // Issue 746: what waits for the person's Allow leads Needs you.
   const allows = allowsOf(b);
   const groups = withoutAllowed(b?.groups ?? [], allows);
@@ -588,7 +587,64 @@ export function bellHtml(b, ui = {}) {
   return bellPanelHtml(bellPanel(b, ui));
 }
 
-const BELL_PER = 50;
+const BELL_STEP = 20;
+const GROUPED = new Set(["recent", "updates", "older"]);
+
+function mergeGroups(a, more) {
+  const out = (a ?? []).map((g) => ({
+    ...g,
+    subjects: g.subjects.map((x) => ({ ...x, items: [...x.items] })),
+  }));
+  const ids = new Set(
+    out.flatMap((g) => g.subjects.flatMap((x) => x.items.map((n) => n.id))),
+  );
+  for (const g of more ?? []) {
+    let to = out.find((x) => x.scope === g.scope);
+    if (!to) out.push((to = { ...g, subjects: [] }));
+    for (const sub of g.subjects) {
+      const items = sub.items.filter((n) => !ids.has(n.id));
+      if (!items.length) continue;
+      items.forEach((n) => ids.add(n.id));
+      const at = to.subjects.find((x) => x.subject === sub.subject);
+      if (at) at.items.push(...items);
+      else to.subjects.push({ ...sub, items });
+    }
+  }
+  return out;
+}
+
+const rowKey = (r) => r?.id ?? r?.agent ?? JSON.stringify(r);
+
+function mergeRows(a, more) {
+  const have = new Set((a ?? []).map(rowKey));
+  return [...(a ?? []), ...(more ?? []).filter((r) => !have.has(rowKey(r)))];
+}
+
+const groupsOf = (b, name) =>
+  name === "recent" ? b?.groups : b?.[name]?.groups;
+
+export function withExtra(b, extra) {
+  if (!b || !extra) return b;
+  const out = { ...b };
+  for (const [name, e] of Object.entries(extra)) {
+    if (name === "recent")
+      Object.assign(out, {
+        groups: mergeGroups(b.groups, e.groups),
+        next: e.next,
+      });
+    else if (GROUPED.has(name) && b[name])
+      out[name] = {
+        ...b[name],
+        groups: mergeGroups(b[name].groups, e.groups),
+        next: e.next,
+      };
+    else if (!GROUPED.has(name)) {
+      out[name] = mergeRows(b[name], e.items);
+      out[`${name}Page`] = { ...(b[`${name}Page`] ?? {}), next: e.next };
+    }
+  }
+  return out;
+}
 
 const rowsIn = (groups) =>
   (groups ?? []).reduce(
@@ -810,8 +866,7 @@ export function initBell(doc = document) {
     updates: false,
     ask: null,
     busy: null,
-    per: {},
-    at: "",
+    extra: {},
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
@@ -830,7 +885,7 @@ export function initBell(doc = document) {
     onOpen: () => void refresh(),
     onClose: () => {
       ui.ask = null;
-      ui.at = "";
+      ui.extra = {};
       lost = "";
     },
     // Esc in the ⊘'s question cancels it; the panel stays.
@@ -844,21 +899,34 @@ export function initBell(doc = document) {
     },
   });
   const pop = bell.el;
-  watchPagers(
-    pop,
-    (name, ask) => {
-      if (ask.kind === "per") ui.per[name] = ask.target.per;
-      const q = pageQuery(
-        sectionPage(last, name),
-        ask.target,
-        ui.per[name] ?? BELL_PER,
-      );
-      q.set("section", name);
-      ui.at = q.toString();
-      void refresh();
-    },
-    { url: false },
-  );
+  const more = async (name) => {
+    const cur = ui.extra[name]?.next ?? sectionPage(last, name)?.next ?? null;
+    if (!cur) return { to: 0, hasNext: false };
+    const q = new URLSearchParams({
+      section: name,
+      cursor: cur,
+      limit: String(BELL_STEP),
+    });
+    const r = await load(q.toString());
+    if (!r) throw new Error("bell: no page");
+    const was = ui.extra[name] ?? { groups: [], items: [] };
+    ui.extra[name] = {
+      groups: GROUPED.has(name)
+        ? mergeGroups(was.groups, groupsOf(r, name))
+        : [],
+      items: GROUPED.has(name) ? [] : mergeRows(was.items, r[name]),
+      next: sectionPage(r, name)?.next ?? null,
+    };
+    paint();
+    const m = withExtra(last, ui.extra);
+    return {
+      to: GROUPED.has(name)
+        ? rowsIn(groupsOf(m, name))
+        : (m[name] ?? []).length,
+      hasNext: !!ui.extra[name].next,
+    };
+  };
+  watchPagers(pop, () => {}, { url: false, more });
   // Issue 1054: the button held with the kit's dots, and how to let it go.
   let heldBtn = null;
   let letGo = null;
@@ -912,7 +980,7 @@ export function initBell(doc = document) {
   let drawn = 0;
   const refresh = async () => {
     const n = ++asked;
-    const b = await load(ui.at);
+    const b = await load(`limit=${BELL_STEP}`);
     // None while Mark all or Clear read runs, and none older than the
     // answer drawn last: answers can land out of order.
     if (!b || ui.busy || n < drawn) return;

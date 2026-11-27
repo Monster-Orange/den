@@ -13,7 +13,7 @@ config and manifest changes a distribution must make to move to it under
 ### Changed
 
 - A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
-- The bell pages each of its sections (Needs you, waiting, Done, Updates and Older) with the kit's pager under it: "1–50 of 63", First, Previous, the page picker, Next, Last and a per-page choice, in English, Spanish and Japanese. A section with one page shows no pager. Closing the bell goes back to the first pages.
+- The bell loads 20 rows of each section (Needs you, waiting, Done, Updates and Older) and shows the kit's More button under a section that has more: "1–20 of 70", Show 20 more, and the next 20 are added. Its refresh asks only for the first 20 and the counts. Closing the bell goes back to the first 20.
 - The bell's `GET /api/notifications` and the `notifications_list` MCP tool answer one page of each section (recent, updates, older): `?limit`, `?section` with `?cursor`, `?page` or `?at`, and per section `next`, `prev`, `total`, `offset`, `page` and `pages`. `waiting`, `done` and `seenDone` page the same way, with their page in `waitingPage`, `donePage` and `seenDonePage`, and the badge counts every done agent. Each section's `count`, its `unread` and the badge still count every row, and an agent's scope filters before the cut.
 
 ## [0.4.92] - unreleased
