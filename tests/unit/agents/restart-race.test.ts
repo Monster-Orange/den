@@ -6,9 +6,9 @@
  * which project, and the outcome.
  *
  * A real host on a temp socket with a scripted PTY: nothing real runs.
- * Invented names only.
+ * Invented names only. 60 s a case: a slow CI runner (8×) ran past 10 s.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import { readRecord } from "../../../src/shared/agents/records.js";
@@ -22,6 +22,7 @@ import {
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
+jest.setTimeout(60_000);
 afterEach(cleanupRigs);
 
 /** Stop waits for the session to end, and each scripted one ends on TERM. */
