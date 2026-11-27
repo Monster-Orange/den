@@ -127,6 +127,17 @@ describe("issue 1821: the server agent's bell row opens Peek too", () => {
     );
   });
 
+  it("its bell row is a peek, and the small link goes to the server agent's page, named as the bell names it", async () => {
+    const { bellHtml } = await bell();
+    const h = bellHtml(bellOf(server("/server-agent")));
+    expect(h).toMatch(
+      /<a href="\/server-agent" data-bell="open" data-peek="server"[^>]*>/,
+    );
+    expect(h).toMatch(
+      /<a href="\/server-agent" class="den-bell-page" data-bell="page">\[bell\.server\]<\/a>/,
+    );
+  });
+
   it("Open in layout goes to the server agent's page, and the panel names it as the bell does", async () => {
     const { layoutLink, peekView, peekHtml } = await peek();
     expect(layoutLink("server", "den-server")).toBe("/server-agent");

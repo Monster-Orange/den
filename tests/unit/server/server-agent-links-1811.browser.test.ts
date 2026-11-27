@@ -142,7 +142,13 @@ describe("issue 1811: links to the server agent open its page", () => {
       );
       await a.waitFor({ timeout: 15_000 });
       expect(await a.getAttribute("href")).toBe("/server-agent");
-      await a.click();
+      const peeks = (await a.getAttribute("data-peek")) !== null;
+      expect(peeks).toBe(kind === "question");
+      const go = peeks
+        ? p.locator(`#den-bell-pop [data-id="${id}"] a[data-bell="page"]`)
+        : a;
+      expect(await go.getAttribute("href")).toBe("/server-agent");
+      await go.click();
       await onServerAgentWithQuestion(p);
       await p.context().close();
     }, 90_000);
