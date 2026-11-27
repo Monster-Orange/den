@@ -6,11 +6,13 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
-## [0.4.92] - unreleased
-
 ### Changed
 
 - When Peek loses its connection to an agent's terminal, it now says it's connecting until it's back, and stops saying that typing goes to the agent. Before, it kept looking live for the second before it reconnected, and a key typed then was lost with no sign. (issue 1902)
+
+## [0.4.92] - unreleased
+
+### Changed
 
 - A pull request that changes `shell.js` or a data file at the top of `tests/` (such as `tests/affected-map.json`) no longer runs every test. A `shell.js` change runs every browser spec, the tests that read it and the tests that use a helper that reads it; a data file runs the tests that read it, and the map runs its own tests. The CI replay now picks the tests that read a changed file by path, as CI does. (issue 1805)
 
