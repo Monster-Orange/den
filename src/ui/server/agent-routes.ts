@@ -268,6 +268,7 @@ import { readBody, sendJson } from "./http-helpers.js";
 import { sitePage } from "./ui-assets.js";
 import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
+import { noteCapsHeld } from "./cap-bell.js";
 import {
   HOST_RESTART_ACTION,
   HOST_RESTART_TITLE,
@@ -790,8 +791,11 @@ export async function handleAgentRoutes(
       ...swDeps,
       days: hs.switchDays((readUserConfig() as Record<string, unknown>).hub),
     });
+    const sf = await import("../../shared/state-folder.js");
+    const next = rail ? null : sf.takeConnectNext(getStateDir());
     const out = {
       ...st,
+      ...(next ? { connectNext: next } : {}),
       ...(editions ? { editions } : {}),
       ...(denUrl ? { denUrl } : {}),
       ...(sw ? { switching: { to: sw.to, from: sw.from } } : {}),
@@ -2855,6 +2859,7 @@ export function startAgentUpkeep(
         );
       for (const x of f.failed)
         log(`  ⚠ agent ${x.agent} did not resume: ${x.why}`);
+      if (f.failed.length) await noteCapsHeld(d.stateDir(), f.failed);
     } catch (e) {
       log(`  ⚠ agents after the restart: ${(e as Error).message}`);
     }
@@ -3232,7 +3237,8 @@ async function restartStatusRoute(
     );
     return true;
   }
-  sendJson(res, { agents: (await restartLive()).list() });
+  const live = await restartLive();
+  sendJson(res, { agents: live.list(), run: live.progress() });
   return true;
 }
 
@@ -3280,6 +3286,7 @@ async function staleRoute(
       },
       principalOf(req),
     );
+  let claimed: { id: string; workspace: string }[] = [];
   try {
     // Issue 1407: the test operator too, for the bed's own agents only.
     const operator = operatorActOf(req) === "agents-restart-stale";
@@ -3302,6 +3309,7 @@ async function staleRoute(
         `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
         { usage: true },
       );
+    const live = await restartLive();
     const all = (await staleAgents(d, { fresh: true })).filter(
       (a) =>
         body.only !== "hub" ||
@@ -3309,15 +3317,18 @@ async function staleRoute(
         a.stale.drops.length > 0,
     );
     // Before anything is restarted, checked or audited by name.
-    const list = operator
-      ? testBedOnly(all, (a) => {
-          try {
-            return agentRecord(d, a.id, a.workspace).testBed === true;
-          } catch {
-            return false;
-          }
-        })
-      : all;
+    const list = live.claim(
+      operator
+        ? testBedOnly(all, (a) => {
+            try {
+              return agentRecord(d, a.id, a.workspace).testBed === true;
+            } catch {
+              return false;
+            }
+          })
+        : all,
+    );
+    claimed = list;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
     // Issue 1407: each agent is checked first and answered for: restarting
@@ -3327,7 +3338,6 @@ async function staleRoute(
     const one = (id: string, ws: string) =>
       `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
     // Part 2: the page and the bell follow each agent live (restartLive).
-    const live = await restartLive();
     const outcomes: RestartOutcome[] = [];
     let begun = false;
     const plan = await restartMany(
@@ -3335,6 +3345,11 @@ async function staleRoute(
       list.map((a) => ({ id: a.id, workspace: a.workspace })),
       {
         ...(deps.personaWait ?? {}),
+        slot: async (id) => {
+          const { restartQueue } = await import("./restart-queue-service.js");
+          await restartQueue().add({ id, why: "tools", run: async () => true });
+          return () => undefined;
+        },
         onDone: (o) => {
           if (begun) live.done(o);
           else outcomes.push(o);
@@ -3362,10 +3377,16 @@ async function staleRoute(
             ? `waits for the person: a background job is running (${p.job?.command ?? "?"}, ${p.job?.minutes ?? 0} min)`
             : "waits for the person: Den can't tell when its turn ends",
         );
-    sendJson(res, { ok: true, pending: list, agents: plan }, 202);
+    sendJson(
+      res,
+      { ok: true, pending: list, agents: plan, run: live.progress() },
+      202,
+    );
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
+  } finally {
+    (await restartLive()).release(claimed);
   }
   return true;
 }

@@ -201,15 +201,17 @@ export function followRestarts(o) {
   const tick = async () => {
     if (stopped) return;
     let rows = null;
+    let run = null;
     try {
       const r = await o.api("GET", "/api/agents/restart-status");
       rows = Array.isArray(r?.agents) ? r.agents : [];
+      run = r?.run ?? null;
     } catch {
       rows = null;
     }
     if (stopped) return;
     if (rows) {
-      o.onRows(rows);
+      o.onRows(rows, run);
       if (!rows.length) {
         stopped = true;
         o.onEnd?.();

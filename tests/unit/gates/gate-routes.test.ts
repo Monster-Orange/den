@@ -105,6 +105,7 @@ describe("gate-slot routes", () => {
       memoryFreeMinPercent: 10,
       memoryReadingKeepSeconds: 30,
       swapHoldGb: 8,
+      throwawaySweep: true,
       vmMemoryShare: 1,
       localBrowserSlots: 1,
       overrunMarginMinutes: 15,

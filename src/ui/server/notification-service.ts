@@ -4,6 +4,8 @@
  * host (never starts one); a check every 2 s clears a waiting mark whose
  * agent's output moved.
  */
+import { projectDisplayName } from "../../shared/workspace-name.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import crypto from "node:crypto";
 import {
   listRecords,
@@ -30,6 +32,14 @@ import { readWebUrl } from "../../shared/web/web-url.js";
 import { pushContact } from "../../shared/push-contact.js";
 import { PushSubscriptions, pushAll, pushEach, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
+import { seenMarks } from "../../shared/seen-mark.js";
+import {
+  agentSubject,
+  doneAgents,
+  seenDoneAgents,
+  type AgentStateDeps,
+  type DoneAgent,
+} from "./agent-state.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
@@ -323,6 +333,9 @@ export function notificationDeps(): {
   push: ReturnType<typeof pushDeps>;
   asks: { limit: AskLimit; perHour: () => number };
   prefs: () => BellPrefs;
+  seen: ReturnType<typeof seenMarks>;
+  doneAgents: (person: string) => DoneAgent[];
+  seenDone: (person: string) => DoneAgent[];
 } {
   store ??= new NotificationStore(getStateDir());
   attention ??= new Attention({
@@ -342,6 +355,12 @@ export function notificationDeps(): {
     // Issue 101: a question goes to the project's lead, when it has one.
     leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
     tellLead,
+    turnEnded: (id, at) =>
+      seenMarks(getStateDir()).noteVersion(
+        agentSubject(id),
+        String(at),
+        new Date(at).toISOString(),
+      ),
     // Issue 1008: an answer after a withdraw; the agent is told.
     tell: tellLead,
   });
@@ -381,6 +400,46 @@ export function notificationDeps(): {
         return bellPrefs(null);
       }
     },
+    seen: seenMarks(getStateDir()),
+    doneAgents: (person) =>
+      doneAgents(
+        listRecords(getStateDir()),
+        person,
+        agentStateDeps(),
+        busyNow(attention!),
+        doneProjectName(),
+      ),
+    seenDone: (person) =>
+      seenDoneAgents(
+        listRecords(getStateDir()),
+        person,
+        agentStateDeps(),
+        busyNow(attention!),
+        doneProjectName(),
+      ),
+  };
+}
+
+function busyNow(a: Attention): Set<string> {
+  return new Set(
+    [...a.waitingNow()]
+      .filter(([, why]) => why !== "input")
+      .map(([agent]) => agent),
+  );
+}
+
+function doneProjectName(): (ws: string) => string {
+  const ws = readWorkspacesFile().workspaces ?? {};
+  return (slug) => projectDisplayName(slug, ws[slug]);
+}
+
+export function agentStateDeps(): AgentStateDeps {
+  const a = notificationDeps().attention;
+  return {
+    seen: seenMarks(getStateDir()),
+    working: () => a.workingNow(),
+    waitingSince: (agent) => a.waitingDetail(agent)?.since,
+    waitingWhat: (agent) => a.waitingDetail(agent)?.what,
   };
 }
 

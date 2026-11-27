@@ -183,6 +183,8 @@ export interface RestoreResult {
 /** The restore's level for a line: a failure is a warning (kept on disk). */
 export type RestoreLogLevel = "lifecycle" | "warn";
 
+export type HealthVerdict = "ok" | "error" | null;
+
 /** Bring each project's services back, one project at a time. */
 export async function restoreServicesOnBoot(
   plan: ReadonlyMap<string, string[]>,
@@ -202,6 +204,7 @@ export async function restoreServicesOnBoot(
      * Without it, an Up that exits 0 counts as brought back (as before).
      */
     stillDown?: (workspace: string, addresses: string[]) => Promise<string[]>;
+    health?: (workspace: string, address: string) => Promise<HealthVerdict>;
     /** Tries per project, the first included (default 3). */
     tries?: number;
     /** The wait before each check, and between tries (ms). */
@@ -230,11 +233,21 @@ export async function restoreServicesOnBoot(
     const sleep =
       deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
     const fail = (list: string[], why: string) => {
+      if (list.length === 0) return;
       for (const a of list) out.failedServices.push({ address: a, why });
       deps.log(
         `  ⚠ ${ws}: not brought back (${why}): ${list.join(", ")}`,
         "warn",
       );
+    };
+    const verdicts = async (list: string[]) => {
+      const v = new Map<string, HealthVerdict>();
+      if (!deps.health) return v;
+      const got = await Promise.all(
+        list.map((a) => deps.health!(ws, a).catch(() => null)),
+      );
+      list.forEach((a, i) => v.set(a, got[i] ?? null));
+      return v;
     };
     try {
       let todo = [...addrs];
@@ -251,9 +264,15 @@ export async function restoreServicesOnBoot(
           break;
         }
         let down: string[] = [];
+        let checked = new Map<string, HealthVerdict>();
         if (deps.stillDown) {
           await sleep(deps.settleMs ?? 30_000);
-          down = await deps.stillDown(ws, todo);
+          const [d, v] = await Promise.all([
+            deps.stillDown(ws, todo),
+            verdicts(todo),
+          ]);
+          checked = v;
+          down = d.filter((a) => checked.get(a) !== "ok");
         }
         const up = todo.filter((a) => !down.includes(a));
         out.brought.push(...up);
@@ -265,8 +284,16 @@ export async function restoreServicesOnBoot(
         }
         if (t >= tries) {
           const why = `stopped again after it started (${tries} tries)`;
+          const unhealthy = down.filter((a) => checked.get(a) === "error");
           out.failed.push({ workspace: ws, why });
-          fail(down, why);
+          fail(
+            down.filter((a) => !unhealthy.includes(a)),
+            why,
+          );
+          fail(
+            unhealthy,
+            `its health check failed after it started (${tries} tries)`,
+          );
           break;
         }
         deps.log(

@@ -4,12 +4,13 @@
  * the job summary says whether it passed. On main and in the release
  * nothing is left out: the switch (DEN_TEST_QUARANTINE) is off unless set.
  */
-import { describe, expect, it } from "@jest/globals";
+import { beforeAll, describe, expect, it } from "@jest/globals";
 import { execFileSync, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
+import { tempDirs } from "../../temp-dirs";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const q = require("../../quarantine.cjs") as {
@@ -43,6 +44,7 @@ type Entry = {
 type Doc = { max_age_days?: number; entries: Entry[] };
 
 const ROOT = path.join(__dirname, "../../..");
+const tmp = tempDirs();
 const FIXTURE = "tests/fixtures/quarantine/flaky.fixture.ts";
 const FLAKY = "quarantine fixture the flaky one";
 const ev = { failed_run: 1, passed_run: 2, sha: "abc" };
@@ -155,13 +157,32 @@ describe("the switch", () => {
     const ex = config({ DEN_TEST_QUARANTINE: "exclude" });
     expect(ex.testEnvironment).toBe("<rootDir>/tests/quarantine-env.cjs");
     expect(ex.testPathIgnorePatterns).toBeUndefined();
-    const only = config({ DEN_TEST_QUARANTINE: "only" });
-    const pat = (only.testPathIgnorePatterns as string[]).map(
-      (p) => new RegExp(p),
-    );
-    const ignored = (f: string) => pat.some((p) => p.test(path.join(ROOT, f)));
-    expect(ignored(q.loadQuarantine().entries[0].file)).toBe(false);
-    expect(ignored("tests/unit/test-infra/quarantine.test.ts")).toBe(true);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-q-only-"));
+    const ignoredBy = (entries: Entry[]) => {
+      const list = path.join(dir, `${entries.length}.json`);
+      fs.writeFileSync(list, JSON.stringify({ entries }));
+      const only = config({
+        DEN_TEST_QUARANTINE: "only",
+        DEN_TEST_QUARANTINE_FILE: list,
+      });
+      const pat = (only.testPathIgnorePatterns as string[]).map(
+        (p) => new RegExp(p),
+      );
+      return (f: string) => pat.some((p) => p.test(path.join(ROOT, f)));
+    };
+    const one = ignoredBy([
+      {
+        file: FIXTURE,
+        test: FLAKY,
+        issue: 397,
+        added: "2026-11-17",
+        evidence: ev,
+      },
+    ]);
+    expect(one(FIXTURE)).toBe(false);
+    expect(one("tests/unit/test-infra/quarantine.test.ts")).toBe(true);
+    expect(ignoredBy([])(FIXTURE)).toBe(true);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
 
@@ -339,6 +360,37 @@ describe("in CI", () => {
     );
     expect(jobs["pr-shards"]["timeout-minutes"]).toBeGreaterThanOrEqual(30);
   });
+  it("every quarantined test still runs in the full runs: main's tests job, the nightly and the release gates", () => {
+    const full: [string, string][] = [
+      ["ci.yml", "tests"],
+      ["ci.yml", "nightly-node22"],
+      ["release-gates.yml", "tests"],
+    ];
+    for (const [f, name] of full) {
+      const j = wf(f).jobs[name];
+      expect([f, name, !!j]).toEqual([f, name, true]);
+      expect([f, name, j.env?.DEN_TEST_QUARANTINE]).toEqual([
+        f,
+        name,
+        undefined,
+      ]);
+      expect(
+        j.steps.filter((s) => s.env?.DEN_TEST_QUARANTINE !== undefined),
+      ).toEqual([]);
+      expect(
+        j.steps.some((s) =>
+          /^npm test -- --shard=\$\{\{ matrix\.shard \}\}\/\d+$/.test(
+            s.run ?? "",
+          ),
+        ),
+      ).toBe(true);
+    }
+    for (const e of q.loadQuarantine({}).entries)
+      expect([e.file, fs.existsSync(path.join(ROOT, e.file))]).toEqual([
+        e.file,
+        true,
+      ]);
+  });
   it("the release never sets it", () => {
     for (const f of ["release.yml", "release-gates.yml", "release-dry-run.yml"])
       expect([
@@ -351,22 +403,26 @@ describe("in CI", () => {
 });
 
 describe("a quarantined test that fails (red first)", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-quarantine-"));
-  const list = path.join(dir, "quarantine.json");
-  fs.writeFileSync(
-    list,
-    JSON.stringify({
-      entries: [
-        {
-          file: FIXTURE,
-          test: FLAKY,
-          issue: 397,
-          added: "2026-11-17",
-          evidence: ev,
-        },
-      ],
-    }),
-  );
+  let dir = "";
+  let list = "";
+  beforeAll(() => {
+    dir = tmp("den-quarantine-");
+    list = path.join(dir, "quarantine.json");
+    fs.writeFileSync(
+      list,
+      JSON.stringify({
+        entries: [
+          {
+            file: FIXTURE,
+            test: FLAKY,
+            issue: 397,
+            added: "2026-11-17",
+            evidence: ev,
+          },
+        ],
+      }),
+    );
+  });
   /** The fixture in a child jest, with the flaky test failing. */
   const run = (mode: string) => {
     const out = path.join(dir, `${mode || "off"}.json`);
@@ -498,10 +554,7 @@ describe("scripts/flake-evidence.mjs (fake Actions API data, no network)", () =>
     };
   };
   const evidence = (rerun: boolean): Entry[] => {
-    const data = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "den-flake-")),
-      "api.json",
-    );
+    const data = path.join(tmp("den-flake-"), "api.json");
     fs.writeFileSync(data, JSON.stringify(fake(rerun)));
     const js = `
       import * as fs from "node:fs";

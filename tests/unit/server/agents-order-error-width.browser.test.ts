@@ -32,7 +32,7 @@ const ENGINES: BrowserEngine[] = ["chromium", "webkit"];
 /** No agent open, or the running ones open in each layout. */
 type Layout = "none" | "focus" | "tabs" | "tile";
 const LAYOUTS: Layout[] = ["none", "focus", "tabs", "tile"];
-const WIDTHS = [1280, 390];
+const WIDTHS = [1280, 1024, 768, 390];
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -217,6 +217,102 @@ async function open(
   return p;
 }
 
+const FOLLOW_GONE =
+  "a pane still follows the size of a view that has gone (D54: alone, it sizes its own terminal)";
+
+async function viewsAtMost(n: number, ms = 10_000): Promise<void> {
+  const end = Date.now() + ms;
+  while (sids.some((id) => s!.attached(id) > n)) {
+    if (Date.now() > end)
+      throw new Error(
+        `a closed page's view is still attached: ${sids.map((id) => s!.attached(id)).join(", ")}`,
+      );
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+const spills = async (p: Page, followMs = 5_000) => {
+  await p.waitForFunction(
+    () =>
+      Array.from(document.querySelectorAll<HTMLElement>(".pane"))
+        .filter(
+          (e) =>
+            e.offsetWidth > 0 && e.getBoundingClientRect().top < innerHeight,
+        )
+        .every((e) => /ready/.test(e.textContent ?? "")),
+    null,
+    { timeout: 10_000 },
+  );
+  await p
+    .waitForFunction(
+      () =>
+        !Array.from(document.querySelectorAll<HTMLElement>(".pane")).some(
+          (e) => e.offsetWidth > 0 && e.classList.contains("following"),
+        ),
+      null,
+      { timeout: followMs },
+    )
+    .catch(() => {
+      throw new Error(FOLLOW_GONE);
+    });
+  return p.evaluate(() => {
+    // The page, and every box that scrolls on its own (the list
+    // is one): each one's content fits its width. For one that
+    // doesn't, the child that ends furthest past its edge.
+    // The tab strip (.agtabs) scrolls sideways by design: more
+    // tabs than fit.
+    const boxes = [document.scrollingElement!].concat(
+      Array.from(document.querySelectorAll("*")).filter(
+        (el) =>
+          !el.classList.contains("agtabs") &&
+          /auto|scroll/.test(getComputedStyle(el).overflowX),
+      ),
+    );
+    const name = (el: Element) =>
+      `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}.${String(
+        (el as HTMLElement).className,
+      )
+        .trim()
+        .replace(/\s+/g, ".")}`;
+    return boxes
+      .filter((b) => b.clientWidth > 0 && b.scrollWidth > b.clientWidth + 1)
+      .map((b) => {
+        // What spills: the deepest element under this box whose
+        // content is wider than it, and not clipped on the way
+        // (a row's ellipsis hides its own).
+        const clipped = (el: Element) => {
+          for (let x = el.parentElement; x && x !== b; x = x.parentElement)
+            if (getComputedStyle(x).overflowX !== "visible") return true;
+          return false;
+        };
+        const spills = Array.from(b.querySelectorAll("*")).filter(
+          (el) =>
+            getComputedStyle(el).overflowX === "visible" &&
+            el.scrollWidth > el.clientWidth + 1 &&
+            el.clientWidth > 0 &&
+            !clipped(el),
+        );
+        const worst = spills.length ? name(spills[spills.length - 1]) : "";
+        return `${name(b)} ${b.scrollWidth} > ${b.clientWidth}: ${worst}`;
+      });
+  });
+};
+
+const switchAt = (p: Page) =>
+  p.$eval("[data-by-switch]", (by) => {
+    const col = by.parentElement!;
+    const b = by.getBoundingClientRect();
+    const c = col.getBoundingClientRect();
+    const cs = getComputedStyle(col);
+    return {
+      left: Math.round(b.left - c.left - parseFloat(cs.borderLeftWidth)),
+      right: Math.round(c.right - parseFloat(cs.borderRightWidth) - b.right),
+      labels: Array.from(by.querySelectorAll("button")).map(
+        (x) => x.textContent,
+      ),
+    };
+  });
+
 const skip = () =>
   !Object.keys(browsers).length && process.env.DEN_SKIP_BROWSER_TESTS === "1";
 
@@ -225,64 +321,34 @@ describe("the agents page fits its window", () => {
     for (const width of WIDTHS)
       for (const by of ["project", "group"] as const)
         for (const layout of LAYOUTS)
-          it(`${engine}, ${width} wide, By ${by}, ${layout === "none" ? "no agent open" : `agents open in ${layout}`}: no sideways scroll`, async () => {
+          it(`${engine}, ${width} wide, By ${by}, ${layout === "none" ? "no agent open" : `agents open in ${layout}`}: no sideways scroll, the switch centred`, async () => {
             if (skip()) return;
             const p = await open(engine, width, by, layout);
             try {
-              const m = await p.evaluate(() => {
-                // The page, and every box that scrolls on its own (the list
-                // is one): each one's content fits its width. For one that
-                // doesn't, the child that ends furthest past its edge.
-                // The tab strip (.agtabs) scrolls sideways by design: more
-                // tabs than fit.
-                const boxes = [document.scrollingElement!].concat(
-                  Array.from(document.querySelectorAll("*")).filter(
-                    (el) =>
-                      !el.classList.contains("agtabs") &&
-                      /auto|scroll/.test(getComputedStyle(el).overflowX),
-                  ),
-                );
-                const name = (el: Element) =>
-                  `${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}.${String(
-                    (el as HTMLElement).className,
-                  )
-                    .trim()
-                    .replace(/\s+/g, ".")}`;
-                return boxes
-                  .filter(
-                    (b) =>
-                      b.clientWidth > 0 && b.scrollWidth > b.clientWidth + 1,
-                  )
-                  .map((b) => {
-                    // What spills: the deepest element under this box whose
-                    // content is wider than it, and not clipped on the way
-                    // (a row's ellipsis hides its own).
-                    const clipped = (el: Element) => {
-                      for (
-                        let x = el.parentElement;
-                        x && x !== b;
-                        x = x.parentElement
-                      )
-                        if (getComputedStyle(x).overflowX !== "visible")
-                          return true;
-                      return false;
-                    };
-                    const spills = Array.from(b.querySelectorAll("*")).filter(
-                      (el) =>
-                        getComputedStyle(el).overflowX === "visible" &&
-                        el.scrollWidth > el.clientWidth + 1 &&
-                        el.clientWidth > 0 &&
-                        !clipped(el),
-                    );
-                    const worst = spills.length
-                      ? name(spills[spills.length - 1])
-                      : "";
-                    return `${name(b)} ${b.scrollWidth} > ${b.clientWidth}: ${worst}`;
-                  });
-              });
+              const m = await spills(p);
               expect(m).toEqual([]);
+              const sw = await switchAt(p);
+              expect(Math.abs(sw.left - sw.right)).toBeLessThanOrEqual(1);
+              expect(sw.labels).toEqual(["Need", "Project", "Group"]);
             } finally {
               await p.context().close();
+              await viewsAtMost(0);
             }
           }, 60_000);
+
+  it("chromium, a tile opened while a wider view of the same agents is still open: no sideways scroll once that view goes", async () => {
+    if (skip()) return;
+    const wide = await open("chromium", 1280, "group", "focus");
+    const p = await open("chromium", 1280, "group", "tile");
+    try {
+      await expect(spills(p, 1_000)).rejects.toThrow(FOLLOW_GONE);
+      await wide.context().close();
+      await viewsAtMost(1);
+      expect(await spills(p)).toEqual([]);
+    } finally {
+      await wide.context().close();
+      await p.context().close();
+      await viewsAtMost(0);
+    }
+  }, 60_000);
 });

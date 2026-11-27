@@ -21,6 +21,7 @@
  *     push_ttl_seconds: 86400      # how long a push service keeps it
  *                                  # (0..2419200); both Settings rows (#367)
  */
+import { agentPagePath } from "./agent-links.js";
 import type { UserConfig } from "./den-config.js";
 import type { UiLanguage } from "./ui-language.js";
 
@@ -80,9 +81,7 @@ export function alertBody(
 
 /** The agent's page, as the bell's row links it. */
 export function agentLink(workspace: string, agent: string): string {
-  return workspace
-    ? `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`
-    : "/agents";
+  return agentPagePath(workspace, agent);
 }
 
 export interface AlertPrefs {

@@ -112,14 +112,16 @@ export async function reapDeadDaemons(
 ): Promise<DaemonReapResult> {
   const removed: string[] = [];
   const kept: string[] = [];
-  const running = deps.staleReason
-    ? await (deps.runningContainers?.() ?? Promise.resolve(null)).catch(
-        () => null,
-      )
-    : null;
+  const daemons = deps.listDaemons();
+  const running =
+    deps.staleReason && daemons.some((d) => deps.rootOf(d) !== "other")
+      ? await (deps.runningContainers?.() ?? Promise.resolve(null)).catch(
+          () => null,
+        )
+      : null;
 
   await Promise.allSettled(
-    deps.listDaemons().map(async (daemon) => {
+    daemons.map(async (daemon) => {
       try {
         const root = deps.rootOf(daemon);
         if (root === "other") {

@@ -490,39 +490,64 @@ const READ_TOOLS: DenTool[] = [
   ),
   read(
     "ask_withdraw",
-    "Withdraw your question",
-    'Issue 1008: withdraw a question you asked with ask_human, once it is settled another way (in chat, or by another agent). `id` is the id ask_human gave you (notifications_list shows it too); `reason` says in one line how it was settled. It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. Only your own question: another agent\'s is refused and recorded. An answer that comes after it is still passed to you, and Den tells you it came late. The same as `<cli> ask withdraw <id> --reason "…"`.',
+    "Withdraw your question or your held write",
+    'Withdraw something of yours that waits on your person, once it is settled another way or turns out wrong. Give exactly one of `id` or `request`, and a one-line `reason`. `id`: a question you asked with ask_human (the id it gave you; notifications_list shows it too). It leaves your person\'s Needs you; the bell keeps it as "settled: <reason>", with who withdrew it and when. A question that went to your project\'s lead can be withdrawn too: the lead is told it is settled. An answer that comes after it is still passed to you, and Den tells you it came late. `request`: the id of one of your own pending write requests (the id a held tool such as gate_box_set gave you; approval_check reads it). It leaves the bell and Needs you, and an Allow pressed after it runs nothing. If your person already decided it, it is not withdrawn and you are told so. Only your own: another agent\'s is refused and recorded. The same as `<cli> ask withdraw <id> --reason "…"` for a question.',
     {
-      id: z.string().describe("The question's id, from ask_human"),
+      id: z.string().optional().describe("A question's id, from ask_human"),
+      request: z
+        .string()
+        .optional()
+        .describe("A pending write request's id, from the held tool"),
       reason: z
         .string()
         .describe("How it was settled, one line, at most 200 characters"),
     },
     async (a, { api }) => {
       const id = (str(a.id) ?? "").trim();
-      const reason = (str(a.reason) ?? "").replace(/\s+/g, " ").trim();
-      if (!id || !reason)
+      const request = (str(a.request) ?? "").trim();
+      const raw = str(a.reason) ?? "";
+      if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(raw.replace(/[\t\n\r]/g, " ")))
         throw new Refusal(
-          "ask_withdraw: give the question's id and a one-line reason.",
+          "ask_withdraw: a reason is plain text: no control or direction characters.",
+        );
+      const reason = raw.replace(/\s+/g, " ").trim();
+      if (id && request)
+        throw new Refusal(
+          "ask_withdraw: give `id` (a question) or `request` (a write request), not both.",
+        );
+      if ((!id && !request) || !reason)
+        throw new Refusal(
+          "ask_withdraw: give the question's id (or a write request's id as `request`) and a one-line reason.",
         );
       if (reason.length > 200)
         throw new Refusal(
           "ask_withdraw: a reason is one line, at most 200 characters.",
         );
+      if (request && !/^[A-Za-z0-9_-]{16}$/.test(request))
+        throw new Refusal(
+          "ask_withdraw: a write request's id is the 16 letters and digits its held tool gave you.",
+        );
       try {
-        await api.get("/api/notifications/withdraw", {}, "POST", {
-          id,
-          reason,
-        });
+        if (request)
+          await api.get(`/api/approvals/${request}/withdraw`, {}, "POST", {
+            reason,
+          });
+        else
+          await api.get("/api/notifications/withdraw", {}, "POST", {
+            id,
+            reason,
+          });
       } catch (e) {
         if (
           e instanceof DenHttpError &&
-          [400, 403, 404, 409].includes(e.status)
+          [400, 403, 404, 409, 410].includes(e.status)
         )
           throw new Refusal(`ask_withdraw: ${e.body}`);
         throw e;
       }
-      return `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
+      return request
+        ? `Withdrawn. Your request ${request} left your person's bell and Needs you; an Allow now runs nothing. The bell says: ${reason}.`
+        : `Withdrawn. It left your person's Needs you; the bell says it was settled: ${reason}.`;
     },
   ),
   read(
@@ -836,7 +861,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "approval_check",
     "Check an approval",
-    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set, gate_runner_entry_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
+    "Where one of your write requests stands (workspace_create, repo_add, service_try, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_agent_cap, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, hub_connect, hub_project_create, hub_link, agent_folder, agent_mode, agent_import, approval_policy, pr_close, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, report, web_url_set, gate_runner_entry_set): `state` pending, done (with Den's `result`), denied, expired, withdrawn, or lost (a restart could not bring it back: `reason` says why; nothing ran from it, ask again). A request waits up to " +
       HELD_WAIT +
       " for the person (held_writes.wait_minutes). `id` is the request id the write tool gave you. Reads only.",
     { id: z.string().describe("The request id a write tool returned") },
@@ -1120,7 +1145,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "release_status",
     "Release status",
-    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool. For the whole Den (not a project's agent), also `denUpdate`: Den's last update of itself, by den_update or by Den's own check: `from` and `to` (versions), `state` (good, rolled_back, …), `at`, `why` when it rolled back, and the doctor field: the new Den's doctor results from that update (`at`, and `lines`: each failing or warning check), when its doctor ran.",
+    "Recent CD runs per repo and, with env, the deployed-version table for it. Read only: there is no deploy tool. For the whole Den (not a project's agent), also `denUpdate`: Den's last update of itself, by den_update or by Den's own check: `from` and `to` (versions), `state` (good, rolled_back, …), `at`, `why` when it rolled back, the doctor field: the new Den's doctor results from that update (`at`, and `lines`: each failing or warning check), when its doctor ran; and the pin field: what Den's pin step last did (`version`, `state` such as pushed, pr_opened or push_failed, `branch`, `branchWhy` when it chose another branch name, `why`, `url`).",
     {
       env: z
         .string()
@@ -2583,6 +2608,43 @@ const APPROVAL_TOOLS: DenTool[] = [
         "project_mode",
         "project_mode",
         { project, mode: mode === "none" ? null : mode },
+        a,
+        ctx,
+      );
+    },
+  },
+  {
+    name: "project_agent_cap",
+    title: "Set a project's agent cap",
+    description:
+      "Set how many of a project's agents may run at once (`max`, a whole number), or 0 to clear it and use the install's agents.max_per_project. It can only be lower than the install's when that is set. The person's Allow shows the change; raising it is always the person's own Allow. A start past the cap is refused and says so. A project's agent sets its own project's; Den's own agent any project's." +
+      HELD,
+    action: true,
+    shape: {
+      project: z
+        .string()
+        .optional()
+        .describe("The project (default: the one you work in)"),
+      max: z
+        .number()
+        .int()
+        .min(0)
+        .describe("Agents at once, or 0 for the install's"),
+      note: noteArg,
+      ask: askArg,
+    },
+    async run(a, ctx) {
+      const project = ctx.scope
+        ? (str(a.project) ?? ctx.scope.workspace)
+        : needArg("project_agent_cap", a, "project", "the project");
+      if (ctx.scope && project !== ctx.scope.workspace)
+        throw new ScopeRefusal(
+          `project_agent_cap: you work in project "${ctx.scope.workspace}" and can set its cap only, not project "${project}"'s; nothing was asked.`,
+        );
+      return askPerson(
+        "project_agent_cap",
+        "project_agent_cap",
+        { project, max: a.max as number } as Args,
         a,
         ctx,
       );

@@ -644,7 +644,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         class Held extends W {
           constructor(url: string | URL, prot?: string | string[]) {
             super(url, prot);
-            if (!String(url).endsWith("/io")) return;
+            if (!new URL(String(url)).pathname.endsWith("/io")) return;
             const fns: Record<string, ((e: Event) => void) | null> = {
               open: null,
               message: null,
@@ -660,8 +660,12 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
                 else held.push({ k, f });
               });
             }
+            const was = Object.getOwnPropertyDescriptor(this, "readyState");
+            let written: number | undefined = was?.value;
             Object.defineProperty(this, "readyState", {
-              get: () => (go.has("open") ? super.readyState : W.CONNECTING),
+              get: () =>
+                go.has("open") ? (written ?? super.readyState) : W.CONNECTING,
+              set: (v: number) => (written = v),
             });
           }
         }
@@ -810,20 +814,71 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await p.context().close();
     }, 60_000);
 
-    for (const how of ["click", "Tab"] as const)
-      it(`a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (${how})`, async () => {
+    const elsewhereCases = [
+      [
+        "late",
+        "a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere",
+      ],
+      [
+        "queued",
+        "a terminal focus already on its way is dropped when the person goes elsewhere before it lands",
+      ],
+    ] as const;
+    const elsewhere = (["click", "Shift+Tab"] as const).flatMap((how) =>
+      elsewhereCases.map(([when, name]) => [how, when, name] as const),
+    );
+    for (const [how, when, name] of elsewhere)
+      it(`${name} (${how})`, async () => {
         if (skip()) return;
         const p = await page(`/agents?layout=focus`);
+        const holdFocus = (on: boolean) =>
+          p.evaluate(
+            (v) =>
+              (
+                window as unknown as { __holdFocus: (on: boolean) => void }
+              ).__holdFocus(v),
+            on,
+          );
+        if (when === "queued")
+          await p.context().addInitScript(() => {
+            const raf = window.requestAnimationFrame.bind(window);
+            const held: FrameRequestCallback[] = [];
+            let hold = false;
+            const w = window as unknown as {
+              __holdFocus: (on: boolean) => void;
+              __focusHeld: () => number;
+            };
+            w.__focusHeld = () => held.length;
+            w.__holdFocus = (on) => {
+              hold = on;
+              if (!on) for (const f of held.splice(0)) raf(f);
+            };
+            window.requestAnimationFrame = (f) =>
+              hold && /focusTerm/.test(new Error().stack ?? "")
+                ? (held.push(f), 0)
+                : raf(f);
+          });
         await holdIo(p);
         await p.reload();
         await p.waitForSelector(row("planner"));
         await p.click(row("planner"));
         await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-rows`);
+        if (when === "queued") {
+          await holdFocus(true);
+          await releaseIo(p);
+          await p.waitForFunction(
+            () =>
+              (
+                window as unknown as { __focusHeld: () => number }
+              ).__focusHeld() > 0,
+          );
+        }
         // Elsewhere: the list's heading, not a row (a click that picks nothing).
         if (how === "click")
           await p.locator("#agl").click({ position: { x: 4, y: 2 } });
-        else await p.keyboard.press("Tab");
-        await releaseIo(p);
+        else await p.keyboard.press("Shift+Tab");
+        if (when === "late") await releaseIo(p);
+        else await holdFocus(false);
         await new Promise((r) => setTimeout(r, 500));
         expect(
           await p.evaluate(() => !!document.activeElement?.closest(".pane")),
@@ -1109,6 +1164,78 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.waitForFunction(() =>
       /restarts at its next idle/.test(document.body.textContent ?? ""),
     );
+    await p.context().close();
+  }, 60_000);
+
+  it("PR 1819: Restart all for tools stays disabled with its progress, and after a reload too", async () => {
+    if (skip()) return;
+    const p = await page(`/agents`);
+    await p.route("**/api/sessions*", async (r) => {
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mcpStale?: unknown }[];
+        };
+        for (const x of body.sessions)
+          if (x.agent === "planner" || x.agent === "coder")
+            x.mcpStale = {
+              adds: [],
+              drops: [],
+              den: { from: "0.0.1-old", to: "0.0.2-new" },
+            };
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
+    });
+    let run: { total: number; done: number } | null = null;
+    const rows = () =>
+      ["planner", "coder"].map((id) => ({
+        id,
+        workspace: "north",
+        state: "turn",
+      }));
+    await p.route("**/api/agents/restart-status*", (r) =>
+      r.fulfill({
+        contentType: "application/json",
+        json: { agents: run ? rows() : [], run },
+      }),
+    );
+    let posts = 0;
+    await p.route("**/api/agents/restart-stale", (r) => {
+      posts++;
+      run = { total: 2, done: 0 };
+      return r.fulfill({
+        status: 202,
+        contentType: "application/json",
+        json: { ok: true, pending: rows(), agents: rows(), run },
+      });
+    });
+    await p.reload();
+    const btn = `[data-note="tools-stale"] [data-act="tools-restart-all"]`;
+    await p.waitForSelector(`${btn}:not([disabled])`, { timeout: 15_000 });
+    const busy = (done: number) =>
+      p.evaluate(
+        (d) =>
+          (
+            window as unknown as {
+              denShell: { t: (k: string, v: object) => string };
+            }
+          ).denShell.t("rs.barBusy", { done: d, total: 2 }),
+        done,
+      );
+    await p.click(btn);
+    await p.waitForSelector(`${btn}[disabled][aria-busy="true"]`);
+    expect((await p.textContent(btn))?.trim()).toBe(await busy(0));
+    expect(posts).toBe(1);
+    run = { total: 2, done: 1 };
+    await p.reload();
+    await p.waitForSelector(`${btn}[disabled][aria-busy="true"]`, {
+      timeout: 15_000,
+    });
+    expect((await p.textContent(btn))?.trim()).toBe(await busy(1));
+    await p.click(btn, { force: true }).catch(() => undefined);
+    expect(posts).toBe(1);
     await p.context().close();
   }, 60_000);
 

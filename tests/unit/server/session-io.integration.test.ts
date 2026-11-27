@@ -257,15 +257,22 @@ describe("the io WebSocket", () => {
     expect(sizes(a)).toEqual([[80, 24]]);
     const b = await attach("logs");
     await b.until(() => sizes(b).length === 1);
-    b.sendText(JSON.stringify({ type: "resize", cols: 150, rows: 40 }));
+    b.sendText(JSON.stringify({ type: "resize", cols: 120, rows: 30 }));
+    await b.until(() =>
+      b.controls().some((m) => m.type === "size" && m.lead === false),
+    );
+    expect(pty("logs").resizes.some(([c]) => c === 120)).toBe(false);
+    b.sendText(
+      JSON.stringify({ type: "resize", cols: 150, rows: 40, claim: true }),
+    );
     await a.until(() => sizes(a).length === 2);
     expect(sizes(a).at(-1)).toEqual([150, 40]);
-    await b.until(() => sizes(b).length === 2);
+    await b.until(() => sizes(b).at(-1)?.[0] === 150);
     // Another client of the host (a CLI attach) resizes: both hear it.
     const cli = await connectHost(sessionPaths(s.stateDir).socket);
     cli.resize(sess.logs.ref.id, 100, 30);
     await a.until(() => sizes(a).length === 3);
-    await b.until(() => sizes(b).length === 3);
+    await b.until(() => sizes(b).at(-1)?.[0] === 100);
     expect(sizes(b).at(-1)).toEqual([100, 30]);
     // Under 2x2 is refused: a pane that wasn't laid out yet.
     a.sendText(JSON.stringify({ type: "resize", cols: 1, rows: 1 }));

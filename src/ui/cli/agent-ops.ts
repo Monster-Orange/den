@@ -65,6 +65,7 @@ import {
   addressBriefLine,
   addressNotSetNote,
   agentLinks,
+  agentPagePath,
   peopleAddress,
   peopleWebUrl,
   type AgentLinks,
@@ -292,6 +293,19 @@ import {
   type Override,
 } from "../../shared/agents/records.js";
 import {
+  allowedFor as envAllowedFor,
+  checkProjectEnvAllow,
+  defaultEnvHold,
+  envHoldScript,
+  envMaskArgs,
+  ENV_HOLD_FILE,
+  type EnvHoldSettings,
+} from "../../shared/agents/env-hold.js";
+import {
+  envHoldMark,
+  holdOnAtStart,
+} from "../../shared/agents/env-hold-rollout.js";
+import {
   agentSessionEnv,
   DEFAULT_RUNTIME_ID,
   getRuntime,
@@ -303,6 +317,7 @@ import {
   type LaunchOutput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
+import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 import {
   agentGitEnv,
   resolveAgentSigning,
@@ -452,6 +467,17 @@ import {
   type AccountSource,
   type PickDeps,
 } from "../../shared/agents/signin-accounts.js";
+
+function installTimeZone(): string | undefined {
+  try {
+    const z = readUserConfig().time_zone;
+    if (typeof z !== "string" || !z || z.length > 64) return undefined;
+    new Intl.DateTimeFormat("en", { timeZone: z });
+    return z;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface AgentsDeps extends SessionsDeps {
   /**
@@ -611,6 +637,7 @@ export interface AgentsDeps extends SessionsDeps {
    * when it has none.
    */
   workspaceHubLoop?: (ws: string) => unknown;
+  workspaceEnvAllow?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
   /** Issue 1480: project `ws`'s `agents.event_feeds` as written. */
@@ -687,6 +714,7 @@ export interface AgentsResolved extends Resolved {
   } | null>;
   workspaceRepos: (ws: string) => string[];
   workspaceHubLoop: (ws: string) => unknown;
+  workspaceEnvAllow: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
   workspaceEventFeeds: (ws: string) => unknown;
@@ -913,11 +941,15 @@ function defaultDenBase(): string {
 export async function hubUpstream(
   d: AgentsResolved,
   who: { agentId: string; workspace: string; session: string },
-): Promise<{
-  base: string;
-  mcpUrl: string;
-  headers: Record<string, string>;
-} | null> {
+): Promise<
+  | {
+      base: string;
+      mcpUrl: string;
+      headers: Record<string, string>;
+    }
+  | { refused: "agent_removed" | "agent_unreadable" }
+  | null
+> {
   const h = await d.hub().catch(() => null);
   if (!h) return null;
   const { hubHeaders } = await import("../../shared/hub.js");
@@ -929,12 +961,24 @@ export async function hubUpstream(
   }
   let name = who.agentId;
   let linked: string | undefined;
+  const guarded = who.agentId !== SERVER_AGENT_ID;
+  const check = (): "agent_removed" | "agent_unreadable" | null => {
+    try {
+      return readRecord(d.stateDir(), who.agentId) ? null : "agent_removed";
+    } catch {
+      return "agent_unreadable";
+    }
+  };
   try {
     const rec = readRecord(d.stateDir(), who.agentId);
     name = rec?.displayName || name;
     linked = rec?.project;
   } catch {
     /* the id names it */
+  }
+  if (guarded) {
+    const no = check();
+    if (no) return { refused: no };
   }
   // Which project's Hub link files its work: the agent's own project link
   // (D65 v2) first, then its session's project. The server scope is never
@@ -948,6 +992,10 @@ export async function hubUpstream(
       { id: who.agentId, name, workspace: who.workspace },
     )
     .catch(() => null);
+  if (guarded) {
+    const no = check();
+    if (no) return { refused: no };
+  }
   return {
     base: h.url,
     mcpUrl: h.mcpUrl || `${h.url}/mcp`,
@@ -1195,6 +1243,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
     workspaceHubLoop: d.workspaceHubLoop ?? workspaceEntryRaw,
+    workspaceEnvAllow: d.workspaceEnvAllow ?? workspaceEnvAllowOf,
     workspaceMcpServers:
       d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
     saveWorkspaceMcpServers:
@@ -3683,6 +3732,13 @@ async function startSession(
   signingWarning?: string;
 }> {
   if (old?.exited) await c.forget(old.ref.id);
+  const cfgNow = d.agentsConfig();
+  const hold = agentEnvHold(
+    d,
+    cfgNow.envHold,
+    launch.rec.id,
+    launch.rec.workspace,
+  );
   // Issue 163 (b): read before the token is minted (nothing to revoke).
   const signIn = await d.agentSignIn(
     launch.tokenEnv,
@@ -3715,11 +3771,13 @@ async function startSession(
     // the sandbox: bwrap binds only the folders that exist.
     try {
       signing = d.agentSigning(launch.rec.cwd);
+      hold.own.push(...Object.keys(agentGitEnv(signing)));
       if (signing?.made)
         signingWarning = `${launch.rec.id} signs its commits with the agents' new SSH key. GitHub shows them Verified once you add it: ${signingKeyAddLine(signing)}`;
     } catch (e) {
       signingWarning = `${launch.rec.id}'s commits can't be signed with the agents' key: ${e instanceof Error ? e.message : String(e)}`;
     }
+    rewriteEnvHold(d, launch.rec.id, hold, agentGitEnv(signing));
     // Issue 936: Den's state read-only to the session (the OS sandbox).
     // An agent from before the sandbox starts outside it until the person
     // turns it on (the rollout, sandbox-rollout.ts).
@@ -3783,6 +3841,7 @@ async function startSession(
             // agents.git (issue 1316): its commits signed with its key.
             { ...agentGitEnv(signing), ...box.env },
             signIn.env,
+            hold,
           ),
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
@@ -3826,6 +3885,7 @@ async function startSession(
   delete rec.trustDeclined;
   // Issue 252: it runs in `permission` now.
   delete rec.startedIn;
+  rec.envHold = envHoldMark(hold.on);
   // Issue 340: the sign-in this session runs on (its label only).
   if (signIn.account) rec.signIn = { ...signIn.account };
   else delete rec.signIn;
@@ -4047,6 +4107,11 @@ function launchInput(
       return sub.model ? { subagentModel: sub.model } : {};
     })(),
     ...(cfg.subagents?.claudeAiConnectors ? { claudeAiConnectors: true } : {}),
+    envHold: {
+      ...agentEnvHold(d, cfg.envHold, id, ws),
+      guard: cfg.envHold?.guard ?? true,
+      mask: envMaskArgs(cfg.envHold ?? defaultEnvHold()),
+    },
     // D47: services it may reach only through their API.
     ...(() => {
       try {
@@ -4071,6 +4136,58 @@ function launchInput(
       call: hookCallSettings(readUserConfig),
     },
   };
+}
+
+export function agentEnvHold(
+  d: Pick<AgentsResolved, "stateDir" | "env"> & {
+    workspaceEnvAllow?: (ws: string) => unknown;
+  },
+  s: EnvHoldSettings | undefined,
+  id: string,
+  ws: string,
+): { on: boolean; hold: string[]; allow: string[]; own: string[] } {
+  const settings = s ?? defaultEnvHold();
+  const on = holdOnAtStart(readRecord(d.stateDir(), id), settings);
+  let project: string[] = [];
+  try {
+    project = checkProjectEnvAllow(
+      ws,
+      (d.workspaceEnvAllow ?? workspaceEnvAllowOf)(ws),
+    );
+  } catch {
+    project = [];
+  }
+  return {
+    on,
+    hold: on ? [...settings.hold] : [],
+    allow: envAllowedFor(settings, id, project),
+    own: [
+      AGENT_ACTOR_ENV,
+      ACTOR_TOKEN_FILE_ENV,
+      ...Object.keys(installLocationEnv(d.env)),
+    ],
+  };
+}
+
+function rewriteEnvHold(
+  d: Pick<AgentsResolved, "stateDir">,
+  id: string,
+  hold: { hold: string[]; allow: string[]; own: string[] },
+  git: Record<string, string>,
+): void {
+  const filesDir = agentFilesDir(d.stateDir(), id);
+  const file = path.join(filesDir, ENV_HOLD_FILE);
+  if (!fs.existsSync(file)) return;
+  writeRuntimeFiles(filesDir, {
+    [file]: envHoldScript(hold.hold, hold.allow, hold.own, git),
+  });
+}
+
+function workspaceEnvAllowOf(ws: string): unknown {
+  const e = workspaceEntryRaw(ws) as
+    | { agents?: { env_allow?: unknown } }
+    | undefined;
+  return e?.agents?.env_allow;
 }
 
 /** The model a runtime is given: a pinned version, else the model. */
@@ -7342,7 +7459,13 @@ export async function resumeAgent(
         const fresh = {
           ...(newId ? withoutId : at),
           ...(handoff
-            ? { firstPrompt: resumeHandoffPrompt(handoff.text) }
+            ? {
+                firstPrompt: resumeHandoffPrompt(
+                  handoff.text,
+                  new Date(),
+                  installTimeZone(),
+                ),
+              }
             : {}),
         };
         // A fresh launch says its conversation id (resumeToken); a resume
@@ -7795,24 +7918,30 @@ export async function restartMany(
     pollMs?: number;
     maxMs?: number;
     onDone?: (r: RestartOutcome) => void;
+    slot?: (id: string, workspace: string) => Promise<() => void>;
+    stateOf?: typeof restartStateOf;
+    restart?: typeof restartAgent;
   } = {},
 ): Promise<RestartPlan[]> {
   const plan: RestartPlan[] = [];
   const waited = o.maxMs ?? restartWaitOf(d);
+  const stateOf = o.stateOf ?? restartStateOf;
+  const restart = o.restart ?? restartAgent;
   for (const a of agents) {
     let p: RestartPlan;
     try {
-      p = await restartStateOf(d, a.id, a.workspace);
+      p = await stateOf(d, a.id, a.workspace);
     } catch {
       p = { id: a.id, workspace: a.workspace, state: "unknown" };
     }
     plan.push(p);
     if (p.state !== "now" && p.state !== "turn") continue;
     const base = { id: p.id, workspace: p.workspace };
-    void restartAgent(d, p.id, p.workspace, "after-turn", {
+    void restart(d, p.id, p.workspace, "after-turn", {
       ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}),
       ...(o.maxMs !== undefined ? { maxMs: o.maxMs } : {}),
       jobStops: true,
+      ...(o.slot ? { slot: () => o.slot!(p.id, p.workspace) } : {}),
     }).then(
       () => o.onDone?.({ ...base, outcome: "restarted" }),
       (e: unknown) =>
@@ -8067,6 +8196,7 @@ export async function restartAgent(
      * (job_running, with what it runs), never waited out silently.
      */
     jobStops?: boolean;
+    slot?: () => Promise<() => void>;
   } = {},
 ): Promise<Resumed> {
   const where = "agents restart";
@@ -8110,7 +8240,9 @@ export async function restartAgent(
   }
   // Review M1: stop and resume as one change (not the wait above, so a
   // person can still stop it while it waits).
-  return lockAgent(d, rec.id, async () => {
+  const release = opts.slot ? await opts.slot() : undefined;
+  try {
+    return await lockAgent(d, rec.id, async () => {
     const cur = agentRecord(d, rec.id, rec.workspace);
     const now = await withClient(d, async (c) =>
       sessionOf(await c.list(), cur),
@@ -8196,7 +8328,10 @@ export async function restartAgent(
         `exited at once${out.early.exitCode === undefined ? "" : ` (code ${out.early.exitCode})`}`,
       );
     return out;
-  });
+    });
+  } finally {
+    release?.();
+  }
 }
 
 /** Issue 193: whether host session `ref` has ended, waiting up to `maxMs`. */
@@ -9107,6 +9242,8 @@ export async function relaunchAgent(
           reason,
           compactions,
           manual ? [] : (before?.leftRunning ?? []),
+          new Date(),
+          installTimeZone(),
         ),
         rotations: [...(rec.rotations ?? []), entry],
         beforeLaunch: () => {
@@ -10080,7 +10217,7 @@ export async function trustTick(d: AgentsResolved): Promise<TrustEvent[]> {
       const s = sessionOf(sessions, rec);
       const name = rec.displayName || rec.persona || rec.id;
       const who = { agent: rec.id, workspace: rec.workspace };
-      const link = `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`;
+      const link = agentPagePath(rec.workspace, rec.id);
       try {
         if (s && !s.exited) {
           // Only before its conversation exists, or while it was asked.

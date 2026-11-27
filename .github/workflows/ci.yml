@@ -316,6 +316,7 @@ jobs:
       shards: ${{ steps.select.outputs.shards }}
       shard_count: ${{ steps.select.outputs.shard_count }}
       nav: ${{ steps.select.outputs.nav }}
+      osuser: ${{ steps.select.outputs.osuser }}
     env:
       DEN_TEST_WORKERS: "2"
       DEN_TEST_QUARANTINE: exclude
@@ -356,6 +357,7 @@ jobs:
             lint="$RUNNER_TEMP/scripts/guardrail-lint"
           fi
           node "$lint/mo-gates.mjs" --base "$BASE" --root .
+      - run: node scripts/shim-imports.mjs
       - run: npm run typecheck
       - run: npm run lint
       # Issue 839: a browser test or live check this change touches never
@@ -413,6 +415,10 @@ jobs:
           # Issue 1527: any visual-reference test runs in the visual job.
           if [ -n "$(node scripts/visual-tests.mjs --in affected.txt)" ]; then
             echo 'nav=true' >> "$GITHUB_OUTPUT"
+          fi
+          # Issue 1736: a change the real-Linux OS-user test covers runs it as root (os-user-linux).
+          if [ "$(head -1 affected.txt)" = ALL ] || grep -qxF tests/unit/agents/os-user-linux-988.test.ts affected.txt; then
+            echo 'osuser=true' >> "$GITHUB_OUTPUT"
           fi
       # Issue 996: what this run tests, for the release (scripts/release-tree-check.mjs):
       # the tree checked out here (a pull request's merge with its base, or
@@ -627,8 +633,45 @@ jobs:
           if [ "${#files[@]}" -eq 0 ]; then echo "none for Node 22"; exit 0; fi
           npm test -- --passWithNoTests "${files[@]}"
 
+  # Issue 1736: the real-Linux test for agents as a second OS user
+  # (tests/unit/agents/os-user-linux-988.test.ts) makes users, folders and a
+  # launcher, so it runs only as root with DEN_OS_USER_E2E=1, on a throwaway
+  # GitHub-hosted runner: never a self-hosted box. On a pull request it runs
+  # when the change's tests include it (the pr job's "osuser" output). It
+  # fails if jest skipped the test instead of running it.
+  os-user-linux:
+    needs: [fast, pr]
+    if: ${{ !cancelled() && needs.fast.result == 'success' && (github.event_name == 'workflow_dispatch' || needs.pr.outputs.osuser == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24.13.0"
+          cache: npm
+      - run: npm ci
+      - name: Close /opt as on a real machine (the runner image leaves it 0777)
+        run: sudo chmod 0755 /opt
+      - name: The OS-user test, as root
+        run: |
+          sudo env "PATH=$PATH" DEN_OS_USER_E2E=1 npx jest --ci --verbose --maxWorkers=1 \
+            --json --outputFile=os-user-result.json tests/unit/agents/os-user-linux-988.test.ts
+          # shellcheck disable=SC2016 # the JavaScript's ${} is node's, not the shell's
+          node -e '
+            const r = require("./os-user-result.json");
+            console.log(`passed ${r.numPassedTests}, skipped ${r.numPendingTests}, failed ${r.numFailedTests}`);
+            if (r.numPassedTests < 1 || r.numPendingTests > 0) {
+              console.error("::error::the OS-user test was skipped, not run (root and DEN_OS_USER_E2E=1 are needed)");
+              process.exit(1);
+            }'
+
   ci-ok:
-    needs: [fast, pr, den-ui-nav, pr-shards, pr-node22]
+    needs: [fast, pr, den-ui-nav, pr-shards, pr-node22, os-user-linux]
     if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
