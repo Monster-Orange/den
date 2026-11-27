@@ -18,6 +18,8 @@ config and manifest changes a distribution must make to move to it under
 ### Fixed
 
 - The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) are faster: other requests no longer wait on GitHub while it answers, and the branch lists fetch one page of 100 instead of every page, with the repo's default branch always first. The repo list still fetches up to 200 per org. (issue 1926)
+- The bell pages each of its sections (Needs you, waiting, Done, Updates and Older) with the kit's pager under it: "1–50 of 63", First, Previous, the page picker, Next, Last and a per-page choice, in English, Spanish and Japanese. A section with one page shows no pager. Closing the bell goes back to the first pages.
+- The bell's `GET /api/notifications` and the `notifications_list` MCP tool answer one page of each section (recent, updates, older): `?limit`, `?section` with `?cursor`, `?page` or `?at`, and per section `next`, `prev`, `total`, `offset`, `page` and `pages`. `waiting`, `done` and `seenDone` page the same way, with their page in `waitingPage`, `donePage` and `seenDonePage`, and the badge counts every done agent. Each section's `count`, its `unread` and the badge still count every row, and an agent's scope filters before the cut.
 
 ## [0.4.92] - unreleased
 

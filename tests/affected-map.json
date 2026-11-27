@@ -2070,6 +2070,7 @@
         "src/ui/server/public/header.js",
         "src/ui/server/public/health-fit.js",
         "src/ui/server/public/health-rollup.js",
+        "src/ui/server/public/list-pager.js",
         "src/ui/server/public/log-source.js",
         "src/ui/server/public/pane-reconnect.js",
         "src/ui/server/public/peek.css",

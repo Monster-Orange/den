@@ -28,6 +28,7 @@ import { formatTime, formatTitle } from "/kit/time.js";
 import { bellPanelHtml } from "/kit/shell-html.js";
 import { hydrateBell } from "/kit/shell-client.js";
 import { openPeek, peekOpen, peekRefresh, peekTarget } from "/peek.js";
+import { listPagerHtml, pageQuery, watchPagers } from "/list-pager.js";
 
 const POLL_MS = 5000;
 
@@ -311,7 +312,12 @@ function allowRowHtml(w, open) {
 }
 
 export function bellCountOf(b) {
-  return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
+  const done = Number.isInteger(b?.donePage?.total)
+    ? b.donePage.total
+    : Array.isArray(b?.done)
+      ? b.done.length
+      : 0;
+  return (b?.unread ?? 0) + done;
 }
 
 /**
@@ -482,7 +488,10 @@ export function bellPanel(b, ui = {}) {
     updates: !!ui.updates,
     ask: ui.ask,
     busy: ui.busy ?? null,
+    per: ui.per ?? {},
   };
+  const pager = (name, p, shown) =>
+    listPagerHtml(name, p, shown, u.per[name] ?? BELL_PER);
   // Issue 746: what waits for the person's Allow leads Needs you.
   const allows = allowsOf(b);
   const groups = withoutAllowed(b?.groups ?? [], allows);
@@ -514,7 +523,10 @@ export function bellPanel(b, ui = {}) {
   // ATTN-5: what doesn't need the person folds into one Updates row.
   const updatesHtml = updates.count
     ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: updates.count }))}</button>` +
-      (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
+      (u.updates
+        ? groupsHtml(updates.groups ?? [], u) +
+          pager("updates", updates, rowsIn(updates.groups))
+        : "")
     : "";
   if (
     !allows.length &&
@@ -546,16 +558,26 @@ export function bellPanel(b, ui = {}) {
       needs:
         allowsHtml(allows, u.reviews) +
         overrunsHtml(overrunsOf(b)) +
-        groupsHtml(groups, u, true),
+        pager("waiting", b?.waitingPage, (b?.waiting ?? []).length) +
+        groupsHtml(groups, u, true) +
+        pager("recent", b, rowsIn(b?.groups)),
       ...(done.length
-        ? { done: done.map((d) => doneRowHtml(d)).join("") }
+        ? {
+            done:
+              done.map((d) => doneRowHtml(d)).join("") +
+              pager("done", b?.donePage, done.length),
+          }
         : {}),
       earlier:
         seenDone.map((d) => doneRowHtml(d, true)).join("") +
+        pager("seenDone", b?.seenDonePage, seenDone.length) +
         updatesHtml +
         (older.count
           ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
-            (u.older ? groupsHtml(older.groups ?? [], u) : "")
+            (u.older
+              ? groupsHtml(older.groups ?? [], u) +
+                pager("older", older, rowsIn(older.groups))
+              : "")
           : ""),
     },
   };
@@ -566,11 +588,26 @@ export function bellHtml(b, ui = {}) {
   return bellPanelHtml(bellPanel(b, ui));
 }
 
+const BELL_PER = 50;
+
+const rowsIn = (groups) =>
+  (groups ?? []).reduce(
+    (n, g) => n + g.subjects.reduce((m, x) => m + x.items.length, 0),
+    0,
+  );
+
+const sectionPage = (b, name) =>
+  name === "recent"
+    ? b
+    : name === "waiting" || name === "done" || name === "seenDone"
+      ? b?.[`${name}Page`]
+      : b?.[name];
+
 let last = null;
 
-async function load() {
+async function load(q = "") {
   try {
-    const r = await fetch("/api/notifications", {
+    const r = await fetch(`/api/notifications${q ? `?${q}` : ""}`, {
       headers: { accept: "application/json" },
     });
     if (!r.ok) return null;
@@ -773,6 +810,8 @@ export function initBell(doc = document) {
     updates: false,
     ask: null,
     busy: null,
+    per: {},
+    at: "",
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
@@ -791,6 +830,7 @@ export function initBell(doc = document) {
     onOpen: () => void refresh(),
     onClose: () => {
       ui.ask = null;
+      ui.at = "";
       lost = "";
     },
     // Esc in the ⊘'s question cancels it; the panel stays.
@@ -804,6 +844,17 @@ export function initBell(doc = document) {
     },
   });
   const pop = bell.el;
+  watchPagers(pop, (name, ask) => {
+    if (ask.kind === "per") ui.per[name] = ask.target.per;
+    const q = pageQuery(
+      sectionPage(last, name),
+      ask.target,
+      ui.per[name] ?? BELL_PER,
+    );
+    q.set("section", name);
+    ui.at = q.toString();
+    void refresh();
+  });
   // Issue 1054: the button held with the kit's dots, and how to let it go.
   let heldBtn = null;
   let letGo = null;
@@ -857,7 +908,7 @@ export function initBell(doc = document) {
   let drawn = 0;
   const refresh = async () => {
     const n = ++asked;
-    const b = await load();
+    const b = await load(ui.at);
     // None while Mark all or Clear read runs, and none older than the
     // answer drawn last: answers can land out of order.
     if (!b || ui.busy || n < drawn) return;

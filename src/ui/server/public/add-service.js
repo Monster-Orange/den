@@ -17,7 +17,7 @@
  */
 import { comboHtml, pageLoad, wireCombo } from "/combobox.js";
 import { dialogHtml, mountDialog } from "/dialog-den.js";
-import { hydratePager, pagerHtml } from "/kit/pager.js";
+import { listPagerHtml, pageQuery, watchPagers } from "/list-pager.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 
@@ -64,28 +64,7 @@ const pageItems = (r) =>
 const ghQ = (v, re) => (re.test(v) ? v : "");
 let ghSeq = 0;
 let ghTimer = 0;
-const pg = { per: 50, froms: [1], next: null, prev: null, ctl: null };
-const PAGER_WORDS = [
-  "range",
-  "rangeOpen",
-  "label",
-  "first",
-  "firstSr",
-  "prev",
-  "prevSr",
-  "next",
-  "nextSr",
-  "last",
-  "lastSr",
-  "pageOf",
-  "pageShort",
-  "pageSr",
-  "go",
-  "perPage",
-  "more",
-];
-const pagerWords = () =>
-  Object.fromEntries(PAGER_WORDS.map((k) => [k, t(`pager.${k}`)]));
+const pg = { per: 50, reply: null, starts: [], loading: false, stop: null };
 
 const dlg = () => st.frame?.dialog ?? null;
 const $ = (sel) => dlg()?.querySelector(sel) ?? null;
@@ -170,74 +149,52 @@ function renderLocal() {
   list.innerHTML = html || empty(t("addSvc.noResults"));
 }
 
-function loadGh(refresh, q = "", cursor = "") {
-  if (!q && !cursor) st.gh = null;
-  if (!cursor) pg.froms = [1];
+function loadGh(refresh, q = "", ask = null, offset = 0) {
+  if (!ask) st.gh = null;
   const seq = ++ghSeq;
-  const p = new URLSearchParams({ limit: String(pg.per) });
+  const p = ask ?? new URLSearchParams({ limit: String(pg.per) });
   if (q) p.set("q", q);
-  if (cursor) p.set("cursor", cursor);
   if (refresh) p.set("refresh", "1");
+  pg.loading = true;
   fetch(`/api/github/repos?${p}`)
     .then((r) => r.json())
     .catch(() => [])
     .then((repos) => {
       if (seq !== ghSeq) return;
+      pg.loading = false;
       st.gh = pageItems(repos);
-      pg.next = repos?.next ?? null;
-      pg.prev = repos?.prev ?? null;
+      if (!ask || offset === 0) pg.starts = [];
+      else if (offset > (pg.reply?.offset ?? 0))
+        pg.starts.push(pg.reply.offset);
+      else pg.starts.pop();
+      pg.reply = Array.isArray(repos) ? null : { ...repos, offset };
       renderGh();
     });
 }
 
-function ghHref(target) {
-  if (typeof target === "object") return target.per ? `?per=${target.per}` : "";
-  const on = { first: pg.froms.length > 1, prev: !!pg.prev, next: !!pg.next };
-  return on[target] ? `?gh=${target}` : "";
-}
-
-function ghNavigate(ask) {
-  if (ask.kind === "per") {
-    pg.per = Number(ask.target?.per) || pg.per;
-    return loadGh(false, st.ghQ);
-  }
-  const from = pg.froms[pg.froms.length - 1];
-  if (ask.target === "next" && pg.next) {
-    pg.froms.push(from + (st.gh?.length ?? 0));
-    loadGh(false, st.ghQ, pg.next);
-  } else if (ask.target === "prev" && pg.prev) {
-    const back = pg.froms.slice(0, -1);
-    loadGh(false, st.ghQ, pg.prev);
-    pg.froms = back.length ? back : [1];
-  } else if (ask.target === "first") loadGh(false, st.ghQ);
+function ghNavigate(_name, ask) {
+  if (pg.loading || !pg.reply) return;
+  if (ask.kind === "per") pg.per = Number(ask.target?.per) || pg.per;
+  const target = ask.kind === "per" ? "first" : ask.target;
+  const at = pg.reply.offset;
+  const offset =
+    target === "next"
+      ? at + (st.gh?.length ?? 0)
+      : target === "prev"
+        ? (pg.starts.at(-1) ?? 0)
+        : 0;
+  loadGh(false, st.ghQ, pageQuery(pg.reply, target, pg.per), offset);
 }
 
 function renderGhPager() {
   const foot = $("#add-svc-gh-pager");
-  pg.ctl?.destroy();
-  pg.ctl = null;
-  if (!foot) return;
-  const n = st.gh?.length ?? 0;
-  const from = pg.froms[pg.froms.length - 1];
-  foot.innerHTML = n
-    ? pagerHtml({
-        from,
-        to: from + n - 1,
-        page: pg.froms.length,
-        hasNext: !!pg.next,
-        per: pg.per,
-        perOptions: [25, 50, 100],
-        href: ghHref,
-        lang: document.documentElement.lang || "en",
-        words: pagerWords(),
-      })
-    : "";
-  const nav = foot.querySelector(".den-pager");
-  if (nav)
-    pg.ctl = hydratePager(nav, {
-      list: "add-svc-gh-list",
-      onNavigate: ghNavigate,
-    });
+  if (foot)
+    foot.innerHTML = listPagerHtml(
+      "gh-repos",
+      pg.reply,
+      st.gh?.length ?? 0,
+      pg.per,
+    );
 }
 
 function renderGh() {
@@ -500,6 +457,8 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
     ),
     words: { more: t("combo.narrow"), none: t("combo.none") },
   });
+  pg.stop?.();
+  pg.stop = watchPagers(d, ghNavigate);
   d.addEventListener("input", (e) => {
     if (e.target.id !== "add-svc-global-search") return;
     clearTimeout(ghTimer);
