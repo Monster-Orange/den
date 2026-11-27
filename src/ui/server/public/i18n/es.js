@@ -1897,7 +1897,8 @@
     "set.workspace.hub_delivery_loop.o.install": "Como en todas partes",
     "set.workspace.hub_delivery_loop.o.on": "Activado",
     "set.workspace.hub_delivery_loop.o.off": "Desactivado",
-    "set.workspace.agents_max_per_project": "Agentes por proyecto: este proyecto",
+    "set.workspace.agents_max_per_project":
+      "Agentes por proyecto: este proyecto",
     "set.workspace.agents_max_per_project.d":
       "Cuántos agentes de este proyecto pueden funcionar a la vez. Vacío o 0 usa Agentes por proyecto. Solo puede ser más bajo que eso. Un inicio por encima de esto se rechaza, y dice qué límite lo frena.",
     "set.workspace.hub_delivery_loop_extra":
@@ -1944,6 +1945,17 @@
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
+    "acd.title": "Cuenta",
+    "acd.profile": "Perfil",
+    "acd.access": "Acceso",
+    "acd.devices": "Dispositivos",
+    "acd.notifications": "Notificaciones",
+    "acd.group": "Tú",
+    "acd.name": "Nombre",
+    "acd.login": "GitHub",
+    "acd.role": "Rol",
+    "acd.local": "Este equipo",
+    "acd.profileD": "Quién ha iniciado sesión en este Den, aquí.",
     "set.access.approveNeedsBrowser":
       "Para aprobar un dispositivo hace falta un navegador con la sesión iniciada. Vuelve a iniciar sesión en esta página y apruébalo.",
     "set.access.approveNotAgent":
@@ -2372,7 +2384,8 @@
     "ap.det.den_sandbox_on.off":
       "Un agente puesto en off en user.yml sigue en off.",
     "ap.do.repo_clone": "Clonar {source} en {path}",
-    "ap.do.project_agent_cap": "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
     "ap.det.project_agent_cap.now": "Ahora: {v}",
     "ap.det.project_agent_cap.then": "Después: {v}",
     "ap.do.project_mode":
@@ -4602,9 +4615,9 @@
     "setd.g.access": "Acceso y seguridad",
     "setd.g.den": "Esta instalación",
     "setd.readOnly": "Inicia sesión para cambiarlos. Este navegador puede mirar, pero no cambiar nada.",
-    "setd.toAccount.notifications": "Tus notificaciones",
     "setd.toAccount.devices": "Tus dispositivos",
     "setd.toAccount.profile": "Cerrar sesión",
+    "setd.sub.more": "Más",
     "set.ui.rot.scope.agent": "Agente",
     "set.ui.rot.scope.persona-workspace": "Persona en un proyecto",
     "set.ui.rot.scope.persona": "Persona",

@@ -1833,7 +1833,8 @@
     "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
     "set.workspace.hub_delivery_loop.o.on": "オン",
     "set.workspace.hub_delivery_loop.o.off": "オフ",
-    "set.workspace.agents_max_per_project": "プロジェクトごとのエージェント数: このプロジェクト",
+    "set.workspace.agents_max_per_project":
+      "プロジェクトごとのエージェント数: このプロジェクト",
     "set.workspace.agents_max_per_project.d":
       "このプロジェクトのエージェントを同時に動かせる数です。空か 0 なら「プロジェクトごとのエージェント数」を使います。それより低い値だけ設定できます。これを超える起動は拒否され、どの上限で止まったかが表示されます。",
     "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
@@ -1878,6 +1879,17 @@
     "set.access.machine_name": "マシン名",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "acct.roleOwner": "オーナー",
+    "acd.title": "あなたの情報",
+    "acd.profile": "プロフィール",
+    "acd.access": "アクセス",
+    "acd.devices": "デバイス",
+    "acd.notifications": "通知",
+    "acd.group": "あなた",
+    "acd.name": "名前",
+    "acd.login": "GitHub",
+    "acd.role": "役割",
+    "acd.local": "このコンピューター",
+    "acd.profileD": "この Den に、ここでサインインしている人。",
     "set.access.approveNeedsBrowser":
       "デバイスの承認には、サインイン済みのブラウザーが必要です。このページで改めてサインインしてから承認してください。",
     "set.access.approveNotAgent":
@@ -2295,7 +2307,8 @@
     "ap.det.den_sandbox_on.off":
       "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
-    "ap.do.project_agent_cap": "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
     "ap.det.project_agent_cap.now": "現在: {v}",
     "ap.det.project_agent_cap.then": "変更後: {v}",
     "ap.do.project_mode":
@@ -4457,9 +4470,9 @@
     "setd.g.access": "アクセスとセキュリティ",
     "setd.g.den": "このインストール",
     "setd.readOnly": "変更するにはサインインしてください。このブラウザーでは表示のみできます。",
-    "setd.toAccount.notifications": "通知",
     "setd.toAccount.devices": "デバイス",
     "setd.toAccount.profile": "サインアウト",
+    "setd.sub.more": "その他",
     "set.ui.rot.scope.agent": "エージェント",
     "set.ui.rot.scope.persona-workspace": "プロジェクト内のペルソナ",
     "set.ui.rot.scope.persona": "ペルソナ",

@@ -1172,9 +1172,9 @@
     "setd.g.access": "Access and safety",
     "setd.g.den": "This install",
     "setd.readOnly": "Sign in to change these. This browser can look but change nothing.",
-    "setd.toAccount.notifications": "Your notifications",
     "setd.toAccount.devices": "Your devices",
     "setd.toAccount.profile": "Sign out",
+    "setd.sub.more": "More",
     "set.ui.rot.scope.agent": "Agent",
     "set.ui.rot.scope.persona-workspace": "Persona in a project",
     "set.ui.rot.scope.persona": "Persona",
@@ -2905,6 +2905,17 @@
     "ident.toast": "This device is signed in to {name} on {host}",
     // The install owner's role, beside their GitHub identity (the account entry's data).
     "acct.roleOwner": "Owner",
+    "acd.title": "Account",
+    "acd.profile": "Profile",
+    "acd.access": "Access",
+    "acd.devices": "Devices",
+    "acd.notifications": "Notifications",
+    "acd.group": "You",
+    "acd.name": "Name",
+    "acd.login": "GitHub",
+    "acd.role": "Role",
+    "acd.local": "This computer",
+    "acd.profileD": "Who is signed in to this Den, here.",
     "set.access.waiting": "Waiting devices",
     "set.embed.url_max": "Longest link context",
     "set.embed.app_keys": "App keys",
@@ -10863,6 +10874,25 @@
       m.initSettingsDialog(window.denShell);
     })
     .catch(function () {});
+  function openAccountDialog(pane, from) {
+    return import("/account-dialog.js").then(function (m) {
+      return m.openAccount(pane, from);
+    });
+  }
+  window.denShell.openAccount = openAccountDialog;
+  document.addEventListener(
+    "click",
+    function (e) {
+      var a = e.target && e.target.closest && e.target.closest("#den-ident");
+      if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey)
+        return;
+      e.preventDefault();
+      openAccountDialog(null, a);
+    },
+    true,
+  );
+  if (new URLSearchParams(location.search).has("account"))
+    openAccountDialog(new URLSearchParams(location.search).get("account"));
 
   // The ready path for a script that loads before shell.js:
   // window.denShellQueue is an array of functions, each called with
