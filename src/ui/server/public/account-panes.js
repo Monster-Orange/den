@@ -11,6 +11,7 @@
 import { DEN_SETTINGS, seenAgo } from "/settings-registry.js";
 import { drawRows, settingsCtx } from "/settings-rows.js";
 import { localizeRow } from "/settings-page.js";
+import { inAccount } from "/settings-dialog.js";
 import {
   appearanceState,
   ensureAppearance,
@@ -135,11 +136,16 @@ function linkStyles() {
   }
 }
 
-/** Account › Notifications: the bell's kinds (Hub's too) and the alerts. */
-export const notificationRows = () =>
-  DEN_SETTINGS.filter(
-    (r) => r.id.startsWith("notifications.") || r.category === "notifications",
-  );
+const PANE_ROWS = {
+  profile: ["cli.signin"],
+  devices: ["access.devices", "access.pair"],
+};
+
+/** Account › Notifications: Account's rows (inAccount) no other pane draws. */
+export const notificationRows = () => {
+  const taken = new Set(Object.values(PANE_ROWS).flat());
+  return DEN_SETTINGS.filter((r) => inAccount(r) && !taken.has(r.id));
+};
 
 /** A registry row by id (DEN_SETTINGS), or null. */
 export const registryRow = (id) =>
@@ -161,7 +167,7 @@ export async function loadAccountPane(pane, body, deps) {
       ]);
       body.innerHTML = profileHtml({ session, account }, t);
       const rows = body.querySelector("[data-acct-rows]");
-      if (!(await mountRows(rows, ["cli.signin"], deps.shell))) throw 0;
+      if (!(await mountRows(rows, PANE_ROWS.profile, deps.shell))) throw 0;
       return;
     }
     if (pane === "access") {
@@ -175,10 +181,7 @@ export async function loadAccountPane(pane, body, deps) {
     }
     if (pane === "devices") {
       body.innerHTML = "";
-      if (
-        !(await mountRows(body, ["access.devices", "access.pair"], deps.shell))
-      )
-        throw 0;
+      if (!(await mountRows(body, PANE_ROWS.devices, deps.shell))) throw 0;
       return;
     }
     if (pane === "notifications") {
