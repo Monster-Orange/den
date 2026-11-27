@@ -328,6 +328,8 @@ export interface HeldActionDeps {
   testPersonSetup?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
+  envHoldOn?: HeldOp;
+  envAllowKeep?: HeldOp;
   /** Issue 936: den_sandbox_on (agents/sandbox-rollout.ts). */
   sandboxOn?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
@@ -365,6 +367,8 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "den_env_hold_on",
+  "den_env_allow_keep",
   "test_person_setup",
   "web_url_set",
   "gate_runner_entry_set",
@@ -868,6 +872,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't revoke app keys here",
   );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
+  const envHoldOn = op(
+    d.envHoldOn,
+    "this Den can't hold variables back from agents here",
+  );
+  const envAllowKeep = op(
+    d.envAllowKeep,
+    "this Den can't change which variables agents keep here",
+  );
   const sandboxOn = op(
     d.sandboxOn,
     "this Den can't turn the agent sandbox on here",
@@ -1313,6 +1325,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       }),
     },
     den_pin_commit: pinCommit,
+    den_env_hold_on: envHoldOn,
+    den_env_allow_keep: envAllowKeep,
     den_sandbox_on: sandboxOn,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,

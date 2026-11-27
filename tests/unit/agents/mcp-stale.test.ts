@@ -8,11 +8,10 @@
  * A real host on a temp socket with a scripted PTY: nothing runs. A temp
  * CLAUDE_CONFIG_DIR, never ~/.claude. Invented names only.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
-import * as os from "os";
 import * as path from "path";
 import { writeApiOnlyRules } from "../../../src/shared/agents/api-only.js";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
@@ -42,6 +41,9 @@ import {
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { listedSessions } from "../../../src/ui/server/session-routes.js";
 import { DEN_BASE, cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
@@ -60,8 +62,10 @@ const TOKEN = "hubi_TESTONLY_d44_token";
 const agents = (r: Rig, ...args: string[]) => cmdAgents(args, r.deps);
 
 describe("D44: an agent's MCP servers against Hub now", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-d44-"));
-  afterEach(() => undefined);
+  let dir = "";
+  beforeAll(() => {
+    dir = tempDir("den-d44-");
+  });
   const files = (servers: Record<string, unknown> | null) => {
     const d = fs.mkdtempSync(path.join(dir, "a-"));
     if (servers)
