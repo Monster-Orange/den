@@ -720,22 +720,24 @@ panel }`: `id` names it, `text` is its words, `href` its page, `count`
   `text` is the host's own words; the kit adds none. A `count` follows
   the label and is read with it. A `disabled` item is faint and read out,
   but can't be chosen. No label, or fewer than two items: nothing is drawn.
-- It never wraps and never breaks a label. When the segments don't fit
-  the width the block is given, it folds into one native `<select>` with
-  the same choices (counts in brackets) after the visible label, and goes
-  back once they fit again, a few px later so it doesn't flicker. It is
-  measured with a ResizeObserver, not a breakpoint. With no script it
-  doesn't fold. Folded page tabs follow the chosen link, unless
-  `onChange` returns false.
-- `overflow: "scroll"` keeps the row and lets it scroll sideways
-  instead of folding. A « and a » sit on its edges, each with a fade
-  (`--den-tabs-edge-bg`, default `--surface`), and each shows only while
-  tabs are hidden on its side (`data-den-tabs-over` on the block:
-  `none`, `start`, `end` or `both`), updated on scroll and resize. A
-  click scrolls about one row-width. They are named "More tabs left" and
-  "More tabs right" (`lang` en, es or ja, or `words: { moreStart,
-moreEnd }`), and are not Tab stops (tabindex -1). The chosen tab is
-  kept in view on load, on a change and with the arrow keys.
+- It never wraps and never breaks a label. A row that doesn't fit the
+  width it is given scrolls sideways (no scrollbar), with « and » at its
+  ends: each shows only while tabs are hidden on its side
+  (`data-den-tabs-over`: `none`, `start`, `end` or `both`). They are 24px
+  wide on a 16px fade (`--den-tabs-edge-bg`, default `--surface`),
+  `aria-hidden` and never Tab stops; a press scrolls a row-width less one
+  tab, so the tab at the edge stays as the anchor. An item with
+  `alert: true` (open comments, a failed check) has its count in `--bad`,
+  and an arrow with such a tab hidden behind it shows a 6px `--bad` dot.
+  The chosen tab and a focused tab are kept in view. A row that fits
+  looks as it always did.
+- When even that can't help (narrower than its widest tab plus both
+  arrows and fades), it folds into one native `<select>` with the same
+  choices (counts in brackets) after the visible label, and goes back a
+  few px after they fit again. Both are measured with a ResizeObserver,
+  not a breakpoint. With no script the row scrolls and never folds.
+  Folded page tabs follow the chosen link, unless `onChange` returns
+  false.
 - 36px tall, or 44px (`--tap`) at 600px wide or less or with a coarse
   pointer (`size: "auto"`; `"m"` and `"l"` fix it). Each segment is at
   least 72px wide. The chosen one is `--accent-fill` with `--on-accent`

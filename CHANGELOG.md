@@ -8,7 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps: when it doesn't fit, it folds into one select with the same choices and a visible label. Every word is the host's. With `overflow: "scroll"` it scrolls sideways instead, with « and » at its edges shown only while tabs are hidden on that side, and keeps the chosen tab in view.
+- UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps. Every word is the host's. A row that doesn't fit scrolls sideways, with « and » at its ends shown only while tabs are hidden on that side (a red dot when a hidden tab has an alert), and keeps the chosen and focused tab in view; only when even one tab can't fit between the arrows does it fold into one select with the same choices and a visible label.
 
 ## [0.4.92] - unreleased
 

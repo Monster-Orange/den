@@ -2,15 +2,9 @@ import { esc } from "./strings.js";
 
 const HYSTERESIS_PX = 8;
 const KINDS = ["page", "switch", "panel"];
-const EDGE_PAD = 32;
-export const TABS_WORDS = {
-  en: { moreStart: "More tabs left", moreEnd: "More tabs right" },
-  es: {
-    moreStart: "Más pestañas a la izquierda",
-    moreEnd: "Más pestañas a la derecha",
-  },
-  ja: { moreStart: "左にもタブがあります", moreEnd: "右にもタブがあります" },
-};
+const EDGE_W = 24;
+const FADE_W = 16;
+const EDGE_PAD = EDGE_W + FADE_W;
 
 function itemsOf(o) {
   return (Array.isArray(o.items) ? o.items : [])
@@ -21,6 +15,7 @@ function itemsOf(o) {
       href: it.href == null ? "" : String(it.href),
       count: it.count == null || it.count === "" ? "" : String(it.count),
       disabled: Boolean(it.disabled),
+      alert: Boolean(it.alert),
       panel: it.panel == null ? String(it.id) : String(it.panel),
     }));
 }
@@ -42,7 +37,7 @@ function segment(kind, it, on) {
     (it.count
       ? `<span class="den-tab-n" aria-hidden="true">${esc(it.count)}</span>`
       : "");
-  const id = ` data-id="${esc(it.id)}"`;
+  const id = ` data-id="${esc(it.id)}"` + (it.alert ? " data-alert" : "");
   const off = it.disabled ? ' aria-disabled="true"' : "";
   if (kind === "page") {
     if (it.disabled) return `<a class="den-tab"${id}${off}${name}>${inner}</a>`;
@@ -85,15 +80,10 @@ export function tabsHtml(o = {}) {
   if (!label.trim() || items.length < 2) return "";
   const chosen = chosenOf(items, o.chosen);
   const size = o.size === "m" || o.size === "l" ? o.size : "auto";
-  const scroll = o.overflow === "scroll";
-  const w = {
-    ...TABS_WORDS.en,
-    ...(TABS_WORDS[o.lang] ?? {}),
-    ...(o.words ?? {}),
-  };
   const edge = (side, glyph) =>
-    `<button type="button" class="den-tabs-edge" data-den-tabs-edge="${side}" tabindex="-1"` +
-    ` aria-label="${esc(side === "start" ? w.moreStart : w.moreEnd)}" hidden>${glyph}</button>`;
+    `<button type="button" class="den-tabs-edge" data-den-tabs-edge="${side}"` +
+    ` tabindex="-1" aria-hidden="true" hidden>${glyph}` +
+    `<i class="den-tabs-dot" hidden></i></button>`;
   const options = items
     .map(
       (it) =>
@@ -106,19 +96,15 @@ export function tabsHtml(o = {}) {
     .join("");
   return (
     `<div class="den-tabs" data-den-tabs="${kind}" data-size="${size}"` +
-    (scroll ? ' data-overflow="scroll" data-den-tabs-over="none">' : ">") +
-    (scroll ? edge("start", "«") : "") +
+    ' data-den-tabs-over="none">' +
+    edge("start", "«") +
     rowOpen(kind, label) +
     items.map((it) => segment(kind, it, it.id === chosen)).join("") +
     (kind === "page" ? "</nav>" : "</div>") +
-    (scroll ? edge("end", "»") + "</div>" : "") +
-    (scroll
-      ? ""
-      : `<label class="den-tabs-fold" hidden>` +
-        `<span class="den-tabs-fold-l">${esc(label)}</span>`) +
-    (scroll
-      ? ""
-      : `<select class="den-tabs-select">${options}</select></label></div>`)
+    edge("end", "»") +
+    `<label class="den-tabs-fold" hidden>` +
+    `<span class="den-tabs-fold-l">${esc(label)}</span>` +
+    `<select class="den-tabs-select">${options}</select></label></div>`
   );
 }
 
@@ -210,7 +196,7 @@ export function hydrateTabs(el, opts = {}) {
     const all = segs().filter(usable);
     const at = all.indexOf(b);
     if (at < 0) return;
-    const rtl = getComputedStyle(row).direction === "rtl";
+    const rtl = globalThis.getComputedStyle(row).direction === "rtl";
     const step = { ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1 }[e.key];
     let to = -1;
     if (step) to = (at + step + all.length) % all.length;
@@ -227,23 +213,43 @@ export function hydrateTabs(el, opts = {}) {
     const went = choose(select.value);
     if (kind !== "page" || went === false) return;
     const href = select.selectedOptions[0]?.dataset.href;
-    if (href) window.location.assign(href);
+    if (href) globalThis.location.assign(href);
   };
 
-  const scroller = root.dataset.overflow === "scroll";
+  const scroller = true;
   const edges = Array.from(root.querySelectorAll("[data-den-tabs-edge]"));
+  const sideOf = (b) => {
+    const rr = row.getBoundingClientRect();
+    const br = b.getBoundingClientRect();
+    return br.left + br.width / 2 < rr.left + rr.width / 2 ? "left" : "right";
+  };
   function edgesNow() {
-    if (!scroller) return;
+    if (folded) {
+      for (const b of edges) b.hidden = true;
+      root.dataset.denTabsOver = "none";
+      return;
+    }
     const at = Math.abs(row.scrollLeft);
     const start = at > 1;
     const end = at + row.clientWidth < row.scrollWidth - 1;
-    for (const b of edges)
+    const rr = row.getBoundingClientRect();
+    for (const b of edges) {
       b.hidden = b.dataset.denTabsEdge === "start" ? !start : !end;
+      if (b.hidden) continue;
+      const left = sideOf(b) === "left";
+      const hiddenAlert = segs().some((s) => {
+        if (!s.hasAttribute("data-alert")) return false;
+        const r = s.getBoundingClientRect();
+        return left ? r.left < rr.left + EDGE_W : r.right > rr.right - EDGE_W;
+      });
+      const dot = b.querySelector(".den-tabs-dot");
+      if (dot) dot.hidden = !hiddenAlert;
+    }
     root.dataset.denTabsOver =
       start && end ? "both" : start ? "start" : end ? "end" : "none";
   }
   function keep(b = segs().find((s) => idOf(s) === current)) {
-    if (!scroller || !b) return;
+    if (folded || !b) return;
     const rr = row.getBoundingClientRect();
     const br = b.getBoundingClientRect();
     const pad = row.scrollWidth > row.clientWidth ? EDGE_PAD : 0;
@@ -253,32 +259,46 @@ export function hydrateTabs(el, opts = {}) {
     edgesNow();
   }
   const onEdge = (e) => {
-    const b = e.currentTarget;
-    const rtl = globalThis.getComputedStyle(row).direction === "rtl";
-    const dir = (b.dataset.denTabsEdge === "start" ? -1 : 1) * (rtl ? -1 : 1);
+    const rr = row.getBoundingClientRect();
+    const all = segs().map((s) => s.getBoundingClientRect());
+    let delta;
+    if (sideOf(e.currentTarget) === "right") {
+      const r = all.find((x) => x.right > rr.right - EDGE_PAD + 1);
+      delta = r ? r.left - (rr.left + EDGE_PAD) : row.clientWidth;
+    } else {
+      const r = all.findLast((x) => x.left < rr.left + EDGE_PAD - 1);
+      delta = r ? r.right - (rr.right - EDGE_PAD) : -row.clientWidth;
+    }
     const calm = globalThis.matchMedia?.(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    row.scrollBy({
-      left: dir * row.clientWidth * 0.8,
-      behavior: calm ? "auto" : "smooth",
-    });
+    row.scrollBy({ left: delta, behavior: calm ? "auto" : "smooth" });
+  };
+  const onFocus = (e) => {
+    const b = e.target.closest?.(".den-tab");
+    if (b) keep(b);
   };
 
   let need = 0;
   let folded = false;
   function measure() {
-    if (scroller) return edgesNow();
-    if (!fold || !select) return;
-    if (!folded) need = Math.ceil(row.scrollWidth);
+    if (!fold || !select) return edgesNow();
+    if (!folded)
+      need =
+        Math.ceil(
+          Math.max(0, ...segs().map((s) => s.getBoundingClientRect().width)),
+        ) +
+        2 * EDGE_PAD;
     const room = Math.floor(root.clientWidth);
     const next = folded ? room < need + HYSTERESIS_PX : room < need;
-    if (next === folded) return;
-    const hadFocus = root.contains(document.activeElement);
+    if (next === folded) return keep();
+    const hadFocus = root.contains(root.ownerDocument.activeElement);
     folded = next;
     row.hidden = folded;
     fold.hidden = !folded;
     root.toggleAttribute("data-folded", folded);
+    keep();
+    edgesNow();
     if (!hadFocus) return;
     if (folded) select.focus();
     else
@@ -290,10 +310,14 @@ export function hydrateTabs(el, opts = {}) {
   row?.addEventListener("click", onClick);
   row?.addEventListener("keydown", onKey);
   select?.addEventListener("change", onSelect);
-  if (scroller) row.addEventListener("scroll", edgesNow, { passive: true });
+  row?.addEventListener("scroll", edgesNow, { passive: true });
+  row?.addEventListener("focusin", onFocus);
+  root.setAttribute("data-den-tabs-ready", "");
   for (const b of edges) b.addEventListener("click", onEdge);
   const ro =
-    typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    typeof globalThis.ResizeObserver === "function"
+      ? new globalThis.ResizeObserver(measure)
+      : null;
   ro?.observe(root);
   if (root.parentElement) ro?.observe(root.parentElement);
   measure();
@@ -310,6 +334,7 @@ export function hydrateTabs(el, opts = {}) {
       row?.removeEventListener("click", onClick);
       row?.removeEventListener("keydown", onKey);
       row?.removeEventListener("scroll", edgesNow);
+      row?.removeEventListener("focusin", onFocus);
       for (const b of edges) b.removeEventListener("click", onEdge);
       select?.removeEventListener("change", onSelect);
     },
