@@ -765,7 +765,13 @@ function setBy(by) {
   } catch {
     /* this page only */
   }
+  const u = new URL(location.href);
+  if (u.searchParams.has("agp")) {
+    u.searchParams.delete("agp");
+    history.replaceState(history.state, "", u);
+  }
   paintList();
+  void refreshOnce();
 }
 
 /** Issue 750: how often the page asks Den for Hub's groups again (ms). */
