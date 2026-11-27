@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Fixed
+
+- Den's other pages and tools no longer stall for a second or more just after the server starts on an install with agents from before the project link. The one-time link migration now gives other requests a turn after each record it writes. Before, with 140 agents to link, `/api/server-info` waited about 0.7 s.
+
 ## [0.4.92] - unreleased
 
 ### Changed
