@@ -378,6 +378,63 @@ describe("release-tree-check: the tree CI tested, with the whole suite (its `tes
     });
   });
 
+  describe("greenRuns: a run GitHub's filtered list leaves out still counts", () => {
+    const REPO = "owner-x/repo-x";
+    const SHA = "c".repeat(40);
+    const base = `repos/${REPO}/actions/workflows/ci.yml/runs`;
+    const r = (id: number, o: Record<string, unknown> = {}) => ({
+      id,
+      event: "pull_request",
+      conclusion: "success",
+      head_sha: SHA,
+      ...o,
+    });
+    const runsFrom = (answers: Record<string, unknown>): number[] =>
+      JSON.parse(
+        execFileSync(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `const m = await import(${JSON.stringify("file://" + path.join(SCRIPTS, "release-tree-check.mjs"))});` +
+              `const a = JSON.parse(process.argv[1]);` +
+              `console.log(JSON.stringify(m.greenRuns((p) => a[p], ${JSON.stringify(REPO)}, ${JSON.stringify(SHA)}).map((x) => x.id)));`,
+            JSON.stringify(answers),
+          ],
+          { encoding: "utf8" },
+        ),
+      );
+
+    it("the tag's own green run, missing from the filtered list, is found by head_sha", () => {
+      expect(
+        runsFrom({
+          [`${base}?event=pull_request&status=success&per_page=100`]: {
+            workflow_runs: [r(1)],
+          },
+          [`${base}?event=merge_group&status=success&per_page=100`]: {
+            workflow_runs: [],
+          },
+          [`${base}?head_sha=${SHA}&per_page=100`]: {
+            workflow_runs: [r(2), r(1)],
+          },
+        }).sort(),
+      ).toEqual([1, 2]);
+    });
+
+    it("a head_sha run that failed, or came from a push, doesn't count", () => {
+      expect(
+        runsFrom({
+          [`${base}?head_sha=${SHA}&per_page=100`]: {
+            workflow_runs: [
+              r(3, { conclusion: "failure" }),
+              r(4, { event: "push" }),
+            ],
+          },
+        }),
+      ).toEqual([]);
+    });
+  });
+
   it("a run's entry comes from its artifact; no artifact, no entry", () => {
     const r = { id: 7, head_sha: "7".repeat(40), run_attempt: 2 };
     expect(
