@@ -1002,8 +1002,7 @@
     "set.ui.deny": "Deny",
     "set.ui.codeLabel": "Code on its screen",
     "set.ui.fromLogin": "from the web login run at {time}",
-    "set.ui.noWaiting":
-      "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve.",
+    "set.ui.noWaiting": "No computers are waiting.",
     "set.ui.waitingSignedIn":
       "Waiting devices can only be listed signed in, or on this machine.",
     "set.ui.testInstallYes": "This is a test install.",

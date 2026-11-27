@@ -1234,7 +1234,7 @@ function drawWaiting(host, ctx) {
               })
               .join("") +
             '</div><div id="set-waiting-out" style="flex-basis:100%" aria-live="polite"></div>'
-          : `<output class="set-ro" id="set-waiting">${escHtml(L("set.ui.noWaiting", "No computers are waiting. A signed-out page on another computer shows a code; it appears here to approve."))}</output>`;
+          : `<output class="set-ro" id="set-waiting">${escHtml(L("set.ui.noWaiting", "No computers are waiting."))}</output>`;
         const act = (btn, path, body) => {
           btn.disabled = true;
           // Issue 698: the kit's dots on the button until the server answers.

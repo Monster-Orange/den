@@ -4283,8 +4283,7 @@
     "set.ui.deny": "拒否",
     "set.ui.codeLabel": "画面のコード",
     "set.ui.fromLogin": "{time} に実行した web login から",
-    "set.ui.noWaiting":
-      "承認待ちのコンピューターはありません。別のコンピューターのサインアウト中のページにはコードが表示され、承認できるようここに表示されます。",
+    "set.ui.noWaiting": "承認待ちのコンピューターはありません。",
     "set.ui.waitingSignedIn":
       "承認待ちのデバイスは、サインイン中かこのマシン上でのみ表示されます。",
     "set.ui.testInstallYes": "これはテスト用インストールです。",

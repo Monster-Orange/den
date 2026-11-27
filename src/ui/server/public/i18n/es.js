@@ -4426,8 +4426,7 @@
     "set.ui.deny": "Denegar",
     "set.ui.codeLabel": "Código en su pantalla",
     "set.ui.fromLogin": "del web login ejecutado a las {time}",
-    "set.ui.noWaiting":
-      "No hay ordenadores en espera. Una página sin iniciar sesión en otro ordenador muestra un código; aparece aquí para aprobarlo.",
+    "set.ui.noWaiting": "No hay ordenadores en espera.",
     "set.ui.waitingSignedIn":
       "Los dispositivos en espera solo se listan con la sesión iniciada o en esta máquina.",
     "set.ui.testInstallYes": "Esta es una instalación de prueba.",
@@ -4877,7 +4876,7 @@
     "set.access.devices.d":
       "Los navegadores con la sesión iniciada en este Den. Revocar cierra uno al instante. __DEN_CLI__ web logout --all los cierra todos.",
     "set.access.waiting.d":
-      "Computadoras que piden entrar. Escribe el código de su pantalla para aprobarlas. __DEN_CLI__ web approve --list los muestra.",
+      "Ordenadores que piden entrar. Escribe el código de su pantalla para aprobarlos. __DEN_CLI__ web approve --list los muestra.",
     "set.embed.url_max.d":
       "La dirección web más larga que puede llevar un enlace a un agente.",
     "set.embed.app_keys.d":
@@ -4895,7 +4894,7 @@
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
     "set.access.test_installs_here.d":
-      "Instalaciones de prueba en esta computadora que esperan a su persona de prueba.",
+      "Instalaciones de prueba en este ordenador que esperan a su persona de prueba.",
     "set.access.test_install.d":
       "Si esta es una instalación de prueba, donde las comprobaciones entran como persona de prueba.",
     "set.distribution.brand.d":
