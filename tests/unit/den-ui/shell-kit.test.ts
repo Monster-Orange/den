@@ -17,7 +17,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as strings from "../../../packages/den-ui/src/strings.js";
 import {
@@ -29,6 +28,9 @@ import {
   topBarHtml,
 } from "../../../packages/den-ui/src/shell-html.js";
 import { KIT_FILES, KIT_PAGE_CSS } from "../../../src/ui/server/ui-assets.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 const PKG = path.join(process.cwd(), "packages", "den-ui");
 const GATE = path.join(PKG, "bin", "den-ui-parity.mjs");
@@ -383,7 +385,7 @@ describe("den-ui-parity (bin)", () => {
     spawnSync(process.execPath, [GATE, "--root", root, "--src", "src"], {
       encoding: "utf-8",
     });
-  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "den-ui-parity-"));
+  const tmp = () => tempDir("den-ui-parity-");
 
   it("fails on a product's own copy of a kit component", () => {
     const root = tmp();

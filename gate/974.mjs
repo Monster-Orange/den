@@ -30,103 +30,130 @@ export async function setup(ctx) {
   return { id, startCode: start?.code ?? null, runMs };
 }
 
-const probe = (command) =>
+const hookInput = (command) =>
   JSON.stringify({ tool_name: "Bash", tool_input: { command }, cwd: "/" });
+
+export const SH_OUT_MAX = 1500;
+
+export async function oneLine(a, cmd, ms) {
+  if (/[\r\n]/.test(cmd))
+    throw new Error(`refused a multi-line /sh command: ${cmd.slice(0, 80)}`);
+  const r = await a.sh(cmd, ms);
+  const text = String(r?.out ?? "");
+  return {
+    status: r?.status ?? null,
+    out: text,
+    cut: !!r?.cut || text.length >= SH_OUT_MAX,
+  };
+}
+
+async function probe(a, dir, name, lines, ms = 20000) {
+  const script = path.join(dir, `g974-${name}.sh`);
+  const outFile = path.join(dir, `g974-${name}.out`);
+  fs.rmSync(outFile, { force: true });
+  fs.writeFileSync(script, lines.join("\n") + "\n");
+  try {
+    const r = await oneLine(a, `sh '${script}' > '${outFile}' 2>&1`, ms);
+    if (r.status === null) return null;
+    return fs.existsSync(outFile) ? fs.readFileSync(outFile, "utf-8") : null;
+  } finally {
+    fs.rmSync(script, { force: true });
+    fs.rmSync(outFile, { force: true });
+  }
+}
 
 export async function run(ctx, s) {
   const a = ctx.agent(s.id);
-  const out = { ...s };
-  const names = await a.sh(
-    "env | sed -n 's/^\\([A-Za-z_][A-Za-z0-9_]*\\)=.*/\\1/p'",
-    15000,
-  );
-  out.heldNames = String(names?.out ?? "")
-    .split("\n")
-    .map((n) => n.trim())
-    .filter((n) => n && HELD.test(n) && !OWN.test(n));
-  out.envFile = String(
-    (await a.sh("printenv CLAUDE_ENV_FILE", 15000))?.out ?? "",
-  ).trim();
-  out.emptyList = /\b1\b/.test(
-    String(
-      (
-        await a.sh(
-          'grep -c "^# The list is empty" "$CLAUDE_ENV_FILE" 2>/dev/null',
-          15000,
-        )
-      )?.out ?? "",
-    ),
-  );
+  const out = { ...s, unmeasured: [] };
+  const miss = (what) => out.unmeasured.push(what);
+  const env = await oneLine(a, "printenv CLAUDE_ENV_FILE", 15000);
+  out.envFile = env.status === 0 && !env.cut ? env.out.trim() : null;
+  if (!out.envFile || !fs.existsSync(out.envFile)) {
+    miss(
+      `CLAUDE_ENV_FILE (${env.cut ? "output cut short" : (out.envFile ?? "no answer")})`,
+    );
+    out.turn = { ran: false, why: "no env file" };
+    return out;
+  }
+  const dir = path.dirname(out.envFile);
 
-  const prof = await a.sh(
-    [
-      "d=$(mktemp -d)",
-      `printf 'export CANARY_TOKEN=%s\\n' '${CANARY}' > "$d/.zshenv"`,
-      'cp "$d/.zshenv" "$d/profile.sh"',
-      "if command -v zsh >/dev/null 2>&1; then",
-      '  w=$(ZDOTDIR="$d" zsh -c \'. "$CLAUDE_ENV_FILE"; printenv CANARY_TOKEN\')',
-      "  wo=$(ZDOTDIR=\"$d\" zsh -c 'printenv CANARY_TOKEN')",
-      "else",
-      '  w=$(sh -c \'. "$1/profile.sh"; . "$CLAUDE_ENV_FILE"; printenv CANARY_TOKEN\' _ "$d")',
-      '  wo=$(sh -c \'. "$1/profile.sh"; printenv CANARY_TOKEN\' _ "$d")',
-      "fi",
-      'rm -rf "$d"',
-      'echo "with=[$w] without=[$wo]"',
-    ].join("\n"),
-    20000,
-  );
-  const pm = /with=\[(.*)\] without=\[(.*)\]/.exec(String(prof?.out ?? ""));
+  const names = await probe(a, dir, "names", [
+    "env | sed -n 's/^\\([A-Za-z_][A-Za-z0-9_]*\\)=.*/\\1/p'",
+  ]);
+  if (names === null) miss("the session's variable names");
+  out.heldNames =
+    names === null
+      ? null
+      : names
+          .split("\n")
+          .map((n) => n.trim())
+          .filter((n) => n && HELD.test(n) && !OWN.test(n));
+
+  const text = fs.readFileSync(out.envFile, "utf-8");
+  out.emptyList = /^# The list is empty/m.test(text);
+
+  const prof = await probe(a, dir, "profile", [
+    "d=$(mktemp -d)",
+    `printf 'export CANARY_TOKEN=%s\\n' '${CANARY}' > "$d/.zshenv"`,
+    'cp "$d/.zshenv" "$d/profile.sh"',
+    "if command -v zsh >/dev/null 2>&1; then",
+    '  w=$(ZDOTDIR="$d" zsh -c \'. "$CLAUDE_ENV_FILE"; printenv CANARY_TOKEN\')',
+    "  wo=$(ZDOTDIR=\"$d\" zsh -c 'printenv CANARY_TOKEN')",
+    "else",
+    '  w=$(sh -c \'. "$1/profile.sh"; . "$CLAUDE_ENV_FILE"; printenv CANARY_TOKEN\' _ "$d")',
+    '  wo=$(sh -c \'. "$1/profile.sh"; printenv CANARY_TOKEN\' _ "$d")',
+    "fi",
+    'rm -rf "$d"',
+    'echo "with=[$w] without=[$wo]"',
+  ]);
+  const pm = /with=\[(.*)\] without=\[(.*)\]/.exec(prof ?? "");
+  if (!pm) miss("the profile canary");
   out.withFile = pm ? pm[1] : null;
   out.withoutFile = pm ? pm[2] : null;
 
   out.hook = null;
   out.guard = {};
-  if (out.envFile) {
-    const set = await a.sh(
-      'cat "$(dirname "$CLAUDE_ENV_FILE")/settings.json"',
-      15000,
-    );
-    let hooks = null;
-    try {
-      hooks = JSON.parse(String(set?.out ?? "")).hooks;
-    } catch {
-      hooks = null;
-    }
-    const cmd = (hooks?.PreToolUse ?? [])
-      .filter((m) =>
-        String(m.matcher ?? "")
-          .split("|")
-          .includes("Bash"),
-      )
-      .flatMap((m) => (m.hooks ?? []).map((h) => h.command))
-      .find((c) => typeof c === "string" && c.includes("pretooluse.mjs"));
-    out.hook = cmd ? true : false;
-    const node = /^'([^']+)'|^(\S+)/.exec(cmd ?? "");
-    const nodeBin = node ? (node[1] ?? node[2]) : "node";
-    if (cmd)
-      for (const c of ["env", "printenv", "set"]) {
-        const r = await a.sh(
-          [
-            `printf '%s' '${probe(c)}' | ${cmd} >"$TMPDIR/g974.json"; echo "exit=$?"`,
-            `c=$('${nodeBin}' -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).hookSpecificOutput.updatedInput.command)' "$TMPDIR/g974.json" 2>/dev/null)`,
-            `case "$c" in *env-mask.mjs*) echo masker=1 ;; *) echo masker=0 ;; esac`,
-            `o=$(CANARY_TOKEN='${CANARY}' sh -c "$c" 2>&1)`,
-            `case "$o" in *${CANARY}*) echo leak=1 ;; *) echo leak=0 ;; esac`,
-            `case "$o" in *CANARY_TOKEN*) echo name=1 ;; *) echo name=0 ;; esac`,
-            'rm -f "$TMPDIR/g974.json"',
-          ].join("\n"),
-          20000,
-        );
-        const t = String(r?.out ?? "");
-        out.guard[c] = {
-          exit: Number(/exit=(\d+)/.exec(t)?.[1] ?? NaN),
-          masker: /masker=1/.test(t),
-          leak: !/leak=0/.test(t),
-          name: /name=1/.test(t),
-        };
-      }
+  let hooks = null;
+  try {
+    hooks = JSON.parse(
+      fs.readFileSync(path.join(dir, "settings.json"), "utf-8"),
+    ).hooks;
+  } catch {
+    miss("the agent's settings.json");
   }
-
+  const cmd = (hooks?.PreToolUse ?? [])
+    .filter((m) =>
+      String(m.matcher ?? "")
+        .split("|")
+        .includes("Bash"),
+    )
+    .flatMap((m) => (m.hooks ?? []).map((h) => h.command))
+    .find((c) => typeof c === "string" && c.includes("pretooluse.mjs"));
+  if (hooks) out.hook = !!cmd;
+  const node = /^'([^']+)'|^(\S+)/.exec(cmd ?? "");
+  const nodeBin = node ? (node[1] ?? node[2]) : "node";
+  if (cmd)
+    for (const c of ["env", "printenv", "set"]) {
+      const t = await probe(a, dir, `guard-${c}`, [
+        `printf '%s' '${hookInput(c)}' | ${cmd} >"$TMPDIR/g974.json"; echo "exit=$?"`,
+        `c=$('${nodeBin}' -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).hookSpecificOutput.updatedInput.command)' "$TMPDIR/g974.json" 2>/dev/null)`,
+        `case "$c" in *env-mask.mjs*) echo masker=1 ;; *) echo masker=0 ;; esac`,
+        `o=$(CANARY_TOKEN='${CANARY}' sh -c "$c" 2>&1)`,
+        `case "$o" in *${CANARY}*) echo leak=1 ;; *) echo leak=0 ;; esac`,
+        `case "$o" in *CANARY_TOKEN*) echo name=1 ;; *) echo name=0 ;; esac`,
+        'rm -f "$TMPDIR/g974.json"',
+      ]);
+      if (t === null || !/exit=\d+/.test(t) || !/leak=[01]/.test(t)) {
+        miss(`the ${c} guard`);
+        continue;
+      }
+      out.guard[c] = {
+        exit: Number(/exit=(\d+)/.exec(t)[1]),
+        masker: /masker=1/.test(t),
+        leak: /leak=1/.test(t),
+        name: /name=1/.test(t),
+      };
+    }
   out.turn = out.emptyList
     ? { ran: false, why: "a personal install holds nothing back" }
     : await realTurn(out.envFile);
@@ -227,6 +254,11 @@ export async function teardown(ctx, s) {
 export function expect(cells) {
   const r =
     (Array.isArray(cells) ? cells.find((c) => c?.result)?.result : cells) ?? {};
+  const unmeasured = Array.isArray(r.unmeasured)
+    ? r.unmeasured
+    : ["every probe (no result)"];
+  if (unmeasured.length)
+    throw new Error(`974 not measured: ${unmeasured.join("; ")}`);
   const fileOk = !!r.envFile && path.basename(r.envFile) === "env-hold.sh";
   const g = r.guard ?? {};
   const masked = ["env", "printenv", "set"].every(
@@ -255,7 +287,7 @@ export function expect(cells) {
           detail:
             `held-looking names in the session: ${(r.heldNames ?? []).length ? (r.heldNames ?? []).join(", ") : "none"}; ` +
             `CLAUDE_ENV_FILE ${fileOk ? "names env-hold.sh" : `is "${r.envFile}"`}; ` +
-            `profile canary without the file: ${r.withoutFile === CANARY ? "seen" : "not seen"}, with it: ${r.withFile === "" ? "gone" : "still there"}`,
+            `profile canary without the file: ${r.withoutFile === CANARY ? "seen" : "not seen"}, with it: ${r.withFile === "" ? "gone" : `still there ("${r.withFile}")`}`,
         },
     {
       clause: clauses[1],

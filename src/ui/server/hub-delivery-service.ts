@@ -10,6 +10,7 @@
  * relayed message (relayMessage) is held and typed by the same loop, after
  * the agent's turn, never mid-turn. Hub's own deliveries need Hub.
  */
+import { agentPagePath } from "../../shared/agent-links.js";
 import path from "node:path";
 import type * as AgentOps from "../cli/agent-ops.js";
 import type { AgentsResolved } from "../cli/agent-ops.js";
@@ -442,7 +443,7 @@ export function heldBell(
           why === "not_at_prompt" ? "bell.m.notAtPrompt" : `bell.m.held.${why}`,
         vars: { name, n, m },
       },
-      link: `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`,
+      link: agentPagePath(rec.workspace, rec.id),
     });
   };
   if (o.store) {

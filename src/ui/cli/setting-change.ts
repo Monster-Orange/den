@@ -68,6 +68,15 @@ import {
 import { configKeyNames, patchConfigKey } from "./config-command.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
 import { GATE_DEFAULTS, onOff } from "../../shared/gates/rules.js";
+import {
+  readSkillPacksConfig,
+  SKILL_PACKS_DIR,
+} from "../../shared/skill-packs/launch.js";
+import {
+  defaultSkills,
+  parseAgentSkillPacks,
+} from "../../shared/skill-packs/config.js";
+import { readPacks } from "../../shared/skill-packs/pin.js";
 
 export const SETTING_CHANGE_ACTION = "setting_change";
 /** The longest reason an ask may give (one line). */
@@ -136,6 +145,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
+  "agents.max_subagents",
+  "agents.subagents_respect_load_hold",
   "agents.max_per_project",
   // Issue 1417: every agent limit has an agent ask path.
   "agents.token_peer_wait_ms",
@@ -252,6 +263,8 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "reports.hub_screenshot_max_mb",
   "agent_context.instruction_share_percent",
   "agent_context.context_tokens",
+  "skill_packs.**",
+  "agents.*.skill_packs",
 ];
 
 /**
@@ -316,6 +329,9 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "reports.**",
       "feedback.**",
       "agent_hooks.**",
+      "skill_packs",
+      "skill_packs.**",
+      "agents.*.skill_packs",
     ],
   ],
   [
@@ -382,6 +398,27 @@ const level = (v: unknown): number | null =>
   typeof v === "boolean" ? (v ? 1 : 0) : typeof v === "number" ? v : null;
 
 /** A routing list (comma-separated text) as its programs; null when not text. */
+const nameArray = (v: unknown): string[] | null =>
+  v === undefined || v === null
+    ? []
+    : Array.isArray(v) && v.every((x) => typeof x === "string")
+      ? (v as string[])
+      : null;
+
+function skillSet(v: unknown, pack: string): Set<string> | null {
+  let pin;
+  try {
+    pin = readPacks(SKILL_PACKS_DIR)[pack];
+  } catch {
+    return null;
+  }
+  if (!pin) return null;
+  if (v === undefined || v === null || v === "all")
+    return new Set(defaultSkills(pin));
+  const list = nameArray(v);
+  return list ? new Set(list) : null;
+}
+
 const programs = (v: unknown): string[] | null =>
   typeof v === "string"
     ? v
@@ -393,7 +430,7 @@ const programs = (v: unknown): string[] | null =>
 const WIDENS_AT: readonly [
   key: string,
   /** `before`: the value in effect now, when the caller knows it. */
-  widens: (v: unknown, before?: unknown) => boolean,
+  widens: (v: unknown, before?: unknown, key?: string) => boolean,
   modes: readonly InstallMode[],
 ][] = [
   [
@@ -417,6 +454,49 @@ const WIDENS_AT: readonly [
   // Issue 1391: to strict is routine; anything else (personal, or back to
   // the default) opens the install up: the person's Allow.
   ["install_mode", (v) => v !== "strict", ["personal", "strict"]],
+  ["agents.subagents_respect_load_hold", (v) => v === false, ["strict"]],
+  ...[
+    "skill_packs.on",
+    "skill_packs.*.on",
+    "skill_packs.*.skills",
+    "skill_packs.*.exclude",
+    "agents.*.skill_packs",
+  ].map((k): [string, () => boolean, InstallMode[]] => [
+    k,
+    () => false,
+    ["personal"],
+  ]),
+  ["skill_packs.on", (v) => v !== false, ["strict"]],
+  ["skill_packs.*.on", (v) => v !== false, ["strict"]],
+  [
+    "skill_packs.*.skills",
+    (v, before, key) => {
+      const pack = key?.split(".")[1] ?? "";
+      const to = skillSet(v, pack);
+      const from = skillSet(before, pack);
+      return !to || !from || [...to].some((x) => !from.has(x));
+    },
+    ["strict"],
+  ],
+  [
+    "skill_packs.*.exclude",
+    (v, before) => {
+      const to = nameArray(v);
+      const from = nameArray(before);
+      return !to || !from || from.some((x) => !to.includes(x));
+    },
+    ["strict"],
+  ],
+  [
+    "agents.*.skill_packs",
+    (v, before) => {
+      if (v === "off" || v === false) return false;
+      const to = Array.isArray(v) ? nameArray(v) : null;
+      const from = Array.isArray(before) ? nameArray(before) : null;
+      return !to || !from || to.some((x) => !from.includes(x));
+    },
+    ["strict"],
+  ],
   // Issue 1264 (Reviewer A): the gate's routing is what keeps an agent's
   // heavy runs in its queue. Off lets them skip it: the person's Allow, on
   // both modes. With no old value known, off (0) does.
@@ -483,10 +563,12 @@ export function settingKind(
       : !is(WIDENING_SETTINGS) && is(NARROW_SETTINGS);
   // A value rule, given the value, decides for its key (and modes).
   const rule = value.length
-    ? WIDENS_AT.find(([k, , modes]) => k === key && modes.includes(mode))
+    ? WIDENS_AT.find(
+        ([k, , modes]) => matchesSetting(k, key) && modes.includes(mode),
+      )
     : undefined;
   const widens = rule
-    ? rule[1](value[0], value[1])
+    ? rule[1](value[0], value[1], key)
     : category === "agent_powers" || !routine;
   const restart = is(AT_START) ? ("server" as const) : undefined;
   return {
@@ -591,6 +673,18 @@ const SETTING_KEYS: readonly {
     check: (u, d) => {
       readAgentsConfig(d, u);
       configuredRuntimeCatalog([], () => u);
+    },
+  },
+  {
+    key: "skill_packs.**",
+    check: (u, d) => void readSkillPacksConfig(d.skill_packs, u.skill_packs),
+  },
+  {
+    key: "agents.*.skill_packs",
+    check: (u, d) => {
+      const packs = readPacks(SKILL_PACKS_DIR);
+      for (const [id, a] of Object.entries(readAgentsConfig(d, u).agents))
+        parseAgentSkillPacks(a?.skillPacks, `agents.${id}.skill_packs`, packs);
     },
   },
   // Issue 1391: a runtime's path, an absolute path to a program.
@@ -1197,6 +1291,7 @@ function readDoc(file: string): yaml.Document {
  */
 export const CAP_KEYS = [
   "agents.max_concurrent",
+  "agents.max_subagents",
   "agents.max_per_project",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
@@ -1251,6 +1346,8 @@ function capInForce(
   try {
     if (key === "agents.max_concurrent")
       return readAgentsConfig(den, user).maxConcurrent;
+    if (key === "agents.max_subagents")
+      return readAgentsConfig(den, user).maxSubagents;
     if (key === "sessions.max_concurrent")
       return readSessionsConfig(den, user).maxConcurrent;
     if (key === "agents.resume.load_ceiling")
@@ -1440,10 +1537,10 @@ export function checkSettingChange(
       sandboxed &&
       ROUTINE_ON_PERSONAL.some((pt) => matchesSetting(pt, key))
         ? {
-            ...settingKind(key, "strict", value),
+            ...settingKind(key, "strict", value, getPath(before, parts)),
             category: settingKind(key, mode, value).category,
           }
-        : settingKind(key, mode, value);
+        : settingKind(key, mode, value, getPath(before, parts));
     // Issue 1391: a cap raised past twice its baseline is the person's.
     const kind =
       isCap(key) && capRaisePast(key, value, den, before as UserConfig)

@@ -123,7 +123,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
   // Issue 1373: the agents' limits (user.yml agents.*, over den.yml).
-  agents_limits: { max_concurrent: true, max_per_project: true },
+  agents_limits: {
+    max_concurrent: true,
+    max_per_project: true,
+    max_subagents: true,
+    subagents_respect_load_hold: true,
+  },
   // Issue 403: how long a filed report's screenshot is kept.
   reports: {
     screenshot_keep_days: true,
@@ -393,6 +398,9 @@ describe("the settings inventory (R21)", () => {
         "agents_list.refresh_timeout_seconds",
         // Issue 1373: the agents' limits.
         "agents_limits.max_concurrent",
+        "agents_limits.max_subagents",
+        "agents_limits.subagents_respect_load_hold",
+        "skill_packs",
         "agents_limits.max_per_project",
         // Issue 403: how long a filed report's screenshot is kept.
         "reports.screenshot_keep_days",

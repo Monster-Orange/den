@@ -50,3 +50,17 @@ export function withoutUpstreamTransport(dynamic: string): string {
     throw new Error("the den-upstream transport is missing");
   return dynamic.replace(SERVICE_TRANSPORT, "").replace(TRANSPORTS, "");
 }
+
+const DASHBOARD_ROUTER =
+  /^ {4}dashboard:\n {6}entryPoints:\n {8}- [a-z]+\n {6}rule: [^\n]*\n {6}service: api@internal\n( {6}tls: \{\}\n)?/m;
+const DASHBOARD_FLAG = /^ {6}- --api\.dashboard=true\n/m;
+
+export function withoutDashboard<T extends object>(golden: T): T {
+  const out: Record<string, unknown> = {
+    ...(golden as Record<string, unknown>),
+  };
+  for (const [k, v] of Object.entries(out))
+    if (typeof v === "string")
+      out[k] = v.replace(DASHBOARD_ROUTER, "").replace(DASHBOARD_FLAG, "");
+  return out as T;
+}

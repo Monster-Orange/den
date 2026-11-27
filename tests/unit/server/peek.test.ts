@@ -99,6 +99,16 @@ describe("rule: Opens from (a click on a bell row; Open in Agents keeps the page
     expect(peekTarget({ ...waiting("p"), link: "//evil.test/agents" })).toBe(
       null,
     );
+    expect(
+      peekTarget({
+        ...waiting("server", "den-server"),
+        link: undefined,
+      }),
+    ).toBe(null);
+    expect(peekTarget(waiting("server", "den-server"))).toBe(null);
+    expect(
+      peekTarget({ ...waiting("a b", "x&y"), link: undefined })?.link,
+    ).toBe("/agents?project=x%26y&agent=a+b");
   });
 });
 

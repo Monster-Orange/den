@@ -10,13 +10,15 @@ const esc = (s) =>
       ],
   );
 
+const SERVER_SCOPE = "den-server";
+
 export const layoutLink = (agent, workspace) =>
-  `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
+  `/agents?${new URLSearchParams({ project: workspace, agent })}`;
 
 export function peekTarget(n) {
   const m = /^agent:(.+)$/.exec(n?.subject ?? "");
   const ws = /^workspace\/(.+)$/.exec(n?.scope ?? "");
-  if (!m || !ws) return null;
+  if (!m || !ws || ws[1] === SERVER_SCOPE) return null;
   const link = n.link;
   if (link !== undefined && link !== null && link !== "") {
     if (typeof link !== "string" || !/^\/agents(?:[?#]|$)/.test(link))

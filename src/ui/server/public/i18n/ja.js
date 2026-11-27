@@ -733,6 +733,10 @@
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
     "busy.modeW": "{name} のモードを設定しています…",
+    "busy.packsW": "{name} のスキルパックを設定しています…",
+    "busy.packsS": "{name} のスキルパックを設定しました。",
+    "busy.packsF":
+      "{name} のスキルパックを設定できませんでした。何も変わっていません。",
     "busy.modeS": "{name} のモードを設定しました。",
     "busy.modeF":
       "{name} のモードを設定できませんでした。何も変わっていません。",
@@ -1387,6 +1391,27 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_subagents": "同時に動かせるサブエージェント数",
+    "set.agents.max_subagents.d":
+      "このマシンのエージェント全体で、同時に動かせるサブエージェントの数です。これを超える開始は拒否され、エージェントにはこの設定の名前が伝えられます。未設定なら「同時に動かせるエージェント数」の2倍です。__DEN_CLI__ config agents.max_subagents=8",
+    "set.agents.subagents_respect_load_hold":
+      "負荷が高いときは新しいサブエージェントを止める",
+    "set.agents.subagents_respect_load_hold.d":
+      "オンの場合、マシンの負荷がエージェントの負荷上限を超えている間は新しいサブエージェントが拒否され、エージェントにはこの設定の名前が伝えられます。オフの場合、負荷に関係なくサブエージェントが開始します。__DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "スキルパック",
+    "set.agents.skill_packs.d":
+      "Den がエージェントに与えるスキルパック。それぞれ固定したバージョンで Den に同梱され、ダウンロードはしません。__DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "コーディングエージェント向けのオープンソースのスキル。Den のエージェントに渡すものを選びます。__DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "オン",
+    "set.ui.skillPackLicence": "ライセンス",
+    "set.ui.skillPackPin": "固定コミット",
+    "set.ui.skillPackOnCount": "{n} 個のスキルがオン",
+    "set.ui.skillPackCost": "各エージェントの起動に約 {n} トークン追加",
+    "set.ui.skillPackSkills": "スキル",
+    "set.ui.skillPackAll": "すべて",
+    "set.ui.skillPackNone": "なし",
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
@@ -1788,7 +1813,7 @@
       "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
     "set.agents.hub_groups": "Hub のグループ",
     "set.agents.hub_groups.d":
-      "エージェントページに Hub のグループを表示するか（「プロジェクト別」の横の「グループ別」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
+      "エージェントページに Hub のグループを表示するか（一覧の切り替えの「プロジェクト」の横の「グループ」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "自動",
     "set.agents.hub_groups.o.on": "オン",
     "set.agents.hub_groups.o.off": "オフ",
@@ -2164,8 +2189,8 @@
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.by.label": "一覧の表示",
     "ag.by.need": "対応順",
-    "ag.by.project": "プロジェクト別",
-    "ag.by.group": "グループ別",
+    "ag.by.project": "プロジェクト",
+    "ag.by.group": "グループ",
     "ag.grp.noHub": "グループは Den Hub の機能です。",
     "ag.grp.connect": "Den Hub に接続",
     "ag.grp.notInPlan":
@@ -2656,6 +2681,13 @@
     "ag.mode.src.default": "Den の組み込みの既定",
     "ag.mode.item": "モード: {m}",
     "ag.mode.menu": "{id} のモード",
+    "ag.packs.item": "スキルパック: {v}",
+    "ag.packs.menu": "{id} のスキルパック",
+    "ag.packs.default": "インストールの既定",
+    "ag.packs.off": "オフ",
+    "ag.packs.on": "オン",
+    "ag.packs.set":
+      "{id} のスキルパックを設定しました。ターンの後、同じ会話のまま再起動します。",
     "ag.mode.pick": "{id} のモードを変更",
     "ag.mode.follow": "プロジェクトに従う",
     "ag.mode.setS":
@@ -2842,6 +2874,8 @@
     "pe.runtime": "既定のランタイム",
     "pe.model": "モデル",
     "pe.ver": "バージョン",
+    "pe.packs": "スキルパック",
+    "pe.packsList": "ファイルのリスト: {list}",
     "pe.rtDefault": "ランタイムの既定",
     "pe.perms": "権限モード",
     "pe.noneCmd": "なし",
@@ -3138,6 +3172,7 @@
     "rs.none": "再起動が必要なエージェントはありません。",
     "rs.bar": "{n} 件のエージェントがツールを読み込むために再起動が必要です。",
     "rs.barBtn": "{n} 件すべてを次の待機時に再起動",
+    "rs.barBusy": "{total} 件中 {done} 件を再起動中…",
     "rs.allName": "エージェント",
     "rs.done": "{id}: 同じ会話のまま再起動しました。",
     "rs.timedOut":
