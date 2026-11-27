@@ -9,6 +9,7 @@ config and manifest changes a distribution must make to move to it under
 ### Changed
 
 - The edge runs with Traefik's API and dashboard off. `edge.args` now takes only the options Den lists: any other entry is refused, with a line naming it. `edge.include` files that sort before Den's own file or reuse its names, and `edge.mounts` into the dynamic folder, are refused too. Den makes a new edge proof at its first start after the update. See docs/distributions.md.
+- Restart all agents with out-of-date tools now restarts them through Den's restart queue, a batch at a time (`agents.resume.batch`, every `agents.resume.gap_seconds`, held back while the machine is busy), instead of every idle agent at once. Pressing it again while a wave runs adds nothing. The button shows "Restarting N of M…" and stays disabled until the wave is done, after a page reload too.
 
 - After you pick an agent, clicking or pressing Tab somewhere else in the moment its terminal becomes ready no longer pulls the keyboard back into that terminal. The move into the terminal waited one screen frame (about 16 ms, longer on a busy page) and didn't check whether you'd gone elsewhere, so keys you typed afterwards went to the agent. It has been there since at least 0.4.40; it's not new in 0.4.91.
 
