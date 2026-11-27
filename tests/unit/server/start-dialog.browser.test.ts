@@ -393,6 +393,8 @@ describe("the Start dialog (AG-10.1)", () => {
     expect(await p.inputValue("#pe-instr")).toMatch(/acceptance criteria/);
     await p.fill("#pe-desc", "Reviews <b>copy</b> & tone.");
     await p.selectOption("#pe-model", "sonnet");
+    expect(await p.inputValue("#pe-packs")).toBe("");
+    await p.getByLabel("Skill packs").selectOption("off");
     await shot(p, "editpersona-1440");
     const ed = await size(p, "#pe-dlg");
     const nm = await size(p, "#pe-name");
@@ -425,6 +427,9 @@ describe("the Start dialog (AG-10.1)", () => {
     expect(fs.existsSync(path.join(s!.stateDir, "personas", "rita.md"))).toBe(
       true,
     );
+    expect(
+      fs.readFileSync(path.join(s!.stateDir, "personas", "rita.md"), "utf-8"),
+    ).toMatch(/^skill_packs: off$/m);
     await p.context().close();
 
     const st = await page("/settings#agents");

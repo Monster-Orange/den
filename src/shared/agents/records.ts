@@ -51,6 +51,7 @@ export interface AgentRecord {
    * runtime that takes one (Runtime.subagentModel).
    */
   subagents?: { model?: string; from: "persona" | "org" | "default" };
+  skillPackDirs?: string[];
   workspace: string;
   cwd: string;
   /**

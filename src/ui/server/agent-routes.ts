@@ -172,6 +172,8 @@ import {
   noteNotBackAfterHostRestart,
   modeCheck,
   modeRestartDetail,
+  skillPackCheck,
+  skillPackRestartDetail,
   cancelStalePersonaChanges,
   NOT_IN_WORKSPACE,
   pruneStopped,
@@ -2954,12 +2956,22 @@ export function startAgentUpkeep(
     onRestarted: (e) =>
       recordAction(null, { verb: "agents", detail: modeRestartDetail(e) }),
   });
+  const pc = skillPackCheck(d, {
+    log,
+    onRestarted: (e) =>
+      recordAction(null, { verb: "agents", detail: skillPackRestartDetail(e) }),
+  });
   let checking = false;
   const modes = async () => {
     if (checking) return;
     checking = true;
     try {
       await mc.tick();
+      await pc
+        .tick()
+        .catch((e: unknown) =>
+          log(`  ⚠ agents' skill packs: ${(e as Error).message}`),
+        );
     } catch (e) {
       log(`  ⚠ agents' modes: ${(e as Error).message}`);
     } finally {

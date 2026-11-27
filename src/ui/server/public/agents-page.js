@@ -6007,6 +6007,75 @@ function modeItems(r, opener) {
   ];
 }
 
+function skillPackItems(r, opener) {
+  if (r?.kind !== "agent" || r.server) return [];
+  const own = r.skillPacks ?? null;
+  const now =
+    own === "off"
+      ? t("ag.packs.off")
+      : own === null
+        ? t("ag.packs.default")
+        : t("ag.packs.on");
+  return [
+    {
+      label: t("ag.packs.item", { v: now }),
+      onSelect: () => openSkillPackMenu(opener, r, own),
+    },
+  ];
+}
+
+function openSkillPackMenu(anchor, r, own) {
+  const sh = window.denShell;
+  const id = r.displayName || r.agent;
+  const pick = (value) => {
+    if (value === own) return;
+    void sh
+      .busyAction(
+        "agent-skill-packs",
+        (headers) =>
+          sh.api(
+            "POST",
+            "/api/settings",
+            {
+              skill_packs: {
+                key: `agents.${r.agent}.skill_packs`,
+                value,
+              },
+            },
+            { headers },
+          ),
+        {
+          button: anchor,
+          vars: { name: id },
+          success: () => t("ag.packs.set", { id }),
+        },
+      )
+      .then((x) => {
+        if (x !== undefined && x !== null) void refresh();
+      });
+  };
+  sh.openMenu(anchor, {
+    label: t("ag.packs.menu", { id }),
+    items: [
+      {
+        label: t("ag.packs.default"),
+        checked: own === null,
+        onSelect: () => pick(null),
+      },
+      {
+        label: t("ag.packs.off"),
+        checked: own === "off",
+        onSelect: () => pick("off"),
+      },
+      {
+        label: t("ag.packs.on"),
+        checked: own === "on",
+        onSelect: () => pick("on"),
+      },
+    ],
+  });
+}
+
 /** D37: a stopped agent's ⋯: Start fresh (when Resume is its button), Remove. */
 function stoppedMenuItems(r, opener) {
   return [
@@ -6585,6 +6654,7 @@ export async function mountAgentsPage(root) {
             : [
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
                 ...modeItems(r, b),
+                ...skillPackItems(r, b),
                 restartResumeItem(r),
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
                 ...orderItems(r, false),
