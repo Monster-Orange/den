@@ -16,6 +16,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Settings › Access stops asking GitHub whether you've linked as owner once the Settings pop-up is closed, instead of every 1.5 seconds until the code runs out. Settings › Embedding no longer leaves a listener behind each time the pop-up closes. (issue 1926)
 
+- Settings › Access and Embedding say each setting in one short sentence, and each pane's intro is one line. The command-line line under each stays as it was. Words in en, es and ja. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed

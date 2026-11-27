@@ -1171,7 +1171,8 @@
     "setd.g.work": "Projects and agents",
     "setd.g.access": "Access and safety",
     "setd.g.den": "This install",
-    "setd.readOnly": "Sign in to change these. This browser can look but change nothing.",
+    "setd.readOnly":
+      "Sign in to change these. This browser can look but change nothing.",
     "setd.toAccount.devices": "Your devices",
     "setd.toAccount.profile": "Sign out",
     "setd.sub.more": "More",
@@ -1205,11 +1206,9 @@
     "setc.agents.d":
       "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
     "setc.access": "Access",
-    "setc.access.d":
-      "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
+    "setc.access.d": "Reach this Den from your other devices.",
     "setc.embed": "Embedding",
-    "setc.embed.d":
-      "Let other web apps link to your agents. A link fills an agent's message box. Nothing is sent until you press Send.",
+    "setc.embed.d": "Let other web apps link to your agents.",
     "setc.secrets": "Secrets",
     "setc.secrets.d":
       "Where this machine gets the credentials Den resolves secrets with. Per machine (config/local/user.yml); only the source is shown, never a secret.",
@@ -1440,31 +1439,31 @@
     "set.cli.op_token.d":
       "Where this machine's 1Password service-account token comes from, for a Den running as a service. Set secrets.onepassword.token in config/local/user.yml: keychain:<service>, file:<path> or env:<VAR>. The token itself is never shown.", // words-ok: the Settings row's text, moved word for word
     "set.access.owner.d":
-      "The GitHub account this Den belongs to. Linking stores only its id (the token is thrown away), and from then on that account can sign in from any device. __DEN_CLI__ web owner link does the same from the command line.", // words-ok: the Settings row's text, moved word for word
+      "The GitHub login this Den belongs to; it can sign in from any device. __DEN_CLI__ web owner link does the same from the command line.", // words-ok: the Settings row's text, moved word for word
     "set.access.devices.d":
       "The browsers signed in to this Den. Revoke ends one at once. __DEN_CLI__ web logout --all ends them all.",
     "set.access.waiting.d":
-      "Computers whose signed-out page shows a code. Type the code that computer's screen shows to approve it, and its page signs in by itself; a request lasts 10 minutes. __DEN_CLI__ web approve --list lists them.",
+      "Computers asking to sign in. Type the code their screen shows to approve. __DEN_CLI__ web approve --list lists them.",
     "set.embed.url_max.d":
-      "The longest web address a link to an agent may carry for its message box. A longer one opens a page that says so.",
+      "The longest web address a link to an agent may carry.",
     "set.embed.app_keys.d":
-      "A key for a web app's own backend on this computer: it can pass on its person's messages to one agent, typed after the agent's turn, and read that agent's state. Nothing else. You allow each key, it is shown once, and you can revoke it here.",
+      "A key that lets a web app's backend message one agent and read its state.",
     "set.embed.app_key_audit.d":
-      "An app key's state reads go into the activity trail as one line per this many seconds, with how many there were, so a web app that checks often doesn't flood it.",
+      "Seconds of app key reads summed into one activity line.",
     "set.embed.origins.d":
-      "Each web app's address, exactly, one a line: https://app.example.com. Only these can show an agent pane inside their pages, and only after you allow it. No other site can show any page of this Den inside its own.",
+      "Web app addresses, one a line, that may show an agent pane.",
     "set.embed.key_minutes.d":
       "How long an embedded agent pane may send before it asks again.",
     "set.embed.context_max_kb.d":
-      "The largest page another web app may share with an agent. A larger one is refused, and the pane says why.",
+      "The largest page another web app may share with an agent.",
     "set.access.machine_name.d":
-      'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
+      "What the signed-out page calls this machine. Empty: its short hostname.",
     "set.access.pair.d":
       "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
     "set.access.test_installs_here.d":
-      "Test installs on this computer whose launcher announces them and that wait for their test person. Set up test person sets it up from here, in any browser, on your own Allow.",
+      "Test installs on this computer waiting for their test person.",
     "set.access.test_install.d":
-      "Whether this install is marked a test install: web.test_install in the distribution config, set by hand. Only then can live checks sign in, as a test person (never you, never an agent). Set up test person makes it once, here in your browser.",
+      "Whether this is a test install, where live checks sign in as a test person.",
     "set.distribution.brand.d":
       "brand.name: the name on pages, the CLI banner and help.",
     "set.distribution.github_org.d":
@@ -2933,23 +2932,23 @@
     "set.access.pair": "Pair a device",
     "set.access.pair_requests": "New sign-in requests per address, a minute",
     "set.access.pair_requests.d":
-      "How many new devices one address may ask to sign in a minute. More are turned away until the minute is up. __DEN_CLI__ config web.pair_requests_per_minute=30",
+      "New sign-in requests one address may make in a minute. __DEN_CLI__ config web.pair_requests_per_minute=30",
     "set.access.approve_attempts": "Wrong codes allowed when approving",
     "set.access.approve_attempts.d":
-      "How many wrong codes approving a device may take in the window below before it waits. __DEN_CLI__ config web.approve_attempts=10",
+      "Wrong codes allowed in the window below before approving waits. __DEN_CLI__ config web.approve_attempts=10",
     "set.access.approve_window": "Wrong-code window, in seconds",
     "set.access.approve_window.d":
-      "How long wrong codes are counted for. Once it passes, approving can be tried again. __DEN_CLI__ config web.approve_window_seconds=30",
+      "How long wrong codes are counted. __DEN_CLI__ config web.approve_window_seconds=30",
     "set.access.agent_view": "Agents may view pages, read-only",
     "set.access.agent_view.d":
-      "On, an agent running here may open these pages read-only, as itself, to look or take a screenshot (page_view). It changes nothing, and each page it opens is logged with its name. Off, the agent is told views are off. __DEN_CLI__ config web.agent_view=true",
+      "Lets an agent here open these pages read-only; each view is logged. __DEN_CLI__ config web.agent_view=true",
     "set.access.agent_view_minutes": "An agent's view lasts, in minutes",
     "set.access.agent_view_minutes.d":
-      "How long an agent's read-only view of these pages lasts, then it ends. __DEN_CLI__ config web.agent_view_minutes=10",
+      "How long an agent's read-only view lasts. __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.sessions_lock_wait":
       "Sign-in waits for the sign-ins file, in ms",
     "set.access.sessions_lock_wait.d":
-      "How long a sign-in waits while another command changes the sign-ins file, then it asks to try again. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
+      "How long a sign-in waits while the sign-ins file is busy. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
     "set.access.test_installs_here": "Test installs on this computer",
     "set.access.test_install": "Test install",
     "set.distribution.brand": "Product name",
@@ -3333,7 +3332,8 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
-    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Set project {project}'s agent cap: {from} → {to}",
     "ap.det.project_agent_cap.now": "Now: {v}",
     "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
@@ -3745,32 +3745,32 @@
       "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add or remove one here; an agent asks with project_event_feed_add or project_event_feed_remove. A bearer is a secrets.refs name, never a value.",
     "set.embed.feed_max_streams": "App feeds read at once",
     "set.embed.feed_max_streams.d":
-      "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",
+      "The most app event feeds Den reads at once, across all projects.",
     "set.embed.feed_event_max_kb": "Largest app feed event",
     "set.embed.feed_event_max_kb.d":
-      "The largest event an app feed keeps for its agent. A larger one is kept as a note that it came, without its data, and the project's notifications say so.",
+      "The largest event an app feed keeps; larger ones keep only a note.",
     "set.embed.feed_events_per_minute": "App feed events a minute",
     "set.embed.feed_events_per_minute.d":
-      "How many events Den reads from one app feed in a minute. Past it, Den reads the rest as the rate allows, and the project's notifications say so.",
+      "How many events Den reads from one app feed a minute.",
     "feed.none": "No app event feeds for this project.",
     "feed.row": "{name} to {agent}: {url}",
     "feed.last": "Last event {time}.",
     "feed.noEvents": "No events yet.",
     "set.embed.feed_keep_events": "Events one app feed keeps",
     "set.embed.feed_keep_events.d":
-      "The most events Den keeps for one app feed. Past it, the oldest go, and the project's notifications say so when one wasn't read yet.",
+      "The most events Den keeps for one app feed; the oldest go first.",
     "set.embed.feed_read_max_kb": "Most app feed data in one read",
     "set.embed.feed_read_max_kb.d":
-      "The most event data one app_feed_read call gives an agent. It reads the rest with another call.",
+      "The most event data one app_feed_read call returns.",
     "set.embed.feed_list_timeout": "App feed list wait",
     "set.embed.feed_list_timeout.d":
-      "How long Den waits for an app's list of events (it fills a gap after a cut) before it tries again later.",
+      "How long Den waits for an app's event list before trying later.",
     "set.embed.feed_list_max_mb": "Largest app feed list answer",
     "set.embed.feed_list_max_mb.d":
-      "The largest list of events Den reads from an app at once. A larger answer is refused and tried again later.",
+      "The largest event list Den reads from an app at once.",
     "set.embed.paste_max_kb": "Most text typed into an agent at once",
     "set.embed.paste_max_kb.d":
-      "The most text Den types into an agent in one go: Hub comments, relayed messages and app feed lines. The rest are typed next.",
+      "The most text Den types into an agent in one go.",
     "feed.unread": "Unread: {n}.",
     "bell.m.appFeed.dropped":
       "App feed {name} for {agent}: unread events went because the feed keeps at most its limit.",

@@ -1897,7 +1897,8 @@
     "set.workspace.hub_delivery_loop.o.install": "Como en todas partes",
     "set.workspace.hub_delivery_loop.o.on": "Activado",
     "set.workspace.hub_delivery_loop.o.off": "Desactivado",
-    "set.workspace.agents_max_per_project": "Agentes por proyecto: este proyecto",
+    "set.workspace.agents_max_per_project":
+      "Agentes por proyecto: este proyecto",
     "set.workspace.agents_max_per_project.d":
       "Cuántos agentes de este proyecto pueden funcionar a la vez. Vacío o 0 usa Agentes por proyecto. Solo puede ser más bajo que eso. Un inicio por encima de esto se rechaza, y dice qué límite lo frena.",
     "set.workspace.hub_delivery_loop_extra":
@@ -1957,25 +1958,25 @@
     "set.access.pair_requests":
       "Solicitudes nuevas de inicio de sesión por dirección, por minuto",
     "set.access.pair_requests.d":
-      "Cuántos dispositivos nuevos puede pedir una dirección por minuto para iniciar sesión. Los demás se rechazan hasta que pase el minuto. __DEN_CLI__ config web.pair_requests_per_minute=30",
+      "Solicitudes nuevas para entrar que una dirección puede hacer en un minuto. __DEN_CLI__ config web.pair_requests_per_minute=30",
     "set.access.approve_attempts": "Códigos incorrectos permitidos al aprobar",
     "set.access.approve_attempts.d":
-      "Cuántos códigos incorrectos se aceptan al aprobar un dispositivo en el intervalo de abajo antes de esperar. __DEN_CLI__ config web.approve_attempts=10",
+      "Códigos erróneos permitidos en la ventana de abajo antes de esperar. __DEN_CLI__ config web.approve_attempts=10",
     "set.access.approve_window":
       "Intervalo de códigos incorrectos, en segundos",
     "set.access.approve_window.d":
-      "Durante cuánto tiempo se cuentan los códigos incorrectos. Cuando pasa, se puede volver a intentar aprobar. __DEN_CLI__ config web.approve_window_seconds=30",
+      "Cuánto tiempo se cuentan los códigos erróneos. __DEN_CLI__ config web.approve_window_seconds=30",
     "set.access.agent_view": "Los agentes pueden ver las páginas, solo lectura",
     "set.access.agent_view.d":
-      "Activado, un agente que funciona aquí puede abrir estas páginas en solo lectura, como él mismo, para mirar o hacer una captura (page_view). No cambia nada, y cada página que abre queda registrada con su nombre. Desactivado, se le dice al agente que las vistas están desactivadas. __DEN_CLI__ config web.agent_view=true",
+      "Deja que un agente de aquí abra estas páginas solo para leer; cada vista queda registrada. __DEN_CLI__ config web.agent_view=true",
     "set.access.agent_view_minutes":
       "Duración de la vista de un agente, en minutos",
     "set.access.agent_view_minutes.d":
-      "Cuánto dura la vista de solo lectura de un agente; después termina. __DEN_CLI__ config web.agent_view_minutes=10",
+      "Cuánto dura la vista de solo lectura de un agente. __DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.sessions_lock_wait":
       "Espera al archivo de accesos al entrar, en ms",
     "set.access.sessions_lock_wait.d":
-      "Cuánto espera la entrada mientras otro comando cambia el archivo de accesos; después pide intentarlo de nuevo. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
+      "Cuánto espera un inicio mientras otro proceso cambia el archivo de inicios. __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
     "set.access.test_installs_here": "Instalaciones de prueba en esta máquina",
     "set.access.test_install": "Instalación de prueba",
     "set.distribution.brand": "Nombre del producto",
@@ -2372,7 +2373,8 @@
     "ap.det.den_sandbox_on.off":
       "Un agente puesto en off en user.yml sigue en off.",
     "ap.do.repo_clone": "Clonar {source} en {path}",
-    "ap.do.project_agent_cap": "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
     "ap.det.project_agent_cap.now": "Ahora: {v}",
     "ap.det.project_agent_cap.then": "Después: {v}",
     "ap.do.project_mode":
@@ -2798,32 +2800,32 @@
       "Eventos que una app de este proyecto envía en su propio flujo, para un agente. Den escribe al agente una línea corta cuando hay sin leer, cuando está libre, nunca a mitad de turno; el agente los lee con app_feed_read. Cada flujo dice si está conectado y cuándo llegó su último evento. Añade o quita uno aquí; un agente lo pide con project_event_feed_add o project_event_feed_remove. El bearer es un nombre de secrets.refs, nunca un valor.",
     "set.embed.feed_max_streams": "Flujos de apps leídos a la vez",
     "set.embed.feed_max_streams.d":
-      "El máximo de flujos de eventos de apps que Den lee a la vez, en todos los proyectos. Por encima, un flujo no se lee y las notificaciones de su proyecto lo dicen.",
+      "El máximo de feeds de eventos de apps que Den lee a la vez, en todos los proyectos.",
     "set.embed.feed_event_max_kb": "Evento de flujo más grande",
     "set.embed.feed_event_max_kb.d":
-      "El evento más grande que un flujo de app guarda para su agente. Uno mayor se guarda como un aviso de que llegó, sin sus datos, y las notificaciones del proyecto lo dicen.",
+      "El evento más grande que guarda un feed; de los mayores queda solo una nota.",
     "set.embed.feed_events_per_minute": "Eventos de flujo por minuto",
     "set.embed.feed_events_per_minute.d":
-      "Cuántos eventos lee Den de un flujo de app por minuto. Por encima, Den lee el resto según lo permita el ritmo, y las notificaciones del proyecto lo dicen.",
+      "Cuántos eventos lee Den de un feed de app por minuto.",
     "feed.none": "Este proyecto no tiene flujos de eventos de apps.",
     "feed.row": "{name} a {agent}: {url}",
     "feed.last": "Último evento {time}.",
     "feed.noEvents": "Aún no hay eventos.",
     "set.embed.feed_keep_events": "Eventos que guarda un flujo de app",
     "set.embed.feed_keep_events.d":
-      "El máximo de eventos que Den guarda para un flujo de app. Por encima, se van los más antiguos, y las notificaciones del proyecto lo dicen si alguno no se había leído.",
+      "El máximo de eventos que Den guarda por feed; los más antiguos se van primero.",
     "set.embed.feed_read_max_kb": "Datos de flujo en una lectura",
     "set.embed.feed_read_max_kb.d":
-      "El máximo de datos de eventos que da una llamada a app_feed_read. El agente lee el resto con otra llamada.",
+      "El máximo de datos de eventos que devuelve una llamada a app_feed_read.",
     "set.embed.feed_list_timeout": "Espera de la lista de un flujo",
     "set.embed.feed_list_timeout.d":
-      "Cuánto espera Den la lista de eventos de una app (llena un hueco tras un corte) antes de volver a intentarlo más tarde.",
+      "Cuánto espera Den la lista de eventos de una app antes de reintentar.",
     "set.embed.feed_list_max_mb": "Lista de flujo más grande",
     "set.embed.feed_list_max_mb.d":
-      "La lista de eventos más grande que Den lee de una app de una vez. Una respuesta mayor se rechaza y se vuelve a intentar más tarde.",
+      "La lista de eventos más grande que Den lee de una app a la vez.",
     "set.embed.paste_max_kb": "Texto máximo escrito en un agente de una vez",
     "set.embed.paste_max_kb.d":
-      "El máximo de texto que Den escribe en un agente de una vez: comentarios de Hub, mensajes reenviados y líneas de flujos de apps. El resto se escribe después.",
+      "El máximo de texto que Den escribe en un agente de una vez.",
     "feed.unread": "Sin leer: {n}.",
     "bell.m.appFeed.dropped":
       "Flujo {name} para {agent}: se fueron eventos sin leer porque el flujo guarda como máximo su límite.",
@@ -4601,7 +4603,8 @@
     "setd.g.work": "Proyectos y agentes",
     "setd.g.access": "Acceso y seguridad",
     "setd.g.den": "Esta instalación",
-    "setd.readOnly": "Inicia sesión para cambiarlos. Este navegador puede mirar, pero no cambiar nada.",
+    "setd.readOnly":
+      "Inicia sesión para cambiarlos. Este navegador puede mirar, pero no cambiar nada.",
     "setd.toAccount.devices": "Tus dispositivos",
     "setd.toAccount.profile": "Cerrar sesión",
     "setd.sub.more": "Más",
@@ -4635,11 +4638,9 @@
     "setc.agents.d":
       "Los runtimes en los que se ejecutan los agentes, primero los instalados. Las rutas que defines valen solo para esta máquina: en todas partes (config/local/user.yml) o para un proyecto (config/local/workspaces.yml), que tiene prioridad.",
     "setc.access": "Acceso",
-    "setc.access.d":
-      "Accede a este Den desde tus otros dispositivos: inicia sesión con GitHub como su propietario o empareja un dispositivo con un enlace de un solo uso. En localhost no se pide nada.",
+    "setc.access.d": "Accede a este Den desde tus otros dispositivos.",
     "setc.embed": "Incrustación",
-    "setc.embed.d":
-      "Permite que otras aplicaciones web enlacen a tus agentes. Un enlace rellena el cuadro de mensaje de un agente. No se envía nada hasta que pulses Enviar.",
+    "setc.embed.d": "Deja que otras apps web enlacen a tus agentes.",
     "setc.secrets": "Secretos",
     "setc.secrets.d":
       "De dónde obtiene esta máquina las credenciales con las que Den resuelve los secretos. Por máquina (config/local/user.yml); solo se muestra el origen, nunca un secreto.",
@@ -4872,31 +4873,31 @@
     "set.cli.op_token.d":
       "De dónde viene el token de la cuenta de servicio de 1Password de esta máquina, para un Den que se ejecuta como servicio. Define secrets.onepassword.token en config/local/user.yml: keychain:<service>, file:<path> o env:<VAR>. El token nunca se muestra.", // words-ok: the en string's own word, translated
     "set.access.owner.d":
-      "La cuenta de GitHub a la que pertenece este Den. Vincularla solo guarda su id (el token se descarta), y desde entonces esa cuenta puede iniciar sesión desde cualquier dispositivo. __DEN_CLI__ web owner link hace lo mismo desde la línea de comandos.", // words-ok: the en string's own word, translated
+      "El GitHub al que pertenece este Den; puede entrar desde cualquier dispositivo. __DEN_CLI__ web owner link hace lo mismo desde la línea de comandos.", // words-ok: the en string's own word, translated
     "set.access.devices.d":
       "Los navegadores con la sesión iniciada en este Den. Revocar cierra uno al instante. __DEN_CLI__ web logout --all los cierra todos.",
     "set.access.waiting.d":
-      "Ordenadores cuya página sin iniciar sesión muestra un código. Escribe el código que muestra la pantalla de ese ordenador para aprobarlo, y su página inicia sesión sola; una solicitud dura 10 minutos. __DEN_CLI__ web approve --list los muestra.",
+      "Computadoras que piden entrar. Escribe el código de su pantalla para aprobarlas. __DEN_CLI__ web approve --list los muestra.",
     "set.embed.url_max.d":
-      "La dirección web más larga que puede llevar un enlace a un agente para su cuadro de mensaje. Si es más larga, se abre una página que lo indica.",
+      "La dirección web más larga que puede llevar un enlace a un agente.",
     "set.embed.app_keys.d":
-      "Una clave para el backend propio de una aplicación web en esta computadora: puede pasar los mensajes de su persona a un agente, que se escriben cuando termina su turno, y leer el estado de ese agente. Nada más. Permites cada clave, se muestra una vez y puedes revocarla aquí.",
+      "Una clave para que el backend de una app web escriba a un agente y lea su estado.",
     "set.embed.app_key_audit.d":
-      "Las lecturas de estado de una clave de aplicación se anotan en el registro de actividad como una línea cada tantos segundos, con cuántas hubo, para que una aplicación web que consulta a menudo no lo llene.",
+      "Segundos de lecturas de una clave de app que se resumen en una línea de actividad.",
     "set.embed.origins.d":
-      "La dirección de cada aplicación web, exacta, una por línea: https://app.example.com. Solo estas pueden mostrar un panel de agente dentro de sus páginas, y solo después de que lo permitas. Ningún otro sitio puede mostrar una página de este Den dentro de la suya.",
+      "Direcciones de apps web, una por línea, que pueden mostrar un panel de agente.",
     "set.embed.key_minutes.d":
       "Cuánto tiempo puede enviar un panel de agente incrustado antes de volver a pedir permiso.",
     "set.embed.context_max_kb.d":
-      "La página más grande que otra aplicación web puede compartir con un agente. Si es mayor, se rechaza y el panel explica por qué.",
+      "La página más grande que otra app web puede compartir con un agente.",
     "set.access.machine_name.d":
-      "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
+      "Cómo llama a esta máquina la página sin entrar. Vacío: su nombre corto.",
     "set.access.pair.d":
       "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
     "set.access.test_installs_here.d":
-      "Instalaciones de prueba de esta máquina que su lanzador anuncia y que esperan su persona de prueba. Configurar persona de prueba la configura desde aquí, en cualquier navegador, con tu propia autorización.",
+      "Instalaciones de prueba en esta computadora que esperan a su persona de prueba.",
     "set.access.test_install.d":
-      "Si esta instalación está marcada como de prueba: web.test_install en la configuración de la distribución, puesto a mano. Solo entonces las comprobaciones en vivo pueden iniciar sesión, como una persona de prueba (nunca tú, nunca un agente). Configurar persona de prueba la crea una vez, aquí en tu navegador.",
+      "Si esta es una instalación de prueba, donde las comprobaciones entran como persona de prueba.",
     "set.distribution.brand.d":
       "brand.name: el nombre en las páginas, el banner de la CLI y la ayuda.",
     "set.distribution.github_org.d":
