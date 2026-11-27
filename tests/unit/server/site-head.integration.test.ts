@@ -17,7 +17,14 @@ import { sitePage } from "../../../src/ui/server/ui-assets.js";
 
 const PORT = 23876 + Math.floor(Math.random() * 1000);
 const SITE = path.join(process.cwd(), "packages", "den-ui", "src", "site");
-const SNIPPET = fs.readFileSync(path.join(SITE, "head.html"), "utf-8").trim();
+const VERSION = (
+  JSON.parse(fs.readFileSync("package.json", "utf-8")) as { version: string }
+).version;
+const RAW = fs.readFileSync(path.join(SITE, "head.html"), "utf-8").trim();
+const SNIPPET = RAW.replace(
+  /href="([^"]+)"/g,
+  (_m, h: string) => `href="${h}?v=${encodeURIComponent(VERSION)}"`,
+);
 
 let server: ReturnType<typeof spawnServer> | null = null;
 let tmp = "";
@@ -123,14 +130,22 @@ describe("the kit's head snippet on every page (issue 644)", () => {
 
   it("each file the snippet and the manifest name answers 200 with its type", async () => {
     const urls = new Set<string>();
-    for (const m of SNIPPET.matchAll(/href="([^"]+)"/g)) urls.add(m[1]!);
+    for (const m of RAW.matchAll(/href="([^"]+)"/g)) urls.add(m[1]!);
+    expect(SNIPPET.match(/\?v=/g)?.length).toBe(4);
     const mf = await get("/site.webmanifest", "*/*");
     expect([mf.status, mf.type]).toEqual([200, TYPES[".webmanifest"]]);
     const manifest = JSON.parse(mf.body.toString("utf-8")) as {
       icons: { src: string }[];
       start_url: string;
     };
-    for (const i of manifest.icons) urls.add(i.src);
+    for (const i of manifest.icons) {
+      expect(i.src.endsWith(`?v=${encodeURIComponent(VERSION)}`)).toBe(true);
+      urls.add(i.src.replace(/\?.*$/, ""));
+    }
+    for (const u of SNIPPET.matchAll(/href="([^"]+)"/g)) {
+      const r = await get(u[1]!, "*/*");
+      expect([u[1], r.status]).toEqual([u[1], 200]);
+    }
     // Every file in the kit's folder but the snippet itself.
     for (const f of fs.readdirSync(SITE))
       if (f !== "head.html") urls.add(`/${f}`);

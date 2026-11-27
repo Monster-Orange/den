@@ -153,12 +153,14 @@ let assetVersion: string | null | undefined;
 export function setAssetVersion(v: string | null): void {
   assetVersion = v;
 }
+export function servedVersion(): string | null {
+  if (assetVersion === undefined) assetVersion = engineVersion() ?? null;
+  return assetVersion;
+}
 /** Text served as a page, script or stylesheet, its asset URLs stamped. */
 export function stampServed(file: string, text: string): string {
-  if (assetVersion === undefined) assetVersion = engineVersion() ?? null;
-  return assetVersion && isStampedFile(file)
-    ? stampAssetUrls(text, assetVersion)
-    : text;
+  const v = servedVersion();
+  return v && isStampedFile(file) ? stampAssetUrls(text, v) : text;
 }
 
 export function serveFile(

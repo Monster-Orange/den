@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Changed
+
+- The browser tab shows Den's icon from its SVG first, with favicon.ico (16, 32 and 48 px) as `sizes="any"` for browsers without SVG icons. Every icon URL in a page's head and in the app manifest carries `?v=<version>`, so a browser shows the new icon after Den updates instead of a cached one.
+
 ## [0.4.92] - unreleased
 
 ### Changed
