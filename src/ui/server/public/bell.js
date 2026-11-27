@@ -513,7 +513,7 @@ export function bellPanel(b, ui = {}) {
   const off = (b?.off ?? []).map(switchName);
   // ATTN-5: what doesn't need the person folds into one Updates row.
   const updatesHtml = updates.count
-    ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: `${updates.count}${updates.next ? "+" : ""}` }))}</button>` +
+    ? `<button type="button" class="den-bell-older den-bell-updates" data-bell="updates" aria-expanded="${u.updates}">${esc(tr("bell.updates", { n: updates.count }))}</button>` +
       (u.updates ? groupsHtml(updates.groups ?? [], u) : "")
     : "";
   if (
@@ -554,7 +554,7 @@ export function bellPanel(b, ui = {}) {
         seenDone.map((d) => doneRowHtml(d, true)).join("") +
         updatesHtml +
         (older.count
-          ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: `${older.count}${older.next ? "+" : ""}` }))}</button>` +
+          ? `<button type="button" class="den-bell-older" data-bell="older" aria-expanded="${u.older}">${esc(tr("bell.older", { d: b.foldDays ?? 7, n: older.count }))}</button>` +
             (u.older ? groupsHtml(older.groups ?? [], u) : "")
           : ""),
     },

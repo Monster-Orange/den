@@ -508,14 +508,14 @@ export async function handleNotificationRoutes(
     if (method !== "GET" && method !== "HEAD")
       return (refuse(res, 405, "method", "GET only."), true);
     const q = new URL(req.url ?? "/", "http://localhost").searchParams;
-    const ask = readPageAsk(q);
-    if (isPageError(ask)) return (sendPageError(res, ask), true);
     const section = q.get("section") ?? "recent";
     if (!["recent", "updates", "older"].includes(section))
       return (
         refuse(res, 400, "bad_section", "section is recent, updates or older."),
         true
       );
+    const ask = readPageAsk(q, `notifications.${section}`);
+    if (isPageError(ask)) return (sendPageError(res, ask), true);
     const prefs = (deps.prefs ?? bellPrefs)(null);
     const all = bellView(deps.store.list(), prefs);
     let done: DoneAgent[] = [];
@@ -539,23 +539,38 @@ export async function handleNotificationRoutes(
       ns.filter((n) => !(n.kind === "finished" && inDone.has(n.subject)));
     const keep = agentRowFilter(req);
     const reach = keep ? bellReach(keep, deps) : null;
-    const page = (name: string, ns: Notification[]) =>
-      pageOf(ns, name === section ? ask : { ...ask, after: null }, {
-        key: (n) => n.at,
-        id: (n) => n.id,
-        order: "desc",
-        ...(reach ? { filter: (n: Notification) => reach(n.scope) } : {}),
-      });
-    const recentP = page("recent", all.recent);
-    const updatesP = page("updates", once(all.updates));
-    const olderP = page("older", once(all.older));
+    const seen = (ns: Notification[]) =>
+      reach ? ns.filter((n) => reach(n.scope)) : ns;
+    const recentAll = seen(all.recent);
+    const updatesAll = seen(once(all.updates));
+    const olderAll = seen(once(all.older));
+    const page = (name: string, ns: Notification[]) => {
+      const p = pageOf(
+        ns,
+        name === section
+          ? ask
+          : {
+              ...ask,
+              list: `notifications.${name}`,
+              after: null,
+              dir: "next",
+              page: null,
+              at: null,
+            },
+        { key: (n) => n.at, id: (n) => n.id, order: "desc", total: true },
+      );
+      const { items, ...at } = p;
+      return { items, at };
+    };
+    const recentP = page("recent", recentAll);
+    const updatesP = page("updates", updatesAll);
+    const olderP = page("older", olderAll);
     const unreadOf = (ns: Notification[]) => ns.filter((n) => !n.read).length;
-    const v = { unread: unreadOf(recentP.items) };
     const mine = (ds: DoneAgent[]) =>
       (keep ? ds.filter((d) => keep(d.workspace)) : ds).slice(0, ask.limit);
     const bell = {
       ok: true,
-      unread: v.unread,
+      unread: unreadOf(recentAll),
       done: mine(done),
       seenDone: mine(seenDone),
       // Issue 746: a held write waiting for the person's Allow first,
@@ -572,26 +587,33 @@ export async function handleNotificationRoutes(
             ...(w ? { since: w.since } : {}),
           };
         }),
-      ].slice(0, ask.limit),
+      ],
       groups: groupNotifications(recentP.items),
-      next: recentP.next,
+      ...recentP.at,
       // ATTN-5 (den#142): updates, collapsed; never in the badge.
       updates: {
-        count: updatesP.items.length,
-        unread: unreadOf(updatesP.items),
+        count: updatesAll.length,
+        unread: unreadOf(updatesAll),
         groups: groupNotifications(updatesP.items),
-        next: updatesP.next,
+        ...updatesP.at,
       },
       older: {
-        count: olderP.items.length,
+        count: olderAll.length,
         groups: groupNotifications(olderP.items),
-        next: olderP.next,
+        ...olderP.at,
       },
       off: all.off,
       foldDays: all.foldDays,
       mutes: deps.store.mutes(),
     };
-    sendJson(res, keep ? narrowBell(bell, keep, deps) : bell);
+    const out = keep ? narrowBell(bell, keep, deps) : bell;
+    sendJson(res, {
+      ...out,
+      unread: bell.unread,
+      waiting: out.waiting.slice(0, ask.limit),
+      updates: bell.updates,
+      older: bell.older,
+    });
     return true;
   }
 

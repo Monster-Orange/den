@@ -580,17 +580,19 @@ const READ_TOOLS: DenTool[] = [
   read(
     "notifications_list",
     "Your person's bell",
-    "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. One page each of the recent, `updates` and `older` sections: when a section's `next` is not null there are more, so call again with `section` and `cursor` set to it. `limit` defaults to 50 and is capped by the install's list page size. Reads only: an agent can't mark or clear these.",
+    "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. One page each of the recent, `updates` and `older` sections: when a section's `next` is not null there are more, so call again with `section` and `cursor` set to it (`prev` goes back; `page` and `at: first|last` jump, and `total`, `page` and `pages` say where you are). `limit` defaults to 50 and is capped by the install's list page size. Reads only: an agent can't mark or clear these.",
     {
       limit: z.number().int().positive().optional(),
       cursor: z.string().max(2048).optional(),
+      page: z.number().int().positive().optional(),
+      at: z.enum(["first", "last"]).optional(),
       section: z.enum(["recent", "updates", "older"]).optional(),
     },
     async (a, { api }) => {
       const q = new URLSearchParams();
-      if (a.limit !== undefined) q.set("limit", String(a.limit));
-      if (a.cursor) q.set("cursor", a.cursor);
-      if (a.section) q.set("section", a.section);
+      for (const k of ["limit", "cursor", "page", "at", "section"])
+        if (typeof a[k] === "string" || typeof a[k] === "number")
+          q.set(k, String(a[k]));
       const s = q.toString();
       return api.get(`/api/notifications${s ? `?${s}` : ""}`);
     },
