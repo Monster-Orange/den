@@ -14,6 +14,7 @@ import {
   type AgentState,
   type DeliveryHub,
 } from "../../../src/shared/hub/hub-delivery-loop";
+import { fixtureTestInstall } from "../../../src/ui/server/fixture-projects";
 
 const author = (verified: string) => ({
   id: "u_me",
@@ -199,6 +200,33 @@ describe("issue 1816: the delivery loop asks the install", () => {
     await s.loop.take(raw());
     await s.loop.pump();
     expect(s.typed).toEqual([]);
+  });
+
+  it("an install check that throws is not a test install", async () => {
+    const s = setup({
+      testInstall: () => {
+        throw new Error("no state folder");
+      },
+    });
+    await s.loop.take(raw());
+    await s.loop.pump();
+    expect(s.typed).toEqual([]);
+  });
+
+  it("asked for each delivery: once the install is owned, the next is refused", async () => {
+    let test = true;
+    const s = setup({ testInstall: () => test });
+    await s.loop.take(raw());
+    await s.loop.pump();
+    expect(s.typed).toHaveLength(1);
+    test = false;
+    await s.loop.take(raw({ id: "0193a0b0-0000-7000-8000-00000000f817" }));
+    await s.loop.pump();
+    expect(s.typed).toHaveLength(1);
+  });
+
+  it("the server's check says no until index.ts sets it", () => {
+    expect(fixtureTestInstall()).toBe(false);
   });
 
   it("no install check given: dropped, as before", async () => {
