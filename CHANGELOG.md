@@ -46,6 +46,12 @@ config and manifest changes a distribution must make to move to it under
 
 - Projects' Add Service shows the repos on this machine one page at a time, with the kit's pager under the list (no total), and its filter searches on the server. Local Dev no longer reads the whole repo list each time it loads; the dialog asks for its first page when it opens. Services' unused repo dropdown, which still asked for the whole list, is gone.
 
+
+
+- The Agents page pages its list with the UI kit's pager. Agents that need you always show in full above it; Done, Working, Idle and Stopped page by page number in the page's own order, with each band's and project's whole count, and a group cut by a page break shows "(continued)". The page is in the address, so a reload or Back keeps it, and each poll asks for that page only (`GET /api/sessions?view=agents`).
+
+
+
 ## [0.4.92] - unreleased
 
 ### Changed

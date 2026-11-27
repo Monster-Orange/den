@@ -180,12 +180,22 @@ export function byGroupSections(rows, groups) {
 export function groupsViewHtml(
   rows,
   groups,
-  { t, rowHtml, groupsUrl, order = (xs) => xs },
+  { t, rowHtml, groupsUrl, order = (xs) => xs, paged = null },
 ) {
-  const raw = byGroupSections(rows, groups);
+  const raw = paged
+    ? {
+        groups: (groups ?? [])
+          .map((g) => ({ group: g, rows: paged.rowsOf(`g:${g.slug}`) }))
+          .filter((g) => g.rows.length || paged.showEmpty(`g:${g.group.slug}`)),
+        none: paged.rowsOf("g:"),
+      }
+    : byGroupSections(rows, groups);
+  const keep = paged ? (xs) => xs : order;
+  const count = (key, n) => (paged ? paged.count(key) : n);
+  const named = (key, text) => (paged ? paged.named(key, text) : text);
   const s = {
-    groups: raw.groups.map((g) => ({ ...g, rows: order(g.rows) })),
-    none: order(raw.none),
+    groups: raw.groups.map((g) => ({ ...g, rows: keep(g.rows) })),
+    none: keep(raw.none),
   };
   const open = httpUrl(groupsUrl);
   const head = s.groups.length
@@ -200,12 +210,12 @@ export function groupsViewHtml(
       ({ group: g, rows: mine }) =>
         `<div class="wsg agg" data-group="${esc(g.slug)}">` +
         groupHeaderHtml({
-          name: g.name,
+          name: named(`g:${g.slug}`, g.name),
           slug: g.slug,
           href: g.open,
           openLabel: t("ag.grp.open", { group: g.name }),
           lead: g.lead ? t("ag.grp.lead", { name: g.lead.name }) : null,
-          count: mine.length,
+          count: count(`g:${g.slug}`, mine.length),
           action: g.compose
             ? {
                 label: t("ag.grp.message"),
@@ -221,7 +231,7 @@ export function groupsViewHtml(
     )
     .join("");
   const rest = s.none.length
-    ? `<div class="wsg agg" data-group-none><div class="wsh"><span>${esc(t("ag.grp.notIn"))}</span><span>${esc(s.none.length)}</span></div>` +
+    ? `<div class="wsg agg" data-group-none><div class="wsh"><span>${esc(named("g:", t("ag.grp.notIn")))}</span><span>${esc(count("g:", s.none.length))}</span></div>` +
       s.none.map((r) => rowHtml(r)).join("") +
       `</div>`
     : "";

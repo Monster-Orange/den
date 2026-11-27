@@ -4011,6 +4011,8 @@
     "ag.waiting.asked": "asked you",
     "ag.waiting.trust": "Waiting: trust this folder?",
     "ag.band.needs": "Needs you",
+    "ag.continued": "{group} (continued)",
+    "ag.continuedTag": "(continued)",
     "ag.band.done": "Done, not seen",
     "ag.band.working": "Working",
     "ag.band.idle": "Idle",

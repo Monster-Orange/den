@@ -3001,6 +3001,8 @@
     "ag.waiting.asked": "質問があります",
     "ag.waiting.trust": "待機中: このフォルダを信頼しますか?",
     "ag.band.needs": "対応が必要",
+    "ag.continued": "{group}（続き）",
+    "ag.continuedTag": "（続き）",
     "ag.band.done": "完了・未確認",
     "ag.band.working": "作業中",
     "ag.band.idle": "待機中",
