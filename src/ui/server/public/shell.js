@@ -1148,6 +1148,8 @@
     "set.ui.moveDown": "Move {name} down",
     "set.ui.unpinX": "Unpin {name}",
     "set.ui.noPins": "Nothing pinned",
+    "set.ui.more": "More",
+    "set.ui.cmd": "Command line",
     "set.ui.setByIn": "Set by the distribution in {file}.",
     "set.ui.setBy": "Set by the distribution in its config.",
     "set.ui.showX": "Show {name}",
@@ -1167,6 +1169,14 @@
     "set.ui.search": "Search settings",
     "set.ui.slashTip": "Press / to search",
     "set.ui.cats": "Settings categories",
+    "setd.g.you": "Look and feel",
+    "setd.g.work": "Projects and agents",
+    "setd.g.access": "Access and safety",
+    "setd.g.den": "This install",
+    "setd.readOnly": "Sign in to change these. This browser can look but change nothing.",
+    "setd.toAccount.devices": "Your devices",
+    "setd.toAccount.profile": "Sign out",
+    "setd.sub.more": "More",
     "set.ui.rot.scope.agent": "Agent",
     "set.ui.rot.scope.persona-workspace": "Persona in a project",
     "set.ui.rot.scope.persona": "Persona",
@@ -10861,6 +10871,11 @@
       return SETTING_CATS.slice().sort(byOrder);
     },
   };
+  import("/settings-dialog.js")
+    .then(function (m) {
+      m.initSettingsDialog(window.denShell);
+    })
+    .catch(function () {});
   function openAccountDialog(pane, from) {
     return import("/account-dialog.js").then(function (m) {
       return m.openAccount(pane, from);
