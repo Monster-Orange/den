@@ -1,47 +1,5 @@
 import { dialogNavHtml, hydrateDialogNav } from "/kit/dialog-nav.js";
 
-const WORDS = {
-  en: {
-    "acd.title": "Account",
-    "acd.profile": "Profile",
-    "acd.access": "Access",
-    "acd.devices": "Devices",
-    "acd.notifications": "Notifications",
-    "acd.group": "You",
-    "acd.name": "Name",
-    "acd.login": "GitHub",
-    "acd.role": "Role",
-    "acd.local": "This computer",
-    "acd.profileD": "Who is signed in to this Den, here.",
-  },
-  es: {
-    "acd.title": "Cuenta",
-    "acd.profile": "Perfil",
-    "acd.access": "Acceso",
-    "acd.devices": "Dispositivos",
-    "acd.notifications": "Notificaciones",
-    "acd.group": "Tú",
-    "acd.name": "Nombre",
-    "acd.login": "GitHub",
-    "acd.role": "Rol",
-    "acd.local": "Este equipo",
-    "acd.profileD": "Quién ha iniciado sesión en este Den, aquí.",
-  },
-  ja: {
-    "acd.title": "アカウント",
-    "acd.profile": "プロフィール",
-    "acd.access": "アクセス",
-    "acd.devices": "デバイス",
-    "acd.notifications": "通知",
-    "acd.group": "あなた",
-    "acd.name": "名前",
-    "acd.login": "GitHub",
-    "acd.role": "役割",
-    "acd.local": "このコンピューター",
-    "acd.profileD": "この Den に、ここでサインインしている人。",
-  },
-};
-
 const ICONS = {
   profile: "person",
   access:
@@ -52,8 +10,15 @@ const ICONS = {
     '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
 };
 
+const TITLES = {
+  profile: "acd.profile",
+  access: "acd.access",
+  devices: "acd.devices",
+  notifications: "acd.notifications",
+};
+
 const shell = () => window.denShell;
-const t = (k) => shell()?.t?.(k) ?? WORDS.en[k] ?? k;
+const t = (k) => shell()?.t?.(k) ?? k;
 const esc = (s) =>
   String(s ?? "").replace(
     /[&<>"']/g,
@@ -87,7 +52,6 @@ function profileStub(body) {
 }
 
 async function build() {
-  for (const [l, m] of Object.entries(WORDS)) shell()?.addMessages?.(l, m);
   let panes = null;
   try {
     panes = await import("/account-panes.js");
@@ -120,7 +84,7 @@ async function build() {
         label: t("acd.group"),
         panes: ids.map((id) => ({
           id,
-          title: t("acd." + id),
+          title: TITLES[id] ? t(TITLES[id]) : id,
           icon: ICONS[id],
           desc: id === "profile" && !panes ? t("acd.profileD") : undefined,
           lazy: true,
