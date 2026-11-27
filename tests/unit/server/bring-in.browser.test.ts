@@ -498,6 +498,16 @@ describe("Bring in (AG-17.1)", () => {
       sid,
       { timeout: browserWaitMs() },
     );
+    const said = await p.evaluate(() => {
+      const text =
+        document.querySelector("section[data-id]")?.textContent ?? "";
+      const n = (s: string) => text.split(s).length - 1;
+      return [
+        n("Switched to planner"),
+        n("Nothing to resume yet; started fresh"),
+      ];
+    });
+    expect(said).toEqual([1, 1]);
     await p.context().close();
     expect(errors).toEqual([]);
   }, 60_000);
@@ -597,6 +607,16 @@ describe("Bring in (AG-17.1)", () => {
       undefined,
       { timeout: 10_000 },
     );
+    const said = await p.evaluate(() => {
+      const text =
+        document.querySelector("section[data-id]")?.textContent ?? "";
+      const n = (s: string) => text.split(s).length - 1;
+      return [
+        n("Switched to planner"),
+        n("Nothing to resume yet; started fresh"),
+      ];
+    });
+    expect(said).toEqual([1, 1]);
     await p.context().close();
     expect(errors).toEqual([]);
   }, 90_000);
