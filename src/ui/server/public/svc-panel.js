@@ -28,7 +28,7 @@
  */
 import { sudoRun } from "./topbar.js";
 import { formatTime } from "/kit/time.js";
-import { hydratePager, pagerHtml } from "/kit/pager.js";
+import { listMoreHtml, watchPagers } from "/list-pager.js";
 import { logStreamUrl } from "./log-source.js";
 import { dismissable, focusBack } from "./popover.js";
 import { healthReason } from "./value-words.js";
@@ -290,33 +290,12 @@ export function panelHtml(s) {
   const ags = agentsOf(s);
   const shownAgents = ags.here.length + ags.also.length;
   const allAgents = Math.max(shownAgents, S.agentsTotal ?? 0);
-  const words = (k) => t(`pager.${k}`);
-  const more = shownAgents
-    ? pagerHtml({
-        mode: "more",
-        from: 1,
-        to: shownAgents,
-        loaded: shownAgents > AGENTS_STEP,
-        total: allAgents,
-        hasNext: !!S.agentsNext,
-        step: AGENTS_STEP,
-        per: AGENTS_STEP,
-        moreHref: S.agentsNext ? "#den-svp-agents" : null,
-        lang: window.denShell?.lang?.() ?? "en",
-        words: Object.fromEntries(
-          [
-            "label",
-            "range",
-            "rangeOpen",
-            "more",
-            "moreN",
-            "lastN",
-            "all",
-            "moreErr",
-          ].map((k) => [k, words(k)]),
-        ),
-      })
-    : "";
+  const more = listMoreHtml(
+    "svp",
+    { next: S.agentsNext, total: allAgents },
+    shownAgents,
+    AGENTS_STEP,
+  );
   const pinned = window.denShell?.isPinned?.(s.id);
   const testing = S.testing.has(s.id) || S.lastRuns[s.repo]?.running;
   return (
@@ -433,7 +412,6 @@ function sync() {
     const sc = o.el.scrollTop;
     o.el.innerHTML = html;
     o.html = html;
-    hydrateAgents(o.el);
     o.el.scrollTop = sc;
     if (mine) {
       const swap = {
@@ -534,15 +512,6 @@ async function moreAgents() {
   return { html: "", to: S.sessions.length, hasNext: !!S.agentsNext };
 }
 
-function hydrateAgents(root) {
-  const nav = root.querySelector('#den-svp-agents + [data-den-pager="more"]');
-  if (nav)
-    hydratePager(nav, {
-      list: root.querySelector("#den-svp-agents"),
-      load: moreAgents,
-    });
-}
-
 /**
  * Open the panel for a pin id (or a service's address) beside `opener`.
  * The same panel whoever opens it; opening it again from the same opener
@@ -585,11 +554,16 @@ export function openPanel(id, opener, opts = {}) {
   opener.setAttribute?.("aria-expanded", "true");
   // D50: a press outside or Esc closes it (popover.js). The rail redraws
   // its rows: a press on this pin's row is the opener's.
-  S.open.release = dismissable(el, {
+  const release = dismissable(el, {
     opener: () => S.open?.opener,
     ignore: (tgt) => !!S.open?.fromRail && !!tgt.closest?.("[data-svpanel]"),
     close: (refocus) => closePanel(refocus),
   });
+  const unwatch = watchPagers(el, () => {}, { url: false, more: moreAgents });
+  S.open.release = () => {
+    unwatch();
+    release?.();
+  };
   window.denShell?.setState?.({ svpOpen: id });
   sync();
   (el.querySelector(".den-svp-acts .den-btn:not([disabled])") || el).focus();

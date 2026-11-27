@@ -920,7 +920,6 @@
         "src/ui/server/public/agent-order.js",
         "src/ui/server/public/agents-core.js",
         "src/ui/server/public/agents-page.js",
-        "src/ui/server/public/agents-pager.js",
         "src/ui/server/public/agents-rows.js",
         "src/ui/server/public/agents-url.js",
         "src/ui/server/public/agents.html",

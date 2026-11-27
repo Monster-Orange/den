@@ -229,11 +229,12 @@ import {
   visibleIds,
 } from "/agents-url.js";
 import {
-  agentsPagerHtml,
-  agentsViewQuery,
-  hydrateAgentsPager,
-  keepServedPage,
-} from "/agents-pager.js";
+  askFromUrl,
+  listPagerHtml,
+  pageHref,
+  perFromUrl,
+  watchPagers,
+} from "/list-pager.js";
 import {
   compactingHtml,
   compactingTag,
@@ -614,9 +615,7 @@ function paintList() {
     notes.join("") +
       viewSwitchHtml(st.groupsRead, st.by, t) +
       body +
-      (paged
-        ? agentsPagerHtml(st.data, t, window.denShell?.lang?.() ?? "en")
-        : "") +
+      (paged ? agentsPagerHtml(st.data) : "") +
       `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
   );
   const clear = st.root.querySelector("#ag-clear");
@@ -625,8 +624,52 @@ function paintList() {
   // No such workspace: nothing to start an agent in.
   const start = st.root.querySelector("#ag-start");
   if (start) start.hidden = st.data.requested?.known === false;
-  if (paged) hydrateAgentsPager(el, () => void refreshOnce());
+  if (paged && !st.pagersWired) {
+    st.pagersWired = true;
+    watchPagers(el, () => void refreshOnce());
+  }
   fitListFloor();
+}
+
+const PAGER = "ag";
+const PER = 50;
+const SEEN_MAX = 100;
+
+function agentsPagerHtml(data) {
+  if (!data || typeof data.total !== "number" || !Array.isArray(data.items))
+    return "";
+  return listPagerHtml(PAGER, data, data.items.length, perFromUrl(PAGER, PER));
+}
+
+function agentsViewQuery({ view, by, ws, seen, open, used }) {
+  const q = askFromUrl(PAGER, PER);
+  q.delete("cursor");
+  q.delete("at");
+  q.set("view", view === "terminals" ? "terminals" : "agents");
+  q.set("by", by === "project" || by === "group" ? by : "need");
+  if (!q.has("page")) q.set("page", "1");
+  if (ws) q.set("ws", ws);
+  const pairs = [...(seen ?? new Map())]
+    .filter(([, since]) => typeof since === "string" && since)
+    .slice(0, SEEN_MAX)
+    .map(([id, since]) => `${id}~${since}`);
+  if (pairs.length) q.set("seen", pairs.join(","));
+  const recent = Object.entries(used ?? {})
+    .filter(([, at]) => Number.isSafeInteger(at) && at > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, SEEN_MAX)
+    .map(([id, at]) => `${id}~${at}`);
+  if (recent.length) q.set("used", recent.join(","));
+  const ids = (open ?? []).slice(0, 20);
+  if (ids.length) q.set("open", ids.join(","));
+  return q;
+}
+
+function keepServedPage(data) {
+  const asked = Number(askFromUrl(PAGER, PER).get("page")) || 1;
+  if (!data?.page || data.page === asked) return;
+  const href = pageHref(PAGER, data, { page: data.page }, null);
+  if (href) history.replaceState(history.state, "", href);
 }
 
 /** How many whole rows the list keeps in view over an open pane (narrow). */
@@ -1204,8 +1247,6 @@ async function refreshOnce() {
   const strip = st.root.querySelector("#agr > .agtabs");
   if (strip) paintTabs(strip);
 }
-
-window.addEventListener("popstate", () => void refreshOnce());
 
 function pagedGroups(data, named) {
   const keys = data.groups;

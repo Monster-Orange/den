@@ -55,7 +55,6 @@ export const UI_MODULES: readonly string[] = [
   // Issue 96: where a move in a project's order goes.
   "/agent-order.js",
   "/agent-bands.js",
-  "/agents-pager.js",
   // Issue 750: the agents page's By group view.
   "/agent-groups.js",
   // Issue 1407: one agent's answer to a restart for its tools.
