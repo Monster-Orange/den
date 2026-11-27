@@ -110,6 +110,9 @@ async function loadLocal(at, first) {
     if (n.scrollTop) n.scrollTop = 0;
 }
 
+const pagerNav = { "add-svc-repos": moveLocal };
+let stopPagers = null;
+
 function moveLocal(_name, ask) {
   const to = ask?.target;
   const shown = st.page?.items?.length ?? 0;
@@ -471,7 +474,10 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
       loadLocal({ cursor: null, offset: 0 });
     }, 250);
   });
-  watchPagers(d, moveLocal, { url: false });
+  stopPagers?.();
+  stopPagers = watchPagers(d, (name, ask) => pagerNav[name]?.(name, ask), {
+    url: false,
+  });
   d.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b || !d.contains(b)) return;
