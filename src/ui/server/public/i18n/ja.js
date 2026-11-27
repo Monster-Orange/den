@@ -4190,12 +4190,30 @@
     "set.ui.hAgo": "{n} 時間前",
     "set.ui.dAgo": "{n} 日前",
     "set.ui.viaGithubAs": "GitHub でサインイン (@{login})",
+    "account.signedIn": "サインイン",
+    "account.viaLocal": "このコンピューター上（確認なし）",
+    "account.viaCode": "所有者がコードで承認したブラウザー",
+    "account.viaLink": "ワンタイムリンクでペアリングしたデバイス",
+    "account.viaOther": "サインイン済み",
+    "account.ghNone": "未リンク",
+    "account.ghUnread":
+      "GitHub のリンクを読み込めませんでした。もう一度お試しください。",
+    "account.ghLinked": "@{login} にリンク済み",
+    "account.ghLinkedAgo": "@{login} にリンク済み（{ago}）",
+    "account.toAccess": "この Den にサインインできる人は「設定」にあります ↗",
+    "account.soon": "読み込み中…",
+    "account.failed": "このパネルを読み込めませんでした。",
+    "account.retry": "再試行",
+    "account.name": "名前",
+    "account.role": "役割",
+    "account.toDevices": "サインイン中のブラウザは「デバイス」にあります",
     "set.ui.viaGithub": "GitHub でサインイン",
     "set.ui.viaCode": "コードで承認",
     "set.ui.viaAgentView": "{agent} の読み取り専用の閲覧",
     "set.ui.viaClaim": "セットアップリンクで登録",
     "set.ui.viaLink": "一回限りのリンクでサインイン",
     "set.ui.unknownBrowser": "不明なブラウザ",
+    "set.ui.thisBrowser": "このブラウザ",
     "set.ui.deviceOn": "{os} の {browser}",
     "set.ui.aBrowserOn": "{os} のブラウザ",
     "set.ui.tzBrowser": "ブラウザのタイムゾーン ({zone})",
@@ -4312,7 +4330,7 @@
     "set.ui.testInstallSignedIn":
       "テスト用インストールは、サインイン中かこのマシン上でのみ読み取れます。",
     "set.ui.noPairHost":
-      "__DEN_TITLE__ に向かうエッジのホスト名がないため、別のデバイスが開けるアドレスがありません。設定の edge ブロックに追加し (VPN 名は edge.aliases)、下のボタンを押してください。エッジを起動するか、動作中のエッジに変更を適用します。{cmd}",
+      "別のデバイスから __DEN_TITLE__ に届くアドレスはまだありません。設定にエッジのホスト名を追加してから、エッジを起動してください。",
     "set.ui.edgeStart": "エッジを起動",
     "set.ui.edgeApply": "適用",
     "set.ui.edgeStarted": "エッジを起動しました",
@@ -4733,7 +4751,7 @@
     "set.access.owner.d":
       "この Den が属する GitHub アカウントです。リンクすると ID だけが保存され (トークンは破棄されます)、以後そのアカウントはどのデバイスからでもサインインできます。__DEN_CLI__ web owner link でもコマンドラインから同じことができます。", // words-ok: the en string's own word, translated
     "set.access.devices.d":
-      "この Den にサインインしているブラウザです。「取り消す」ですぐにサインアウトさせます。__DEN_CLI__ web logout --all ですべてサインアウトさせます。",
+      "この Den にサインインしているブラウザです（「取り消す」で 1 つをサインアウト）。",
     "set.access.waiting.d":
       "サインアウト中のページにコードが表示されているコンピューターです。そのコンピューターの画面のコードを入力して承認すると、そのページは自動でサインインします。リクエストの有効期限は 10 分です。__DEN_CLI__ web approve --list で一覧できます。",
     "set.embed.url_max.d":
@@ -4751,7 +4769,7 @@
     "set.access.machine_name.d":
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":
-      "GitHub を使わない場合やオフラインの場合: エッジのホスト名 1 つに対する一回限りのリンクと QR コードです (__DEN_CLI__ web login --host <name>)。",
+      "GitHub を使わないデバイス用の、1 回限りのリンクと QR コードです。 __DEN_CLI__ web login --host <name>",
     "set.access.test_installs_here.d":
       "起動元が知らせている、テスト用の人物を待っているこのコンピューター上のテスト用インストール。「テスト用の人物を設定」で、どのブラウザーからでも、あなた自身の許可でここから設定します。",
     "set.access.test_install.d":

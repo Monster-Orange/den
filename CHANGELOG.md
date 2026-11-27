@@ -15,6 +15,7 @@ config and manifest changes a distribution must make to move to it under
 ### Changed
 
 - Settings opens as a pop-up over the page you are on, from the rail's Settings item or any link to Settings: panes grouped on the left (Look and feel, Projects and agents, Access and safety, This install), a search over pane names and setting labels (never values), the open pane in the address as `?settings=<pane>`, and Back closes it. Your notifications, devices and sign-out are in Account; Settings links there, and a link to Settings › Notifications opens Account. A browser that isn't signed in sees the panes read-only. Old links keep working: `/settings` and `/settings#<section or row>` open the pop-up over Home at that pane or row, `?q=` fills its search, and `/local-dev?settings=1` opens Editor & terminal. Each setting's help is one sentence; the rest and its command line fold under "More" or "Command line". (issue 1926)
+- Account's panes, for the pop-up opened from your name: Profile (your name, GitHub login, role, and Sign out), Access and security (how this browser signed in, and the GitHub link), Devices and sessions (your signed-in browsers, Revoke, Sign out everywhere, and pairing a device), and Notifications (the bell's kinds and the alerts). They show what Den already keeps; a pane that can't read its data says so, with Try again. `GET /api/account` says whether you are this Den's owner. Words in en, es and ja. (issue 1926)
 
 ## [0.4.92] - unreleased
 

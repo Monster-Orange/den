@@ -394,6 +394,10 @@ export const ROUTES: readonly RouteEntry[] = [
     "a GitHub sign-in's outcome; once the owner approved it, sets the session cookie",
   ),
   R("/api/web/owner", "who the owner is (`web owner show`)"),
+  R(
+    "/api/account",
+    "the person's own pop-up: whether they are this Den's owner, and the admin link (none on Den)",
+  ),
   S(
     ["POST"],
     "/api/web/owner/link",
