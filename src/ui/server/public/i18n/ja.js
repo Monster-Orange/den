@@ -413,7 +413,7 @@
     "pc.slate": "スレート",
     "set.workspace.colour": "色",
     "set.workspace.colour.d":
-      "このプロジェクトのエージェント、タブ、「宛先」の行、上部バーの表示に使う色です。「自動」なら毎回同じ色が選ばれます。あなただけのもので、共有も Hub への送信もされません。",
+      "エージェント、タブ、上部バーでのこのプロジェクトの色。あなただけに見えます。",
     "ws.manage": "プロジェクトを管理…",
     "ws.order.az": "A〜Z順",
     "ws.order.mine": "あなたの並び順",
@@ -1385,7 +1385,7 @@
       "リポジトリが公開か非公開かを GitHub が答えなかったとき、報告がもう一度確認するまでの時間です。0 なら開くたびに確認します。__DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "ターミナルの再接続の試行回数",
     "set.agents.pane_reconnect.d":
-      "接続が切れたターミナルは、待ち時間を延ばしながら自動で再接続します。下の時間内にこの回数失敗すると止まり、「再接続」を表示します。__DEN_CLI__ config panes.reconnect_max_failures=20",
+      "下の時間内に再接続に失敗できる回数。超えるとターミナルは再試行をやめます。__DEN_CLI__ config panes.reconnect_max_failures=20",
     "set.agents.pane_reconnect_window": "ターミナルの再接続の時間枠",
     "set.agents.pane_reconnect_window.d":
       "上の失敗回数を数える時間です。__DEN_CLI__ config panes.reconnect_window_seconds=300",
@@ -1394,23 +1394,23 @@
       "最初の試行は 1 秒待ち、待ち時間は毎回倍になり、この値までです。__DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.agents.shell_path_wait": "シェルの PATH の待ち時間",
     "set.agents.shell_path_wait.d":
-      "エージェントの CLI を探すとき、__DEN_TITLE__ がシェルの PATH の応答を待つ時間です。起動ファイルも含め、新しいシェルと同じ PATH です。これを過ぎると、通常の場所を探します。__DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+      "エージェントの CLI を探すとき、__DEN_TITLE__ がシェルの PATH を待つ時間。__DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     "set.agents.draft_hold_max": "下書き中の保留から通知まで",
     "set.agents.draft_hold_max.d":
-      "エージェントのターミナルに未送信のメッセージを入力している間、__DEN_TITLE__ はそこへ入力する予定のものを保留し、あなたの下書きを送信することはありません。この時間を過ぎると、ベルが待機中のメッセージを知らせます。__DEN_CLI__ config agents.draft_hold_max_minutes=30",
+      "未送信の下書きがメッセージを止めておく時間。過ぎるとベルで知らせます。__DEN_CLI__ config agents.draft_hold_max_minutes=30",
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
-      "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "エージェント一覧がターミナルホストを待つ時間。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
     "set.agents.max_subagents": "同時に動かせるサブエージェント数",
     "set.agents.max_subagents.d":
-      "このマシンのエージェント全体で、同時に動かせるサブエージェントの数です。これを超える開始は拒否され、エージェントにはこの設定の名前が伝えられます。未設定なら「同時に動かせるエージェント数」の2倍です。__DEN_CLI__ config agents.max_subagents=8",
+      "ここの全エージェント合計で同時に動かせるサブエージェント数。__DEN_CLI__ config agents.max_subagents=8",
     "set.agents.subagents_respect_load_hold":
       "負荷が高いときは新しいサブエージェントを止める",
     "set.agents.subagents_respect_load_hold.d":
-      "オンの場合、マシンの負荷がエージェントの負荷上限を超えている間は新しいサブエージェントが拒否され、エージェントにはこの設定の名前が伝えられます。オフの場合、負荷に関係なくサブエージェントが開始します。__DEN_CLI__ config agents.subagents_respect_load_hold=true",
+      "オンにすると、マシンの負荷が高い間は新しいサブエージェントを起動しません。__DEN_CLI__ config agents.subagents_respect_load_hold=true",
     "set.agents.skill_packs": "スキルパック",
     "set.agents.skill_packs.d":
-      "Den がエージェントに与えるスキルパック。それぞれ固定したバージョンで Den に同梱され、ダウンロードはしません。__DEN_CLI__ config skill_packs.on=false",
+      "Den がエージェントに渡すスキルパック。Den に固定され、取得はしません。__DEN_CLI__ config skill_packs.on=false",
     "set.agents.skill_packs.pstack": "pstack",
     "set.agents.skill_packs.pstack.d":
       "コーディングエージェント向けのオープンソースのスキル。Den のエージェントに渡すものを選びます。__DEN_CLI__ config skill_packs",
@@ -1424,10 +1424,10 @@
     "set.ui.skillPackNone": "なし",
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
-      "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
+      "このマシンで同時に動かせるエージェント数。__DEN_CLI__ config agents.max_concurrent=4",
     "set.agents.max_per_project": "プロジェクトごとのエージェント数",
     "set.agents.max_per_project.d":
-      "1 つのプロジェクトで同時に動かせるエージェントの数です。0 は「同時に動かせるエージェント数」以外の上限なしです。プロジェクトは自分用にもっと低い値を設定できます（workspaces.yml のそのプロジェクトの agents.max_per_project）。これを超える起動は拒否され、どの上限で止まったかが表示されます。__DEN_CLI__ config agents.max_per_project=10",
+      "1 つのプロジェクトで同時に動かせるエージェント数。0 なら無制限。__DEN_CLI__ config agents.max_per_project=10",
     "set.server.sessions_max": "同時に開けるターミナル数",
     "set.server.sessions_max.d":
       "同時に動かせる通常のターミナルの数です。エージェントは数に入りません。これを超える新しいターミナルは断られ、その旨が表示されます。__DEN_CLI__ config sessions.max_concurrent=8",
@@ -1452,31 +1452,31 @@
       "このマシンで使われているターミナルが上限のこの割合に達すると、doctor は失敗します。__DEN_CLI__ config sessions.pty_machine_warn_percent=90",
     "set.agents.hook_wait": "エージェントのフックの待ち時間",
     "set.agents.hook_wait.d":
-      "エージェントのフックが、あなたが必要だと __DEN_TITLE__ に知らせるときや Hub の受信箱を確認するときに、1 回の試行で __DEN_TITLE__ を待つ時間です。混み合ったマシンでは応答が遅れることがあります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.timeout_seconds=20",
+      "エージェントのフックが毎回 __DEN_TITLE__ を待つ時間。__DEN_CLI__ config agent_hooks.timeout_seconds=20",
     "set.agents.hook_retries": "エージェントのフックの再試行回数",
     "set.agents.hook_retries.d":
-      "__DEN_TITLE__ が時間内に応答しなかったか呼び出しを断ったときに、エージェントのフックがあと何回試すかです。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.retries=2",
+      "応答がないとき、エージェントのフックが再試行する回数。__DEN_CLI__ config agent_hooks.retries=2",
     "set.agents.hook_backoff": "エージェントのフックの間隔",
     "set.agents.hook_backoff.d":
-      "エージェントのフックが最初の再試行の前に待つ時間です。その後の間隔は毎回倍になります。エージェントが次に起動したときに反映されます。__DEN_CLI__ config agent_hooks.backoff_seconds=1",
+      "フックの最初の再試行までの待ち時間。以降は倍になります。__DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "圧縮の繰り返し: 回数",
     "set.agents.compaction_loop.d":
-      "下の分数のうちにエージェントが自動圧縮をこの回数より多く行うと、ベルが圧縮を繰り返していると知らせます。1 回の繰り返しにつきベルは 1 回です。__DEN_CLI__ config agent_context.compaction_loop_count=3",
+      "下の時間内にこの回数圧縮すると、ベルでループを知らせます。__DEN_CLI__ config agent_context.compaction_loop_count=3",
     "set.agents.compaction_minutes": "圧縮の繰り返し: 分",
     "set.agents.compaction_minutes.d":
       "上の圧縮回数を数える時間の幅です。__DEN_CLI__ config agent_context.compaction_loop_minutes=10",
     "set.agents.compaction_pause": "圧縮の繰り返しの後は届けるのを止める",
     "set.agents.compaction_pause.d":
-      "オン: ベルがエージェントの圧縮の繰り返しを知らせたら、そのエージェントへの新しい配信 (Hub のコメントやお知らせ) は、人がエージェントページで解除するまで待ちます。オフ (既定): いつもどおり届けます。__DEN_CLI__ config agent_context.pause_after_loop=true",
+      "オンにすると、ループ中のエージェントへの新しい配信は解除されるまで待ちます。__DEN_CLI__ config agent_context.pause_after_loop=true",
     "set.agents.instruction_share": "指示ファイル: この割合を超えたら警告",
     "set.agents.instruction_share.d":
-      "エージェントが起動時に読み込む指示ファイル (CLAUDE.md、AGENTS.md など、フォルダーをさかのぼって) がモデルのコンテキストのこの割合を超えると、その行と doctor が警告し、最も大きいファイルを示します。サイズはバイト数 / 4 トークンで見積もります。__DEN_CLI__ config agent_context.instruction_share_percent=15",
+      "エージェントの指示ファイルがコンテキストのこの割合を超えたら警告します。__DEN_CLI__ config agent_context.instruction_share_percent=15",
     "set.agents.context_tokens": "不明なときのコンテキストサイズ",
     "set.agents.context_tokens.d":
-      "__DEN_TITLE__ がモデル自身のサイズを知らないときに、上の割合の基準にするコンテキストサイズ (トークン数) です。__DEN_CLI__ config agent_context.context_tokens=200000",
+      "モデル自身の値が不明なときに上で使うコンテキストサイズ。__DEN_CLI__ config agent_context.context_tokens=200000",
     "set.agents.list_refresh_wait": "エージェント一覧の待ち時間",
     "set.agents.list_refresh_wait.d":
-      "エージェントのページが一覧を待つ時間です。これを過ぎると、一覧が古い可能性があることを表示して再試行します。__DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
+      "エージェントページが一覧を待つ時間。過ぎると再試行します。__DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
     "set.server.address": "__DEN_TITLE__ のアドレス",
     "set.server.address.d":
       "ほかの人やデバイスがこの __DEN_TITLE__ を開くアドレスです(例: https://__DEN_CLI__.local.example.com)。「確認して保存」は、まずそのアドレスが応答するか確かめ、応答したときだけ保存します。__DEN_CLI__ web url と同じです。",
@@ -1495,29 +1495,29 @@
     "set.workspace.approvals_policy":
       "このプロジェクトでのエージェントの書き込み",
     "set.workspace.approvals_policy.d":
-      "このプロジェクトのエージェントがあなたの許可なしにできること。「エージェントの書き込み」より優先されます。エージェントの権限を広げる書き込み、シークレットに触れる書き込み、データを削除する書き込み、お金を使う書き込みは常に確認します。",
+      "このプロジェクトのエージェントが許可なしにできること。",
     "set.workspace.approvals_policy.o.install": "全体と同じ",
     "set.workspace.approvals_policy.o.auto": "実行、通知なし",
     "set.workspace.approvals_policy.o.notify": "実行して知らせる",
     "set.workspace.approvals_policy.o.ask": "確認する",
     "set.workspace.approvals_watch": "このプロジェクトのウォッチ",
     "set.workspace.approvals_watch.d":
-      "これらへのエージェントの書き込みは、種類にかかわらず先に確認します。カンマ区切り: project:<name>、repo:<name>、service:<repo>/<name>、persona:<id>、agent:<id>、または名前だけ。",
+      "エージェントの書き込みが必ず先に確認される対象 (カンマ区切り)。",
     "set.workspace.approvals_critical": "このプロジェクトの重要な書き込み",
     "set.workspace.approvals_critical.d":
-      "このプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+      "このプロジェクトで必ず確認されるエージェントの書き込みの種類。",
     "set.agents.approvals_policy": "エージェントの書き込み",
     "set.agents.approvals_policy.d":
-      "エージェントがあなたの許可なしにできること。実行して知らせる: 実行し、お知らせに表示します。エージェントの権限を広げる書き込み、シークレットに触れる書き込み、データを削除する書き込み、お金を使う書き込みは常に確認します。ウォッチ中やピン留めしたものへの書き込みも同じです。",
+      "エージェントが許可なしにできること。危険な書き込みは必ず確認します。",
     "set.agents.approvals_policy.o.auto": "実行、通知なし",
     "set.agents.approvals_policy.o.notify": "実行して知らせる",
     "set.agents.approvals_policy.o.ask": "確認する",
     "set.agents.approvals_watch": "ウォッチ",
     "set.agents.approvals_watch.d":
-      "これらへのエージェントの書き込みは、種類にかかわらず先に確認します。ピン留めしたリポジトリやサービスへの書き込みも同じです。カンマ区切り: project:<name>、repo:<name>、service:<repo>/<name>、persona:<id>、agent:<id>、または名前だけ。",
+      "エージェントの書き込みが必ず先に確認される対象 (カンマ区切り)。",
     "set.agents.approvals_critical": "重要な書き込み",
     "set.agents.approvals_critical.d":
-      "すべてのプロジェクトで常に確認するエージェントの書き込みの種類。カンマ区切り、例: repo_clone, service_try。",
+      "すべてのプロジェクトで必ず確認されるエージェントの書き込みの種類。",
     "set.server.health_poll": "表示中のヘルスチェック",
     "set.server.health_poll.d":
       "開いて表示中のページが各サービスのヘルスを確認する間隔: 2〜300 秒。__DEN_CLI__ config health_poll.visible_seconds=5",
@@ -1529,7 +1529,7 @@
       "ページがリポジトリを読むとき (テストページのブランチやコミットなど) に Den が同時に実行する git プロセスの数: 1〜64。__DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "依頼があなたの許可を待つ時間",
     "set.agents.held_wait.d":
-      "エージェントの依頼が期限切れになるまであなたの許可を待つ時間: 10 分から 7 日 (10080)。その間ずっと通知ベルに表示され、再起動後も残ります。古い依頼を許可すると、先にもう一度確認します。__DEN_CLI__ config held_writes.wait_minutes=1440",
+      "依頼が許可を待つ時間。過ぎると失効します。__DEN_CLI__ config held_writes.wait_minutes=1440",
     "set.server.install_mode": "このインストールの種類",
     "set.server.install_mode.d":
       "個人用: 一人の自分のマシン。エージェントはサンドボックスの外で動くので、Docker、ソケット、あなたのツールが使えます。お金、削除、セキュリティ、他の人への操作を除き、設定を確認なしで変更します。厳格: 会社のインストールや共有マシン向け。サンドボックスが有効で、エージェントの書き込みは承認ポリシーに従います。あなたが自分で設定した値はそのまま残ります。__DEN_CLI__ config install_mode=strict",
@@ -1538,33 +1538,33 @@
     "set.agents.settings_limits":
       "設定を変えるエージェント: 上限とパフォーマンス",
     "set.agents.settings_limits.d":
-      "上限、タイムアウト、間隔: 同時に動くエージェントの数、Den の待ち時間。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+      "上限、タイムアウト、間隔。確認なしの変更は監査に記録されます。",
     "set.agents.settings_limits.o.auto": "確認なしで変更 (知らせる)",
     "set.agents.settings_limits.o.ask": "確認する",
     "set.agents.settings_limits.o.never": "許可しない",
     "set.agents.settings_look": "設定を変えるエージェント: 見た目とレイアウト",
     "set.agents.settings_look.d":
-      "Den の見た目と知らせ方: タブ、レール、アラート、通知を止める時間。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+      "タブ、レール、アラート、静かな時間。確認なしの変更は監査に記録されます。",
     "set.agents.settings_look.o.auto": "確認なしで変更 (知らせる)",
     "set.agents.settings_look.o.ask": "確認する",
     "set.agents.settings_look.o.never": "許可しない",
     "set.agents.settings_integrations": "設定を変えるエージェント: 連携",
     "set.agents.settings_integrations.d":
-      "エディター、ターミナル、ランタイム、Hub、GitHub。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+      "エディター、ターミナル、ランタイム、Hub、GitHub。確認なしの変更は監査に記録されます。",
     "set.agents.settings_integrations.o.auto": "確認なしで変更 (知らせる)",
     "set.agents.settings_integrations.o.ask": "確認する",
     "set.agents.settings_integrations.o.never": "許可しない",
     "set.agents.settings_network":
       "設定を変えるエージェント: ネットワークとアクセス",
     "set.agents.settings_network.d":
-      "Den のアドレス、エッジ、サインインの制限、埋め込み。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+      "Den のアドレス、エッジ、サインインの上限、埋め込み。確認なしの変更は監査に記録されます。",
     "set.agents.settings_network.o.auto": "確認なしで変更 (知らせる)",
     "set.agents.settings_network.o.ask": "確認する",
     "set.agents.settings_network.o.never": "許可しない",
     "set.agents.settings_agent_powers":
       "設定を変えるエージェント: エージェントの権限",
     "set.agents.settings_agent_powers.d":
-      "サンドボックス、権限付与、承認、シークレット、インストールの種類。常に確認するか、拒否されます。 確認なしの変更は監査に記録され、更新情報でお知らせします。",
+      "サンドボックス、権限、承認、シークレット、モード。必ず確認するか、拒否されます。",
     "set.agents.settings_agent_powers.o.ask": "確認する",
     "set.agents.settings_agent_powers.o.never": "許可しない",
     "set.server.restore_services": "再起動後にサービスを再開する",
@@ -1572,31 +1572,31 @@
       "オンにすると、マシンまたは __DEN_TITLE__ の再起動後、動いていたサービスが数件ずつ自動で再開します。あなたが停止したサービスは停止したままです。再開したものはベルでお知らせします。__DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "一度に再起動するエージェント数",
     "set.agents.resume_batch.d":
-      "再起動のあと、または Hub のツールが変わったとき、エージェントはこの数ずつ再起動します。作業中だったものが先です。0 にするとすべて同時に再起動します。__DEN_CLI__ config agents.resume.batch=4",
+      "再起動後に一度に再開するエージェント数。0 ならすべて。__DEN_CLI__ config agents.resume.batch=4",
     "set.agents.resume_gap": "再起動グループの間隔",
     "set.agents.resume_gap.d":
       "エージェントの再起動グループが始まってから、次のグループまで待つ時間。__DEN_CLI__ config agents.resume.gap_seconds=30",
     "set.agents.resume_load": "再起動を止める負荷",
     "set.agents.resume_load.d":
-      "マシンの 1 分間の負荷がこれを超えている間、次のエージェント再起動グループは待ちます。0: 制限なし。既定はコア数 × 2 です。__DEN_CLI__ config agents.resume.load_ceiling=16",
+      "マシンの負荷がこれを超えている間、次の再開バッチは待ちます。__DEN_CLI__ config agents.resume.load_ceiling=16",
     "set.agents.resume_max_wait": "負荷で再起動を待たせる最長時間",
     "set.agents.resume_max_wait.d":
-      "エージェントがこれだけ待つと、負荷が高いままでもそのグループを再起動します（これまでどおり数件ずつ）。0: 負荷が高い間はいつまでも待ちます。__DEN_CLI__ config agents.resume.max_wait_seconds=600",
+      "この時間待つと、負荷が高くてもバッチを再開します。__DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "GitHub の issue を書けるロール",
     "set.agents.issue_writes.d":
-      "自分のプロジェクトの GitHub リポジトリで、issue の作成、コメント、ラベル付け、マイルストーン設定をすぐに行えるエージェントのロールです。すべて記録されます。カンマ区切り、空欄はなし。未設定: planner、orchestrator、lead、sde、builder、reviewer、install（__DEN_TITLE__ 自身のエージェント）。__DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "自分のプロジェクトのリポジトリに Issue やコメントを書けるエージェントのロール。__DEN_CLI__ config agents.issue_writes=[planner,sde]",
     "set.agents.issue_writes_per_hour":
       "1 時間あたりの GitHub issue の書き込み数",
     "set.agents.issue_writes_per_hour.d":
-      "すべてのエージェントを合わせて 1 時間に行える issue の書き込み数です。超えると、エージェントに待ち時間が伝えられます。__DEN_CLI__ config agents.issue_writes_per_hour=60",
+      "全エージェント合計で 1 時間に書ける Issue の数。__DEN_CLI__ config agents.issue_writes_per_hour=60",
     "set.agents.issue_writes_visibility_minutes":
       "リポジトリの公開範囲を再確認するまでの時間",
     "set.agents.issue_writes_visibility_minutes.d":
-      "公開リポジトリ、または公開範囲がわからないリポジトリにエージェントが投稿するテキストは、先にリストの名前が含まれていないか確認されます。これは、リポジトリの公開範囲を GitHub に再確認するまで保持する分数です。公開に変わったリポジトリも、すぐに確認の対象になります。1 から 1440。__DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+      "リポジトリの公開・非公開を GitHub に再確認するまでの分数。__DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
     "set.agents.issue_writes_public":
       "公開リポジトリにエージェントが issue を書く",
     "set.agents.issue_writes_public.d":
-      "オンの場合、エージェントは公開リポジトリに issue とコメントを作成できます。テキストは先にリストの名前がないか確認され、フッターにはエージェント名もインストール名も入りません。オフの場合、公開リポジトリへの書き込みは拒否されます。オンにするにはあなたの許可が必要です。__DEN_CLI__ config agents.issue_writes_public=false",
+      "公開リポジトリにエージェントが Issue やコメントを書けるか。__DEN_CLI__ config agents.issue_writes_public=false",
     "ap.do.agent_import":
       "会話 {session} をプロジェクト「{project}」の {persona} エージェントとして取り込む",
     "ap.do.approval_policy": "すべてのプロジェクトの承認ポリシーを {to} に変更",
@@ -1605,7 +1605,7 @@
     "ap.do.pr_close": "{repo} のプルリクエスト {pr} を閉じる: {comment}",
     "set.agents.default_mode": "エージェントのモード: Den 全体の既定",
     "set.agents.default_mode.d":
-      "__DEN_TITLE__ エージェントを含むすべてのエージェントが動くモードです。プロジェクトが上書きした場合を除きます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。変更は、動いているエージェントにもターンの終わりに自動で反映されます。",
+      "すべてのエージェントのモード。プロジェクトやエージェント自身の設定が優先します。",
     "set.agents.default_mode.o.persona": "各ペルソナのモード",
     "set.agents.default_mode.o.ask": "すべて確認する",
     "set.agents.default_mode.o.edits": "編集を自動承認",
@@ -1817,33 +1817,33 @@
     "hubrv.switch": "会社を切り替え",
     "set.agents.hub_link_all": "判断できない候補",
     "set.agents.hub_link_all.d":
-      "リンクすると、プロジェクトが Hub プロジェクトとつながり、エージェントがそこにドキュメント、モック、コメントを保存します。どの Hub プロジェクトが合うか Den が判断できないときだけ、ここに表示されます。1つ選んで「リンク」を押してください。それまで、そのプロジェクトの分は何も保存されません。",
+      "Hub プロジェクトを特定できなかったプロジェクト。それぞれ 1 つ選んでください。",
     "set.agents.hub_delivery_loop": "Hub のデリバリーループ",
     "set.agents.hub_delivery_loop.d":
-      "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
+      "Hub に接続したプロジェクトのエージェントの指示にデリバリーループを入れるか。",
     "set.agents.hub_groups": "Hub のグループ",
     "set.agents.hub_groups.d":
-      "エージェントページに Hub のグループを表示するか（一覧の切り替えの「プロジェクト」の横の「グループ」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
+      "エージェントページに Hub のグループを表示するか。__DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "自動",
     "set.agents.hub_groups.o.on": "オン",
     "set.agents.hub_groups.o.off": "オフ",
     "set.agents.hub_groups_cache": "グループの保持時間",
     "set.agents.hub_groups_cache.d":
-      "Den が Hub のグループのコピーをメモリに保持し、次に Hub にたずねるまでの時間: 5〜3600 秒。エージェントページの「再試行」ですぐに Hub にたずねます。__DEN_CLI__ config hub.groups_cache_seconds=30",
+      "Den が Hub のグループを再確認するまで保持する時間。__DEN_CLI__ config hub.groups_cache_seconds=30",
     "set.workspace.hub_delivery_loop":
       "Hub のデリバリーループ: このプロジェクト",
     "set.workspace.hub_delivery_loop.d":
-      "このプロジェクトのエージェントの指示に Hub のデリバリーループを入れるかどうか。インストール全体の設定より優先されます。エージェントの次の起動から反映されます。",
+      "このプロジェクトのエージェントに Hub のデリバリーループを渡すか (インストールの設定より優先)。",
     "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
     "set.workspace.hub_delivery_loop.o.on": "オン",
     "set.workspace.hub_delivery_loop.o.off": "オフ",
     "set.workspace.agents_max_per_project":
       "プロジェクトごとのエージェント数: このプロジェクト",
     "set.workspace.agents_max_per_project.d":
-      "このプロジェクトのエージェントを同時に動かせる数です。空か 0 なら「プロジェクトごとのエージェント数」を使います。それより低い値だけ設定できます。これを超える起動は拒否され、どの上限で止まったかが表示されます。",
+      "このプロジェクトで同時に動かせるエージェント数。空欄なら既定値。",
     "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
     "set.workspace.hub_delivery_loop_extra.d":
-      "このプロジェクト独自のテキスト。エージェントの指示で、Den のループの後に追加されます。Den の文面は編集できません。空なら何も追加しません。",
+      "Den のデリバリーループの後に加える、このプロジェクト独自のテキスト。",
     "ub.intro":
       "どの Hub プロジェクトが合うか、Den には判断できません。それぞれ1つ選んで「リンク」を押してください。",
     "ub.why.repos": "2つの Hub プロジェクトが同じリポジトリを持っています",
@@ -2723,14 +2723,14 @@
     "set.workspace.agents_mode":
       "エージェントのモード: このプロジェクト (Den 全体の既定を上書き)",
     "set.workspace.agents_mode.d":
-      "このプロジェクトのエージェントが動くモードで、Den 全体の既定より優先されます。優先順位: エージェント独自の設定、次にプロジェクト、次に Den 全体の既定、最後にペルソナ。下に各エージェントのモードとその出どころを示します。変更は実行中のエージェントにもターンの後で自動的に届きます。",
+      "このプロジェクトのエージェントのモード (Den 全体の既定より優先)。",
     "set.workspace.mcp_servers": "エージェントの追加 MCP: このプロジェクト",
     "set.workspace.mcp_servers.d":
-      "このプロジェクトのエージェントが Den と Hub のものに加えて使う HTTP の MCP(名前とアドレス)。bearer は呼び出しのたびにインストールのシークレットストアから読まれ、表示されることはありません。ここで変更や削除もできます。エージェントは project_mcp_add、project_mcp_update、project_mcp_remove で求め、あなたが許可します。",
+      "Den と Hub 以外に、このプロジェクトのエージェントが使う HTTP MCP エンドポイント。",
     "pmcp.none": "このプロジェクトのエージェントに追加の MCP はありません。",
     "set.workspace.event_feeds": "アプリのイベントフィード: このプロジェクト",
     "set.workspace.event_feeds.d":
-      "このプロジェクトのアプリが自分のストリームで 1 つのエージェントに送るイベントです。未読があると、Den はエージェントが待機中のときに短い 1 行を入力します。ターンの途中には入力しません。エージェントは app_feed_read で読みます。各フィードは接続しているかと最後のイベントの時刻を示します。ここで追加や削除ができます。エージェントは project_event_feed_add か project_event_feed_remove で求めます。bearer は secrets.refs の名前で、値ではありません。",
+      "このプロジェクトのアプリからのイベントストリーム。それぞれ 1 つのエージェントが読みます。",
     "set.embed.feed_max_streams": "同時に読むアプリフィード",
     "set.embed.feed_max_streams.d":
       "Den が全プロジェクトで同時に読むアプリのイベントフィードの最大数です。超えたフィードは読まれず、そのプロジェクトの通知でお知らせします。",
@@ -4432,8 +4432,7 @@
     "set.ui.rot.add": "上書き設定を追加",
     "set.ui.hub.badConfig": "user.yml の hub が無効です",
     "setc.hub": "Hub",
-    "setc.hub.d":
-      "Den Hub は、会社のドキュメント、モック、コメント、承認が集まる場所です。このインストールを接続すると、すべてのエージェントがそこで検索・公開でき、自分の作業へのコメントや決定を受け取ります。Den のドキュメントの docs/hub.md を参照してください。",
+    "setc.hub.d": "会社のドキュメント、モック、コメント、承認が置かれる場所。",
     "set.ui.hub.addrNotUrl":
       "Web アドレスではありません。https:// で始めてください",
     "set.ui.hub.addrHttps":
@@ -4528,7 +4527,8 @@
     "setd.g.work": "プロジェクトとエージェント",
     "setd.g.access": "アクセスとセキュリティ",
     "setd.g.den": "このインストール",
-    "setd.readOnly": "変更するにはサインインしてください。このブラウザーでは表示のみできます。",
+    "setd.readOnly":
+      "変更するにはサインインしてください。このブラウザーでは表示のみできます。",
     "setd.toAccount.devices": "デバイス",
     "setd.toAccount.profile": "サインアウト",
     "setd.sub.more": "その他",
@@ -4568,11 +4568,9 @@
     "setc.graph.d":
       "グラフのレイアウトと、プロジェクトページでのプロジェクトの表示方法です。各ページのコントロールでも設定できます。",
     "setc.workspace": "プロジェクト設定",
-    "setc.workspace.d":
-      "1 つのプロジェクトの設定です。上部バーで表示しているプロジェクトに従います。",
+    "setc.workspace.d": "上部バーで選んだプロジェクトの設定。",
     "setc.agents": "エージェント",
-    "setc.agents.d":
-      "エージェントが動くランタイムです。インストール済みのものが先に並びます。設定したパスはこのマシンだけのものです。全体 (config/local/user.yml) か 1 つのプロジェクト (config/local/workspaces.yml) に設定でき、プロジェクトの設定が優先されます。",
+    "setc.agents.d": "エージェントが動くランタイムと、その動かし方。",
     "setc.access": "アクセス",
     "setc.access.d":
       "ほかのデバイスからこの Den にアクセスします。オーナーとして GitHub でサインインするか、一回限りのリンクでデバイスをペアリングします。localhost では何も求められません。",
@@ -4660,17 +4658,17 @@
     "set.graph.panelWidth.d":
       "グラフの詳細パネルの幅 (ピクセル、360〜760) です。",
     "set.workspace.editor.d":
-      "このプロジェクトや、言語ごとの上書き設定がないそのリポジトリを開くと、あなたの既定の代わりにこのエディターを使います。",
+      "このプロジェクトのリポジトリを開くエディター (既定の代わり)。",
     "set.workspace.hub.d":
-      "このプロジェクトのエージェントが Hub の作業 (ドキュメント、モック、コメント) を保存する Hub プロジェクトです。Den が勝手にリンクすることはありません。Hub が同じリポジトリか同じ名前のプロジェクトを提案し、あなたが確定します。リンクしていない場合、Hub は作業を「未分類」に保存します。__DEN_CLI__ hub link -p <project>",
+      "このプロジェクトのエージェントがドキュメント、モック、コメントを置く Hub プロジェクト。__DEN_CLI__ hub link -p <project>",
     "set.agents.layout.d":
-      "「フォーカス」は 1 つのエージェントを、「タブ」はタブ付きで 1 つずつ、「タイル」は最大 4 つをグリッドで表示します。エージェントタブの切り替え、⌃⇧1、⌃⇧2、⌃⇧3、⌘K でも設定できます。",
+      "エージェントタブの表示方法: 1 つ、タブ付き、または最大 4 つ。",
     "set.agents.layout.o.focus": "フォーカス",
     "set.agents.layout.o.tabs": "タブ",
     "set.agents.layout.o.tile": "タイル",
     "set.agents.coach_counts": "Coach タブ：件数の表示",
     "set.agents.coach_counts.d":
-      "合計は期間の件数を、1 日あたりは日数で割った件数を表示します。割合と平均は変わりません。Coach タブの切り替えでも変えられます。",
+      "Coach タブに合計と 1 日あたりのどちらを表示するか。",
     "set.agents.coach_counts.o.total": "合計",
     "set.agents.coach_counts.o.per_day": "1 日あたり",
     "set.agents.helpers_shown": "エージェントの下に表示するヘルパーの最大数",
@@ -4783,19 +4781,18 @@
       "あなたを必要としているエージェントの数を、タブのタイトルとアイコンに表示します（ベルの件数ではありません）。0 のときは何も表示しません。",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
-      "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",
+      "各ランタイムの状態、バージョン、パス、そのパスの出どころ。",
     "set.agents.rotation.d":
-      "エージェントの会話がこの回数だけ圧縮されると (またはプルリクエストがマージされると)、Den は引き継ぎからエージェントを再開始します。新しい会話で、名前、ペルソナ、プロジェクト、フォルダーは同じです。「自動」は待機中のエージェントに引き継ぎを書かせてから自動で再起動し、「たずねる」はエージェントにボタンを表示し、「オフ」は何もしません。上書き設定はこのインストールの値より優先されます: エージェント、プロジェクト内のペルソナ、ペルソナ、プロジェクト、サービスの順です。__DEN_CLI__ agents rotate",
+      "この回数の圧縮後、Den が引き継ぎからエージェントを新しく始めるタイミング。__DEN_CLI__ agents rotate",
     "set.agents.hub.d":
-      "このインストールを会社の Hub に接続します。Hub でサインインして承認してください。すると各エージェントが Hub のツールを使えるようになります: Hub の検索、ドキュメントやモックの公開。会社はこのインストールのトークンから、Hub のプロジェクトはプロジェクト設定 › Hub プロジェクトから決まります。",
-    "set.agents.hub_github.d":
-      "会社の GitHub リポジトリのうち Den Hub が読めるものの数を Hub にその場で問い合わせて表示します。アクセスを許可したりリポジトリを変更したりする GitHub のリンクもあります。",
+      "このインストールを会社の Hub に接続し、全エージェントに Hub のツールを渡します。",
+    "set.agents.hub_github.d": "Den Hub が読める会社の GitHub リポジトリの数。",
     "set.agents.personas.d":
-      "エージェントを始めるときの設定です。組み込みのものは Den に、ディストリビューションのものはディストリビューションに含まれ、あなたのものはこのマシンにあります。表示 / 編集、複製、+ 新しいペルソナ。編集や削除ができるのは自分のものだけです。",
+      "始めるためのエージェント設定: 組み込み、ディストリビューションのもの、自分のもの。",
     "set.cli.local_dev.d":
       "オフにすると、プロジェクトとプロジェクトの API を非表示にします。__DEN_CLI__ config local_dev=false",
     "set.agents.keep_running.d":
-      "オン（新しいインストールでは既定）: __DEN_TITLE__ は LaunchDaemon として動き、ログアウト後もエージェントが動き続けます。そこではエージェントはログインキーチェーンではなく、シークレットストアの長期トークンでサインインします。トークンはエージェントの CLI にサインインすると作られ、下の「サインイン用トークン」に貼り付けます。オフ: ログアウトでエージェントは止まります。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
+      "ログアウト後もエージェントを動かし続けるか。__DEN_CLI__ config agents.keep_running_after_logout=true のあと __DEN_CLI__ service install",
     "set.cli.cli_tabs.d":
       "up と restart で既定でターミナルのタブを開くかどうかです。__DEN_CLI__ config cli_tabs=true",
     "set.cli.log_window_lines.d":
@@ -4839,7 +4836,7 @@
     "set.distribution.github_org.d":
       "github_org: Den がリポジトリをクローンし一覧表示する組織です。", // words-ok: the en string's own word, translated
     "set.distribution.hub_github.d":
-      "会社の GitHub リポジトリのうち Den Hub が読めるものの数を、Hub にその場で問い合わせて表示します。Den Hub は会社の GitHub App のインストールを通じてのみリポジトリを読みます。ボタンを押すと GitHub が開き、App のインストールやリポジトリの変更ができます。戻ってくると、Den はプロジェクトを再び Hub に送り、リポジトリは自動でリンクされます。",
+      "Den Hub が読める会社の GitHub リポジトリの数。",
     "set.distribution.orgs.d":
       "orgs: リポジトリが属する GitHub の組織の表示名です。", // words-ok: the en string's own word, translated
     "set.distribution.web_port.d":
@@ -4849,7 +4846,7 @@
     "set.distribution.domain.d":
       "edge.domain: サービスは https://<service>.<domain> で提供されます。",
     "set.workspace.name.d":
-      "Den がこのプロジェクトをヘッダー、一覧、ページで表示する名前です。Hub のプロジェクトにリンクしている場合は Hub の名前です。スラッグは変わりません。",
+      "Den でのこのプロジェクト名。Hub プロジェクトにリンクすると、その名前になります。",
     "set.ui.rt.toolsComing": "Den ツール: 対応予定",
     "set.ui.rt.installed": "インストール済み",
     "set.ui.rt.notInstalled": "未インストール",
