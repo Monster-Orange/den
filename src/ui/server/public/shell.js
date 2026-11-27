@@ -11072,6 +11072,7 @@
     "  background: none; border: 0; border-top: 1px solid var(--border); padding: 8px 12px; cursor: pointer; }",
     ".den-bell-older::before { content: '\\25B8  '; }",
     ".den-bell-older[aria-expanded=true]::before { content: '\\25BE  '; }",
+    "#den-bell-pop [data-list-pager] { padding: 4px 12px 8px; }",
     ".den-bell-ask { margin: 8px 12px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px;",
     "  background: var(--bg); }",
     ".den-bell-ask p { margin: 0 0 6px; }",
