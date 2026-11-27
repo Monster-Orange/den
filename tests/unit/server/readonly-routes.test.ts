@@ -305,6 +305,12 @@ describe("/api/activity", () => {
           detail: "shop/worker restart (local) [a2]",
         },
       ],
+      next: null,
+      prev: null,
+      total: 1,
+      offset: 0,
+      page: 1,
+      pages: 1,
     });
   });
 

@@ -35,6 +35,7 @@ import {
 } from "../../shared/stacks/status.js";
 import { readStacks } from "../../shared/stacks/config.js";
 import { send400, sendJson } from "./http-helpers.js";
+import { isPageError, pageOf, readPageAsk, sendPageError } from "./paging.js";
 import { recentActions, type AuditEntry } from "./audit.js";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
 
@@ -238,7 +239,23 @@ export async function handleReadonlyRoutes(
       send400(res, "address or repo is required");
       return true;
     }
-    sendJson(res, { entries: activityFor(deps.actions(), { address, repo }) });
+    const ask = readPageAsk(url.searchParams, `activity.${name}`);
+    if (isPageError(ask)) return (sendPageError(res, ask), true);
+    const sameTs = new Map<string, number>();
+    const rows = activityFor(deps.actions(), { address, repo })
+      .reverse()
+      .map((e) => {
+        const n = (sameTs.get(e.ts) ?? 0) + 1;
+        sameTs.set(e.ts, n);
+        return { e, id: `${e.ts}#${String(n).padStart(6, "0")}` };
+      });
+    const { items, ...at } = pageOf(rows, ask, {
+      key: (r) => r.e.ts,
+      id: (r) => r.id,
+      order: "desc",
+      total: true,
+    });
+    sendJson(res, { entries: items.map((r) => r.e), ...at });
     return true;
   }
 
