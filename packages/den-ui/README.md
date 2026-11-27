@@ -700,6 +700,12 @@ never converted to HTML and back).
       });
       tabs.set("p"); tabs.chosen(); tabs.destroy();
 
+- The model: `kind` (`"page"`, `"switch"` or `"panel"`), `label` (the
+  group's name), `items` (each `{ id, text, href, count, disabled,
+  panel }`: `id` names it, `text` is its words, `href` its page, `count`
+  a number after it, `disabled` greys it, `panel` the id of the panel it
+  shows), `chosen` (the chosen item's `id`) and `size` (`"auto"`, `"m"`
+  or `"l"`).
 - `kind: "page"` is a `<nav>` of links, the chosen one
   `aria-current="page"`, each its own Tab stop, working with no script.
   `kind: "switch"` is a `role="group"` of buttons, the chosen one
