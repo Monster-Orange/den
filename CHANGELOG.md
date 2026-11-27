@@ -9,11 +9,11 @@ config and manifest changes a distribution must make to move to it under
 ### Changed
 
 - A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default) and an opaque `?cursor`, filters before the cut, and one answer shape `{ items, next, total? }`. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
-- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) answer one page, `{ items, next }`, with `?limit`, `?cursor` and `?q`. The cursor carries GitHub's own page state. `q` runs on GitHub before the cut: branch names that start with it, repo names that contain it. The Add service picker sends `q` as you type, for repos and branches. (issue 1926)
+- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) answer one page, `{ items, next }`, with `?limit`, `?cursor` and `?q`. The cursor carries GitHub's own page state, and branch page 1 starts with the repo's default branch. `q` runs on GitHub before the cut: branch names that start with it, repo names that contain it. The Add service picker sends `q` as you type, for repos and branches. (issue 1926)
 
 ### Fixed
 
-- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) are faster: other requests no longer wait on GitHub while it answers, and Den fetches one page of 100 instead of every page. (issue 1926)
+- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) are faster: other requests no longer wait on GitHub while it answers, and the branch lists fetch one page of 100 instead of every page, with the repo's default branch always first. The repo list still fetches up to 200 per org. (issue 1926)
 
 ## [0.4.92] - unreleased
 

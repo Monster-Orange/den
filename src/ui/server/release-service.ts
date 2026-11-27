@@ -752,18 +752,13 @@ export class ReleaseService {
 
   // ── Dispatch + monitor ──────────────────────────────────────────────────────
 
-  /** One page of a repo's branches (the deploy-time branch selector); main first. */
+  /** One page of a repo's branches (the deploy-time branch selector). */
   async listBranches(
     repo: string,
     ask: PageAsk = { limit: GH_PAGE_MAX, after: null },
     q = "",
   ): Promise<Page<string>> {
-    const page = await branchPage((a) => ghSafe(a), this.slug(repo), ask, q);
-    if (ask.after || q || !page.items.includes("main")) return page;
-    return {
-      ...page,
-      items: ["main", ...page.items.filter((n) => n !== "main")],
-    };
+    return branchPage((a) => ghSafe(a), this.slug(repo), ask, q);
   }
 
   /** Whether the repo has this branch (one GitHub lookup). */

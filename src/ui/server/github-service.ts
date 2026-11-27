@@ -72,19 +72,20 @@ export interface GitHubRepo {
 }
 
 export class GitHubService {
-  private pages = new Map<string, { raw: string; at: number }>();
+  private pages = new Map<string, { raw: Promise<string>; at: number }>();
   private denRepos = new Map<string, { names: Set<string>; at: number }>();
   private warnedNotConfigured = false;
 
-  /** gh, with each answer kept for ttl ms (by its args). */
+  /** gh, with each answer (or the call in flight) kept for ttl ms, by its args. */
   private cachedGh(ttl: number): GhRun {
-    return async (args) => {
+    return (args) => {
       const k = args.join("\0");
       const hit = this.pages.get(k);
       if (hit && Date.now() - hit.at < ttl) return hit.raw;
-      const raw = await gh(args, GH_API_TIMEOUT_MS);
       if (this.pages.size >= 500) this.pages.clear();
+      const raw = gh(args, GH_API_TIMEOUT_MS);
       this.pages.set(k, { raw, at: Date.now() });
+      raw.catch(() => this.pages.delete(k));
       return raw;
     };
   }

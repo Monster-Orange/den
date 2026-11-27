@@ -102,9 +102,9 @@ describe("GitHubService", () => {
 
     it("caches results and returns from cache on second call", async () => {
       replyAlways('["main"]\n');
-      (await svc.listBranches("org/repo")).items;
-      (await svc.listBranches("org/repo")).items;
-      expect(mockExecFile).toHaveBeenCalledTimes(1);
+      await svc.listBranches("org/repo");
+      await svc.listBranches("org/repo");
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
     });
 
     it("returns empty array when gh api throws", async () => {
@@ -112,15 +112,15 @@ describe("GitHubService", () => {
       expect((await svc.listBranches("org/repo")).items).toEqual([]);
     });
 
-    it("asks GitHub for one page, never --paginate", async () => {
-      replyAlways('["main","dev","feature-a"]\n');
-      expect((await svc.listBranches("org/repo")).items).toEqual([
-        "main",
-        "dev",
-        "feature-a",
-      ]);
+    it("asks GitHub for one page, never --paginate, and puts the default branch first", async () => {
+      const page = Array.from({ length: 100 }, (_, i) => `feat/${i}`);
+      replyWith(JSON.stringify(page), "main\n");
+      const names = (await svc.listBranches("org/repo")).items;
+      expect(names.slice(0, 2)).toEqual(["main", "feat/0"]);
+      expect(names).toHaveLength(101);
       expect(ghArgs()).toEqual([
         "api repos/org/repo/branches?per_page=100&page=1 --jq [.[].name]",
+        "api repos/org/repo --jq .default_branch",
       ]);
     });
   });
@@ -222,6 +222,7 @@ describe("GitHubService", () => {
         environments: ["local"],
         github_org: "Org",
       });
+      replyAlways(gqlPage([{ name: "shop", nameWithOwner: "Org/shop" }]));
       await svc.listOrgRepos();
       await svc.listOrgRepos();
       // Only 2 gh calls (repo list + den search) for the first call
@@ -233,6 +234,7 @@ describe("GitHubService", () => {
         environments: ["local"],
         github_org: "Org",
       });
+      replyAlways(gqlPage([{ name: "shop", nameWithOwner: "Org/shop" }]));
       await svc.listOrgRepos();
       await svc.listOrgRepos(undefined, "", true);
       expect(mockExecFile).toHaveBeenCalledTimes(4);

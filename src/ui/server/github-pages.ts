@@ -4,6 +4,7 @@
  * The cursor carries GitHub's own page state: the REST page number for
  * branches, the GraphQL endCursor for repos. A ?q runs on GitHub before
  * the cut: branch names that start with q, repo names that contain it.
+ * Branch page 1 starts with the repo's default branch; later pages skip it.
  */
 import type * as http from "http";
 import { sendJson } from "./http-helpers.js";
@@ -25,6 +26,7 @@ export const GH_PAGE_MAX = 100;
 export class BadCursor extends Error {}
 
 const BRANCH_Q = /^[A-Za-z0-9._/-]{1,100}$/;
+const BRANCH_NAME = /^[A-Za-z0-9._/-]{1,255}$/;
 const REPO_Q = /^[A-Za-z0-9._-]{1,100}$/;
 
 /** q from the query string: "" for none, null when it can't be a name. */
@@ -82,16 +84,22 @@ export async function branchPage(
       throw new BadCursor();
     [page, per] = [k[0], Math.min(k[1], GH_PAGE_MAX)];
   }
-  const raw = await run([
-    "api",
-    `repos/${slug}/branches?per_page=${per}&page=${page}`,
-    "--jq",
-    "[.[].name]",
+  const [raw, def] = await Promise.all([
+    run([
+      "api",
+      `repos/${slug}/branches?per_page=${per}&page=${page}`,
+      "--jq",
+      "[.[].name]",
+    ]),
+    run(["api", `repos/${slug}`, "--jq", ".default_branch"]).catch(() => ""),
   ]);
-  const items = names(raw);
+  const got = names(raw);
+  const d = def.trim();
+  const pin = BRANCH_NAME.test(d) ? d : "";
+  const rest = got.filter((n) => n !== pin);
   return {
-    items,
-    next: items.length === per ? encodeCursor([page + 1, per], slug) : null,
+    items: page === 1 && pin ? [pin, ...rest] : rest,
+    next: got.length === per ? encodeCursor([page + 1, per], slug) : null,
   };
 }
 
@@ -134,8 +142,14 @@ function gql(
   return [...args, "--jq", jq];
 }
 
-const parseGql = (raw: string): GqlPage =>
-  raw.trim() ? (JSON.parse(raw) as GqlPage) : EMPTY;
+function parseGql(raw: string): GqlPage {
+  try {
+    const p = JSON.parse(raw) as Partial<GqlPage> | null;
+    return Array.isArray(p?.nodes) && p.pageInfo ? (p as GqlPage) : EMPTY;
+  } catch {
+    return EMPTY;
+  }
+}
 
 export interface RepoPageOf {
   nodes: GhRepoNode[];

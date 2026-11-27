@@ -503,8 +503,9 @@ describe("listBranches", () => {
     expect((await svc.listBranches("files-api")).items).toEqual([]);
   });
 
-  it("asks GitHub for one page, and puts main first", async () => {
+  it("asks GitHub for one page, and puts the default branch first", async () => {
     on("branches?per_page", '["alpha","main","zeta"]');
+    on("--jq .default_branch", "main");
     expect((await svc.listBranches("files-api")).items).toEqual([
       "main",
       "alpha",
