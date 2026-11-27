@@ -6,9 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.92] - unreleased
 
+- A terminal host that has shut down no longer puts back a state folder that was removed. A session that ended just after the host stopped used to recreate `<state>/sessions` to save its record. While the folder is there, that record is still saved.
+
 ## [0.4.91] - 2026-11-26
 
-- A terminal host that has shut down no longer puts back a state folder that was removed. A session that ended just after the host stopped used to recreate `<state>/sessions` to save its record. While the folder is there, that record is still saved.
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)
 - An install reached through a symlinked folder (its `node_modules` a link to another folder) no longer restarts its terminal host, ending open terminals, at every Den start. Den now compares the terminal module the host loaded and the one installed by the file they resolve to, not by how the path is spelled. A module that's gone or replaced still restarts the host.
 - When a request is slow, the server's log now says which route, who asked and how long it took, and a blocked server logs how long it was stuck. Both thresholds are in Settings › Server (`server_log.slow_request_ms`, 3 s, and `server_log.event_loop_lag_ms`, 1 s). The lines never include the address, query, headers or body, and each is written at most once a minute.
