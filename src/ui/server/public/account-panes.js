@@ -83,7 +83,7 @@ function profileHtml({ session, account }, t) {
     ) +
     (owner ? kv(t("account.role"), esc(t("acct.roleOwner"))) : "") +
     `<div data-acct-rows></div>` +
-    `<p class="dn-pane-d"><a href="?account=devices" data-dn-hit="devices">${esc(t("account.toDevices"))}</a></p>`
+    `<p class="dn-pane-d"><a href="?account=devices" data-dn-to="devices">${esc(t("account.toDevices"))}</a></p>`
   );
 }
 
