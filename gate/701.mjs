@@ -285,7 +285,7 @@ const NO_SEND_TO =
   /^hub comment: (the doc's Send to names the person @|the doc page has no Send to box)/;
 const notSent = (x) => ({
   ok: null,
-  skip: "needs-hub-fixture-comment",
+  skip: "needs-fixture-comment",
   detail: `the bed's test doc offers no agent to send a comment to, so none was posted: ${x.postThrew}`,
 });
 

@@ -379,7 +379,7 @@ function hubRow(h) {
     return {
       clause: clauses[1],
       ok: null,
-      skip: "needs-hub-fixture-comment",
+      skip: "needs-fixture-comment",
       detail: `the bed's test doc offers no agent to send a comment to, so none was posted: ${h.postThrew}`,
     };
   if (h.running && h.noDialog)
