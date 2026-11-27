@@ -10220,6 +10220,7 @@ async function handleRequest(
       // D64: how long the browser's Restart Den waits before it shows the
       // CLI line (ui.restart_wait_seconds in config/local/user.yml).
       restartWaitSeconds: restartWaitSeconds(),
+      edgeSettled: !EDGE_TRUST.starting,
     });
   }
 

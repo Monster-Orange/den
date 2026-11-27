@@ -439,6 +439,9 @@
     "tests/unit/server/dialogs-fit-ipad.browser.test.ts": [
       "src/ui/server/public/dialog-den.js"
     ],
+    "tests/unit/server/edge-start-settled.integration.test.ts": [
+      "src/shared/edge/start.ts"
+    ],
     "tests/unit/server/edge-page.browser.test.ts": [
       "src/ui/server/readonly-routes.ts",
       "src/shared/edge/status.ts"
@@ -4274,6 +4277,15 @@
       ],
       "run": [
         "tests/unit/server/edge-page.browser.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/edge/start.ts"
+      ],
+      "run": [
+        "tests/unit/server/edge-start-settled.integration.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
