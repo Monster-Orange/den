@@ -498,7 +498,7 @@ function _arriveFromHub(data, scope) {
   history.replaceState(history.state, "", u.pathname + u.search + u.hash);
   const ws = projectForHubSlug(data, p);
   if (!ws || (scope?.scope === ws && scope?.focus === ws)) return false;
-  void _switchScope(ws, scope?.focus ?? null, false);
+  void _switchScope(ws, scope?.focus ?? null, false).then(_renderScopeMenu);
   return true;
 }
 
