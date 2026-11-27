@@ -62,6 +62,23 @@ describe("the session's hidden-file list covers each Hub token file", () => {
     );
   });
 
+  it("Linux: a hidden file under a folder the session reads (agents/) is masked after its read-back", () => {
+    const agents = path.join(stateDir, "agents");
+    const planted = path.join(agents, "planted.secret");
+    fs.mkdirSync(agents, { recursive: true });
+    fs.writeFileSync(planted, `${SECRET}\n`);
+    const base = policyReadingHubFolder();
+    expect(base.readable).toContain(agents);
+    const a = bwrapArgs(
+      { ...base, hidden: [...base.hidden, planted] },
+      fs.existsSync,
+      (f) => f,
+    ).join(" ");
+    expect(a.lastIndexOf(`--ro-bind /dev/null ${planted}`)).toBeGreaterThan(
+      a.lastIndexOf(`--ro-bind ${agents} ${agents}`),
+    );
+  });
+
   const onMac =
     process.platform === "darwin" &&
     spawnSync("sandbox-exec", [
