@@ -62,7 +62,7 @@ describe("issue 981's live check", () => {
 
 describe("issue 898's live check", () => {
   const LONG =
-    "Gate 898 a project whose name runs well past the row on any iPad";
+    "GATE 898 WWW MMM WWW MMM WWW MMM WWW MMM WWW MMM WWW MMM WWW MMM";
   const row = (fixed: boolean, text = LONG) => ({
     tag: "webkit-820x1180",
     text,
@@ -145,6 +145,14 @@ describe("issue 406's live check", () => {
     lineHeight: fontSize * 1.4,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  });
+
+  it("with no test Den to run on, both clauses are not run, never passed", () => {
+    const r = rows(406, [
+      cell("webkit", { tag: "webkit-1280", skip: "needs-den2", entry: [] }),
+    ]);
+    expect(r.map((x) => x.ok)).toEqual([null, null]);
+    expect(r.map((x) => x.skip)).toEqual(["needs-den2", "needs-den2"]);
   });
 
   it("before the fix (one line while a name is known): the two-line clause fails", () => {
