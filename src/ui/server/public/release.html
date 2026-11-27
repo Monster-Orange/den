@@ -1222,9 +1222,12 @@
 
           const branchSel = $("dep-branch");
           // Load branches lazily
-          fetch(`/api/release/branches?repo=${encodeURIComponent(repo)}`)
+          fetch(
+            `/api/release/branches?repo=${encodeURIComponent(repo)}&limit=100`,
+          )
             .then((r) => r.json())
-            .then((branches) => {
+            .then((page) => {
+              const branches = Array.isArray(page) ? page : (page?.items ?? []);
               if (Array.isArray(branches) && branches.length) {
                 branchSel.innerHTML = branches
                   .map((b) => `<option value="${esc(b)}">${esc(b)}</option>`)

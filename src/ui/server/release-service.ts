@@ -36,6 +36,8 @@ import {
   orgHasGithub,
 } from "../../shared/org-sources.js";
 import { listReposWithManifests } from "../../shared/manifest/workspace-manifests.js";
+import { branchPage, firstAsk, isBranchPath } from "./github-pages.js";
+import type { Page, PageAsk } from "./paging.js";
 
 import { product } from "../../shared/product.js";
 const execFileAsync = promisify(execFile);
@@ -750,30 +752,26 @@ export class ReleaseService {
 
   // ── Dispatch + monitor ──────────────────────────────────────────────────────
 
-  /** List branches for a repo (for the deploy-time branch selector). */
-  async listBranches(repo: string): Promise<string[]> {
-    const ghSlug = this.slug(repo);
-    const raw = await ghSafe([
+  /** One page of a repo's branches (the deploy-time branch selector). */
+  async listBranches(
+    repo: string,
+    ask: PageAsk = firstAsk("release.branches"),
+    q = "",
+  ): Promise<Page<string>> {
+    return branchPage((a) => ghSafe(a), this.slug(repo), ask, q);
+  }
+
+  /** Whether the repo has this branch (one GitHub lookup). */
+  async branchExists(repo: string, ref: string): Promise<boolean> {
+    if (!isBranchPath(ref)) return false;
+    const path = ref.split("/").map(encodeURIComponent).join("/");
+    const name = await ghSafe([
       "api",
-      "--paginate",
-      `repos/${ghSlug}/branches?per_page=100`,
+      `repos/${this.slug(repo)}/branches/${path}`,
       "--jq",
-      "[.[].name]",
+      ".name",
     ]);
-    if (!raw) return [];
-    const names = raw
-      .split("\n")
-      .filter(Boolean)
-      .flatMap((line) => {
-        try {
-          return JSON.parse(line) as string[];
-        } catch {
-          return [];
-        }
-      });
-    // main first, then the rest sorted.
-    const rest = names.filter((n) => n !== "main").sort();
-    return names.includes("main") ? ["main", ...rest] : rest;
+    return name === ref;
   }
 
   /**
