@@ -963,3 +963,20 @@ input[type="number"] {
     margin-top: var(--space-2);
   }
 }
+.set-more {
+  margin-top: var(--space-1);
+}
+.set-more > summary {
+  width: max-content;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  cursor: pointer;
+}
+.set-more > p {
+  margin: var(--space-1) 0 0;
+}
+.set-more code {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
