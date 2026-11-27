@@ -5968,6 +5968,7 @@
     agentsNeedYou: 0,
     // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
     hub: null,
+    hubProject: "",
     pins: [],
     collapsed: false,
     hidden: [],
@@ -7494,6 +7495,11 @@
       h.state === "connected"
         ? hubTarget(h.teamUrl || "") || hubTarget(h.url || "")
         : "";
+    if (href && state.hubProject) {
+      var hu = new URL(href);
+      hu.searchParams.set("project", state.hubProject);
+      href = hu.href;
+    }
     if (href) return { href: href, team: h.team || "" };
     var key =
       {

@@ -2448,6 +2448,7 @@
         "tests/unit/server/settings-hub-review.test.ts",
         "tests/unit/server/term-input.test.ts",
         "tests/unit/server/update-security.test.ts",
+        "tests/unit/server/workspace-picker-hub-slug.test.ts",
         "tests/unit/shared/github-watch/watcher.test.ts",
         "tests/unit/shared/hub-binding.test.ts",
         "tests/unit/shared/hub-groups.test.ts",
