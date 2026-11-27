@@ -4457,7 +4457,6 @@
     "setd.g.access": "アクセスとセキュリティ",
     "setd.g.den": "このインストール",
     "setd.readOnly": "変更するにはサインインしてください。このブラウザーでは表示のみできます。",
-    "setd.toAccount.notifications": "通知",
     "setd.toAccount.devices": "デバイス",
     "setd.toAccount.profile": "サインアウト",
     "setd.sub.more": "その他",
