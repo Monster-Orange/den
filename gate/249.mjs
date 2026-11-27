@@ -1,3 +1,4 @@
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 249;
 export const clauses = [
   "with Hub connected, an agent's Hub calls go out with that agent's bound token, and the server agent's with the install token",
@@ -9,7 +10,7 @@ const ID = "gate-249-bound";
 const SERVER = "server";
 
 async function rows(ctx) {
-  const r = await ctx.api("/api/sessions?all=1").catch(() => ({}));
+  const r = await allSessions((u) => ctx.api(u)).catch(() => ({}));
   return Array.isArray(r?.sessions) ? r.sessions : [];
 }
 const rowOf = async (ctx, id) => (await rows(ctx)).find((x) => x.agent === id);
