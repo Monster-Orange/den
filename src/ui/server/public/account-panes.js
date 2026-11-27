@@ -117,8 +117,22 @@ const rowsCtx = (shell) =>
 async function mountRows(host, ids, shell) {
   const ctx = await rowsCtx(shell);
   if (!ctx) return false;
-  drawRows(host, localRows(ids, shell), ctx);
+  drawRows(host, localRows(ids, shell), ctx, {
+    idPrefix: "acct-",
+    scopeTag: false,
+  });
   return true;
+}
+
+/** The rows' stylesheets, linked once whatever page the pop-up is over. */
+function linkStyles() {
+  for (const href of ["/settings-rows.css", "/account-panes.css"]) {
+    if (document.querySelector(`link[href="${href}"]`)) continue;
+    const l = document.createElement("link");
+    l.rel = "stylesheet";
+    l.href = href;
+    document.head.append(l);
+  }
 }
 
 /** Account › Notifications: the bell's kinds (Hub's too) and the alerts. */
@@ -137,6 +151,8 @@ export const registryRow = (id) =>
  */
 export async function loadAccountPane(pane, body, deps) {
   const { t } = deps;
+  linkStyles();
+  body.classList.add("acct-pane");
   try {
     if (pane === "profile") {
       const [session, account] = await Promise.all([
