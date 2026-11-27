@@ -169,12 +169,14 @@ export function hydrateDialogNav(dialog, opts = {}) {
   let opener = null;
   let pushed = false;
   let reopening = false;
+  let unwinding = null;
 
   const section = (id) =>
     $$("section[data-dn-pane]").find((s) => s.dataset.dnPane === id);
   const current = () =>
     $("a.dn-row[aria-current='true']")?.dataset.dnPane ??
     $$("section[data-dn-pane]").find((s) => !s.hidden)?.dataset.dnPane;
+  const first = () => $("section[data-dn-pane]")?.dataset.dnPane;
   const url = (pane, at) => {
     const u = new URL(win.location.href);
     u.searchParams.set(param, pane ?? "");
@@ -327,20 +329,12 @@ export function hydrateDialogNav(dialog, opts = {}) {
       return;
     }
     if (opts.url !== false) {
-      if (pushed) {
-        pushed = false;
-        win.history.back();
-      } else
-        win.history.replaceState(
-          null,
-          "",
-          (() => {
-            const u = new URL(win.location.href);
-            u.searchParams.delete(param);
-            u.searchParams.delete("at");
-            return u.pathname + u.search + u.hash;
-          })(),
-        );
+      const steps = (pushed ? 1 : 0) + (win.history.state?.dnPhonePane ? 1 : 0);
+      if (steps) {
+        unwinding = { clean: !pushed };
+        win.history.go(-steps);
+      } else dropParam();
+      pushed = false;
     }
     doc.documentElement.classList.remove("dn-locked");
     opts.onClose?.();
@@ -448,7 +442,24 @@ export function hydrateDialogNav(dialog, opts = {}) {
 
   search.addEventListener("input", filter);
 
+  function dropParam() {
+    const u = new URL(win.location.href);
+    u.searchParams.delete(param);
+    u.searchParams.delete("at");
+    win.history.replaceState(null, "", u.pathname + u.search + u.hash);
+  }
+
+  win.matchMedia?.(PHONE).addEventListener?.("change", (m) => {
+    if (dialog.open && !m.matches && dialog.dataset.dnScreen === "list")
+      show(current() ?? first());
+  });
+
   win.addEventListener("popstate", () => {
+    if (unwinding) {
+      if (unwinding.clean) dropParam();
+      unwinding = null;
+      return;
+    }
     if (!dialog.open || opts.url === false) return;
     const u = new URL(win.location.href);
     if (!u.searchParams.has(param)) {
@@ -474,7 +485,7 @@ export function hydrateDialogNav(dialog, opts = {}) {
     }
     if (!dialog.open) dialog.showModal();
     doc.documentElement.classList.add("dn-locked");
-    const target = pane || (phone() ? null : current());
+    const target = pane || (phone() ? null : (current() ?? first()));
     if (!already && opts.url !== false) {
       const u = new URL(win.location.href);
       if (!u.searchParams.has(param)) {

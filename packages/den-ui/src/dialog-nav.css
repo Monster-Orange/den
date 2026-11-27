@@ -219,6 +219,34 @@
 .dn [data-entry] {
   border-radius: var(--radius-button);
 }
+.dn-kv {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-height: var(--tap-min);
+}
+.dn-kv > :first-child {
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.dn-kv > :last-child {
+  min-width: 0;
+  justify-self: start;
+}
+.dn-kv
+  > :is(input, select, textarea):not(
+    [type="checkbox"],
+    [type="radio"]
+  ):last-child {
+  justify-self: stretch;
+}
+.dn-kv :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
 .dn .dn-flash {
   animation: dn-flash 450ms var(--ease) 2;
 }
@@ -276,6 +304,16 @@
   }
   .dn-group {
     margin-inline: var(--space-4);
+  }
+  .dn-kv {
+    grid-template-columns: minmax(0, 1fr);
+    padding-block: var(--space-1);
+  }
+  .dn-kv :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+    width: 100%;
+  }
+  .dn-kv:has(> :is([type="checkbox"], [type="radio"]):last-child) {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
   .dn-row[aria-current="true"]::before {
     display: none;
