@@ -1347,7 +1347,7 @@ describe("den#156: a list that doesn't come doesn't freeze the Agents list", () 
     // "ok": the real list, with the page's wait at 1 s; "stuck": never answered.
     let mode: "ok" | "stuck" = "ok";
     let asked = 0;
-    await p.route("**/api/sessions?ws=north", async (route) => {
+    await p.route("**/api/sessions?all=1&ws=north", async (route) => {
       asked++;
       if (mode === "stuck") return; // never fulfilled: a host that hangs
       const r = await route.fetch();
@@ -1385,7 +1385,7 @@ describe("den#156: a list that doesn't come doesn't freeze the Agents list", () 
   it("a list that says the host didn't answer shows the same note", async () => {
     if (skip()) return;
     const p = await open("north");
-    await p.route("**/api/sessions?ws=north", async (route) => {
+    await p.route("**/api/sessions?all=1&ws=north", async (route) => {
       const r = await route.fetch();
       const body = {
         ...(await r.json()),

@@ -209,7 +209,7 @@ function cssLink() {
 
 async function sessions() {
   try {
-    const r = await fetch("/api/sessions", {
+    const r = await fetch("/api/sessions?all=1", {
       headers: { accept: "application/json" },
       credentials: "same-origin",
     });

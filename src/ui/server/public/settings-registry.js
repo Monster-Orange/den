@@ -1593,7 +1593,7 @@ function drawAppKeys(host, ctx) {
     out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyNoOrigin", "Add the web app to the list above first."))}</span>`;
   }
   shell
-    .api("GET", "/api/sessions")
+    .api("GET", "/api/sessions?all=1")
     .then((b) => {
       const agents = ((b && b.sessions) || []).filter(
         (r) => r.kind === "agent" && !r.server,

@@ -4650,11 +4650,20 @@ agent of the projects in view, and their terminals in the browser.
   log's activity, with its actor.
 
 The routes: `GET /api/sessions` (`{ sessions, projects, host, backend,
-io }`) and the WebSocket `/api/sessions/<id>/io` (subprotocol `den.io`, the
+io }`, one page of rows; see below) and the WebSocket `/api/sessions/<id>/io` (subprotocol `den.io`, the
 CSRF token as `den.csrf.<token>`): binary frames are output and input, a
 text frame `{"type":"resize","cols":c,"rows":r}` resizes, and the server
 sends `{"type":"session",…}` first and `{"type":"exit","exitCode":n}` when
 the session ends.
+
+`GET /api/sessions` pages, ordered by project, then name. It returns 50
+rows by default: `items` (and the same rows in `sessions`), `next`, `prev`,
+`total`, `offset`, `page` and `pages`. `limit` asks for up to the install's
+list page size (`web.list_page_max`, 200 by default). Follow `next` or
+`prev` with `cursor`, or ask `?page=N`, `?at=first` or `?at=last`. A bad
+`limit`, `cursor` or `page` is a 400 with `bad_limit`, `bad_cursor` or
+`bad_page`. `?all=1` returns every row with no paging fields, as before
+0.4.93: a script that needs the whole list asks for it that way.
 
 The terminal route checks the person and the agent, not whether the
 agent's project is active: an agent in a project you've switched away

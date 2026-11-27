@@ -69,7 +69,7 @@ async function waits(a) {
 
 /** Agent `id`'s row in the Agents list: whether it waits, and why. */
 export async function agentRow(ctx, id) {
-  const d = await body(await ctx.api("/api/sessions"));
+  const d = await body(await ctx.api("/api/sessions?all=1"));
   const s = (d?.sessions ?? []).find(
     (x) => x.kind === "agent" && x.agent === id,
   );

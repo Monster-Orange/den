@@ -36,7 +36,7 @@ export async function setup(ctx) {
 
 /** The stub's project and live session, from the sessions list. */
 async function whereIs(ctx) {
-  const d = await ctx.api("/api/sessions");
+  const d = await ctx.api("/api/sessions?all=1");
   const s = (d?.sessions ?? []).find(
     (x) => x.kind === "agent" && x.agent === ID && !x.exited,
   );

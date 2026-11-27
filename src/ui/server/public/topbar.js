@@ -826,7 +826,7 @@ function openLogs(svc) {
 let palSessions = [];
 function askPaletteSessions(redraw) {
   if (sh()?.apiOff?.()) return;
-  fetch("/api/sessions")
+  fetch("/api/sessions?all=1")
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
       palSessions = Array.isArray(d?.sessions) ? d.sessions : [];

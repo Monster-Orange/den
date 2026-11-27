@@ -121,7 +121,7 @@ function heldOf(ctx) {
 
 async function sessionRow(ctx) {
   try {
-    const d = await ctx.api("/api/sessions");
+    const d = await ctx.api("/api/sessions?all=1");
     const s = (d?.sessions ?? []).find((x) => x.agent === ID);
     return s
       ? { state: s.state ?? null, attention: s.attention ?? null, id: s.id }
@@ -169,7 +169,7 @@ async function restartDen(ctx) {
 
 /** The stub's project, from the sessions list. */
 async function whereIs(ctx) {
-  const d = await ctx.api("/api/sessions");
+  const d = await ctx.api("/api/sessions?all=1");
   const s = (d?.sessions ?? []).find(
     (x) => x.kind === "agent" && x.agent === ID && !x.exited,
   );

@@ -94,7 +94,7 @@ async function closeAll(ctx) {
 }
 
 export async function setup(ctx) {
-  const list = parse((await ctx.fetch("/api/sessions")).body);
+  const list = parse((await ctx.fetch("/api/sessions?all=1")).body);
   const ws = (list?.workspaces ?? []).filter(Boolean)[0] ?? null;
   return { ws, before: ptyRow(ctx), cap: capOf(ctx) };
 }

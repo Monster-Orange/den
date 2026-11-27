@@ -26,6 +26,8 @@ config and manifest changes a distribution must make to move to it under
 
 
 
+- The sessions list pages. `GET /api/sessions` returns the helper's page, 50 rows by default, ordered by project then name: `items`, `next`, `prev`, `total`, `page` and `pages`, with `?page=N`, `?at=first|last`, `limit` and `cursor`. `sessions` holds the same page, so callers that read it keep working. The page and its total come from one listing, and each agent's helpers are worked out only for the rows on the page. `?all=1` keeps the old full list; the Agents page, Peek, Settings, the services panel and the top bar ask for it until they use the pager. **Outside callers now get 50 rows by default:** a script or check that needs every session passes `?all=1`, or follows `next` (or `?page=N`). Den's own gate checks that read the list pass `?all=1`.
+
 ## [0.4.92] - unreleased
 
 ### Changed

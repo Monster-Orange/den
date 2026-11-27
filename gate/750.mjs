@@ -284,7 +284,7 @@ async function hubLeg(ctx) {
     const failed = await poll(
       ctx,
       async () => {
-        const ss = await d2.api("/api/sessions");
+        const ss = await d2.api("/api/sessions?all=1");
         const row = (ss?.sessions ?? []).find((x) => x.agent === HELD);
         return Array.isArray(row?.mcpFailed) && row.mcpFailed.length
           ? row.mcpFailed
