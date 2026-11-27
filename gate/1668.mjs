@@ -95,7 +95,13 @@ function seed(fs, path, crypto, home, dir, made, mb = SEED_MB) {
     };
     for (const k of ["sessionName", "peerName"])
       if (typeof rec[k] === "string") rec[k] = rec[k].split(TEMPLATE).join(id);
-    delete rec.session;
+    rec.session = {
+      ...(tpl.session && typeof tpl.session === "object" ? tpl.session : {}),
+      id: crypto.randomUUID(),
+    };
+    for (const k of ["name"])
+      if (typeof rec.session[k] === "string")
+        rec.session[k] = rec.session[k].split(TEMPLATE).join(id);
     const f = path.join(adir, `${id}.json`);
     const t = path.join(dir, `${token}.jsonl`);
     made.push({ id, record: f, transcript: t });
@@ -263,7 +269,13 @@ export async function run(ctx, s) {
   r.helpersMs = last.helperRows >= SEED_AGENTS ? Date.now() - t0 : null;
   Object.assign(r, last);
   r.seedDir = s.dir;
-  if (r.helpersMs === null) return r;
+  if (r.helpersMs === null) {
+    (await import("fs")).writeFileSync(
+      ctx.evidence("1668-run.json"),
+      JSON.stringify(r, null, 2),
+    );
+    return r;
+  }
   const warm = await timedList(d2);
   r.warmMs = warm.ms;
   r.idle = [];
