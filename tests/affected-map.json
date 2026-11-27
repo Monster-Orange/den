@@ -1330,6 +1330,8 @@
     {
       "when": [
         "src/ui/server/public/settings-page.js",
+        "src/ui/server/public/settings-rows.css",
+        "src/ui/server/public/settings-rows.js",
         "src/ui/server/public/settings.html"
       ],
       "run": [

@@ -28,6 +28,10 @@ export const UI_MODULES: readonly string[] = [
   "/shell.js",
   "/settings-registry.js",
   "/settings-page.js",
+  "/settings-rows.js",
+  "/settings-rows.css",
+  "/settings-dialog.js",
+  "/settings-dialog.css",
   "/topbar.js",
   // NT-3: the bell in the top bar.
   "/bell.js",
@@ -179,6 +183,8 @@ export const KIT_FILES: readonly string[] = [
   "dialog.js",
   // den-ui 0.6.2: the dialogs' look, linked (no injected <style>).
   "dialog.css",
+  "dialog-nav.js",
+  "dialog-nav.css",
   // The save-state line for autosaving editors, and its look.
   "savestate.js",
   "savestate.css",

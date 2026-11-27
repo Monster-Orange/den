@@ -1175,6 +1175,14 @@
     "set.ui.search": "Search settings",
     "set.ui.slashTip": "Press / to search",
     "set.ui.cats": "Settings categories",
+    "setd.g.you": "Look and feel",
+    "setd.g.work": "Projects and agents",
+    "setd.g.access": "Access and safety",
+    "setd.g.den": "This install",
+    "setd.readOnly": "Sign in to change these. This browser can look but change nothing.",
+    "setd.toAccount.notifications": "Your notifications",
+    "setd.toAccount.devices": "Your devices",
+    "setd.toAccount.profile": "Sign out",
     "set.ui.rot.scope.agent": "Agent",
     "set.ui.rot.scope.persona-workspace": "Persona in a project",
     "set.ui.rot.scope.persona": "Persona",
@@ -10895,6 +10903,11 @@
       return SETTING_CATS.slice().sort(byOrder);
     },
   };
+  import("/settings-dialog.js")
+    .then(function (m) {
+      m.initSettingsDialog(window.denShell);
+    })
+    .catch(function () {});
 
   // The ready path for a script that loads before shell.js:
   // window.denShellQueue is an array of functions, each called with

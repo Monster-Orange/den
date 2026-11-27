@@ -1,0 +1,382 @@
+/* den-ui: the dialog with left nav and search (DS component #5),
+   dialog-nav.js. Tokens only. A fixed size, so switching panes never
+   resizes it; at 600px or less, full screen: the list, then the pane. */
+.dn {
+  box-sizing: border-box;
+  width: min(960px, 100vw - 64px);
+  max-width: none;
+  height: min(88vh, 760px);
+  max-height: none;
+  margin: auto;
+  padding: 0;
+  border: 1px var(--edge-style, solid) var(--border);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: var(--shadow-dialog);
+  font-family: var(--sans);
+  z-index: var(--z-dialog);
+  overflow: hidden;
+}
+.dn[open] {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-rows: 56px minmax(0, 1fr);
+  grid-template-areas: "head head" "rail pane";
+}
+.dn::backdrop {
+  background: var(--kit-backdrop);
+}
+.dn-locked,
+.dn-locked body {
+  overflow: hidden;
+}
+.dn-head {
+  grid-area: head;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
+}
+.dn-title {
+  margin: 0;
+  font-size: var(--fs-l);
+  font-weight: 600;
+}
+.dn-rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--sunken);
+  border-inline-end: 1px var(--edge-style, solid) var(--border);
+}
+.dn-search {
+  box-sizing: border-box;
+  width: calc(100% - 2 * var(--space-3));
+  height: var(--tap-min);
+  margin: var(--space-3);
+  padding: 0 var(--space-2);
+  border: 1px var(--edge-style, solid) var(--border-strong);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-s);
+}
+.dn-search:focus-visible,
+.dn-row:focus-visible,
+.dn-hit:focus-visible,
+.dn-cross:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: -2px;
+}
+.dn-none {
+  margin: 0 var(--space-3) var(--space-2);
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.dn-none[hidden],
+.dn-group[hidden],
+.dn-list > li[hidden] {
+  display: none;
+}
+.dn-lists {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: var(--space-2);
+}
+.dn-group {
+  margin: var(--space-3) var(--space-3) var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.dn-list,
+.dn-hits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dn-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--tap-min);
+  padding: 0 var(--space-3);
+  color: var(--text);
+  font-size: var(--fs-s);
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dn-row:hover {
+  background: color-mix(in srgb, var(--surface) 60%, var(--sunken));
+}
+.dn-row[aria-current="true"] {
+  background: var(--surface);
+  font-weight: 500;
+}
+.dn-row[aria-current="true"]::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--accent);
+}
+.dn-row-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dn-chev,
+.dn-hit-pane,
+.dn-back,
+.dn-pane-x {
+  display: none;
+}
+.dn-hit {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 28px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-5);
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-align: start;
+  cursor: pointer;
+}
+.dn-hit b {
+  color: var(--text);
+  font-weight: 600;
+}
+.dn-hit:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.dn-cross {
+  display: block;
+  padding: var(--space-3);
+  border-top: 1px var(--edge-style, solid) var(--border);
+  color: var(--accent-text);
+  font-size: var(--fs-s);
+  text-decoration: none;
+}
+.dn-cross:hover {
+  text-decoration: underline;
+}
+.dn-panes {
+  grid-area: pane;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.dn-pane {
+  padding: var(--space-4) var(--space-5) var(--space-6);
+}
+.dn-pane[hidden] {
+  display: none;
+}
+.dn-pane-head {
+  margin-bottom: var(--space-4);
+}
+.dn-pane-t {
+  margin: 0;
+  font-size: var(--fs-l);
+  font-weight: 600;
+}
+.dn-pane-d {
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.dn-ro {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-button);
+  background: var(--sunken);
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.dn-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dn [data-entry] {
+  border-radius: var(--radius-button);
+}
+.dn-kv {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  min-height: var(--tap-min);
+}
+.dn-kv > :first-child {
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.dn-kv > :last-child {
+  min-width: 0;
+  justify-self: start;
+}
+.dn-kv
+  > :is(input, select, textarea):not(
+    [type="checkbox"],
+    [type="radio"]
+  ):last-child {
+  justify-self: stretch;
+}
+.dn-kv :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+.dn .dn-flash {
+  animation: dn-flash 450ms var(--ease) 2;
+}
+@keyframes dn-flash {
+  50% {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+}
+@media (max-width: 600px) {
+  .dn {
+    width: 100vw;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+      env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  }
+  .dn::backdrop {
+    background: var(--raised);
+  }
+  .dn[open] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 56px minmax(0, 1fr);
+    grid-template-areas: "head" "rail";
+  }
+  .dn[open][data-dn-screen="pane"] {
+    grid-template-areas: "pane" "pane";
+  }
+  .dn[data-dn-screen="pane"] .dn-head,
+  .dn[data-dn-screen="pane"] .dn-rail {
+    display: none;
+  }
+  .dn[data-dn-screen="list"] .dn-panes {
+    display: none;
+  }
+  .dn[data-dn-screen="pane"] .dn-panes {
+    animation: dn-in var(--dur) var(--ease);
+  }
+  .dn-rail {
+    background: var(--raised);
+    border: 0;
+  }
+  .dn-search {
+    height: var(--tap);
+  }
+  .dn-row {
+    height: var(--tap);
+    padding: 0 var(--space-4);
+    font-size: var(--fs-m);
+  }
+  .dn-row[aria-current="true"] {
+    background: none;
+    font-weight: 400;
+  }
+  .dn-group {
+    margin-inline: var(--space-4);
+  }
+  .dn-kv {
+    grid-template-columns: minmax(0, 1fr);
+    padding-block: var(--space-1);
+  }
+  .dn-kv :is(input:not([type="checkbox"], [type="radio"]), select, textarea) {
+    width: 100%;
+  }
+  .dn-kv:has(> :is([type="checkbox"], [type="radio"]):last-child) {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .dn-row[aria-current="true"]::before {
+    display: none;
+  }
+  .dn-chev {
+    display: inline;
+    color: var(--muted);
+  }
+  .dn[data-dn-searching] .dn-row {
+    display: none;
+  }
+  .dn-hit {
+    min-height: var(--tap);
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--fs-s);
+  }
+  .dn-hit-pane {
+    display: inline;
+  }
+  .dn-pane {
+    padding: 0 var(--space-4) var(--space-6);
+  }
+  .dn-pane-head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--space-2);
+    margin: 0 calc(-1 * var(--space-4)) var(--space-4);
+    padding: var(--space-1) var(--space-4) var(--space-2) var(--space-1);
+    background: var(--raised);
+    border-bottom: 1px var(--edge-style, solid) var(--border);
+  }
+  .dn-back,
+  .dn-pane-x {
+    display: inline-flex;
+    grid-row: 1 / span 2;
+  }
+  .dn-pane-x {
+    grid-column: 3;
+  }
+  .dn-pane-t {
+    font-size: var(--fs-m);
+  }
+  .dn-pane-d {
+    grid-column: 2;
+    margin-top: 0;
+  }
+}
+@keyframes dn-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dn[data-dn-screen="pane"] .dn-panes {
+    animation: none;
+  }
+  .dn .dn-flash {
+    animation: none;
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+}

@@ -1,0 +1,11 @@
+.setd .dn-body {
+  font-size: var(--fs-s);
+}
+.setd .set-row .set-scope {
+  justify-self: start;
+  align-self: start;
+  width: max-content;
+}
+.setd .setd-link .l {
+  color: var(--muted);
+}
