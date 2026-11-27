@@ -97,7 +97,9 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
-  s = await startAgentsPageServer();
+  s = await startAgentsPageServer({
+    userYml: "agents:\n  max_concurrent: 8\n",
+  });
   latest =
     (
       (await (await fetch(`${s.base}/api/changelog`)).json()) as {
@@ -499,6 +501,105 @@ describe("Bring in (AG-17.1)", () => {
     await p.context().close();
     expect(errors).toEqual([]);
   }, 60_000);
+
+  it("issue 1903: Change persona's lines stay in the pane when the new session's socket drops once and comes back", async () => {
+    if (skip() || !PTY) return;
+    const p = await page("/agents?ws=north");
+    await p.waitForSelector("#ag-bring");
+    const started = (await p.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: { api(m: string, u: string, b: unknown): Promise<unknown> };
+        }
+      ).denShell.api("POST", "/api/workspaces/north/agents", {
+        persona: "reviewer",
+        id: "fresh-2",
+        runtime: "den-claude",
+      }),
+    )) as { agent: { sessionId: string } };
+    const sid = started.agent.sessionId;
+    const pty = s!.made[s!.made.length - 1];
+    const kill = pty.kill.bind(pty);
+    pty.kill = (sig: string) => {
+      kill(sig);
+      setTimeout(() => pty.exit(143), 5);
+    };
+    let dropped = false;
+    let reopened = false;
+    let back = () => {};
+    const backAgain = new Promise<void>((ok) => (back = ok));
+    await p.routeWebSocket(/\/api\/sessions\/[^/]+\/io/, (ws) => {
+      const id = decodeURIComponent(
+        /\/api\/sessions\/([^/]+)\/io/.exec(new URL(ws.url()).pathname)?.[1] ??
+          "",
+      );
+      const sv = ws.connectToServer();
+      if (id === sid) return;
+      if (dropped) {
+        reopened = true;
+        sv.onMessage((m) => {
+          ws.send(m);
+          back();
+        });
+        return;
+      }
+      sv.onMessage((m) => {
+        ws.send(m);
+        if (dropped) return;
+        dropped = true;
+        setTimeout(() => void sv.close({ code: 1000 }).catch(() => {}), 50);
+      });
+    });
+    await p.goto(`${s!.base}/agents?ws=north&open=${sid}`);
+    await p.waitForSelector(`section[data-id="${sid}"][data-pty-cols]`);
+    const more = `section[data-id="${sid}"] [data-act="more"]`;
+    await p.waitForSelector(more);
+    await p.click(more);
+    await p.getByRole("menuitem", { name: "Change persona" }).click();
+    await p.waitForSelector("#ag-dlg[open]");
+    await p.click('#ag-persona [data-pid="planner"]');
+    const done = p.waitForResponse(
+      (r) =>
+        r.request().method() === "POST" &&
+        r.status() === 200 &&
+        new URL(r.url()).pathname ===
+          "/api/workspaces/north/agents/fresh-2/persona",
+      { timeout: 20_000 },
+    );
+    await p.click("#ag-go");
+    const asked = await p
+      .waitForSelector("#ag-pc-now", { timeout: 2_000 })
+      .catch(() => null);
+    if (asked) await p.click("#ag-pc-now");
+    expect((await done).status()).toBe(200);
+    await p.waitForFunction(
+      (old) => {
+        const pane = document.querySelector("section[data-id]");
+        return !!pane && pane.getAttribute("data-id") !== old;
+      },
+      sid,
+      { timeout: browserWaitMs() },
+    );
+    await backAgain;
+    expect(dropped).toBe(true);
+    expect(reopened).toBe(true);
+    await p.waitForFunction(
+      () => {
+        const text =
+          document.querySelector("section[data-id]")?.textContent ?? "";
+        return (
+          text.includes("Switched to planner") &&
+          text.includes(
+            "Nothing to resume yet; started fresh (same conversation id, folder and scope)",
+          )
+        );
+      },
+      undefined,
+      { timeout: 10_000 },
+    );
+    await p.context().close();
+    expect(errors).toEqual([]);
+  }, 90_000);
 
   it("D56: one started in ~ is listed apart, comes in only by the person's pick (naming its folder), and its row says where it started", async () => {
     if (skip() || !PTY) return;
