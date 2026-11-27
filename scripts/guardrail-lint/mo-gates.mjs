@@ -105,20 +105,71 @@ export function baseConfig(root, base) {
 
 const MOVES = ["-M30%", "-C30%"];
 
-/** The lines of HEAD's files that `from` doesn't have: file -> Set of line numbers in HEAD. */
+const BLOCK = { lines: 3, chars: 20, tries: 32 };
+
+/** HEAD's lines that `from` doesn't have (file -> Set of line numbers), less blocks moved in from removed lines. */
 function linesAddedSince(git, from) {
-  const diff = git("diff", "-U0", "--no-color", "--no-ext-diff", ...MOVES, "--diff-filter=ACMR", from, "HEAD");
+  const diff = git("diff", "-U0", "--no-color", "--no-ext-diff", ...MOVES, from, "HEAD");
   const files = new Map();
-  let cur = null;
+  const runs = { "-": [], "+": [] };
+  let head = false, copy = false, oldPath = null, newPath = null, run = null, n = { "-": 0, "+": 0 };
   for (const l of diff.split("\n")) {
-    if (l.startsWith("+++ ")) {
-      cur = l === "+++ /dev/null" ? null : l.slice(6);
-      if (cur && !files.has(cur)) files.set(cur, new Set());
-    } else if (cur && l.startsWith("@@")) {
-      const m = /\+(\d+)(?:,(\d+))?/.exec(l);
-      const start = Number(m[1]);
-      const n = m[2] === undefined ? 1 : Number(m[2]);
-      for (let i = 0; i < n; i++) files.get(cur).add(start + i);
+    if (l.startsWith("diff --git ")) { head = true; copy = false; oldPath = newPath = run = null; continue; }
+    if (head && l.startsWith("copy from ")) copy = true;
+    if (head && l.startsWith("--- ")) { oldPath = l === "--- /dev/null" ? null : l.slice(6); continue; }
+    if (head && l.startsWith("+++ ")) {
+      newPath = l === "+++ /dev/null" ? null : l.slice(6);
+      if (newPath && !files.has(newPath)) files.set(newPath, new Set());
+      continue;
+    }
+    if (l.startsWith("@@")) {
+      head = false;
+      run = null;
+      const m = /-(\d+)(?:,\d+)? \+(\d+)/.exec(l);
+      n = { "-": Number(m[1]), "+": Number(m[2]) };
+      continue;
+    }
+    const side = l[0];
+    if (head || (side !== "-" && side !== "+")) continue;
+    const path = side === "-" ? (copy ? null : oldPath) : newPath;
+    if (!path) continue;
+    if (!run || run.side !== side) runs[side].push((run = { side, path, lines: [] }));
+    run.lines.push({ n: n[side]++, key: l.slice(1).trim() });
+    if (side === "+") files.get(path).add(run.lines.at(-1).n);
+  }
+  const removedAt = new Map();
+  for (const r of runs["-"]) r.lines.forEach((x, i) => {
+    if (!x.key) return;
+    const list = removedAt.get(x.key) ?? removedAt.set(x.key, { head: null, tail: null }).get(x.key);
+    x.node = { r, i, list, prev: list.tail, next: null };
+    if (list.tail) list.tail.next = x.node;
+    else list.head = x.node;
+    list.tail = x.node;
+  });
+  const used = new Set();
+  const take = (x) => {
+    used.add(x);
+    const nd = x.node;
+    if (!nd) return;
+    if (nd.prev) nd.prev.next = nd.next;
+    else nd.list.head = nd.next;
+    if (nd.next) nd.next.prev = nd.prev;
+    else nd.list.tail = nd.prev;
+  };
+  for (const r of runs["+"]) {
+    for (let i = 0; i < r.lines.length; ) {
+      let best = 0, at = null;
+      for (let nd = removedAt.get(r.lines[i].key)?.head, tries = 0; nd && tries < BLOCK.tries && best < r.lines.length - i; nd = nd.next, tries++) {
+        const { r: o, i: j } = nd;
+        let k = 0;
+        while (i + k < r.lines.length && j + k < o.lines.length && !used.has(o.lines[j + k]) && r.lines[i + k].key === o.lines[j + k].key) k++;
+        if (k > best) [best, at] = [k, [o, j]];
+      }
+      const block = r.lines.slice(i, i + best);
+      if (best < BLOCK.lines || block.map((x) => x.key).join("").replace(/\W/g, "").length < BLOCK.chars) { i++; continue; }
+      for (let k = 0; k < best; k++) take(at[0].lines[at[1] + k]);
+      for (const x of block) files.get(r.path).delete(x.n);
+      i += best;
     }
   }
   return files;
