@@ -908,6 +908,11 @@
     "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
       "src/ui/server/public/agents-*.js"
+    ],
+    "tests/unit/server/graph-popout-837.browser.test.ts": [
+      "src/ui/server/public/graph.js",
+      "src/ui/server/public/graph.css",
+      "src/ui/server/public/panel.js"
     ]
   },
   "subjectless": [],
@@ -4047,6 +4052,15 @@
         "src/ui/server/graph-prefs.ts"
       ],
       "run": ["tests/unit/server/graph-many-groups.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/graph.css",
+        "src/ui/server/public/graph.js",
+        "src/ui/server/public/panel.js"
+      ],
+      "run": ["tests/unit/server/graph-popout-837.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
