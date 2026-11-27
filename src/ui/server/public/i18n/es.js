@@ -4602,7 +4602,6 @@
     "setd.g.access": "Acceso y seguridad",
     "setd.g.den": "Esta instalación",
     "setd.readOnly": "Inicia sesión para cambiarlos. Este navegador puede mirar, pero no cambiar nada.",
-    "setd.toAccount.notifications": "Tus notificaciones",
     "setd.toAccount.devices": "Tus dispositivos",
     "setd.toAccount.profile": "Cerrar sesión",
     "set.ui.rot.scope.agent": "Agente",
@@ -4646,13 +4645,14 @@
     "setc.server": "Servidor", // words-ok: the en string's own word, translated
     "setc.server.d":
       "El servidor web de Den con el que habla esta página. Un reinicio mantiene en marcha los agentes y los servicios.", // words-ok: the en string's own word, translated
-    "setd.part.server.restarts": "Instalación, reinicios y actualizaciones",
-    "setd.part.server.address": "Dirección y alcance",
-    "setd.part.server.terminals": "Terminales",
-    "setd.part.server.logs": "Registros e informes",
-    "setd.part.server.checks": "Esperas y comprobaciones",
-    "setd.part.server.github": "GitHub",
-    "setd.part.server.gate": "Ejecuciones de pruebas",
+    "setd.sub.more": "Más",
+    "setd.sub.server.restarts": "Instalación, reinicios y actualizaciones",
+    "setd.sub.server.address": "Dirección y alcance",
+    "setd.sub.server.terminals": "Terminales",
+    "setd.sub.server.logs": "Registros e informes",
+    "setd.sub.server.checks": "Esperas y comprobaciones",
+    "setd.sub.server.github": "GitHub",
+    "setd.sub.server.gate": "Ejecuciones de pruebas",
     "setc.cli": "Línea de comandos",
     "setc.cli.d":
       "También son tuyos (config/local/user.yml) y se definen desde la línea de comandos: __DEN_CLI__ config <key>=<value>.",

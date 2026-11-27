@@ -913,6 +913,7 @@ input[type="number"] {
   display: grid;
   grid-template-columns: minmax(0, 1fr) fit-content(50%);
   grid-template-areas: "l c" "d c" "s s";
+  grid-template-rows: auto 1fr auto;
   column-gap: var(--space-4);
   align-items: start;
 }
@@ -945,6 +946,7 @@ input[type="number"] {
 .dn .set-row:has(.set-custom) {
   grid-template-columns: minmax(0, 1fr);
   grid-template-areas: "l" "d" "c" "s";
+  grid-template-rows: none;
 }
 .dn .set-row:has(.set-custom) .ctl {
   justify-self: stretch;
@@ -954,6 +956,7 @@ input[type="number"] {
   .dn .set-row {
     grid-template-columns: minmax(0, 1fr);
     grid-template-areas: "l" "d" "c" "s";
+    grid-template-rows: none;
   }
   .dn .set-row .ctl {
     justify-self: start;

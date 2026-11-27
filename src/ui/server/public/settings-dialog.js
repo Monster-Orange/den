@@ -11,7 +11,7 @@ import { drawRows, settingsCtx } from "/settings-rows.js";
 export const SETTINGS_GROUPS = [
   {
     id: "you",
-    panes: ["appearance", "editor", "navigation", "graph", "notifications"],
+    panes: ["appearance", "editor", "navigation", "graph"],
   },
   { id: "work", panes: ["workspace", "agents", "hub"] },
   { id: "access", panes: ["access", "embed", "secrets"] },
@@ -33,47 +33,152 @@ export const inAccount = (row) =>
   row.category === "notifications";
 
 export const ACCOUNT_LINKS = {
-  notifications: { pane: "notifications", text: "setd.toAccount.notifications" },
   access: { pane: "devices", text: "setd.toAccount.devices" },
   cli: { pane: "profile", text: "setd.toAccount.profile" },
 };
 
-const SERVER_PARTS = [
-  ["restarts", /^server\.(crash_loop|restart$|install_mode|restore_services|self_update|update_check)/],
-  ["address", /^server\.(address|bridge_)/],
-  ["terminals", /^server\.sessions_/],
-  ["logs", /^server\.(server_log|slow_request|event_loop_lag|report_)/],
-  ["checks", /^server\.(lookup_|menu_load|owner_name|ready_probe|start_wait|tools_probe|health_poll|git_reads)/],
-  ["github", /^server\.github_/],
-  ["gate", /^server\.gate_/],
-];
+const SUBS = {
+  server: {
+    restarts: [
+      "crash_loop",
+      "crash_loop_minutes",
+      "crash_loop_wait",
+      "self_update",
+      "update_check",
+      "restart",
+      "install_mode",
+      "restore_services",
+    ],
+    address: [
+      "address_check_timeout",
+      "address_check_retries",
+      "address_check_cache",
+      "address_check_drop_after",
+      "address_unknown_keep",
+      "bridge_listen",
+      "bridge_probe",
+      "address",
+    ],
+    terminals: [
+      "sessions_max",
+      "sessions_close_grace",
+      "sessions_size_claim_grace",
+      "sessions_size_leave_grace",
+      "sessions_pty_close",
+      "sessions_pty_warn",
+      "sessions_pty_machine",
+    ],
+    logs: [
+      "report_screenshot_days",
+      "server_log_max",
+      "slow_request_ms",
+      "event_loop_lag_ms",
+      "report_screenshot_max",
+      "report_screenshot_hub_max",
+      "report_screenshot_hub_wait",
+      "report_visibility_cache",
+      "report_visibility_wait",
+      "report_visibility_retry",
+    ],
+    checks: [
+      "lookup_first",
+      "lookup_retry",
+      "menu_load_timeout",
+      "owner_name_timeout",
+      "ready_probe",
+      "start_wait",
+      "tools_probe",
+      "health_poll",
+      "health_poll_hidden",
+      "git_reads",
+    ],
+    github: [
+      "github_watch_interval",
+      "github_watch_max_interval",
+      "github_api_budget_floor",
+      "github_watches_max",
+      "github_watch_stale",
+      "github_watch_max_open",
+      "github_rerun_look",
+    ],
+    gate: [
+      "gate_cpu",
+      "gate_cpu_beside",
+      "gate_cpu_beside_release",
+      "gate_load_hold_per_core",
+      "gate_memory_free_min_percent",
+      "gate_swap_hold_gb",
+      "gate_memory_reading_keep_seconds",
+      "gate_vm_memory_share",
+      "gate_cpu_hold_load",
+      "gate_max_start_load",
+      "gate_max_start_wait_minutes",
+      "gate_reap_grace_seconds",
+      "gate_local_browser",
+      "gate_overrun",
+      "gate_overrun_bell",
+      "gate_remote_renew",
+      "gate_remote_lapse",
+      "gate_remote_slots",
+      "gate_remote_asks",
+      "gate_priority_max",
+      "gate_priority_pass",
+      "gate_release_pass_other",
+      "gate_priority_agents",
+      "gate_priority_runners",
+      "gate_browser_container",
+      "gate_claim",
+      "gate_mcp_renew",
+      "gate_mcp_lapse",
+      "gate_mcp_grace",
+      "gate_waiter_return",
+      "gate_class_order",
+      "gate_class_map",
+      "gate_class_windows",
+      "gate_runners",
+      "gate_boxes",
+      "gate_runner_entries",
+      "gate_box_check",
+      "gate_box_recheck",
+      "gate_box_default",
+      "gate_host_only",
+      "gate_route_agents",
+      "gate_route_commands",
+      "gate_throwaway_sweep",
+      "gate_outside",
+    ],
+  },
+};
 
-function drawParts(pane, parts, host, rows, ctx, { idPrefix, t }) {
-  const taken = new Set();
-  const groups = parts.map(([id, test]) => {
-    const own = rows.filter((r) => !taken.has(r.id) && test.test(r.id));
-    for (const r of own) taken.add(r.id);
-    return { id, own };
-  });
-  groups.push({ id: "", own: rows.filter((r) => !taken.has(r.id)) });
-  host.innerHTML = groups
-    .filter((g) => g.own.length)
-    .map(
-      (g) =>
-        (g.id
-          ? `<h4 class="setd-part">${esc(t(`setd.part.${pane}.${g.id}`))}</h4>`
-          : "") + `<div class="setd-part-rows" data-part="${esc(g.id)}"></div>`,
-    )
-    .join("");
-  for (const g of groups.filter((x) => x.own.length))
-    drawRows(host.querySelector(`[data-part="${g.id}"]`), g.own, ctx, {
-      idPrefix: `${idPrefix}${g.id || "rest"}-`,
+export function subsOf(pane, rows) {
+  const plan = SUBS[pane];
+  if (!plan) return null;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out = Object.entries(plan).map(([key, ids]) => ({
+    key,
+    rows: ids.map((id) => byId.get(`${pane}.${id}`)).filter(Boolean),
+  }));
+  const placed = new Set(out.flatMap((g) => g.rows));
+  out.push({ key: "more", rows: rows.filter((r) => !placed.has(r)) });
+  return out.filter((g) => g.rows.length);
+}
+
+function drawSubs(host, pane, rows, ctx, shell) {
+  for (const g of subsOf(pane, rows)) {
+    const box = document.createElement("div");
+    box.className = "setd-sub";
+    box.innerHTML = `<h4 class="setd-subh">${esc(shell.t(g.key === "more" ? "setd.sub.more" : `setd.sub.${pane}.${g.key}`))}</h4><div class="setd-subrows"></div>`;
+    host.append(box);
+    const n = drawRows(box.lastElementChild, g.rows, ctx, {
+      idPrefix: `setd-${pane}-${g.key}-`,
     });
+    if (!n) box.hidden = true;
+  }
 }
 
 export const PANE_DRAW = {
-  server: (host, rows, ctx, o) =>
-    drawParts("server", SERVER_PARTS, host, rows, ctx, o),
+  server: (host, rows, ctx, shell) =>
+    drawSubs(host, "server", rows, ctx, shell),
 };
 
 export function paneOf(hash, rows) {
@@ -82,6 +187,8 @@ export function paneOf(hash, rows) {
   if (PANES[h]) return { pane: h, at: null };
   const row = rows.find((r) => r.id === h);
   if (row && PANES[row.category]) return { pane: row.category, at: row.id };
+  if (h === "notifications" || h.startsWith("notifications."))
+    return { pane: null, at: null, account: "notifications" };
   const cat = h.split(".")[0];
   return PANES[cat] ? { pane: cat, at: null } : { pane: null, at: null };
 }
@@ -159,7 +266,6 @@ async function build(shell) {
       .map((id) => ({
         id,
         title: cats.get(id).label,
-        desc: cats.get(id).description,
         lazy: true,
         readOnly: PANES[id].check === PANE_CHECKS.person ? readOnly : undefined,
       })),
@@ -185,9 +291,14 @@ async function build(shell) {
     );
   }
   document.body.append(dialog);
+  const descOf = (pane) => {
+    const d = cats.get(pane)?.description;
+    return d ? `<p class="setd-desc">${esc(d)}</p>` : "";
+  };
   const load = (pane, body) => {
-    body.innerHTML = '<div class="setd-rows"></div>' + linkRow(shell, pane);
-    const host = body.firstElementChild;
+    body.innerHTML =
+      descOf(pane) + '<div class="setd-rows"></div>' + linkRow(shell, pane);
+    const host = body.querySelector(".setd-rows");
     const own = bySection.get(pane)?.rows ?? [];
     const mark = () => {
       for (const el of host.querySelectorAll(".set-row[data-setting]")) {
@@ -203,9 +314,8 @@ async function build(shell) {
       childList: true,
       subtree: true,
     });
-    const o = { idPrefix: `setd-${pane}-`, t: (k) => shell.t(k) };
-    if (PANE_DRAW[pane]) PANE_DRAW[pane](host, own, ctx, o);
-    else drawRows(host, own, ctx, o);
+    if (PANE_DRAW[pane]) PANE_DRAW[pane](host, own, ctx, shell);
+    else drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
     mark();
   };
   const nav = hydrateDialogNav(dialog, {
@@ -227,8 +337,15 @@ export async function openSettings(
 ) {
   live ??= build(shell);
   const { nav, rows } = await live;
-  if (hash) ({ pane, at } = paneOf(hash, rows));
+  if (hash) {
+    const to = paneOf(hash, rows);
+    if (to.account) return location.assign(`?account=${to.account}`);
+    ({ pane, at } = to);
+  }
   nav.open(pane, at);
+  nav.element
+    .querySelector('a.dn-row[aria-current="true"]')
+    ?.scrollIntoView({ block: "nearest" });
 }
 
 function fromHref(a) {

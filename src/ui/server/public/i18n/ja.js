@@ -4457,7 +4457,6 @@
     "setd.g.access": "アクセスとセキュリティ",
     "setd.g.den": "このインストール",
     "setd.readOnly": "変更するにはサインインしてください。このブラウザーでは表示のみできます。",
-    "setd.toAccount.notifications": "通知",
     "setd.toAccount.devices": "デバイス",
     "setd.toAccount.profile": "サインアウト",
     "set.ui.rot.scope.agent": "エージェント",
@@ -4501,13 +4500,14 @@
     "setc.server": "サーバー", // words-ok: the en string's own word, translated
     "setc.server.d":
       "このページが通信している Den の Web サーバーです。再起動してもエージェントとサービスは動き続けます。", // words-ok: the en string's own word, translated
-    "setd.part.server.restarts": "インストール、再起動と更新",
-    "setd.part.server.address": "アドレスと到達性",
-    "setd.part.server.terminals": "ターミナル",
-    "setd.part.server.logs": "ログとレポート",
-    "setd.part.server.checks": "待ち時間と確認",
-    "setd.part.server.github": "GitHub",
-    "setd.part.server.gate": "テストの実行",
+    "setd.sub.more": "その他",
+    "setd.sub.server.restarts": "インストール、再起動と更新",
+    "setd.sub.server.address": "アドレスと到達性",
+    "setd.sub.server.terminals": "ターミナル",
+    "setd.sub.server.logs": "ログとレポート",
+    "setd.sub.server.checks": "待ち時間と確認",
+    "setd.sub.server.github": "GitHub",
+    "setd.sub.server.gate": "テストの実行",
     "setc.cli": "コマンドライン",
     "setc.cli.d":
       "これもあなた個人の設定 (config/local/user.yml) で、コマンドラインから設定します: __DEN_CLI__ config <key>=<value>。",
