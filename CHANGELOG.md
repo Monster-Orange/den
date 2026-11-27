@@ -4,9 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.91] - unreleased
+## [0.4.92] - unreleased
 
 - On a personal install, `den doctor` now says whether agents can read the activity trail. If the older trail written before redaction hasn't been set aside, and Den is running, it warns that agents can't read the trail and says to restart Den (Den's log says why if it fails again). Before Den's first start it says the trail is set aside then. A strict install shows no such row, since its agents never read the trail. (issue 1399)
+
+## [0.4.91] - 2026-11-26
+
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)
 - An install reached through a symlinked folder (its `node_modules` a link to another folder) no longer restarts its terminal host, ending open terminals, at every Den start. Den now compares the terminal module the host loaded and the one installed by the file they resolve to, not by how the path is spelled. A module that's gone or replaced still restarts the host.
 - When a request is slow, the server's log now says which route, who asked and how long it took, and a blocked server logs how long it was stuck. Both thresholds are in Settings › Server (`server_log.slow_request_ms`, 3 s, and `server_log.event_loop_lag_ms`, 1 s). The lines never include the address, query, headers or body, and each is written at most once a minute.
@@ -52,6 +55,7 @@ config and manifest changes a distribution must make to move to it under
 - An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 - A relaunched agent's first prompt now says the current local time, so it counts times and ETAs from now, not from its handoff or older messages.
 - Doctor says when agents commit without a signing key. A self-update's pin commit is signed with the agents' key when one is set. When no key is set and the branch requires signed commits, the pin goes to a pull request instead of a push that would be refused, and the bell says why.
+- Den's own tests: the helper that starts a test server now reads a server's log file when its output goes there. A port another test took is tried again on a new port, and any other failed start shows the log's last 40 lines. (issue 1845)
 
 ## [0.4.90] - 2026-11-25
 
