@@ -40,7 +40,6 @@ let entries = [];
 let showAll = false;
 const PAGE_PER = 10;
 let page = null;
-let per = PAGE_PER;
 /** The open frame (mountDialog's handle); null while closed. */
 let frame = null;
 /** Waiting for another pop-up to close before opening. */
@@ -91,6 +90,10 @@ const PAGER_WORDS = [
   "go",
   "perPage",
   "more",
+  "moreN",
+  "lastN",
+  "all",
+  "moreErr",
 ];
 
 async function goPage(ask) {
@@ -105,34 +108,33 @@ async function goPage(ask) {
   if (body) body.scrollTop = 0;
 }
 
-function askOf(target) {
-  if (target && typeof target === "object" && "per" in target) per = target.per;
-  const q = { limit: String(per) };
-  if (target === "first") q.at = "first";
-  else if (target === "last") q.at = "last";
-  else if (target === "next" && page?.next) q.cursor = page.next;
-  else if (target === "prev" && page?.prev) q.cursor = page.prev;
-  else if (target && typeof target === "object" && "page" in target)
-    q.page = String(target.page);
-  return q;
+async function loadMore() {
+  const was = page?.items.length ?? 0;
+  const p = await cfg.changelogPage({
+    limit: String(PAGE_PER),
+    cursor: page?.next ?? "",
+  });
+  if (!p || !Array.isArray(p.items)) throw new Error("no page");
+  page = { ...p, items: [...(page?.items ?? []), ...p.items] };
+  renderBody();
+  const first = frame?.dialog.querySelectorAll("#cl-body .cl-entry")[was];
+  if (first) {
+    first.tabIndex = -1;
+    first.focus();
+  }
+  return { html: "", to: page.items.length, hasNext: !!page.next };
 }
 
 function pagerOf(p) {
-  const on = {
-    first: !!p.prev,
-    prev: !!p.prev,
-    next: !!p.next,
-    last: !!p.next && !!p.pages,
-  };
   return pagerHtml({
-    from: (p.offset ?? 0) + 1,
-    to: (p.offset ?? 0) + p.items.length,
+    mode: "more",
+    from: 1,
+    to: p.items.length,
     total: typeof p.total === "number" ? p.total : null,
     hasNext: !!p.next,
-    ...(p.pages ? { page: p.page, pages: p.pages } : {}),
-    per,
-    perOptions: [10, 25, 50],
-    href: (tg) => (typeof tg === "string" && !on[tg] ? null : "#cl-body"),
+    step: PAGE_PER,
+    per: PAGE_PER,
+    moreHref: p.next ? "#cl-body" : null,
     lang: lang(),
     words: Object.fromEntries(PAGER_WORDS.map((k) => [k, t(`kit.pager.${k}`)])),
   });
@@ -203,7 +205,7 @@ function makeFrame() {
   const d = frame.dialog;
   d.querySelector("#cl-more")?.addEventListener("click", () => {
     showAll = !showAll;
-    if (showAll && cfg.changelogPage) void goPage({ limit: String(per) });
+    if (showAll && cfg.changelogPage) void goPage({ limit: String(PAGE_PER) });
     else {
       page = null;
       renderBody();
@@ -336,8 +338,8 @@ export function renderBody() {
       .join("") + (showAll && page ? pagerOf(page) : "");
   if (showAll && page)
     hydratePager(body.querySelector("[data-den-pager]"), {
-      shortcuts: false,
-      onNavigate: (ask) => void goPage(askOf(ask.target)),
+      list: body.ownerDocument.createElement("div"),
+      load: loadMore,
     });
 
   // The toggle lives in the footer, so it is in view however long the
