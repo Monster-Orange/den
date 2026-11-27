@@ -99,16 +99,76 @@ describe("rule: Opens from (a click on a bell row; Open in Agents keeps the page
     expect(peekTarget({ ...waiting("p"), link: "//evil.test/agents" })).toBe(
       null,
     );
-    expect(
-      peekTarget({
-        ...waiting("server", "den-server"),
-        link: undefined,
-      }),
-    ).toBe(null);
     expect(peekTarget(waiting("server", "den-server"))).toBe(null);
     expect(
       peekTarget({ ...waiting("a b", "x&y"), link: undefined })?.link,
     ).toBe("/agents?project=x%26y&agent=a+b");
+  });
+});
+
+describe("issue 1821: the server agent's bell row opens Peek too", () => {
+  const server = (link?: string) => waiting("server", "den-server", { link });
+
+  it("peekTarget: a /server-agent link (or none) targets the server agent's own session", async () => {
+    const { peekTarget } = await peek();
+    const want = {
+      agent: "server",
+      workspace: "den-server",
+      link: "/server-agent",
+    };
+    expect(peekTarget(server("/server-agent"))).toEqual(want);
+    expect(peekTarget(server(undefined))).toEqual(want);
+    expect(peekTarget(server("/server-agent#chat"))?.link).toBe(
+      "/server-agent#chat",
+    );
+    expect(peekTarget(server("/server-agentx"))).toBe(null);
+    expect(peekTarget(waiting("p", "north", { link: "/server-agent" }))).toBe(
+      null,
+    );
+  });
+
+  it("Open in layout goes to the server agent's page, and the panel names it as the bell does", async () => {
+    const { layoutLink, peekView, peekHtml } = await peek();
+    expect(layoutLink("server", "den-server")).toBe("/server-agent");
+    const v = peekView(row("server", { workspace: "den-server" }), {
+      conn: "live",
+    });
+    expect(v.project).toBe("[bell.server]");
+    expect(peekHtml(v, "/server-agent")).toMatch(
+      /href="\/server-agent" data-peek="layout"/,
+    );
+  });
+
+  it("nextNeeding: a workspace agent with the same name is not the server agent", async () => {
+    const { nextNeeding } = await peek();
+    const rows = [
+      row("server", { waiting: true, waitingWhy: "permission" }),
+      row("server", {
+        workspace: "den-server",
+        waiting: true,
+        waitingWhy: "asked",
+      }),
+    ];
+    expect(
+      nextNeeding(bellOf(waiting("planner"), server()), rows, "planner"),
+    ).toMatchObject({ workspace: "den-server", why: "asked" });
+  });
+
+  it("peeking at the server agent, the project agent of the same name is still another one; the strip names the server agent as the bell does", async () => {
+    const { nextNeeding, peekView, stripHtml } = await peek();
+    const b = bellOf(server(), waiting("server"));
+    expect(nextNeeding(b, [], "server", "den-server")).toMatchObject({
+      workspace: "north",
+    });
+    expect(nextNeeding(b, [], "server", "north")).toMatchObject({
+      workspace: "den-server",
+    });
+    const v = peekView(row("planner"), {
+      conn: "live",
+      projectName: "north",
+      next: nextNeeding(b, [], "server", "north"),
+    });
+    expect(stripHtml(v)).toContain("[peek.next:server|[bell.server]|");
   });
 });
 
