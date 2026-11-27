@@ -144,6 +144,24 @@ const allClosed = (p: Page) =>
     ).every((x) => x.readyState >= 2),
   );
 
+const peekState = (p: Page) =>
+  p.evaluate(() => {
+    const dlg = document.querySelector("dialog#den-peek");
+    const a = document.activeElement;
+    return JSON.stringify({
+      conn: dlg?.getAttribute("data-conn"),
+      following: dlg?.hasAttribute("data-following"),
+      sockets: (
+        ((window as unknown as { __socks?: WebSocket[] }).__socks ??
+          []) as WebSocket[]
+      ).map((x) => `${new URL(x.url).pathname}:${x.readyState}`),
+      focus: `${a?.tagName ?? ""}.${typeof a?.className === "string" ? a.className : ""}`,
+      textareas: document.querySelectorAll(
+        "#den-peek [data-peek-term] textarea",
+      ).length,
+    });
+  });
+
 async function eventually(
   pred: () => Promise<boolean> | boolean,
   ms = 10_000,
@@ -214,10 +232,16 @@ describe.each([1280, 390])("issue 791: Peek (%i px)", (width) => {
     ).resolves.toContain("planner");
     const writes = pty.writes.length;
     await p.focus("#den-peek .xterm-helper-textarea");
+    const atKey = await peekState(p);
     await p.keyboard.type("y");
     await eventually(() =>
       Buffer.concat(pty.writes.slice(writes)).toString().includes("y"),
-    );
+    ).catch(async (e: Error) => {
+      const now = await peekState(p).catch(() => "?");
+      throw new Error(
+        `${e.message}: the typed key never reached the PTY (${pty.writes.length - writes} writes since)\nat the key: ${atKey}\nafter: ${now}`,
+      );
+    });
     expect(await d.locator('[data-peek="layout"]').getAttribute("href")).toBe(
       PLANNER,
     );
@@ -485,6 +509,51 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
     await p
       .locator('dialog#den-peek[data-conn="live"]')
       .waitFor({ timeout: 15_000 });
+    await p.context().close();
+  }, 60_000);
+
+  it("a drop while it's open: it says it's connecting until it's back, then typing reaches the agent again", async () => {
+    if (skip()) return;
+    const p = await open(1280);
+    const ctl: { opens: number; drop?: () => Promise<void> } = { opens: 0 };
+    await p.routeWebSocket(/\/api\/sessions\/[^/]+\/io/, (ws) => {
+      ctl.opens += 1;
+      const sv = ws.connectToServer();
+      if (ctl.opens === 1)
+        ctl.drop = () => sv.close({ code: 1000 }).catch(() => undefined);
+    });
+    await peek(p);
+    await p
+      .locator('dialog#den-peek[data-conn="live"]')
+      .waitFor({ timeout: 15_000 });
+    await p.evaluate(() => {
+      const dlg = document.querySelector("dialog#den-peek")!;
+      const was: string[] = [];
+      (window as unknown as { __conns: string[] }).__conns = was;
+      new MutationObserver((rs) => {
+        for (const r of rs) was.push(r.oldValue ?? "");
+      }).observe(dlg, {
+        attributes: true,
+        attributeFilter: ["data-conn"],
+        attributeOldValue: true,
+      });
+    });
+    await ctl.drop!();
+    await eventually(() => ctl.opens >= 2);
+    await p
+      .locator('dialog#den-peek[data-conn="live"]')
+      .waitFor({ timeout: 15_000 });
+    const conns = await p.evaluate(() => [
+      ...(window as unknown as { __conns: string[] }).__conns,
+      document.querySelector("dialog#den-peek")?.getAttribute("data-conn"),
+    ]);
+    expect(conns).toEqual(["live", "connecting", "live"]);
+    const writes = pty.writes.length;
+    await p.focus("#den-peek .xterm-helper-textarea");
+    await p.keyboard.type("z");
+    await eventually(() =>
+      Buffer.concat(pty.writes.slice(writes)).toString().includes("z"),
+    );
     await p.context().close();
   }, 60_000);
 
