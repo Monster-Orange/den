@@ -14,6 +14,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Settings opens as a pop-up over the page you are on, from the rail's Settings item or any link to Settings: panes grouped on the left (Look and feel, Projects and agents, Access and safety, This install), a search over pane names and setting labels (never values), the open pane in the address as `?settings=<pane>`, and Back closes it. Your notifications, devices and sign-out are in Account; Settings links there, and a link to Settings › Notifications opens Account. A browser that isn't signed in sees the panes read-only. Old links keep working: `/settings` and `/settings#<section or row>` open the pop-up over Home at that pane or row, `?q=` fills its search, and `/local-dev?settings=1` opens Editor & terminal. (issue 1926)
 
+- Settings › Access stops asking GitHub whether you've linked as owner once the Settings pop-up is closed, instead of every 1.5 seconds until the code runs out. Settings › Embedding no longer leaves a listener behind each time the pop-up closes. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed
