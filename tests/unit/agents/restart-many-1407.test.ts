@@ -31,6 +31,10 @@ import {
   type RestartOutcome,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import {
+  RestartLive,
+  restartFollowed,
+} from "../../../src/ui/server/restart-live.js";
 
 afterEach(cleanupRigs);
 
@@ -272,5 +276,26 @@ describe("issue 1407: the stale list drops an agent the moment it is back", () =
     await until(() => done.length > 0);
     expect(done[0]?.outcome).toBe("restarted");
     expect(await staleAgents(d, { fresh: true })).toEqual([]);
+  });
+});
+
+describe("issue 1406: a restart followed live (the bell's grouped Allow, restart-stale)", () => {
+  it("the plan goes into the live status, then each outcome; onDone hears it too", async () => {
+    const { r, token } = await started();
+    transcript(r, token, true);
+    const live = new RestartLive();
+    const heard: RestartOutcome[] = [];
+    const plan = await restartFollowed(
+      resolveAgentsDeps(r.deps),
+      one,
+      { pollMs: 20, onDone: (o) => heard.push(o) },
+      live,
+    );
+    expect(plan.map((p) => p.state)).toEqual(["now"]);
+    await until(() => heard.length > 0);
+    expect(heard[0]?.outcome).toBe("restarted");
+    expect(live.list().map((x) => [x.id, x.state])).toEqual([
+      ["planner", "restarted"],
+    ]);
   });
 });

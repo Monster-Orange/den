@@ -32,6 +32,7 @@ export type RestartWhy =
   | "resume"
   | "hub-tools"
   | "tools"
+  | "idle"
   | "settings"
   | "services";
 

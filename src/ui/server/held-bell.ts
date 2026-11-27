@@ -41,6 +41,26 @@ export function heldLink(
 const isHeld = (n: Notification) =>
   n.kind === "decision" && n.subject.startsWith(HELD_SUBJECT_PREFIX);
 
+export const RESTART_GROUP_SUBJECT = `${HELD_SUBJECT_PREFIX}restart-group`;
+export const RESTART_SELF = "agent_restart_self";
+
+export function restartGroupOf(pending: readonly Approval[]): Approval[] {
+  const asks = pending
+    .filter(
+      (a) =>
+        a.state === "pending" &&
+        a.action === RESTART_SELF &&
+        !isUpdateAskRequest(a),
+    )
+    .sort((x, y) => x.requestedAt - y.requestedAt);
+  return asks.length >= 2 ? asks : [];
+}
+
+const nameOf = (a: Approval) =>
+  a.agent ??
+  (typeof a.args?.agent === "string" ? a.args.agent : undefined) ??
+  a.id;
+
 /**
  * The bell's held-write items made to match `pending` (the queue's
  * pending requests). `projectOf` names the project a request is in, when
@@ -51,18 +71,40 @@ export function syncHeldBell(
   pending: readonly Approval[],
   o: { projectOf?: (a: Approval) => string | undefined } = {},
 ): { added: number; removed: number } {
+  const grouped = restartGroupOf(pending);
+  const inGroup = new Set(grouped.map((a) => a.id));
   const want = new Map<string, Approval>();
   for (const a of pending)
-    if (a.state === "pending" && !isUpdateAskRequest(a))
+    if (a.state === "pending" && !isUpdateAskRequest(a) && !inGroup.has(a.id))
       want.set(`${HELD_SUBJECT_PREFIX}${a.id}`, a);
-  const have = new Set(
-    store
-      .list()
-      .filter(isHeld)
-      .map((n) => n.subject),
+  const held = store.list().filter(isHeld);
+  const have = new Set(held.map((n) => n.subject));
+  const removed = store.remove(
+    (n) =>
+      isHeld(n) &&
+      !want.has(n.subject) &&
+      !(grouped.length && n.subject === RESTART_GROUP_SUBJECT),
   );
-  const removed = store.remove((n) => isHeld(n) && !want.has(n.subject));
   let added = 0;
+  if (grouped.length) {
+    const names = grouped.map(nameOf).join(", ");
+    const text = `Restart ${grouped.length} agents when idle: ${names}`;
+    const now = held.find((n) => n.subject === RESTART_GROUP_SUBJECT);
+    if (!now || now.text !== text) {
+      const n = store.add({
+        kind: "decision",
+        subject: RESTART_GROUP_SUBJECT,
+        scope: "workspace/den-server",
+        text,
+        msg: {
+          key: "bell.m.restartGroup",
+          vars: { n: grouped.length, names },
+        },
+        link: "/agents",
+      });
+      if (n && !now) added++;
+    }
+  }
   for (const [subject, a] of want) {
     if (have.has(subject)) continue;
     let project: string | undefined;
@@ -140,7 +182,11 @@ export function heldWaiting(pending: readonly Approval[]): HeldWaiting[] {
       id: a.id,
       action: a.action,
       what: a.summary,
-      ...(a.agent ? { agent: a.agent } : {}),
+      ...(a.agent
+        ? { agent: a.agent }
+        : a.action === RESTART_SELF && typeof a.args?.agent === "string"
+          ? { agent: a.args.agent }
+          : {}),
       ...(a.claimedAs && !a.agent && claimantIsPerson(a.actor)
         ? { claimedAs: a.claimedAs }
         : {}),

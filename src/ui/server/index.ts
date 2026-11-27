@@ -1567,6 +1567,7 @@ import {
   noteHeldWithdrawn,
   syncHeldBell,
 } from "./held-bell.js";
+import { restartFollowed } from "./restart-live.js";
 import { bellGateOverruns } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
@@ -1603,6 +1604,14 @@ import {
   writeSandboxNote,
   type SandboxSetDeps,
 } from "../../shared/agents/sandbox-set.js";
+import {
+  checkAgentRestartSelf,
+  runAgentRestartSelf,
+  type RestartSelfCheck,
+  type RestartSelfDeps,
+} from "../../shared/agents/restart-self.js";
+import { offerToolsRestarts } from "./tools-restart-offer.js";
+import { matchFreeTextRestarts } from "./free-text-restarts.js";
 import {
   checkSettingChange,
   runSettingChange,
@@ -1748,6 +1757,7 @@ import {
   busyAgentHolds,
   runningAgentIds,
   runningSubagents,
+  staleAgents,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
@@ -5769,6 +5779,7 @@ function approvalDeps(): ApprovalDeps {
     },
     // Issue 1328: one agent's sandbox off (the person's own Allow) or on.
     agentSandbox: agentSandboxHeldOp(),
+    agentRestartSelf: agentRestartSelfHeldOp(),
     settingChange: settingChangeHeldOp(),
     gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
@@ -6005,6 +6016,80 @@ function agentSandboxHeldOp() {
     ) => checkAgentSandboxSet(deps(), a, who),
     run: (a: Record<string, unknown>, asked?: { agent?: string }) =>
       runAgentSandboxSet(deps(), a, asked),
+  };
+}
+
+async function offerToolsRestartsNow(): Promise<void> {
+  const ap = approvalDeps();
+  try {
+    if (!ap.enabled()) return;
+  } catch {
+    return;
+  }
+  const op = ap.actions.agent_restart_self;
+  if (!op) return;
+  const offered = await offerToolsRestarts({
+    stale: () => staleAgents(agentWebDeps(), { fresh: true }),
+    pending: () => ap.queue.pending(),
+    check: (a) => op.check(a) as RestartSelfCheck | Promise<RestartSelfCheck>,
+    request: (r) => ap.queue.request(r),
+  });
+  if (offered.length)
+    recordAction(null, {
+      verb: "approval-ask",
+      detail: `agent_restart_self after the update: ${offered.join(", ")}`,
+    });
+}
+
+async function matchFreeTextRestartsNow(): Promise<void> {
+  const ap = approvalDeps();
+  try {
+    if (!ap.enabled()) return;
+  } catch {
+    return;
+  }
+  const op = ap.actions.agent_restart_self;
+  if (!op) return;
+  const store = notificationDeps().store;
+  const matched = await matchFreeTextRestarts({
+    rows: () => store.list(),
+    pending: () => ap.queue.pending(),
+    askedBefore: (actor) => ap.queue.ofActor(actor).length > 0,
+    check: (a) => op.check(a) as RestartSelfCheck | Promise<RestartSelfCheck>,
+    request: (r) => ap.queue.request(r),
+  });
+  if (matched.length)
+    recordAction(null, {
+      verb: "approval-ask",
+      detail: `agent_restart_self from waiting questions: ${matched.join(", ")}`,
+    });
+}
+
+function agentRestartSelfHeldOp() {
+  const deps = (): RestartSelfDeps => ({
+    record: (id) => agentRecord(agentWebDeps(), id),
+    restart: (id, project) =>
+      restartFollowed(agentWebDeps(), [{ id, workspace: project }], {
+        onDone: (o) => {
+          if (o.outcome !== "restarted")
+            serverLog(
+              `  ⚠ agent_restart_self: ${id} didn't restart (${o.outcome}). Restart it from the Agents page`,
+              "warn",
+            );
+        },
+      }).catch((e) => {
+        serverLog(
+          `  ⚠ agent_restart_self: ${id} didn't restart: ${(e as Error).message}. Restart it from the Agents page`,
+          "warn",
+        );
+      }),
+  });
+  return {
+    check: (
+      a: Record<string, unknown>,
+      who?: { agent?: string; project?: string },
+    ) => checkAgentRestartSelf(deps(), a, who),
+    run: (a: Record<string, unknown>) => runAgentRestartSelf(deps(), a),
   };
 }
 
@@ -12700,6 +12785,7 @@ void CRASH_GATE.then(() => {
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
     startEnvHoldAsk();
+    void matchFreeTextRestartsNow().catch(() => undefined);
     void pruneDeadSnapshots()
       .then((n) => {
         if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
@@ -13478,7 +13564,10 @@ function startUpdateCheck(): void {
     const until = Date.now() + waitMs + 60_000;
     const poll = () => {
       const s = u.readUpdateState(getStateDir());
-      if (s?.to === have && s.state === "good") return void tick();
+      if (s?.to === have && s.state === "good") {
+        void offerToolsRestartsNow().catch(() => undefined);
+        return void tick();
+      }
       if (s?.to === have && s.state === "watching" && Date.now() < until)
         setTimeout(poll, 5_000).unref();
     };

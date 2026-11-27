@@ -221,6 +221,17 @@
         padding: 10px 12px 4px;
         display: flex;
         justify-content: space-between;
+        gap: 8px;
+      }
+      .agl .wsh .wsn {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .agl .wsh .wsa {
+        flex: none;
+        white-space: nowrap;
       }
       .agr {
         display: grid;
@@ -288,7 +299,8 @@
       .agr[data-drop="after"] {
         box-shadow: inset 0 -3px 0 var(--accent);
       }
-      .agl .wsh .agord-t {
+      .agl .wsh .agord-t,
+      .agl .wsh .agri-t {
         margin-right: 8px;
         text-transform: none;
         letter-spacing: 0;

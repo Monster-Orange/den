@@ -10,10 +10,13 @@
 import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
 import { jobCommandOf } from "../../shared/process/jobs.js";
 import { redactSecrets } from "../../shared/redact.js";
-import type {
-  RestartOutcome,
-  RestartPlan,
-  RestartState,
+import type { RestartWhy } from "../../shared/agents/restart-queue.js";
+import {
+  restartMany,
+  type AgentsResolved,
+  type RestartOutcome,
+  type RestartPlan,
+  type RestartState,
 } from "../cli/agent-ops.js";
 
 export type LiveState = RestartState | "restarted" | "timedOut" | "failed";
@@ -214,4 +217,44 @@ export class RestartLive {
       /* the bell is best effort: the audit has it */
     }
   }
+}
+
+let SHARED: RestartLive | null = null;
+export async function restartLive(): Promise<RestartLive> {
+  if (SHARED) return SHARED;
+  const store: Pick<NotificationStore, "add" | "remove"> | null =
+    await import("./notification-service.js")
+      .then((m) => m.notificationDeps().store)
+      .catch(() => null);
+  SHARED ??= new RestartLive({ store });
+  return SHARED;
+}
+
+export async function restartFollowed(
+  d: AgentsResolved,
+  agents: readonly { id: string; workspace: string }[],
+  o: Parameters<typeof restartMany>[2] = {},
+  live?: RestartLive,
+  why: RestartWhy = "tools",
+): Promise<RestartPlan[]> {
+  const l = live ?? (await restartLive());
+  const early: RestartOutcome[] = [];
+  let begun = false;
+  const plan = await restartMany(d, agents, {
+    slot: async (id) => {
+      const { restartQueue } = await import("./restart-queue-service.js");
+      await restartQueue().add({ id, why, run: async () => true });
+      return () => undefined;
+    },
+    ...o,
+    onDone: (x) => {
+      if (begun) l.done(x);
+      else early.push(x);
+      o?.onDone?.(x);
+    },
+  });
+  l.begin(plan);
+  begun = true;
+  for (const x of early.splice(0)) l.done(x);
+  return plan;
 }

@@ -3495,6 +3495,13 @@
       "It is stopped and stays so: its next start is a new conversation there.",
     "ap.det.agent_folder.self":
       "This is the agent that asked: it stops when you Allow, and its answer to you ends there.",
+    "ap.det.agent_restart_self.when":
+      "Restarts {agent} at its next idle moment, on the same conversation. It never cuts a turn.",
+    "ap.det.agent_restart_self.tools":
+      "Why: to load new tools from its MCP servers.",
+    "ap.det.agent_restart_self.update":
+      "Why: to run on the updated Den and its tools.",
+    "ap.det.agent_restart_self.why": "Why: {why}",
     "ap.det.agent_mode.loosens": "This lets {agent} act without asking you.",
     "ap.det.agent_mode.now": "Now: its own mode, {mode}",
     "ap.det.agent_mode.then": "Then: it follows the project, {mode}",
@@ -3555,6 +3562,7 @@
     "ap.do.gate_settings_set.loosens":
       "This widens what agents can do: gate settings {keys}",
     "ap.do.agent_mode": "{agent}: {from} → follow project ({to})",
+    "ap.do.agent_restart_self": "Restart agent {agent} when it's idle",
     "ap.do.agent_mode.loosens":
       "This lets {agent} act without asking you: {from} → follow project ({to})",
     "ap.pm.warn": "This lets agents in {project} act without asking you.",
@@ -4097,6 +4105,7 @@
     "bell.m.rsJob":
       "{id} was not restarted: a background job is running ({cmd}, {min} min)",
     "bell.m.rsFailed": "{id} was not restarted",
+    "bell.m.restartGroup": "Restart {n} agents when idle: {names}",
     "bell.m.noHub": "{n} agents started without Hub",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
@@ -4169,6 +4178,22 @@
     "rs.done": "{id}: restarted, in the same conversation.",
     "rs.timedOut":
       "{id}: not restarted, still working after {min} min. Restart now ends its turn.",
+    "bell.rg.title": "Restart {n} agents when idle",
+    "bell.rg.sub":
+      "Each restarts at its next idle moment, on the same conversation.",
+    "bell.rg.allow": "Allow {n}",
+    "bell.rg.allowing": "Allowing…",
+    "bell.rg.takeOut": "Take out",
+    "bell.rg.putBack": "Put back",
+    "bell.rg.out": "{name} (left out)",
+    "bell.rg.done": "Allowed: {n} agents restart when idle",
+    "bell.rg.partly": "Allowed {n}; {failed} could not be allowed",
+    "ag.ri.all": "Restart all idle agents ({n})",
+    "ag.ri.ws": "Restart this project's idle agents ({n})",
+    "ag.ri.wsShort": "Restart idle ({n})",
+    "ag.ri.said": "{n} restarting now. Waiting: {wait}.",
+    "ag.ri.saidAll": "{n} restarting now.",
+    "ag.ri.none": "No agents are running.",
     "rs.failed": "{id}: not restarted. Restart it from the Agents page.",
     "bell.ap.denied": "Denied: {what}",
     "bell.ap.failed": "That didn't work: {error}",

@@ -2112,6 +2112,22 @@ export async function staleAgents(
   return out;
 }
 
+export async function runningAgents(
+  d: AgentsResolved,
+  ws?: string,
+): Promise<{ id: string; workspace: string }[]> {
+  let live: SessionInfo[] = [];
+  const c = await d.connectExisting();
+  try {
+    live = c ? (await c.list()).filter((s) => !s.exited) : [];
+  } finally {
+    c?.close();
+  }
+  return listRecords(d.stateDir())
+    .filter((rec) => (!ws || rec.workspace === ws) && sessionOf(live, rec))
+    .map((rec) => ({ id: rec.id, workspace: rec.workspace }));
+}
+
 /** D44: what agent `id` is told of its own tools (MCP whoami, the pane). */
 export interface AgentTools {
   agent: string;

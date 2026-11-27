@@ -41,7 +41,7 @@ const tool = (
 const LOADED = "Your tool list has Hub's current tools now.";
 /** The end of the note when it doesn't: a restart is needed, and offered. */
 const RESTART =
-  "Your tool list is still the one you started with, so you can't use these yet. A restart loads them and keeps this conversation: ask your person to press Restart on you in Den.";
+  "Your tool list is still the one you started with, so you can't use these yet. A restart loads them and keeps this conversation: if you need them, call agent_restart_self with reason tools, then end your turn. Don't ask your person in words: several agents' asks share one Allow.";
 
 const OLD = [
   tool(

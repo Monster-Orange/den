@@ -414,12 +414,51 @@ async function endSlot(el) {
   }
 }
 
+const RESTART_SELF = "agent_restart_self";
+const RESTART_GROUP_SUBJECT = "record:held-restart-group";
+
+export function restartGroupOf(allows) {
+  const asks = allows.filter((w) => w.action === RESTART_SELF);
+  return asks.length >= 2 ? asks : [];
+}
+
+function restartGroupHtml(asks, out, busy) {
+  if (!asks.length) return "";
+  const keep = asks.filter((w) => !out.has(w.id));
+  const going = busy === "restart-group";
+  const rows = asks
+    .map((w) => {
+      const gone = out.has(w.id);
+      const name = w.agent || w.id;
+      return (
+        `<div class="den-bell-rg-row${gone ? " out" : ""}" data-rg-row="${esc(w.id)}">` +
+        `<span class="den-bell-t">${esc(gone ? tr("bell.rg.out", { name }) : name)}</span>` +
+        `<button type="button" class="den-btn" data-bell="${gone ? "restart-in" : "restart-out"}" data-ap="${esc(w.id)}"${going ? " disabled" : ""}>${esc(tr(gone ? "bell.rg.putBack" : "bell.rg.takeOut"))}</button>` +
+        `</div>`
+      );
+    })
+    .join("");
+  return (
+    `<div class="den-bell-row den-bell-allow" data-kind="restart-group">` +
+    `<span class="den-dot warn" aria-hidden="true"></span>` +
+    `<span class="den-bell-t">${esc(tr("bell.rg.title", { n: asks.length }))}<span class="den-bell-sub">${esc(tr("bell.rg.sub"))}</span>${rows}</span>` +
+    `<button type="button" class="den-btn primary" data-bell="allow-group" data-ids="${esc(keep.map((w) => w.id).join(","))}"${going || !keep.length ? " disabled" : ""}${going ? ' aria-busy="true"' : ""}>${esc(tr(going ? "bell.rg.allowing" : "bell.rg.allow", { n: keep.length }))}</button>` +
+    `</div>`
+  );
+}
+
 /** Issue 746: the Allow rows' own group, heading Needs you. */
-function allowsHtml(allows, reviews = new Set()) {
+function allowsHtml(allows, reviews = new Set(), ui = {}) {
   if (!allows.length) return "";
+  const group = restartGroupOf(allows);
+  const inGroup = new Set(group.map((w) => w.id));
   return (
     `<section data-scope="allow"><div class="den-bell-sc"><span>${esc(tr("bell.ap.h"))}</span></div>` +
-    allows.map((w) => allowRowHtml(w, reviews.has(w.id))).join("") +
+    restartGroupHtml(group, ui.restartOut ?? new Set(), ui.busy) +
+    allows
+      .filter((w) => !inGroup.has(w.id))
+      .map((w) => allowRowHtml(w, reviews.has(w.id)))
+      .join("") +
     `</section>`
   );
 }
@@ -428,6 +467,7 @@ function allowsHtml(allows, reviews = new Set()) {
 function withoutAllowed(groups, allows) {
   if (!allows.length) return groups;
   const shown = new Set(allows.map((w) => `record:held-${w.id}`));
+  if (restartGroupOf(allows).length) shown.add(RESTART_GROUP_SUBJECT);
   return groups
     .map((g) => ({
       ...g,
@@ -482,6 +522,7 @@ export function bellPanel(b, ui = {}) {
     updates: !!ui.updates,
     ask: ui.ask,
     busy: ui.busy ?? null,
+    restartOut: ui.restartOut ?? new Set(),
   };
   // Issue 746: what waits for the person's Allow leads Needs you.
   const allows = allowsOf(b);
@@ -544,7 +585,7 @@ export function bellPanel(b, ui = {}) {
     ...panel,
     sections: {
       needs:
-        allowsHtml(allows, u.reviews) +
+        allowsHtml(allows, u.reviews, u) +
         overrunsHtml(overrunsOf(b)) +
         groupsHtml(groups, u, true),
       ...(done.length
@@ -755,6 +796,47 @@ async function decideHeld(el, decision) {
     );
 }
 
+async function allowGroup(btn, ids) {
+  const shell = window.denShell;
+  const run = async (headers) => {
+    const done = [];
+    const failed = [];
+    for (const id of ids) {
+      try {
+        const j = await shell.api(
+          "POST",
+          `/api/approvals/${encodeURIComponent(id)}/decide`,
+          { decision: "allow" },
+          { headers },
+        );
+        if (j && j.result?.ok !== false) done.push(id);
+        else failed.push(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+    return { done, failed };
+  };
+  let r = null;
+  try {
+    r = shell?.busyAction
+      ? await shell.busyAction("decide-allow", run, {
+          button: btn,
+          toastFast: false,
+        })
+      : await run({});
+  } catch (err) {
+    shell?.errorToast?.(err);
+    return;
+  }
+  if (!r) return;
+  shell?.toast?.(
+    r.failed.length
+      ? tr("bell.rg.partly", { n: r.done.length, failed: r.failed.length })
+      : tr("bell.rg.done", { n: r.done.length }),
+  );
+}
+
 /** Wire the bell on this page; a page without #den-bell does nothing. */
 export function initBell(doc = document) {
   const btn = doc.getElementById("den-bell");
@@ -773,6 +855,7 @@ export function initBell(doc = document) {
     updates: false,
     ask: null,
     busy: null,
+    restartOut: new Set(),
   };
   // The kit's bell (den-ui 0.7.0): its panel on <body>, a click toggles
   // it, Esc or a click outside closes it, focus back on the bell.
@@ -959,6 +1042,27 @@ export function initBell(doc = document) {
     if (what === "allow" || what === "deny") {
       await decideHeld(el, what);
       await refresh();
+      return;
+    }
+    if (what === "restart-out" || what === "restart-in") {
+      const id = el.dataset.ap;
+      if (id && what === "restart-out") ui.restartOut.add(id);
+      else if (id) ui.restartOut.delete(id);
+      paint();
+      return;
+    }
+    if (what === "allow-group") {
+      if (ui.busy) return;
+      const ids = (el.dataset.ids ?? "").split(",").filter(Boolean);
+      if (!ids.length) return;
+      ui.busy = "restart-group";
+      paint();
+      const btn = pop.querySelector('[data-bell="allow-group"]') ?? el;
+      await allowGroup(btn, ids);
+      ui.busy = null;
+      ui.restartOut.clear();
+      await refresh();
+      paint();
       return;
     }
     if (what === "all" || what === "clear" || what === "scope") {

@@ -148,12 +148,11 @@ import {
   agentDetails,
   agentTools,
   restartAgent,
-  restartMany,
   restartOutcomeOf,
   restartWaitOf,
-  type RestartOutcome,
   restartStateOf,
   staleAgents,
+  runningAgents,
   agentHelpers,
   agentHelperTranscript,
   listPersonas,
@@ -234,8 +233,7 @@ import {
   runProjectMcpUpdate,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
-import type { NotificationStore } from "../../shared/notifications.js";
-import { RestartLive } from "./restart-live.js";
+import { restartFollowed, restartLive } from "./restart-live.js";
 import { recordAction } from "./audit.js";
 import {
   agentFile,
@@ -655,6 +653,8 @@ export async function handleAgentRoutes(
   if (dp) return detailsRoute(req, res, dp, webDeps(deps.agents));
   const tp = TOOLS_PATH.exec(pathname);
   if (tp) return toolsRoute(req, res, tp, webDeps(deps.agents));
+  if (pathname === "/api/agents/restart-idle")
+    return idleRoute(req, res, webDeps(deps.agents), deps);
   if (pathname === "/api/agents/restart-status")
     return restartStatusRoute(req, res);
   if (
@@ -3206,21 +3206,6 @@ async function toolsRoute(
   return true;
 }
 
-/** This server's live restart status (one per server). */
-let LIVE: RestartLive | null = null;
-async function restartLive(): Promise<RestartLive> {
-  if (LIVE) return LIVE;
-  let store: Pick<NotificationStore, "add" | "remove"> | null = null;
-  try {
-    store = (await import("./notification-service.js")).notificationDeps()
-      .store;
-  } catch {
-    /* no bell here: the page still has it */
-  }
-  LIVE ??= new RestartLive({ store });
-  return LIVE;
-}
-
 /**
  * GET /api/agents/restart-status: each agent of a bulk
  * restart, live (its state, and why it waits); a signed-in person's read
@@ -3251,6 +3236,79 @@ async function restartStatusRoute(
   }
   const live = await restartLive();
   sendJson(res, { agents: live.list(), run: live.progress() });
+  return true;
+}
+
+async function idleRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  d: AgentsResolved,
+  deps: AgentRouteDeps,
+): Promise<true> {
+  if ((req.method ?? "GET") !== "POST") return methodNotAllowed(res, "POST");
+  const actor = auditActorOf(req);
+  let what = "restart the running agents at their next idle";
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  let claimed: { id: string; workspace: string }[] = [];
+  try {
+    if (notAPersonOf(req))
+      throw new AgentError("only a person can restart agents", {
+        status: 403,
+      });
+    guard(actor);
+    const body = await jsonBody(req);
+    for (const k of Object.keys(body))
+      if (k !== "project")
+        throw new AgentError(
+          `${k}: unknown field (restart-idle takes only: project)`,
+          { usage: true },
+        );
+    let ws: string | undefined;
+    if (body.project !== undefined) {
+      ws = typeof body.project === "string" ? body.project : "";
+      if (!ws || isServerScope(ws) || !d.workspaceExists(ws))
+        throw new AgentError(`no project "${ws}"`, {
+          status: 404,
+          code: "not_found",
+        });
+      what = `${what} in ${ws}`;
+    }
+    const live = await restartLive();
+    const list = live.claim(await runningAgents(d, ws));
+    claimed = list;
+    what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
+    audit(what);
+    const one = (id: string, w: string) =>
+      `restart ${id} in ${w} (at its next idle), same conversation`;
+    const plan = await restartFollowed(
+      d,
+      list,
+      {
+        ...(deps.personaWait ?? {}),
+        onDone: (o) =>
+          o.outcome === "restarted"
+            ? audit(one(o.id, o.workspace))
+            : audit(one(o.id, o.workspace), `not restarted (${o.outcome})`),
+      },
+      live,
+      "idle",
+    );
+    sendJson(res, { ok: true, agents: plan, run: live.progress() }, 202);
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e);
+  } finally {
+    (await restartLive()).release(claimed);
+  }
   return true;
 }
 
@@ -3350,9 +3408,7 @@ async function staleRoute(
     const one = (id: string, ws: string) =>
       `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
     // Part 2: the page and the bell follow each agent live (restartLive).
-    const outcomes: RestartOutcome[] = [];
-    let begun = false;
-    const plan = await restartMany(
+    const plan = await restartFollowed(
       d,
       list.map((a) => ({ id: a.id, workspace: a.workspace })),
       {
@@ -3363,8 +3419,6 @@ async function staleRoute(
           return () => undefined;
         },
         onDone: (o) => {
-          if (begun) live.done(o);
-          else outcomes.push(o);
           if (o.outcome === "restarted") audit(one(o.id, o.workspace));
           else
             audit(
@@ -3378,9 +3432,6 @@ async function staleRoute(
         },
       },
     );
-    live.begin(plan);
-    begun = true;
-    for (const o of outcomes.splice(0)) live.done(o);
     for (const p of plan)
       if (p.state === "job" || p.state === "unknown")
         audit(

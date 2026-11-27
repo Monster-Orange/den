@@ -228,3 +228,28 @@ export function followRestarts(o) {
     },
   };
 }
+
+export function restartIdleBarHtml(n, projects, t, o = {}) {
+  return n >= 2 && projects >= 2 && !o.phone
+    ? `<div class="agnote" data-note="restart-idle"><button type="button" class="den-btn sm" data-act="restart-idle">${esc(t("ag.ri.all", { n }))}</button></div>`
+    : "";
+}
+
+export function restartIdleWsHtml(ws, n, t) {
+  const full = esc(t("ag.ri.ws", { n }));
+  return n >= 2
+    ? `<button type="button" class="den-btn sm agri-t" data-act="restart-idle-ws" data-ws="${esc(ws)}" aria-label="${full}" title="${full}">${esc(t("ag.ri.wsShort", { n }))}</button>`
+    : "";
+}
+
+export function restartIdleSaid(plan, t) {
+  const list = Array.isArray(plan) ? plan : [];
+  if (!list.length) return t("ag.ri.none");
+  const now = list.filter((a) => a?.state === "now").length;
+  const wait = list
+    .filter((a) => a?.state !== "now")
+    .map((a) => String(a?.id ?? ""));
+  return wait.length
+    ? t("ag.ri.said", { n: now, wait: wait.join(", ") })
+    : t("ag.ri.saidAll", { n: now });
+}

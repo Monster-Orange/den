@@ -2503,6 +2503,13 @@
       "停止中で、そのままです。次に起動するときは、そこで新しい会話になります。",
     "ap.det.agent_folder.self":
       "頼んだのはこのエージェントです。あなたが許可すると止まり、あなたへの返答もそこで終わります。",
+    "ap.det.agent_restart_self.when":
+      "{agent} を次に手が空いたときに、同じ会話のまま再起動します。ターンを中断することはありません。",
+    "ap.det.agent_restart_self.tools":
+      "理由: MCP の新しいツールを読み込むため。",
+    "ap.det.agent_restart_self.update":
+      "理由: 更新した Den とそのツールで動かすため。",
+    "ap.det.agent_restart_self.why": "理由: {why}",
     "ap.det.agent_mode.loosens":
       "これにより、{agent} はあなたに確認せずに動けるようになります。",
     "ap.det.agent_mode.now": "現在: 独自のモード、{mode}",
@@ -2564,6 +2571,7 @@
     "ap.do.gate_settings_set.loosens":
       "エージェントにできることが広がります: テスト枠の設定 {keys}",
     "ap.do.agent_mode": "{agent}: {from} → プロジェクトに従う ({to})",
+    "ap.do.agent_restart_self": "エージェント {agent} を手が空いたときに再起動",
     "ap.do.agent_mode.loosens":
       "{agent} があなたに確認せずに動けるようになります: {from} → プロジェクトに従う ({to})",
     "ap.pm.warn":
@@ -3108,6 +3116,7 @@
     "bell.m.rsJob":
       "{id} は再起動されませんでした: バックグラウンドのジョブが実行中です ({cmd}、{min} 分)",
     "bell.m.rsFailed": "{id} は再起動されませんでした",
+    "bell.m.restartGroup": "手が空いたら {n} 件のエージェントを再起動: {names}",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.unaskedExit":
@@ -3177,6 +3186,22 @@
     "rs.done": "{id}: 同じ会話のまま再起動しました。",
     "rs.timedOut":
       "{id}: 再起動されませんでした。{min} 分後も作業中でした。今すぐ再起動するとターンが終わります。",
+    "bell.rg.title": "手が空いたら {n} 件のエージェントを再起動",
+    "bell.rg.sub": "それぞれ次に手が空いたときに、同じ会話のまま再起動します。",
+    "bell.rg.allow": "{n} 件を許可",
+    "bell.rg.allowing": "許可しています…",
+    "bell.rg.takeOut": "外す",
+    "bell.rg.putBack": "戻す",
+    "bell.rg.out": "{name} (外しました)",
+    "bell.rg.done":
+      "許可しました: {n} 件のエージェントが手が空いたら再起動します",
+    "bell.rg.partly": "{n} 件を許可しました。{failed} 件は許可できませんでした",
+    "ag.ri.all": "手が空いているエージェントをすべて再起動 ({n})",
+    "ag.ri.ws": "このプロジェクトの手が空いているエージェントを再起動 ({n})",
+    "ag.ri.wsShort": "空きを再起動 ({n})",
+    "ag.ri.said": "{n} 件を今すぐ再起動します。待機中: {wait}。",
+    "ag.ri.saidAll": "{n} 件を今すぐ再起動します。",
+    "ag.ri.none": "実行中のエージェントはありません。",
     "rs.failed":
       "{id}: 再起動できませんでした。エージェントのページから再起動してください。",
     "bell.ap.denied": "拒否しました: {what}",

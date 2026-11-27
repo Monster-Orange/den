@@ -1051,6 +1051,11 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   S(
     ["POST"],
+    "/api/agents/restart-idle",
+    "issue 1406: restarts every running agent (or one project's) at its next idle, same conversation: runtimes in PTYs; a person's only",
+  ),
+  S(
+    ["POST"],
     "/api/agents/restart-stale",
     "D44: restarts every agent with out-of-date tools at its next idle, same conversation: runtimes in PTYs; a person's only",
   ),
