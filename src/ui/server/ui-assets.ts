@@ -406,6 +406,7 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/dialog.css",
   // Issue 750: the group header's look (the agents page's By group view).
   "/kit/group-header.css",
+  "/kit/pager.css",
 ];
 
 /**

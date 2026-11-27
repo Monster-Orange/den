@@ -222,7 +222,10 @@ function askedAgents(st) {
 
 async function sessions(st) {
   try {
-    const q = new URLSearchParams({ agents: askedAgents(st).join(",") });
+    const q = new URLSearchParams({
+      agents: askedAgents(st).join(","),
+      limit: "20",
+    });
     const r = await fetch(`/api/sessions?${q}`, {
       headers: { accept: "application/json" },
       credentials: "same-origin",

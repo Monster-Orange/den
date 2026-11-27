@@ -28,6 +28,7 @@
  */
 import { sudoRun } from "./topbar.js";
 import { formatTime } from "/kit/time.js";
+import { hydratePager, pagerHtml } from "/kit/pager.js";
 import { logStreamUrl } from "./log-source.js";
 import { dismissable, focusBack } from "./popover.js";
 import { healthReason } from "./value-words.js";
@@ -210,8 +211,10 @@ const running = (s) =>
  * its project on no one repo. Stopped ones too (dimmed, with Start). A
  * project is its workspace until H5's projects.
  */
-function agentsAsk(s) {
-  const q = new URLSearchParams({ kind: "agent", limit: "50" });
+const AGENTS_STEP = 20;
+const AGENTS_CAP = 200;
+function agentsAsk(s, limit = AGENTS_STEP) {
+  const q = new URLSearchParams({ kind: "agent", limit: String(limit) });
   if (s.workspaces.length) q.set("projects", s.workspaces.join(","));
   if (s.repo) q.set("repo", s.repo);
   return q;
@@ -288,6 +291,33 @@ export function panelHtml(s) {
   const ags = agentsOf(s);
   const shownAgents = ags.here.length + ags.also.length;
   const allAgents = Math.max(shownAgents, S.agentsTotal ?? 0);
+  const words = (k) => t(`pager.${k}`);
+  const more = shownAgents
+    ? pagerHtml({
+        mode: "more",
+        from: 1,
+        to: shownAgents,
+        loaded: shownAgents > AGENTS_STEP,
+        total: allAgents,
+        hasNext: !!S.agentsNext,
+        step: AGENTS_STEP,
+        per: AGENTS_STEP,
+        moreHref: S.agentsNext ? "#den-svp-agents" : null,
+        lang: window.denShell?.lang?.() ?? "en",
+        words: Object.fromEntries(
+          [
+            "label",
+            "range",
+            "rangeOpen",
+            "more",
+            "moreN",
+            "lastN",
+            "all",
+            "moreErr",
+          ].map((k) => [k, words(k)]),
+        ),
+      })
+    : "";
   const pinned = window.denShell?.isPinned?.(s.id);
   const testing = S.testing.has(s.id) || S.lastRuns[s.repo]?.running;
   return (
@@ -310,6 +340,7 @@ export function panelHtml(s) {
     `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.tests"))}</div>` +
     `<div class="den-svp-line">${testsHtml(s)}<button type="button" class="den-btn sm den-svp-sp" data-svx="tests"${testing ? " disabled" : ""}>${esc(t("svp.runTests"))}</button></div></div>` +
     `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.agents"))}${allAgents ? ` · ${allAgents}` : ""}</div>` +
+    `<div id="den-svp-agents">` +
     `<div class="den-svp-sub" id="den-svp-here">${esc(t("svp.onRepo"))}</div>` +
     (ags.here.length
       ? ags.here.map(agRow).join("")
@@ -319,9 +350,7 @@ export function panelHtml(s) {
         ags.also.map(agRow).join("") +
         `</details>`
       : "") +
-    (allAgents > shownAgents
-      ? `<a class="den-lnk" href="/agents?project=${encodeURIComponent(project(s))}">${esc(t("svp.moreAgents", { n: allAgents - shownAgents }))}</a>`
-      : "") +
+    `</div>${more}` +
     `<div><button type="button" class="den-btn sm" data-svx="startag">+ ${esc(t("svp.startHere"))}</button></div></div>` +
     // den#143: Report drawn in its own row, so a refresh doesn't wipe it.
     `<div class="den-svp-foot">${window.denShell?.reportButton?.(true) ?? ""}<button type="button" class="den-lnk" data-svx="services">${esc(t("svp.openSvc"))}</button>` +
@@ -405,6 +434,7 @@ function sync() {
     const sc = o.el.scrollTop;
     o.el.innerHTML = html;
     o.html = html;
+    hydrateAgents(o.el);
     o.el.scrollTop = sc;
     if (mine) {
       const swap = {
@@ -426,7 +456,11 @@ async function refresh() {
       .then((r) => (r.ok ? r.json() : d))
       .catch(() => d);
   const svc = S.open ? serviceOf(S.open.id) : null;
-  S.agentsAsked = svc ? String(agentsAsk(svc)) : "";
+  const loaded = Math.min(
+    AGENTS_CAP,
+    Math.max(AGENTS_STEP, S.agentsLoaded ?? 0),
+  );
+  S.agentsAsked = svc ? String(agentsAsk(svc, loaded)) : "";
   const [last, daemons, sess] = await Promise.all([
     get("/api/runs/last", null),
     get("/api/service/daemons", []),
@@ -442,12 +476,59 @@ async function refresh() {
       if (cur === undefined || at < cur) S.upSince.set(d.repoName, at);
     }
   }
-  if (Array.isArray(sess?.sessions)) {
-    S.sessions = sess.sessions;
-    S.agentsTotal =
-      typeof sess.total === "number" ? sess.total : sess.sessions.length;
-  }
+  if (Array.isArray(sess?.sessions) && !S.agentsBusy) gotAgents(sess, false);
   sync();
+}
+
+function gotAgents(reply, append) {
+  const rows = reply.sessions;
+  S.sessions = append ? [...S.sessions, ...rows] : rows;
+  S.agentsLoaded = S.sessions.length;
+  S.agentsNext = typeof reply.next === "string" ? reply.next : null;
+  S.agentsTotal =
+    typeof reply.total === "number" ? reply.total : S.sessions.length;
+}
+
+async function moreAgents() {
+  const svc = S.open ? serviceOf(S.open.id) : null;
+  if (!svc || !S.agentsNext) return { html: "", hasNext: false };
+  const q = agentsAsk(svc);
+  q.set("cursor", S.agentsNext);
+  const before = new Set(S.sessions.map((a) => a.id));
+  S.agentsBusy = true;
+  try {
+    const r = await fetch(`/api/sessions?${q}`, {
+      headers: { accept: "application/json" },
+    });
+    const reply = r.ok ? await r.json() : null;
+    if (!Array.isArray(reply?.sessions)) throw new Error(String(r.status));
+    gotAgents(reply, true);
+  } finally {
+    S.agentsBusy = false;
+  }
+  queueMicrotask(() => {
+    sync();
+    const first = S.sessions.find((a) => !before.has(a.id));
+    const row =
+      first &&
+      S.open?.el.querySelector(
+        `.den-svp-ag[data-agent="${CSS.escape(first.agent || first.id)}"]`,
+      );
+    if (row) {
+      row.closest("details")?.setAttribute("open", "");
+      row.querySelector("button")?.focus();
+    }
+  });
+  return { html: "", to: S.sessions.length, hasNext: !!S.agentsNext };
+}
+
+function hydrateAgents(root) {
+  const nav = root.querySelector('#den-svp-agents + [data-den-pager="more"]');
+  if (nav)
+    hydratePager(nav, {
+      list: root.querySelector("#den-svp-agents"),
+      load: moreAgents,
+    });
 }
 
 /**
@@ -466,6 +547,12 @@ export function openPanel(id, opener, opts = {}) {
     return;
   }
   closePanel(false);
+  Object.assign(S, {
+    sessions: [],
+    agentsLoaded: 0,
+    agentsNext: null,
+    agentsTotal: 0,
+  });
   const el = document.createElement("div");
   el.className = "den-pop den-svp";
   el.tabIndex = -1;
