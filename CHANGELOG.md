@@ -8,6 +8,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- A menu (the top bar's project drop-down among them) is never wider than the screen. A name too long for it is cut short with an ellipsis on one line, its ✓ still at the end, instead of running off the screen. It showed with long names in wide characters, such as Japanese, on an iPad. UI kit 0.23.0. (issue 1917)
+
 - A pull request that changes `shell.js` or a data file at the top of `tests/` (such as `tests/affected-map.json`) no longer runs every test. A `shell.js` change runs every browser spec, the tests that read it and the tests that use a helper that reads it; a data file runs the tests that read it, and the map runs its own tests. The CI replay now picks the tests that read a changed file by path, as CI does. (issue 1805)
 
 - The agents list no longer waits for every agent's helpers after a restart or a wave of new agents. It answers within `agents.helpers.list_wait_seconds` (0.25 s), shows "Counting helpers…" on agents not read yet, and fills them in on the next look, a second later. While helpers are read, Den's other pages and tools keep answering: the reader pauses `agents.helpers.reader_rest_ms` (2 ms) between agents. Before, the first list over 140 unread agents took about 7 s and slowed the server for about 2.7 s.

@@ -908,6 +908,10 @@
     "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
       "src/ui/server/public/agents-*.js"
+    ],
+    "tests/unit/server/menu-width-1917.browser.test.ts": [
+      "packages/den-ui/src/shell.css",
+      "src/ui/server/public/shell.js"
     ]
   },
   "subjectless": [],
@@ -1298,6 +1302,7 @@
         "tests/unit/server/kit-dialog.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
+        "tests/unit/server/menu-width-1917.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/page-height-283.browser.test.ts",
         "tests/unit/server/peek.browser.test.ts",
@@ -1874,6 +1879,7 @@
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/local-dev-output-panel.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
+        "tests/unit/server/menu-width-1917.browser.test.ts",
         "tests/unit/server/no-services-repo-projects.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/page-height-283.browser.test.ts",
@@ -2061,6 +2067,7 @@
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/local-dev-output-panel.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
+        "tests/unit/server/menu-width-1917.browser.test.ts",
         "tests/unit/server/mode-layers.browser.test.ts",
         "tests/unit/server/my-reports.browser.test.ts",
         "tests/unit/server/no-services-repo-projects.browser.test.ts",
@@ -2461,6 +2468,7 @@
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/local-dev-output-panel.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
+        "tests/unit/server/menu-width-1917.browser.test.ts",
         "tests/unit/server/mode-layers.browser.test.ts",
         "tests/unit/server/my-reports.browser.test.ts",
         "tests/unit/server/no-services-repo-projects.browser.test.ts",
@@ -4246,6 +4254,14 @@
     {
       "when": ["src/ui/server/log-history.ts"],
       "run": ["tests/unit/server/log-history-nonblocking.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/shell.css",
+        "src/ui/server/public/shell.js"
+      ],
+      "run": ["tests/unit/server/menu-width-1917.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

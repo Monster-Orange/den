@@ -10933,7 +10933,7 @@
     // (den-ui 0.7.0, shell.css): Den keeps only what it puts in them.
     // Menus (.pop, .ml, .mi, .hr: R18)
     ".den-pop { position: fixed; z-index: 45; background: var(--raised); border: 1px solid var(--border-strong);",
-    "  border-radius: 10px; box-shadow: var(--shadow); padding: 6px; min-width: 220px;",
+    "  border-radius: 10px; box-shadow: var(--shadow); padding: 6px; min-width: 220px; max-width: calc(100vw - 16px);",
     "  max-height: calc(100vh - 72px); overflow-y: auto; box-sizing: border-box;",
     "  font: 14px/1.45 var(--sans); color: var(--text); }",
     ".den-pop:focus { outline: none; }",
@@ -10950,7 +10950,7 @@
     // page's `* { margin: 0 }` reset took away the UA's margin: auto, and
     // the dialog sat in the window's top-left corner. One rule, every page.
     "dialog:modal:not(.den-pop):not(.den-toplayer) { margin: auto; }",
-    "dialog.den-pop { margin: 0; inset: auto; max-width: none; }",
+    "dialog.den-pop { margin: 0; inset: auto; max-width: calc(100vw - 16px); }",
     "dialog.den-pop::backdrop { background: transparent; }",
     ".den-pop :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }",
     ".den-pop .den-ml { font: 11px var(--mono); color: var(--faint); text-transform: uppercase;",
