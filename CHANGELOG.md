@@ -9,6 +9,7 @@ config and manifest changes a distribution must make to move to it under
 ### Changed
 
 - A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
+- `GET /api/changelog` pages when asked: with `?limit`, `?cursor`, `?page` or `?at` it answers `{ items, next, prev, total, offset, page, pages }`, 10 versions by default, newest first. Without them it still answers every version as a bare list. The kit adapter gains `changelogPage(ask)`.
 
 ## [0.4.92] - unreleased
 
