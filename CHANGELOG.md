@@ -8,7 +8,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list with its range ("1–50 of 809") and either Previous and Next links or a "Show 50 more" button that adds rows, moves focus to the first new one and works as a link with no script. Every word is the host's.
+- UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", « First, ‹ Previous, a page picker ("Page 3 of 17"), Next ›, Last » and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's.
 
 ## [0.4.92] - unreleased
 
