@@ -376,7 +376,6 @@ describe("Workspace ▾ (R4)", () => {
     if (!browser) return;
     for (const q of ["ws=ws-a", "project=ws-a"]) {
       const { p } = await open(`/local-dev?${q}`);
-      // Count the page's own URL rewrites from its next load on.
       await p.context().addInitScript(() => {
         const w = window as unknown as { __rewrites: number };
         w.__rewrites = 0;
@@ -387,7 +386,6 @@ describe("Workspace ▾ (R4)", () => {
         };
       });
       await p.reload();
-      // The page's own selection, from its own load of the projects.
       await p.waitForSelector('.ws-item.active[data-name="ws-a"]');
       expect(
         await p.evaluate(

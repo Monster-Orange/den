@@ -1877,8 +1877,6 @@
               named ??
               scoped ??
               (GRAPH_PAGE && inView.length === 1 ? inView[0] : focusName());
-            // A URL that already names it keeps as it is: no rewrite after
-            // the load (one would land after a quick pick in the top bar).
             if (target)
               selectWorkspace(target, { updateUrl: target !== named });
           }

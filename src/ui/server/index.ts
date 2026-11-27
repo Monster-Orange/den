@@ -6957,7 +6957,6 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
       };
     })(),
-    // Issue 1051: the top bar's project menu load wait (web.menu_load_timeout_ms).
     menu_load: { timeout_ms: menuLoadTimeoutMs(() => user) },
     // Issue 707: the server's warning lines on disk, capped (server_log.*).
     server_log: {

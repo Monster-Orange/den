@@ -1,8 +1,3 @@
-/**
- * Issue 1051: user.yml web.menu_load_timeout_ms, the top bar's project
- * menu load wait: 8000 by default; a value outside 1000 to 600000, or not
- * a whole number, falls back to it.
- */
 import { describe, expect, it } from "@jest/globals";
 import { MENU_LOAD, menuLoadTimeoutMs } from "../../../src/shared/menu-load.js";
 

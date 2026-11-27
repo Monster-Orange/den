@@ -3352,7 +3352,6 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ process_lookup: { retry_seconds: v } }),
   },
   {
-    // Issue 1051: the top bar's project menu load wait (user.yml web.menu_load_timeout_ms).
     id: "server.menu_load_timeout",
     category: "server",
     label: "Project menu load wait",

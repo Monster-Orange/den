@@ -1,16 +1,11 @@
 /**
- * Issue 1051: one failed load of the top bar's project menu
- * (/api/workspaces) no longer hides it until a reload. The page tries
- * again, and the next answer shows the menu.
+ * One failed load of the top bar's project menu (/api/workspaces) never
+ * hides it until a reload. The page tries again, and the next answer
+ * shows the menu.
  *
  *  - The first /api/workspaces fails (a dropped connection): the project
  *    button shows once a later try answers, with no reload.
  *  - A failed refresh after a good load keeps the menu it had.
- *  - The first load never answers (a stalled connection): it counts as
- *    failed after a while, and the next try shows the menu (issue 1044's
- *    WebKit wait after a pick's reload).
- *  - The first load answers its headers and never its body: the wait
- *    covers the body too, and the next try shows the menu.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
@@ -22,6 +17,8 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { startDenServer } from "../../child-servers.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
+
+const neverAnswered = () => new Promise<void>(() => undefined);
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -116,10 +113,7 @@ async function openFailing(
     if (r.request().method() !== "GET") return r.continue();
     n++;
     if (n <= fail)
-      return how === "reset"
-        ? r.abort("connectionreset")
-        : // Never answered: held until the context closes.
-          new Promise<void>(() => undefined);
+      return how === "reset" ? r.abort("connectionreset") : neverAnswered();
     return r.continue();
   });
   const p = await ctx.newPage();
@@ -160,9 +154,6 @@ describe("issue 1051: the project menu after a failed load", () => {
       viewport: { width: 1440, height: 900 },
     });
     await signIn(ctx, path.join(tmp, "home"), base());
-    // The page's first GET /api/workspaces answers 200 with its headers
-    // and a first byte, then nothing: the body ends only if the page
-    // gives up on it (its abort signal). Later loads are real.
     await ctx.addInitScript(() => {
       const real = window.fetch.bind(window);
       const w = window as unknown as { __wsLoads: number };

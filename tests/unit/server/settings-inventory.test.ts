@@ -232,7 +232,6 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   held_writes: { wait_minutes: true },
   // Issue 1022: how often the page polls health, visible and hidden.
   health_poll: { visible_seconds: true, hidden_seconds: true },
-  // Issue 1051: how long the top bar waits for its project menu's load.
   menu_load: { timeout_ms: true },
   git_reads: { at_once: true },
   // Issue 750: groups from Hub (user.yml hub.groups, groups_cache_seconds).
@@ -494,7 +493,6 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
-        // Issue 1051: how long the top bar waits for its project menu's load.
         "menu_load.timeout_ms",
         "git_reads.at_once",
         // Issue 750: groups from Hub.

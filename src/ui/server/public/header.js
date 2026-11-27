@@ -95,7 +95,6 @@ function _readHealthPoll() {
       const hp = s?.health_poll;
       if (Number.isFinite(hp?.visible)) _healthPoll.visible = hp.visible;
       if (Number.isFinite(hp?.hidden)) _healthPoll.hidden = hp.hidden;
-      // Issue 1051: the project menu's load wait (web.menu_load_timeout_ms).
       const ml = s?.menu_load?.timeout_ms;
       if (Number.isFinite(ml) && ml > 0) _scopeLoadMs = ml;
     })
@@ -414,19 +413,12 @@ export async function refreshWorkspacePill() {
 // had stays meanwhile; with none yet, the part stays hidden.
 const SCOPE_RETRY_FIRST_MS = 1_000;
 const SCOPE_RETRY_MAX_MS = 30_000;
-// A load that hasn't answered in this long counts as failed (a stalled
-// connection never errors, so it would never be tried again; issue 1044's
-// WebKit wait after a pick's reload). A Setting (web.menu_load_timeout_ms,
-// from /api/settings); this default until the page has read it.
 let _scopeLoadMs = 8_000;
 
-/** fetch(url) and `parse` of its answer, ended (it throws) when not done in `ms`. */
 function fetchWithin(url, ms, parse) {
   const ctl =
     typeof AbortController === "function" ? new AbortController() : null;
   const timer = ctl ? setTimeout(() => ctl.abort(), ms) : null;
-  // The body is read inside the wait too: headers that come and a body
-  // that stalls end the same way (the abort ends the read).
   return fetch(url, ctl ? { signal: ctl.signal } : undefined)
     .then(parse)
     .finally(() => {
