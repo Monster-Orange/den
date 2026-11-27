@@ -237,7 +237,16 @@ async function viewsAtMost(
 
 const EARLIER = "an earlier case's page is still attached";
 
-const settled = () => viewsAtMost(0, 50_000, EARLIER);
+async function settled(): Promise<void> {
+  const t0 = Date.now();
+  await viewsAtMost(0, 50_000, EARLIER);
+  const ms = Date.now() - t0;
+  if (ms > 50) process.stdout.write(`waited ${ms} ms for earlier pages\n`);
+  if (ms > 2_000)
+    throw new Error(
+      `an earlier page stayed attached ${(ms / 1000).toFixed(1)}s`,
+    );
+}
 
 async function leave(...pages: Page[]): Promise<void> {
   for (const p of pages) {
@@ -373,7 +382,7 @@ describe("the agents page fits its window", () => {
     const p = await open("chromium", 1280, "group", "tile");
     await caseOn([wide, p], async () => {
       await expect(spills(p, 1_000)).rejects.toThrow(FOLLOW_GONE);
-      await leave(wide);
+      await wide.context().close();
       await viewsAtMost(1);
       expect(await spills(p)).toEqual([]);
     });
