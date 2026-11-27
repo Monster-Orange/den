@@ -727,6 +727,15 @@ panel }`: `id` names it, `text` is its words, `href` its page, `count`
   measured with a ResizeObserver, not a breakpoint. With no script it
   doesn't fold. Folded page tabs follow the chosen link, unless
   `onChange` returns false.
+- `overflow: "scroll"` keeps the row and lets it scroll sideways
+  instead of folding. A « and a » sit on its edges, each with a fade
+  (`--den-tabs-edge-bg`, default `--surface`), and each shows only while
+  tabs are hidden on its side (`data-den-tabs-over` on the block:
+  `none`, `start`, `end` or `both`), updated on scroll and resize. A
+  click scrolls about one row-width. They are named "More tabs left" and
+  "More tabs right" (`lang` en, es or ja, or `words: { moreStart,
+moreEnd }`), and are not Tab stops (tabindex -1). The chosen tab is
+  kept in view on load, on a change and with the arrow keys.
 - 36px tall, or 44px (`--tap`) at 600px wide or less or with a coarse
   pointer (`size: "auto"`; `"m"` and `"l"` fix it). Each segment is at
   least 72px wide. The chosen one is `--accent-fill` with `--on-accent`

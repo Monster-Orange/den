@@ -2,6 +2,15 @@ import { esc } from "./strings.js";
 
 const HYSTERESIS_PX = 8;
 const KINDS = ["page", "switch", "panel"];
+const EDGE_PAD = 32;
+export const TABS_WORDS = {
+  en: { moreStart: "More tabs left", moreEnd: "More tabs right" },
+  es: {
+    moreStart: "Más pestañas a la izquierda",
+    moreEnd: "Más pestañas a la derecha",
+  },
+  ja: { moreStart: "左にもタブがあります", moreEnd: "右にもタブがあります" },
+};
 
 function itemsOf(o) {
   return (Array.isArray(o.items) ? o.items : [])
@@ -76,6 +85,15 @@ export function tabsHtml(o = {}) {
   if (!label.trim() || items.length < 2) return "";
   const chosen = chosenOf(items, o.chosen);
   const size = o.size === "m" || o.size === "l" ? o.size : "auto";
+  const scroll = o.overflow === "scroll";
+  const w = {
+    ...TABS_WORDS.en,
+    ...(TABS_WORDS[o.lang] ?? {}),
+    ...(o.words ?? {}),
+  };
+  const edge = (side, glyph) =>
+    `<button type="button" class="den-tabs-edge" data-den-tabs-edge="${side}" tabindex="-1"` +
+    ` aria-label="${esc(side === "start" ? w.moreStart : w.moreEnd)}" hidden>${glyph}</button>`;
   const options = items
     .map(
       (it) =>
@@ -87,13 +105,20 @@ export function tabsHtml(o = {}) {
     )
     .join("");
   return (
-    `<div class="den-tabs" data-den-tabs="${kind}" data-size="${size}">` +
+    `<div class="den-tabs" data-den-tabs="${kind}" data-size="${size}"` +
+    (scroll ? ' data-overflow="scroll" data-den-tabs-over="none">' : ">") +
+    (scroll ? edge("start", "«") : "") +
     rowOpen(kind, label) +
     items.map((it) => segment(kind, it, it.id === chosen)).join("") +
     (kind === "page" ? "</nav>" : "</div>") +
-    `<label class="den-tabs-fold" hidden>` +
-    `<span class="den-tabs-fold-l">${esc(label)}</span>` +
-    `<select class="den-tabs-select">${options}</select></label></div>`
+    (scroll ? edge("end", "»") + "</div>" : "") +
+    (scroll
+      ? ""
+      : `<label class="den-tabs-fold" hidden>` +
+        `<span class="den-tabs-fold-l">${esc(label)}</span>`) +
+    (scroll
+      ? ""
+      : `<select class="den-tabs-select">${options}</select></label></div>`)
   );
 }
 
@@ -144,6 +169,7 @@ export function hydrateTabs(el, opts = {}) {
       if (panel) panel.hidden = !on;
     }
     if (select) select.value = id;
+    keep();
   }
 
   function choose(id) {
@@ -192,8 +218,9 @@ export function hydrateTabs(el, opts = {}) {
     else if (e.key === "End") to = all.length - 1;
     if (to < 0) return;
     e.preventDefault();
-    all[to].focus();
+    all[to].focus({ preventScroll: scroller });
     choose(idOf(all[to]));
+    keep(all[to]);
   };
 
   const onSelect = () => {
@@ -203,9 +230,45 @@ export function hydrateTabs(el, opts = {}) {
     if (href) window.location.assign(href);
   };
 
+  const scroller = root.dataset.overflow === "scroll";
+  const edges = Array.from(root.querySelectorAll("[data-den-tabs-edge]"));
+  function edgesNow() {
+    if (!scroller) return;
+    const at = Math.abs(row.scrollLeft);
+    const start = at > 1;
+    const end = at + row.clientWidth < row.scrollWidth - 1;
+    for (const b of edges)
+      b.hidden = b.dataset.denTabsEdge === "start" ? !start : !end;
+    root.dataset.denTabsOver =
+      start && end ? "both" : start ? "start" : end ? "end" : "none";
+  }
+  function keep(b = segs().find((s) => idOf(s) === current)) {
+    if (!scroller || !b) return;
+    const rr = row.getBoundingClientRect();
+    const br = b.getBoundingClientRect();
+    const pad = row.scrollWidth > row.clientWidth ? EDGE_PAD : 0;
+    if (br.left < rr.left + pad) row.scrollLeft -= rr.left + pad - br.left;
+    else if (br.right > rr.right - pad)
+      row.scrollLeft += br.right - (rr.right - pad);
+    edgesNow();
+  }
+  const onEdge = (e) => {
+    const b = e.currentTarget;
+    const rtl = globalThis.getComputedStyle(row).direction === "rtl";
+    const dir = (b.dataset.denTabsEdge === "start" ? -1 : 1) * (rtl ? -1 : 1);
+    const calm = globalThis.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    row.scrollBy({
+      left: dir * row.clientWidth * 0.8,
+      behavior: calm ? "auto" : "smooth",
+    });
+  };
+
   let need = 0;
   let folded = false;
   function measure() {
+    if (scroller) return edgesNow();
     if (!fold || !select) return;
     if (!folded) need = Math.ceil(row.scrollWidth);
     const room = Math.floor(root.clientWidth);
@@ -227,11 +290,14 @@ export function hydrateTabs(el, opts = {}) {
   row?.addEventListener("click", onClick);
   row?.addEventListener("keydown", onKey);
   select?.addEventListener("change", onSelect);
+  if (scroller) row.addEventListener("scroll", edgesNow, { passive: true });
+  for (const b of edges) b.addEventListener("click", onEdge);
   const ro =
     typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
   ro?.observe(root);
   if (root.parentElement) ro?.observe(root.parentElement);
   measure();
+  keep();
 
   return {
     set(id) {
@@ -243,6 +309,8 @@ export function hydrateTabs(el, opts = {}) {
       ro?.disconnect();
       row?.removeEventListener("click", onClick);
       row?.removeEventListener("keydown", onKey);
+      row?.removeEventListener("scroll", edgesNow);
+      for (const b of edges) b.removeEventListener("click", onEdge);
       select?.removeEventListener("change", onSelect);
     },
   };

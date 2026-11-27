@@ -13,7 +13,15 @@ export interface TabsModel {
   items: TabsItem[];
   chosen?: string;
   size?: "auto" | "m" | "l";
+  overflow?: "fold" | "scroll";
+  lang?: string;
+  words?: { moreStart?: string; moreEnd?: string };
 }
+
+export declare const TABS_WORDS: Record<
+  string,
+  { moreStart: string; moreEnd: string }
+>;
 
 export interface TabsOptions {
   onChange?: (id: string) => boolean | void;
