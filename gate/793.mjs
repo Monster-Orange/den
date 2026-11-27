@@ -39,9 +39,10 @@ export async function run(ctx, s) {
   const pops = [];
   for (const p of ["/agents", "/settings"]) {
     await ctx.goto(ctx.page, p);
-    await ctx.page.evaluate(
-      () => window.openChangelog && window.openChangelog(),
-    );
+    const opened = await ctx.page
+      .click("#version-pill", { timeout: 10000 })
+      .then(() => "chip")
+      .catch((e) => `chip not clicked: ${String(e.message).split("\n", 1)}`);
     await ctx.until(
       () =>
         ctx.page.evaluate(
@@ -51,7 +52,13 @@ export async function run(ctx, s) {
     );
     const r = await ctx.page.evaluate(() => {
       const d = document.querySelector("dialog#cl-overlay[open]");
-      if (!d) return null;
+      if (!d)
+        return {
+          missing:
+            [...document.querySelectorAll("dialog[open]")]
+              .map((e) => e.id || e.className)
+              .join(" ") || "no dialog open",
+        };
       const font = (e) => getComputedStyle(e).fontFamily;
       const els = [...d.querySelectorAll("h2,h3,li,p,a,button")];
       const footer = d.querySelector("#cl-got-it-btn")?.parentElement;
@@ -66,11 +73,17 @@ export async function run(ctx, s) {
     });
     await ctx.shot(`whatsnew-${p.slice(1)}-${ctx.browser}-${ctx.width}`);
     await ctx.page.keyboard.press("Escape").catch(() => {});
-    pops.push({
-      p,
-      ...(r || { body: "", n: 0, fonts: [], footN: 0, foot: [] }),
-      found: !!r,
-    });
+    pops.push(
+      r.missing
+        ? {
+            p,
+            found: false,
+            why: `${opened}; ${r.missing}`,
+            fonts: [],
+            foot: [],
+          }
+        : { p, found: true, ...r },
+    );
   }
   return { ...s, pages, pops };
 }
@@ -103,9 +116,10 @@ export function expect(cells) {
       ),
       detail: d((r) =>
         r.pops
-          .map(
-            (x) =>
-              `${x.p}: ${x.found ? `${x.n} elements ${x.fonts.map(first).join("|")}, footer ${x.footN} ${x.foot.map(first).join("|")}` : "no What's new"} (body ${first(x.body)})`,
+          .map((x) =>
+            x.found
+              ? `${x.p}: ${x.n} elements ${x.fonts.map(first).join("|")}, footer ${x.footN} ${x.foot.map(first).join("|")} (body ${first(x.body)})`
+              : `${x.p}: no What's new (${x.why})`,
           )
           .join("; "),
       ),
