@@ -10,7 +10,7 @@
  * which stays open. Esc and Close shut it, focus goes back to what opened
  * it, and the Report button sits in its footer (all the kit's).
  *
- *   setRepos({ local, managed, services })   what the page last fetched
+ *   setRepos({ services })                   the project's services now
  *   setGhRepos(list)                         GitHub's list, when known
  *   openAddService({ ws, filter, onAdded })  shows it; onAdded({ text,
  *                                            kind }) after an add
@@ -32,8 +32,11 @@ const esc = (s) =>
 
 const st = {
   ws: null,
-  local: [],
-  managed: [],
+  page: null,
+  at: { cursor: null, offset: 0 },
+  trail: [],
+  per: 50,
+  seq: 0,
   services: {},
   gh: null, // null: not loaded yet
   ghQ: "",
@@ -46,10 +49,8 @@ const st = {
   branchCombo: null,
 };
 
-/** The repos the page fetched for the project it shows. */
-export function setRepos({ local, managed, services } = {}) {
-  st.local = local ?? [];
-  st.managed = managed ?? [];
+/** The services the project has now (the dialog fetches the repos). */
+export function setRepos({ services } = {}) {
   st.services = services ?? {};
 }
 
@@ -91,22 +92,78 @@ const label = (text) => `<div class="add-svc-section-label">${esc(text)}</div>`;
 const pill = (cls, text) =>
   `<span class="add-svc-pill ${cls}">${esc(text)}</span>`;
 
+const shownRepos = () =>
+  (st.page?.items ?? []).filter(
+    (r) => r.source === "local" || r.source === "managed",
+  );
+
+async function loadLocal(at, first) {
+  const n = ++st.seq;
+  st.at = at;
+  const q = new URLSearchParams({ workspace: st.ws, limit: String(st.per) });
+  const term = query().trim();
+  if (term) q.set("q", term);
+  if (at.cursor) q.set("cursor", at.cursor);
+  const reply = await fetch(`/api/workspaces/available-repos?${q}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  if (n !== st.seq || !dlg()) return;
+  st.page = reply && Array.isArray(reply.items) ? reply : { items: [] };
+  if (
+    first &&
+    !term &&
+    !st.page.next &&
+    !shownRepos().some((r) => !r.alreadyAdded)
+  )
+    return setTab("gh");
+  renderLocal();
+  for (let n = $("#add-svc-local-list"); n && !first; n = n.parentElement)
+    if (n.scrollTop) n.scrollTop = 0;
+}
+
+const pagerNav = { "gh-repos": ghNavigate, "add-svc-repos": moveLocal };
+
+function moveLocal(_name, ask) {
+  const to = ask?.target;
+  const shown = st.page?.items?.length ?? 0;
+  if (to === "next" && st.page?.next) {
+    st.trail.push(st.at);
+    loadLocal({ cursor: st.page.next, offset: st.at.offset + shown });
+  } else if (to === "prev" && st.trail.length) loadLocal(st.trail.pop());
+  else if (to === "first" || (to && typeof to === "object")) {
+    if (to.per) st.per = to.per;
+    st.trail = [];
+    loadLocal({ cursor: null, offset: 0 });
+  }
+}
+
 function renderLocal() {
   const list = $("#add-svc-local-list");
   if (!list) return;
   const added = addedSet();
-  const all = [...st.local, ...st.managed];
+  const all = shownRepos();
+  const pager = $("#add-svc-local-pager");
+  if (pager)
+    pager.innerHTML = listPagerHtml(
+      "add-svc-repos",
+      {
+        offset: st.at.offset,
+        next: st.page?.next ?? null,
+        prev: st.trail.length ? "back" : null,
+      },
+      st.page?.items?.length ?? 0,
+      st.per,
+      { url: false },
+    );
+  if (!st.page) {
+    list.innerHTML = empty(t("addSvc.loading"));
+    return;
+  }
   if (!all.length) {
-    list.innerHTML = empty(t("addSvc.noLocal"));
+    list.innerHTML = empty(t(query() ? "addSvc.noResults" : "addSvc.noLocal"));
     $("#add-svc-local-count").textContent = "";
     return;
   }
-  const q = query();
-  const hit = (r) =>
-    !q ||
-    r.name.toLowerCase().includes(q) ||
-    r.relPath.toLowerCase().includes(q) ||
-    (r.absPath || "").toLowerCase().includes(q);
   const sorted = (arr) =>
     st.sort === "name"
       ? [...arr].sort((a, b) => a.name.localeCompare(b.name))
@@ -132,10 +189,11 @@ function renderLocal() {
       `</button>`
     );
   };
-  const mine = sorted(st.local.filter(hit));
-  const ours = sorted(st.managed.filter(hit));
+  const mine = sorted(all.filter((r) => r.source === "local"));
+  const ours = sorted(all.filter((r) => r.source === "managed"));
   const free = [...mine, ...ours].filter((r) => !added.has(r.relPath)).length;
-  $("#add-svc-local-count").textContent = free ? `(${free})` : "";
+  const whole = !st.page.next && !st.trail.length;
+  $("#add-svc-local-count").textContent = free && whole ? `(${free})` : "";
   for (const b of dlg().querySelectorAll("[data-as-sort]")) {
     const on = b.dataset.asSort === st.sort;
     b.classList.toggle("active", on);
@@ -185,7 +243,6 @@ function ghNavigate(_name, ask) {
         : 0;
   loadGh(false, st.ghQ, pageQuery(pg.reply, target, pg.per), offset);
 }
-const pagerNav = { "gh-repos": ghNavigate };
 
 function renderGhPager() {
   const foot = $("#add-svc-gh-pager");
@@ -390,7 +447,8 @@ function bodyHtml() {
     `<button type="button" class="svc-sort-btn" data-as-sort="name">${esc(t("addSvc.sort.name"))}</button>` +
     `<button type="button" class="svc-sort-btn" data-as-sort="workspace">${esc(t("addSvc.sort.project"))}</button>` +
     `</span></div>` +
-    `<div id="add-svc-local-list">${empty(t("addSvc.loading"))}</div></div>` +
+    `<div id="add-svc-local-list">${empty(t("addSvc.loading"))}</div>` +
+    `<div id="add-svc-local-pager"></div></div>` +
     `<div class="add-svc-body" id="add-svc-panel-gh" role="tabpanel" hidden>` +
     `<div class="add-svc-tools"><button type="button" class="add-svc-refresh-btn" data-as="refresh" title="${esc(t("addSvc.refreshTip"))}">↻ ${esc(t("addSvc.refresh"))}</button></div>` +
     `<div id="add-svc-gh-list"></div><div id="add-svc-gh-pager"></div></div>`
@@ -430,6 +488,8 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
   st.selLocal = null;
   st.selGh = null;
   st.onAdded = onAdded ?? null;
+  st.page = null;
+  st.trail = [];
   st.frame = mountDialog(
     dialogHtml({
       kind: "panel",
@@ -464,6 +524,7 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
     },
   });
   pg.stop?.();
+  let wait = 0;
   pg.stop = watchPagers(d, (name, ask) => pagerNav[name]?.(name, ask), {
     url: false,
   });
@@ -471,8 +532,12 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
     if (e.target.id !== "add-svc-global-search") return;
     clearTimeout(ghTimer);
     const v = e.target.value.trim();
-    renderLocal();
     renderGh();
+    clearTimeout(wait);
+    wait = setTimeout(() => {
+      st.trail = [];
+      loadLocal({ cursor: null, offset: 0 });
+    }, 250);
     const q = ghQ(v, /^[A-Za-z0-9._-]{1,100}$/);
     if (q !== st.ghQ) {
       st.ghQ = q;
@@ -488,9 +553,7 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
       renderLocal();
     } else if (b.dataset.asLocal != null) {
       st.selLocal =
-        [...st.local, ...st.managed].find(
-          (r) => r.relPath === b.dataset.asLocal,
-        ) ?? null;
+        shownRepos().find((r) => r.relPath === b.dataset.asLocal) ?? null;
       renderLocal();
       sync();
     } else if (b.dataset.asGh != null) {
@@ -503,8 +566,8 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
   });
   $("#add-svc-global-search").value = filter;
   if (!st.gh) loadGh(false);
-  const free = [...st.local, ...st.managed].some((r) => !r.alreadyAdded);
-  setTab(free ? "local" : "gh");
+  setTab("local");
+  loadLocal({ cursor: null, offset: 0 }, true);
   st.frame.show(opener);
   return st.frame;
 }

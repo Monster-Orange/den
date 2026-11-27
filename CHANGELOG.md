@@ -40,6 +40,12 @@ config and manifest changes a distribution must make to move to it under
 - `GET /api/changelog` pages when asked: with `?limit`, `?cursor`, `?page` or `?at` it answers `{ items, next, prev, total, offset, page, pages }`, 10 versions by default, newest first. Without them it still answers every version as a bare list. The kit adapter gains `changelogPage(ask)`.
 - A service's or repo's Activity list in its panel shows its newest 20 actions and the kit's More button under them: Show 20 more adds the next 20 (fetched by cursor), until "All N shown".
 
+
+
+
+
+- Projects' Add Service shows the repos on this machine one page at a time, with the kit's pager under the list (no total), and its filter searches on the server. Local Dev no longer reads the whole repo list each time it loads; the dialog asks for its first page when it opens. Services' unused repo dropdown, which still asked for the whole list, is gone.
+
 ## [0.4.92] - unreleased
 
 ### Changed

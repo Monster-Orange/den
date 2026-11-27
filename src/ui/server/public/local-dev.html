@@ -2225,20 +2225,7 @@
           // Refresh primary-service routing (one log tab per system).
           setPrimaryRouting(svcList);
 
-          // Fetch available repos for the add modal and dep rows
-          const repos = await fetch(
-            `/api/workspaces/available-repos?all=1&workspace=${encodeURIComponent(wsName)}`,
-          )
-            .then((r) => r.json())
-            .catch(() => []);
-          const localRepos = repos.filter((r) => r.source === "local");
-          const managedRepos = repos.filter((r) => r.source === "managed");
-          // Cache for the modal (opened on demand)
-          setAddSvcRepos({
-            local: localRepos,
-            managed: managedRepos,
-            services: ws.services ?? {},
-          });
+          setAddSvcRepos({ services: ws.services ?? {} });
 
           // Fetch missing deps for the viewed workspace (not limited to active)
           let depsMap = {};
