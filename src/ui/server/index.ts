@@ -1772,8 +1772,10 @@ import {
   handleSessionList,
   handleSessionUpgrade,
   isSessionIoPath,
+  needsYouShared,
   sendSessionHttp,
   SESSION_HELPERS_PATH,
+  type SessionRouteDeps,
 } from "./session-routes.js";
 import { refuseUpgrade } from "./websocket.js";
 import {
@@ -6509,6 +6511,22 @@ function waitingAgentIds(): Set<string> {
   return out;
 }
 
+function needsYouCount(): Promise<number> {
+  return needsYouShared(sessionListDeps(), Date.now, alertFeed().latest());
+}
+
+function sessionListDeps(): SessionRouteDeps {
+  return {
+    waitingAgents: waitingAgentIds,
+    waitingWhy: waitingReasons,
+    activity: attentionActivity,
+    rotationPolicy: () => policyResolver(agentWebDeps()),
+    restartResume: () => restartResolver(agentWebDeps()),
+    modeOf: () => modeResolver(agentWebDeps()),
+    agentStates: agentStateDeps,
+  };
+}
+
 /**
  * The agents a Hub delivery or tools note waits for: a held Allow, a
  * permission prompt or an ask_human question. Not an idle one ("input").
@@ -7354,6 +7372,7 @@ async function handleRequest(
       // Issue 1339: read without the gate-slot lock, so a gate run that
       // holds it never stalls the bell (or the server with it).
       gateOverruns: () => bellGateOverruns(gates()),
+      needsYou: needsYouCount,
     });
     return;
   }
@@ -10595,15 +10614,7 @@ async function handleRequest(
       res,
       pathname,
       guard.ok && (!guard.beyond || !!guard.session || !!guard.principal),
-      {
-        waitingAgents: waitingAgentIds,
-        waitingWhy: waitingReasons,
-        activity: attentionActivity,
-        rotationPolicy: () => policyResolver(agentWebDeps()),
-        restartResume: () => restartResolver(agentWebDeps()),
-        modeOf: () => modeResolver(agentWebDeps()),
-        agentStates: agentStateDeps,
-      },
+      sessionListDeps(),
     )
   )
     return;

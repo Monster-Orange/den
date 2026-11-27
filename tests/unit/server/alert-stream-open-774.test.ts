@@ -1,0 +1,105 @@
+import { describe, expect, it } from "@jest/globals";
+import { initAlerts } from "../../../src/ui/server/public/alerts.js";
+
+const flush = async () => {
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+};
+
+function rig(o: { sub?: boolean } = {}) {
+  const streams: string[] = [];
+  const open: { onmessage: ((m: { data: string }) => void) | null }[] = [];
+  const posts: string[] = [];
+  const winListeners = new Map<string, (() => void)[]>();
+  let sub = o.sub === true;
+  const doc = {
+    visibilityState: "visible",
+    hasFocus: () => true,
+    title: "Den",
+    addEventListener: () => undefined,
+    getElementById: () => null,
+    querySelector: () => null,
+  };
+  class FakeES {
+    onmessage: ((m: { data: string }) => void) | null = null;
+    constructor(url: string) {
+      streams.push(url);
+      open.push(this);
+    }
+    close() {}
+  }
+  const win = {
+    document: doc,
+    localStorage: { getItem: () => null, setItem: () => undefined },
+    location: { href: "https://den.example/services" },
+    EventSource: FakeES,
+    PushManager: function () {},
+    Notification: Object.assign(function () {}, { permission: "granted" }),
+    navigator: {
+      serviceWorker: {
+        getRegistration: async () => ({
+          pushManager: {
+            getSubscription: async () =>
+              sub ? { endpoint: "https://push.example/b" } : null,
+          },
+        }),
+      },
+    },
+    fetch: async (path: string, init?: { method?: string }) => {
+      if (init?.method === "POST") posts.push(path);
+      return { ok: false, json: async () => ({}) };
+    },
+    setInterval: () => 1,
+    clearInterval: () => undefined,
+    setTimeout: () => 1,
+    addEventListener: (type: string, fn: () => void) => {
+      winListeners.set(type, [...(winListeners.get(type) ?? []), fn]);
+    },
+  };
+  const fire = (type: string) =>
+    (winListeners.get(type) ?? []).forEach((fn) => fn());
+  return {
+    win: win as unknown as Window & typeof globalThis,
+    streams,
+    open,
+    posts,
+    fire,
+    subscribe: () => void (sub = true),
+  };
+}
+
+describe("774 row 7b: when a page opens the alert stream", () => {
+  it("no push subscription: no stream and no write on load", async () => {
+    const r = rig();
+    initAlerts(r.win);
+    await flush();
+    expect(r.streams).toEqual([]);
+    expect(r.posts).toEqual([]);
+  });
+
+  it("a push subscription: the stream opens", async () => {
+    const r = rig({ sub: true });
+    initAlerts(r.win);
+    await flush();
+    expect(r.streams).toEqual(["/api/alerts/stream"]);
+  });
+
+  it("subscribed: loading writes one thing, the tab's presence", async () => {
+    const r = rig({ sub: true });
+    initAlerts(r.win);
+    await flush();
+    r.open[0]!.onmessage!({ data: JSON.stringify({ type: "tab", tab: "t1" }) });
+    await flush();
+    expect(r.posts).toEqual(["/api/alerts/presence"]);
+  });
+
+  it("subscribing on this page opens it then, once", async () => {
+    const r = rig();
+    initAlerts(r.win);
+    await flush();
+    r.subscribe();
+    r.fire("den:push-on");
+    r.fire("den:push-on");
+    await flush();
+    expect(r.streams).toEqual(["/api/alerts/stream"]);
+  });
+});

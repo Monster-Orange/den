@@ -1080,6 +1080,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/alerts/unsubscribe",
   "/api/alerts/test",
   "/api/alerts/forget",
+  "/api/alerts/presence",
+  "/api/alerts/ack",
   // This install's Hub link.
   "/api/hub/connect",
   "/api/hub/disconnect",
@@ -1245,6 +1247,7 @@ export const STRICT_PERSON_READS: readonly string[] = [
   "/api/approvals",
   "/api/alerts",
   "/api/alerts/devices",
+  "/api/alerts/stream",
   "/api/report/diagnostics",
   "/api/report/drafts",
   "/api/report/drafts/:id",

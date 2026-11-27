@@ -4,9 +4,6 @@
  * Allow), the person is told on the desktop (an open Den tab shows a
  * browser notification) and on a phone or a closed tab (Web Push).
  *
- * - Only a new need alerts: a finished turn, an update or a release never
- *   does. Held writes alert only when the approval policy (issue 160)
- *   held them for the person.
  * - The words are the bell's own and never the details: who, and what it
  *   waits on. Never the tool line, the question's text or the write's
  *   summary (any of them can hold a secret or a code).
@@ -26,7 +23,19 @@ import type { UserConfig } from "./den-config.js";
 import type { UiLanguage } from "./ui-language.js";
 
 /** What the agent waits on. */
-export type AlertWhy = "permission" | "asked" | "allow";
+export type AlertWhy = "permission" | "asked" | "allow" | "finished";
+
+export const ALERT_KINDS: Readonly<
+  Record<
+    AlertWhy,
+    { alert: true | "opt-in"; sound: "needs" | "finished"; count: boolean }
+  >
+> = {
+  permission: { alert: true, sound: "needs", count: true },
+  asked: { alert: true, sound: "needs", count: true },
+  allow: { alert: true, sound: "needs", count: true },
+  finished: { alert: "opt-in", sound: "finished", count: false },
+};
 
 /** The words, in each language the UI ships (a test keeps them even). */
 export const ALERT_WORDS: Readonly<
@@ -36,16 +45,19 @@ export const ALERT_WORDS: Readonly<
     permission: "{name} needs your permission",
     asked: "{name} asked you",
     allow: "{name} needs your Allow",
+    finished: "{name} finished",
   },
   es: {
     permission: "{name} necesita tu permiso",
     asked: "{name} te preguntó",
     allow: "{name} necesita tu Permitir",
+    finished: "{name} terminó",
   },
   ja: {
     permission: "{name} があなたの許可を待っています",
     asked: "{name} から質問があります",
     allow: "{name} が「許可」を待っています",
+    finished: "{name} が終わりました",
   },
 };
 
@@ -92,6 +104,11 @@ export interface AlertPrefs {
   pushTimeoutSeconds: number;
   /** How long a push service keeps an alert for a device that is off. */
   pushTtlSeconds: number;
+  finished: boolean;
+  sound: boolean;
+  tabCount: boolean;
+  tabFirstSeconds: number;
+  maxStreams: number;
 }
 
 export const ALERT_DEFAULTS: AlertPrefs = {
@@ -100,7 +117,20 @@ export const ALERT_DEFAULTS: AlertPrefs = {
   quiet: null,
   pushTimeoutSeconds: 30,
   pushTtlSeconds: 86_400,
+  finished: false,
+  sound: false,
+  tabCount: true,
+  tabFirstSeconds: 3,
+  maxStreams: 20,
 };
+
+const SWITCHES = {
+  desktop: "desktop",
+  phone: "phone",
+  finished: "finished",
+  sound: "sound",
+  tab_count: "tabCount",
+} as const;
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -111,9 +141,16 @@ export function alertPrefs(user: unknown): AlertPrefs {
   const q = a.quiet as { from?: unknown; to?: unknown } | undefined;
   const t = a.push_timeout_seconds;
   const ttl = a.push_ttl_seconds;
+  const on = (k: keyof typeof SWITCHES): boolean =>
+    typeof a[k] === "boolean"
+      ? (a[k] as boolean)
+      : (ALERT_DEFAULTS[SWITCHES[k]] as boolean);
   return {
-    desktop: typeof a.desktop === "boolean" ? a.desktop : true,
-    phone: typeof a.phone === "boolean" ? a.phone : true,
+    desktop: on("desktop"),
+    phone: on("phone"),
+    finished: on("finished"),
+    sound: on("sound"),
+    tabCount: on("tab_count"),
     quiet:
       q &&
       typeof q.from === "string" &&
@@ -134,14 +171,32 @@ export function alertPrefs(user: unknown): AlertPrefs {
       ttl <= 2_419_200
         ? ttl
         : ALERT_DEFAULTS.pushTtlSeconds,
+    tabFirstSeconds: within(
+      a.tab_first_seconds,
+      "tab_first_seconds",
+      ALERT_DEFAULTS.tabFirstSeconds,
+    ),
+    maxStreams: within(a.max_streams, "max_streams", ALERT_DEFAULTS.maxStreams),
   };
 }
 
-/** Issue 367: the push limits a page may set, and each one's widest range. */
 const PUSH_LIMITS = {
   push_timeout_seconds: { min: 1, max: 3600 },
   push_ttl_seconds: { min: 0, max: 2_419_200 },
+  tab_first_seconds: { min: 1, max: 10 },
+  max_streams: { min: 1, max: 200 },
 } as const;
+
+function within(
+  v: unknown,
+  k: keyof typeof PUSH_LIMITS,
+  fallback: number,
+): number {
+  const { min, max } = PUSH_LIMITS[k];
+  return Number.isInteger(v) && (v as number) >= min && (v as number) <= max
+    ? (v as number)
+    : fallback;
+}
 
 /** What /api/settings serves as `alerts`. */
 export function alertSettings(user: UserConfig): Record<string, unknown> {
@@ -159,13 +214,19 @@ export function alertSettings(user: UserConfig): Record<string, unknown> {
     // Issue 367: the push limits, their defaults when unset.
     push_timeout_seconds: p.pushTimeoutSeconds,
     push_ttl_seconds: p.pushTtlSeconds,
+    finished: p.finished,
+    sound: p.sound,
+    tab_count: p.tabCount,
+    tab_first_seconds: p.tabFirstSeconds,
+    max_streams: p.maxStreams,
   };
 }
 
 /**
- * A POSTed `alerts`: {desktop?, phone?: boolean; quiet_from?, quiet_to?:
+ * A POSTed `alerts`: {desktop?, phone?, finished?, sound?, tab_count?: boolean; quiet_from?, quiet_to?:
  * "HH:MM" or "" (none); push_timeout_seconds? (1..3600),
- * push_ttl_seconds? (0..2419200): whole seconds}; null clears one (back
+ * push_ttl_seconds? (0..2419200), tab_first_seconds? (1..10),
+ * max_streams? (1..200): whole numbers}; null clears one (back
  * to its default).
  */
 export function patchAlerts(
@@ -178,7 +239,7 @@ export function patchAlerts(
   const u = user as { alerts?: Record<string, unknown> };
   const a: Record<string, unknown> = { ...(u.alerts ?? {}) };
   for (const [k, x] of Object.entries(body)) {
-    if (k === "desktop" || k === "phone") {
+    if (Object.hasOwn(SWITCHES, k)) {
       if (x === null) delete a[k];
       else if (typeof x === "boolean") a[k] = x;
       else return { ok: false, error: `alerts.${k} must be true or false` };
@@ -190,8 +251,8 @@ export function patchAlerts(
       else return { ok: false, error: `alerts.${k} must be HH:MM, or empty` };
       if (Object.keys(q).length) a.quiet = q;
       else delete a.quiet;
-    } else if (k === "push_timeout_seconds" || k === "push_ttl_seconds") {
-      const { min, max } = PUSH_LIMITS[k];
+    } else if (Object.hasOwn(PUSH_LIMITS, k)) {
+      const { min, max } = PUSH_LIMITS[k as keyof typeof PUSH_LIMITS];
       if (x === null) delete a[k];
       else if (
         Number.isInteger(x) &&

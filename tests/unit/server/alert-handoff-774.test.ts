@@ -1,0 +1,316 @@
+import { describe, expect, it } from "@jest/globals";
+import {
+  AlertHandoff,
+  type TabEvent,
+} from "../../../src/ui/server/alert-handoff.js";
+import type { Alert } from "../../../src/ui/server/alert-feed.js";
+
+const PHONE = "https://push.example/phone";
+const LAPTOP = "https://push.example/laptop";
+const OTHERS = "https://push.example/someone-else";
+const OWN: Record<string, string[]> = {
+  "person:a": [PHONE, LAPTOP],
+  "person:b": [OTHERS],
+};
+
+function rig(o: { windowMs?: number; maxTabs?: number } = {}) {
+  const timers = new Map<number, () => void>();
+  let next = 0;
+  const pushed: string[][] = [];
+  const h = new AlertHandoff({
+    windowMs: () => o.windowMs ?? 3000,
+    maxTabs: () => o.maxTabs ?? 20,
+    setTimer: (fn) => {
+      timers.set(++next, fn);
+      return next;
+    },
+    clearTimer: (t) => void timers.delete(t as number),
+  });
+  const events: Record<string, TabEvent[]> = {};
+  const ended: string[] = [];
+  const tab = (person: string, endpoint: string | null, visible: boolean) => {
+    const got: TabEvent[] = [];
+    const id = h.open(
+      person,
+      (e) => got.push(e),
+      () => ended.push(id),
+    );
+    events[id] = got;
+    if (endpoint !== null || visible)
+      expect(
+        h.presence(id, person, { endpoint, visible }, (ep) =>
+          (OWN[person] ?? []).includes(ep),
+        ),
+      ).toBe("ok");
+    return id;
+  };
+  const shown = (id: string) =>
+    events[id]
+      .filter((e) => e.type === "alert")
+      .map((e) => (e as { alert: Alert }).alert.id);
+  const dropped = (id: string) =>
+    events[id]
+      .filter((e) => e.type === "drop")
+      .map((e) => (e as { id: string }).id);
+  const alert = (id: string) => ({ id, seq: 1 }) as unknown as Alert;
+  const deliver = (a: Alert, eps = [PHONE, LAPTOP, OTHERS]) =>
+    h.deliver(a, eps, (sent) => pushed.push([...sent].sort()));
+  const fire = () => {
+    const all = [...timers.values()];
+    timers.clear();
+    all.forEach((f) => f());
+  };
+  return {
+    h,
+    tab,
+    events,
+    shown,
+    dropped,
+    ended,
+    alert,
+    deliver,
+    pushed,
+    fire,
+    timers,
+  };
+}
+
+describe("774 row 7b: the open tab first, then push", () => {
+  it("the server names the tab: its first event", () => {
+    const r = rig();
+    const t = r.tab("person:a", null, false);
+    expect(r.events[t][0]).toEqual({ type: "tab", tab: t });
+    expect(t).toMatch(/^[A-Za-z0-9_-]{16,}$/);
+  });
+
+  it("a visible tab on this device: it gets the alert and acks; no push to this device", () => {
+    const r = rig();
+    const t = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"));
+    expect(r.shown(t)).toEqual(["x1"]);
+    expect(r.pushed).toEqual([[PHONE, OTHERS]]);
+    expect(r.h.ack(t, "person:a", "x1")).toBe("ok");
+    r.fire();
+    expect(r.pushed).toEqual([[PHONE, OTHERS]]);
+    expect(r.h.pendingCount()).toBe(0);
+  });
+
+  it("a hidden tab: the push goes to this device as now", () => {
+    const r = rig();
+    const t = r.tab("person:a", LAPTOP, false);
+    r.deliver(r.alert("x1"));
+    expect(r.shown(t)).toEqual([]);
+    expect(r.pushed).toEqual([[LAPTOP, PHONE, OTHERS]]);
+    expect(r.h.pendingCount()).toBe(0);
+  });
+
+  it("no ack in time: the push goes to this device", () => {
+    const r = rig();
+    r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"));
+    r.fire();
+    expect(r.pushed).toEqual([[PHONE, OTHERS], [LAPTOP]]);
+    expect(r.h.pendingCount()).toBe(0);
+  });
+
+  it("two devices, each with a visible tab: each gets exactly one alert", () => {
+    const r = rig();
+    const lap = r.tab("person:a", LAPTOP, true);
+    const ph = r.tab("person:a", PHONE, true);
+    r.deliver(r.alert("x1"), [PHONE, LAPTOP]);
+    expect(r.shown(lap)).toEqual(["x1"]);
+    expect(r.shown(ph)).toEqual(["x1"]);
+    r.h.ack(lap, "person:a", "x1");
+    r.h.ack(ph, "person:a", "x1");
+    r.fire();
+    expect(r.pushed).toEqual([]);
+  });
+
+  it("several tabs on one device: all get it; the first ack drops it in the others", () => {
+    const r = rig();
+    const a = r.tab("person:a", LAPTOP, true);
+    const b = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    expect(r.shown(a)).toEqual(["x1"]);
+    expect(r.shown(b)).toEqual(["x1"]);
+    expect(r.h.ack(a, "person:a", "x1")).toBe("ok");
+    expect(r.dropped(b)).toEqual(["x1"]);
+    expect(r.dropped(a)).toEqual([]);
+    expect(r.h.ack(b, "person:a", "x1")).toBe("not_pending");
+    r.fire();
+    expect(r.pushed).toEqual([]);
+  });
+
+  it("the tab closes mid-window: the push goes at once; nothing is left", () => {
+    const r = rig();
+    const t = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    r.h.close(t);
+    expect(r.pushed).toEqual([[LAPTOP]]);
+    expect(r.h.pendingCount()).toBe(0);
+    expect(r.timers.size).toBe(0);
+    expect(r.h.tabCount()).toBe(0);
+  });
+
+  it("the tab goes hidden mid-window: the push goes at once", () => {
+    const r = rig();
+    const t = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    expect(
+      r.h.presence(
+        t,
+        "person:a",
+        { endpoint: LAPTOP, visible: false },
+        () => true,
+      ),
+    ).toBe("ok");
+    expect(r.pushed).toEqual([[LAPTOP]]);
+    expect(r.h.pendingCount()).toBe(0);
+  });
+
+  it("two tabs on this device: one closing leaves the other to answer", () => {
+    const r = rig();
+    const a = r.tab("person:a", LAPTOP, true);
+    const b = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    r.h.close(a);
+    expect(r.pushed).toEqual([]);
+    r.h.ack(b, "person:a", "x1");
+    r.fire();
+    expect(r.pushed).toEqual([]);
+    expect(r.h.pendingCount()).toBe(0);
+  });
+
+  it("presence and ack only from the tab's own person; an ack names a pending alert", () => {
+    const r = rig();
+    const t = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    expect(r.h.ack(t, "person:b", "x1")).toBe("forbidden");
+    expect(r.h.ack("no-such-tab", "person:a", "x1")).toBe("forbidden");
+    expect(r.h.ack(t, "person:a", "x2")).toBe("not_pending");
+    expect(
+      r.h.presence(
+        t,
+        "person:b",
+        { endpoint: null, visible: false },
+        () => true,
+      ),
+    ).toBe("forbidden");
+    r.fire();
+    expect(r.pushed).toEqual([[LAPTOP]]);
+  });
+
+  it("a tab claims only its person's own subscription: another's pushes are never swallowed", () => {
+    const r = rig();
+    const t = r.tab("person:a", null, true);
+    expect(
+      r.h.presence(t, "person:a", { endpoint: OTHERS, visible: true }, (ep) =>
+        OWN["person:a"].includes(ep),
+      ),
+    ).toBe("not_yours");
+    r.deliver(r.alert("x1"), [OTHERS]);
+    expect(r.shown(t)).toEqual([]);
+    expect(r.pushed).toEqual([[OTHERS]]);
+  });
+
+  it("a tab with no push endpoint is never a device's stand-in", () => {
+    const r = rig();
+    r.tab("person:a", null, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    expect(r.pushed).toEqual([[LAPTOP]]);
+  });
+
+  it("streams per person are capped: past it, the oldest is dropped", () => {
+    const r = rig({ maxTabs: 2 });
+    const a = r.tab("person:a", LAPTOP, true);
+    const b = r.tab("person:a", null, false);
+    r.tab("person:b", null, false);
+    expect(r.ended).toEqual([]);
+    r.tab("person:a", null, false);
+    expect(r.ended).toEqual([a]);
+    expect(r.h.tabCount()).toBe(3);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    expect(r.pushed).toEqual([[LAPTOP]]);
+    expect(r.ended).not.toContain(b);
+  });
+
+  it("keeps the endpoint only as a hash", () => {
+    const r = rig();
+    r.tab("person:a", LAPTOP, true);
+    expect(JSON.stringify(r.h.debugState())).not.toContain("push.example");
+  });
+
+  it("presence posts never extend the window: a tab that never acks can't hold push off", () => {
+    const r = rig();
+    const t = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    expect(r.timers.size).toBe(1);
+    for (let i = 0; i < 5; i += 1)
+      r.h.presence(
+        t,
+        "person:a",
+        { endpoint: LAPTOP, visible: true },
+        () => true,
+      );
+    expect(r.timers.size).toBe(1);
+    r.fire();
+    expect(r.pushed).toEqual([[LAPTOP]]);
+  });
+
+  it("a tab dropped by the cap is dead: its presence and acks are refused; its alerts push", () => {
+    const r = rig({ maxTabs: 1 });
+    const a = r.tab("person:a", LAPTOP, true);
+    r.deliver(r.alert("x1"), [LAPTOP]);
+    r.tab("person:a", null, false);
+    expect(r.pushed).toEqual([[LAPTOP]]);
+    expect(r.h.ack(a, "person:a", "x1")).toBe("forbidden");
+    expect(
+      r.h.presence(
+        a,
+        "person:a",
+        { endpoint: LAPTOP, visible: true },
+        () => true,
+      ),
+    ).toBe("forbidden");
+  });
+
+  it("a closed tab's id is dead too", () => {
+    const r = rig();
+    const a = r.tab("person:a", LAPTOP, true);
+    r.h.close(a);
+    expect(r.h.ack(a, "person:a", "x1")).toBe("forbidden");
+    expect(
+      r.h.presence(
+        a,
+        "person:a",
+        { endpoint: LAPTOP, visible: true },
+        () => true,
+      ),
+    ).toBe("forbidden");
+  });
+
+  it("the window is clamped to 1–10 s: a Setting can't make push 'never'", () => {
+    const seen: number[] = [];
+    for (const ms of [0, 500, 3000, 60_000, Number.NaN]) {
+      const h = new AlertHandoff({
+        windowMs: () => ms,
+        maxTabs: () => 20,
+        setTimer: (_fn, w) => void seen.push(w),
+        clearTimer: () => undefined,
+      });
+      const t = h.open(
+        "person:a",
+        () => undefined,
+        () => undefined,
+      );
+      h.presence(
+        t,
+        "person:a",
+        { endpoint: LAPTOP, visible: true },
+        () => true,
+      );
+      h.deliver({ id: "x" } as Alert, [LAPTOP], () => undefined);
+    }
+    expect(seen).toEqual([1000, 1000, 3000, 10_000, 3000]);
+  });
+});

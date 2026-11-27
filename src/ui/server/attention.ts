@@ -174,7 +174,7 @@ export interface AttentionDeps {
   alert?: (n: {
     agent: string;
     workspace: string;
-    why: "permission" | "asked";
+    why: "permission" | "asked" | "finished";
   }) => void;
 }
 
@@ -487,6 +487,12 @@ export class Attention {
           : { key: "bell.m.turn", vars: { name } },
         link,
       });
+      if (!this.onScreen(agent))
+        try {
+          this.d.alert?.({ agent, workspace, why: "finished" });
+        } catch {
+          /* an alert is best effort: the bell has it */
+        }
       return;
     }
     const prev = this.waiting.get(agent);

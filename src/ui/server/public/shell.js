@@ -1369,12 +1369,32 @@
     "set.notifications.push_ttl": "Push kept for",
     "set.notifications.push_ttl.d":
       "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.tab_first": "Open tab first",
+    "set.notifications.tab_first.d":
+      "When a __DEN_TITLE__ tab is open and in front on a device that also gets push, the tab shows the alert and the push to that device is skipped. If the tab hasn't shown it within this many seconds, the push goes. __DEN_CLI__ config alerts.tab_first_seconds=3",
+    "set.notifications.max_streams": "Open tabs that get alerts",
+    "set.notifications.max_streams.d":
+      "How many open __DEN_TITLE__ tabs of yours get alerts at once. Past this, the oldest stops getting them until it is reloaded. __DEN_CLI__ config alerts.max_streams=20",
     "set.notifications.desktop": "Desktop alerts",
     "set.notifications.desktop.d":
       "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
     "set.notifications.desktop.denied":
       "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
-    "set.notifications.desktop.none": "This browser can't show notifications.",
+    "set.notifications.desktop.none":
+      "This browser can't show notifications here. On iPhone, add __DEN_TITLE__ to your Home Screen first, then open it from there. The bell and the tab count still work.",
+    "set.notifications.desktop.blocked":
+      "This browser blocks notifications from this page. Allow them in its site settings, then turn this on. The bell and the tab count still work.",
+    "set.notifications.alert_finished": "Also tell me when an agent finishes",
+    "set.notifications.alert_finished.d":
+      "A notification when an agent finishes a turn and you are not looking at it. Off by default. An agent you muted never alerts.",
+    "set.notifications.alert_sound": "Sounds",
+    "set.notifications.alert_sound.d":
+      "A short sound with each desktop alert, one for “needs you” and a softer one for “finished”. Plays only while a __DEN_TITLE__ tab is open; a closed tab or a phone uses its own alert sound.",
+    "set.notifications.alert_sound.needs": "▶ Needs you",
+    "set.notifications.alert_sound.finished": "▶ Finished",
+    "set.notifications.tab_count": "Count in the tab",
+    "set.notifications.tab_count.d":
+      "Show the number of agents that need you in the tab title and on the tab icon (not the bell's count). Zero shows nothing.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",

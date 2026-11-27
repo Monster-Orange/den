@@ -76,6 +76,7 @@ async function open(
   o: {
     permission: string;
     front: boolean;
+    hidden?: boolean;
     /** S2: the device's subscription a stubbed PushManager hands out. */
     sub?: PushStub["subscription"];
   },
@@ -85,7 +86,7 @@ async function open(
     reducedMotion: "reduce",
   });
   await ctx.addInitScript(
-    ({ v, permission, front, sub }) => {
+    ({ v, permission, front, hidden, sub }) => {
       try {
         for (const k of ["den-changelog-seen", "acme-changelog-seen"])
           localStorage.setItem(k, v);
@@ -117,6 +118,10 @@ async function open(
       }
       w.Notification = FakeNotification;
       Document.prototype.hasFocus = () => front;
+      if (hidden)
+        Object.defineProperty(Document.prototype, "visibilityState", {
+          get: () => "hidden",
+        });
       if (sub) {
         // S2: a service worker and PushManager that never reach a real
         // push service: the subscription is the test's local stub.
@@ -194,8 +199,19 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       ).__shown.map((n) => ({ title: n.title, body: n.body, tag: n.tag })),
     );
     expect(shown).toHaveLength(1);
-    expect(shown[0].body).toBe("planner needs your permission");
-    expect(shown[0].title).toBeTruthy();
+    expect(shown[0].title).toBe("planner needs your permission");
+    expect(shown[0].body).toBe("north");
+    await p.waitForFunction(() => document.title.startsWith("(1) "), null, {
+      timeout: 15_000,
+    });
+    await p.waitForFunction(
+      () =>
+        (
+          document.getElementById("den-favicon")?.getAttribute("href") ?? ""
+        ).startsWith("data:image/png"),
+      null,
+      { timeout: 15_000 },
+    );
     expect(shown[0].tag).toMatch(/^[0-9a-f-]{36}$/);
     expect(JSON.stringify(shown)).not.toContain("sk-live");
     await p.evaluate(() =>
@@ -286,6 +302,26 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       alerts: { quiet_from: "22:00", quiet_to: "07:00" },
     });
     await s!.settings({ alerts: { quiet_from: null, quiet_to: null } });
+    const fin = p.locator('[data-focus-key="notifications-alert_finished"]');
+    expect(await fin.isChecked()).toBe(false);
+    await fin.click();
+    await p.locator("#set-alert-sound").click();
+    await p
+      .locator("#setting-notifications-alert_sound button[data-sound=finished]")
+      .click();
+    const count = p.locator('[data-focus-key="notifications-tab_count"]');
+    expect(await count.isChecked()).toBe(true);
+    const end = Date.now() + 10_000;
+    while (
+      ((await s!.settingsGet()).alerts as { sound?: boolean } | undefined)
+        ?.sound !== true &&
+      Date.now() < end
+    )
+      await new Promise((r) => setTimeout(r, 50));
+    expect(await s!.settingsGet()).toMatchObject({
+      alerts: { finished: true, sound: true, tab_count: true },
+    });
+    await s!.settings({ alerts: { finished: null, sound: null } });
     expect(errors).toEqual([]);
     await p.context().close();
   }, 90_000);
@@ -297,6 +333,7 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       const p = await open("/settings#notifications", {
         permission: "default",
         front: false,
+        hidden: true,
         sub: stub.subscription,
       });
       await p.click('#set-nav a[data-cat="notifications"]');
@@ -354,7 +391,8 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       expect(stub.received).toHaveLength(1);
       expect(stub.received[0].vapidOk).toBe(true);
       expect(JSON.parse(stub.received[0].text!)).toMatchObject({
-        body: "planner needs your permission",
+        title: "planner needs your permission",
+        body: "north",
         link: "/agents?project=north&agent=planner",
       });
       // The tab leaves it to the push: no second notification.

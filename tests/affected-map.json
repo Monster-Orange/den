@@ -1925,6 +1925,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/alert-sounds.js",
         "src/ui/server/public/alerts.js",
         "src/ui/server/public/appearance.js",
         "src/ui/server/public/bell.js",
@@ -1949,6 +1950,7 @@
         "src/ui/server/public/settings-registry.js",
         "src/ui/server/public/shell-pick.js",
         "src/ui/server/public/svc-panel.js",
+        "src/ui/server/public/tab-count.js",
         "src/ui/server/public/term-input.js",
         "src/ui/server/public/term-pane.js",
         "src/ui/server/public/terminals-list.js",

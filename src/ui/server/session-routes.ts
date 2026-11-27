@@ -1923,15 +1923,8 @@ async function helpersRunning(
   const keep = agentRowFilter(req);
   const rows = await listWithHelpers(sessions, d);
   let needs = 0;
-  for (const r of rows)
-    if (
-      (!keep || keep(r.workspace)) &&
-      r.kind === "agent" &&
-      r.state === "running" &&
-      r.waiting &&
-      r.waitingWhy !== "input"
-    )
-      needs += 1;
+  for (const r of keep ? rows.filter((x) => keep(x.workspace)) : rows)
+    if (isNeedsYouRow(r)) needs += 1;
   sendJson(res, { running: helpersRunningIn(rows, keep), needs });
   return true;
 }
@@ -1944,4 +1937,56 @@ export function helpersRunningIn(
   for (const r of rows)
     if (!keep || keep(r.workspace)) running += r.helpers?.running ?? 0;
   return running;
+}
+
+export function isNeedsYouRow(r: {
+  kind?: string;
+  state?: string;
+  waiting?: boolean;
+  waitingWhy?: string;
+}): boolean {
+  return (
+    r.kind === "agent" &&
+    r.state === "running" &&
+    !!r.waiting &&
+    r.waitingWhy !== "input"
+  );
+}
+
+export async function needsYouNow(deps: SessionRouteDeps): Promise<number> {
+  const d = resolve(deps);
+  let sessions: SessionInfo[] = [];
+  try {
+    const c = await d.connectExisting();
+    if (!c) return 0;
+    try {
+      sessions = await c.list();
+    } finally {
+      c.close();
+    }
+  } catch {
+    return 0;
+  }
+  let n = 0;
+  for (const r of listedSessions(sessions, d)) if (isNeedsYouRow(r)) n += 1;
+  return n;
+}
+
+const NEEDS_SHARED_MS = 2000;
+let needsShared: { at: number; key: unknown; n: Promise<number> } | null = null;
+
+export function needsYouShared(
+  deps: SessionRouteDeps,
+  now: () => number = Date.now,
+  key?: unknown,
+): Promise<number> {
+  const t = now();
+  if (
+    needsShared &&
+    needsShared.key === key &&
+    t - needsShared.at < NEEDS_SHARED_MS
+  )
+    return needsShared.n;
+  needsShared = { at: t, key, n: needsYouNow(deps) };
+  return needsShared.n;
 }

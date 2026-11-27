@@ -176,6 +176,11 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     quiet_to: true,
     push_timeout_seconds: true,
     push_ttl_seconds: true,
+    finished: true,
+    sound: true,
+    tab_count: true,
+    tab_first_seconds: true,
+    max_streams: true,
   },
   // Issue 415: how long a Report destination's visibility is kept, waited for.
   feedback: {
@@ -442,6 +447,11 @@ describe("the settings inventory (R21)", () => {
         // Issue 367: how long a push may take, and a push service keeps it.
         "alerts.push_timeout_seconds",
         "alerts.push_ttl_seconds",
+        "alerts.finished",
+        "alerts.sound",
+        "alerts.tab_count",
+        "alerts.tab_first_seconds",
+        "alerts.max_streams",
         // Issue 334: an app key's reads, one audit line per window.
         "embed.app_key_audit_window_seconds",
         // Issue 160: the install's approval policy.
