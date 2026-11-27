@@ -90,6 +90,12 @@ const OWN: {
     mark: /createElement\("dialog"\)/,
     why: "shows the admin password ask, a dialog the injector sees",
   },
+  {
+    file: "src/ui/server/public/combobox.js",
+    anchor: 'ul.popover = "manual"',
+    mark: null,
+    why: "a picker's listbox in the top layer, under its field: options, not a pop-up to report from",
+  },
 ];
 
 function walk(dir: string): string[] {

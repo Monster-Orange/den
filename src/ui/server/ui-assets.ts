@@ -88,6 +88,7 @@ export const UI_MODULES: readonly string[] = [
   "/svc-panel.js",
   // D30: the shared searchable picker (Settings › Agents › Rotation).
   "/combobox.js",
+  "/combobox.css",
   // 0.4.18: where a service's live log comes from (Logs page and panel).
   "/log-source.js",
   // D50: how every pop-over closes (a press outside, Esc).
@@ -98,6 +99,7 @@ export const UI_MODULES: readonly string[] = [
   "/pane-reconnect.js",
   "/term-pane.js",
   "/peek.js",
+  "/list-pager.js",
   "/peek.css",
   // Issue 448: which shell the rail's Terminal opens.
   "/shell-pick.js",
@@ -213,6 +215,8 @@ export const KIT_FILES: readonly string[] = [
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",
+  "pager.js",
+  "pager.css",
   // Issue 95 (UI kit slice 1): the global shell (top bar, rail, pins,
   // collapse, ☰ drawer), the version chip, What's new, the Report form
   // and the kit's words, and the client entry (window.DenUI).
@@ -403,6 +407,7 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/dialog.css",
   // Issue 750: the group header's look (the agents page's By group view).
   "/kit/group-header.css",
+  "/kit/pager.css",
 ];
 
 /**

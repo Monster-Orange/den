@@ -5,12 +5,12 @@
  * is shown is its name. One shared control, so a form never asks a person
  * to type an id.
  *
- *   comboHtml({ id, label, placeholder })   the markup (a <label>, the
- *                                            field, its list)
- *   wireCombo(root, id, { items, onPick })  makes it work; items() is read
- *                                            each time it opens, so it
- *                                            follows live data. Returns
- *                                            { value(), set(id), clear() }.
+ *   comboHtml({ id, label, placeholder, bare })  the markup (bare: no <label>)
+ *   wireCombo(root, id, { items, onPick, onType, load, free, words })
+ *     items() is read each time it opens. load(q) → { items, more } asks a
+ *     server as you type instead (more: a last "words.more" row). free: the
+ *     typed text is the value (a name not in the list stays). Returns
+ *     { value(), set(id), clear() }.
  *
  * An item: { id, label, sub?, keywords?, off? } (off: shown, not pickable).
  */
@@ -25,16 +25,41 @@ const esc = (s) =>
       ],
   );
 
-export function comboHtml({ id, label, placeholder = "" }) {
+export function comboHtml({
+  id,
+  label,
+  placeholder = "",
+  bare = false,
+  cls = "",
+}) {
   return (
     `<span class="den-combo" data-combo="${esc(id)}">` +
-    `<label for="${esc(id)}">${esc(label)}</label>` +
+    (bare ? "" : `<label for="${esc(id)}">${esc(label)}</label>`) +
     `<span class="den-combo-box">` +
-    `<input type="text" id="${esc(id)}" role="combobox" aria-expanded="false" aria-controls="${esc(id)}-list" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="${esc(placeholder)}">` +
+    `<input type="text" id="${esc(id)}"${cls ? ` class="${esc(cls)}"` : ""} role="combobox" aria-expanded="false" aria-controls="${esc(id)}-list" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="${esc(placeholder)}">` +
     `<ul id="${esc(id)}-list" role="listbox" aria-label="${esc(label)}" class="den-combo-list" hidden></ul>` +
     `</span></span>`
   );
 }
+
+export const pageLoad =
+  (base, limit = 50) =>
+  async (q) => {
+    const u = typeof base === "function" ? base() : base;
+    if (!u) return { items: [], more: false };
+    const p = new URLSearchParams({ limit: String(limit) });
+    if (q) p.set("q", q);
+    const r = await fetch(`${u}${u.includes("?") ? "&" : "?"}${p}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null);
+    if (!Array.isArray(r?.items))
+      return { items: [], more: false, error: true };
+    const names = r.items;
+    return {
+      items: names.map((n) => ({ id: String(n), label: String(n) })),
+      more: !!r?.next,
+    };
+  };
 
 /** Rows ranked for `q` (every item when it is empty). */
 export function comboMatches(items, q) {
@@ -45,23 +70,49 @@ export function comboMatches(items, q) {
   return rankCommands(list, q, { limit: 50, emptyLimit: 50 });
 }
 
-export function wireCombo(root, id, { items, onPick }) {
+export function wireCombo(
+  root,
+  id,
+  { items = () => [], onPick, onType, load, free = false, words = {} },
+) {
   const input = root.querySelector(`#${CSS.escape(id)}`);
   const ul = root.querySelector(`#${CSS.escape(id)}-list`);
   if (!input || !ul) return null;
+  const pop = typeof ul.showPopover === "function";
+  if (pop) ul.popover = "manual";
+  const show = (on) => {
+    ul.hidden = !on;
+    if (pop && on !== ul.matches(":popover-open"))
+      on ? ul.showPopover() : ul.hidePopover();
+  };
   let picked = "";
   let shown = [];
   let sel = 0;
+  let found = { items: [], more: false };
+  let seq = 0;
+  let timer = 0;
+  const fetchFor = (q) => {
+    const n = ++seq;
+    Promise.resolve(load(q))
+      .catch(() => ({ items: [], more: false, error: true }))
+      .then((r) => {
+        if (n !== seq) return;
+        found = { items: r?.items ?? [], more: !!r?.more, error: !!r?.error };
+        if (document.activeElement === input) draw();
+      });
+  };
   const close = () => {
-    ul.hidden = true;
+    show(false);
     input.setAttribute("aria-expanded", "false");
     input.removeAttribute("aria-activedescendant");
   };
   const draw = () => {
-    shown = comboMatches(
-      items(),
-      input.value === labelOf(picked) ? "" : input.value,
-    );
+    shown = load
+      ? found.items
+      : comboMatches(
+          items(),
+          input.value === labelOf(picked) ? "" : input.value,
+        );
     sel = Math.min(sel, Math.max(0, shown.length - 1));
     ul.innerHTML = shown.length
       ? shown
@@ -72,9 +123,13 @@ export function wireCombo(root, id, { items, onPick }) {
               (x.sub ? `<span class="den-combo-s">${esc(x.sub)}</span>` : "") +
               `</li>`,
           )
-          .join("")
-      : `<li class="den-combo-none" aria-disabled="true">No match</li>`;
-    ul.hidden = false;
+          .join("") +
+        (load && found.more
+          ? `<li class="den-combo-more" aria-disabled="true">${esc(words.more ?? "")}</li>`
+          : "")
+      : `<li class="den-combo-none" aria-disabled="true">${esc((load && found.error ? words.error : null) ?? words.none ?? "No match")}</li>`;
+    show(true);
+    place();
     input.setAttribute("aria-expanded", "true");
     if (shown.length)
       input.setAttribute("aria-activedescendant", `${id}-o-${sel}`);
@@ -82,7 +137,19 @@ export function wireCombo(root, id, { items, onPick }) {
       block: "nearest",
     });
   };
-  const labelOf = (v) => items().find((x) => x.id === v)?.label ?? "";
+  const place = () => {
+    const r = input.getBoundingClientRect();
+    const room = window.innerHeight - r.bottom;
+    const up = room < 160 && r.top > room;
+    ul.style.left = `${r.left}px`;
+    ul.style.width = `${r.width}px`;
+    ul.style.maxHeight = `${Math.max(120, Math.min(240, (up ? r.top : room) - 8))}px`;
+    ul.style.top = up ? "" : `${r.bottom + 2}px`;
+    ul.style.bottom = up ? `${window.innerHeight - r.top + 2}px` : "";
+  };
+  const labelOf = (v) =>
+    (load ? found.items : items()).find((x) => x.id === v)?.label ??
+    (free ? v : "");
   const pick = (x) => {
     if (!x || x.off) return;
     picked = x.id;
@@ -90,16 +157,28 @@ export function wireCombo(root, id, { items, onPick }) {
     input.dataset.value = x.id;
     close();
     onPick?.(x);
+    onType?.(x.id);
   };
+  document.addEventListener(
+    "scroll",
+    () => {
+      if (!ul.hidden) place();
+    },
+    true,
+  );
   input.addEventListener("focus", () => {
     sel = 0;
-    draw();
+    if (load) fetchFor(input.value.trim());
+    else draw();
   });
   input.addEventListener("input", () => {
-    picked = "";
+    picked = free ? input.value.trim() : "";
     delete input.dataset.value;
     sel = 0;
-    draw();
+    onType?.(picked);
+    if (!load) return draw();
+    clearTimeout(timer);
+    timer = setTimeout(() => fetchFor(input.value.trim()), 250);
   });
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -131,13 +210,13 @@ export function wireCombo(root, id, { items, onPick }) {
   input.addEventListener("blur", () => {
     close();
     // Leaving with a half-typed name: back to what was picked.
-    if (input.value !== labelOf(picked)) input.value = labelOf(picked);
+    if (!free && input.value !== labelOf(picked)) input.value = labelOf(picked);
   });
   return {
     value: () => picked,
     set: (v) => {
       picked = v;
-      input.value = labelOf(v);
+      input.value = free ? v : labelOf(v);
       if (v) input.dataset.value = v;
       else delete input.dataset.value;
     },
