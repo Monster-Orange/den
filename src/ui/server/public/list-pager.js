@@ -1,4 +1,9 @@
-import { pagerHtml, hydratePager } from "/kit/pager.js";
+import {
+  cursorHref,
+  cursorStart,
+  hydratePager,
+  pagerHtml,
+} from "/kit/pager.js";
 
 const tr = (k, v) => globalThis.denShell?.t?.(k, v) ?? k;
 const WORDS = [
@@ -26,8 +31,76 @@ const attr = (s) =>
 export const pagerWords = () =>
   Object.fromEntries(WORDS.map((k) => [k, tr(`pager.${k}`)]));
 
-export function listPagerHtml(name, p, shown, per) {
-  if (!p || typeof p.offset !== "number" || !shown) return "";
+const here = () => globalThis.location?.href ?? "http://localhost/";
+const keys = (k) => ({
+  c: `${k}c`,
+  b: `${k}b`,
+  p: `${k}p`,
+  at: `${k}at`,
+  n: `${k}n`,
+  o: `${k}o`,
+});
+
+export function pageHref(name, reply, target, per, url = here()) {
+  const k = keys(name);
+  if (!reply || !("prev" in reply))
+    return (
+      cursorHref(url, target, reply?.next, {
+        after: k.c,
+        back: k.b,
+        per: k.n,
+        offset: k.o,
+        size: per,
+      }) || null
+    );
+  const u = new URL(url, "http://localhost/");
+  const q = u.searchParams;
+  for (const x of [k.c, k.b, k.p, k.at, k.o]) q.delete(x);
+  if (target === "next") {
+    if (!reply.next) return null;
+    q.set(k.c, reply.next);
+  } else if (target === "prev") {
+    if (!reply.prev) return null;
+    q.set(k.c, reply.prev);
+  } else if (target === "first") {
+    if (!reply.prev) return null;
+  } else if (target === "last") {
+    if (!reply.next || !reply.pages) return null;
+    q.set(k.at, "last");
+  } else if (target && typeof target === "object" && "page" in target)
+    q.set(k.p, String(target.page));
+  else if (target && typeof target === "object" && "per" in target)
+    q.set(k.n, String(target.per));
+  else return null;
+  const str = q.toString();
+  return `${u.pathname}${str ? `?${str}` : ""}${u.hash}`;
+}
+
+export function perFromUrl(name, per, url = here()) {
+  const n = Number(
+    new URL(url, "http://localhost/").searchParams.get(keys(name).n),
+  );
+  return Number.isInteger(n) && n > 0 ? n : per;
+}
+
+export function askFromUrl(name, per, url = here()) {
+  const k = keys(name);
+  const q = new URL(url, "http://localhost/").searchParams;
+  const ask = new URLSearchParams({
+    limit: String(perFromUrl(name, per, url)),
+  });
+  if (q.get(k.c)) ask.set("cursor", q.get(k.c));
+  else if (q.get(k.p)) ask.set("page", q.get(k.p));
+  else if (q.get(k.at)) ask.set("at", q.get(k.at));
+  return ask;
+}
+
+export function listPagerHtml(name, p, shown, per, { url = true } = {}) {
+  if (!p || !shown) return "";
+  const offset =
+    typeof p.offset === "number"
+      ? p.offset
+      : cursorStart(url ? here() : "", { offset: keys(name).o });
   const on = {
     first: !!p.prev,
     prev: !!p.prev,
@@ -35,13 +108,15 @@ export function listPagerHtml(name, p, shown, per) {
     last: !!p.next && !!p.pages,
   };
   const html = pagerHtml({
-    from: p.offset + 1,
-    to: p.offset + shown,
+    from: offset + 1,
+    to: offset + shown,
     total: typeof p.total === "number" ? p.total : null,
     hasNext: !!p.next,
     ...(p.pages ? { page: p.page, pages: p.pages } : {}),
     per,
-    href: (t) => (typeof t === "string" && !on[t] ? null : `#${name}`),
+    href: url
+      ? (t) => pageHref(name, p, t, per)
+      : (t) => (typeof t === "string" && !on[t] ? null : `#${name}`),
     lang: globalThis.denShell?.lang?.() ?? "en",
     words: pagerWords(),
   });
@@ -61,7 +136,8 @@ export function pageQuery(p, target, per) {
   return q;
 }
 
-export function watchPagers(root, onNav) {
+export function watchPagers(root, onNav, { url = true } = {}) {
+  const win = root.ownerDocument.defaultView;
   const seen = new WeakSet();
   const hydrate = () => {
     for (const el of root.querySelectorAll(
@@ -74,13 +150,20 @@ export function watchPagers(root, onNav) {
       seen.add(el);
       hydratePager(el, {
         shortcuts: false,
-        onNavigate: (ask) =>
-          onNav(el.closest("[data-list-pager]").dataset.listPager, ask),
+        onNavigate: (ask) => {
+          if (url && ask.href) win.history.pushState(null, "", ask.href);
+          onNav(el.closest("[data-list-pager]").dataset.listPager, ask);
+        },
       });
     }
   };
   hydrate();
-  const mo = new root.ownerDocument.defaultView.MutationObserver(hydrate);
+  const mo = new win.MutationObserver(hydrate);
   mo.observe(root, { childList: true, subtree: true });
-  return () => mo.disconnect();
+  const onPop = () => onNav(null, { kind: "pop" });
+  if (url) win.addEventListener("popstate", onPop);
+  return () => {
+    mo.disconnect();
+    if (url) win.removeEventListener("popstate", onPop);
+  };
 }
