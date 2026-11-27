@@ -210,7 +210,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     });
     expect(css).toBe("9px 12px 9px 10px / 2px / 10px / 1px");
     const w = await p
-      .locator("#agl")
+      .locator("#aglc")
       .evaluate((el) => el.getBoundingClientRect().width);
     expect(Math.abs(w - 380)).toBeLessThanOrEqual(1);
     const sub = (await p.textContent("#ag-count")) ?? "";
@@ -273,7 +273,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
   it("By need is the default; By project groups by project, each sorted by need; the choice is kept", async () => {
     if (skip()) return;
     const p = await open("/agents");
-    const sw = "#agl [data-by-switch]";
+    const sw = "#agby [data-by-switch]";
     expect(await p.getAttribute(`${sw} [data-by="need"]`, "aria-pressed")).toBe(
       "true",
     );
@@ -315,7 +315,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
     const p = await open("/agents", 1280, "project");
     expect(
       await p.getAttribute(
-        '#agl [data-by-switch] [data-by="project"]',
+        '#agby [data-by-switch] [data-by="project"]',
         "aria-pressed",
       ),
     ).toBe("true");
@@ -340,7 +340,7 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
   it("a saved By group with no Hub groups: no By group button, By need, the choice kept", async () => {
     if (skip()) return;
     const p = await open("/agents", 1280, "group");
-    const sw = "#agl [data-by-switch]";
+    const sw = "#agby [data-by-switch]";
     expect(await p.locator(`${sw} [data-by="group"]`).count()).toBe(0);
     expect(await p.getAttribute(`${sw} [data-by="need"]`, "aria-pressed")).toBe(
       "true",
@@ -368,8 +368,9 @@ describe("issue 773: four states, one list sorted by who needs you", () => {
   it("a phone, 390 px: the same bands, each row 64 px or more, no sideways scroll", async () => {
     if (skip()) return;
     const p = await open("/agents", 390);
-    const heights = await p.$$eval("#agl div[data-band] button[data-kind]", (bs) =>
-      bs.map((b) => b.getBoundingClientRect().height),
+    const heights = await p.$$eval(
+      "#agl div[data-band] button[data-kind]",
+      (bs) => bs.map((b) => b.getBoundingClientRect().height),
     );
     expect(heights.length).toBeGreaterThan(0);
     for (const h of heights) expect(h).toBeGreaterThanOrEqual(64);

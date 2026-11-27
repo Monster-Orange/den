@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Changed
+
+- Agents page: the Need | Project | Group switch sits at the top of the list's card, outside the part that scrolls. It stays centred on the card when the list shows a scrollbar (a Mac with a mouse, for example), and stays in view when the rows scroll. (issue 1854)
+
 ## [0.4.92] - unreleased
 
 ### Changed
