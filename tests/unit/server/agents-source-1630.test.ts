@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import ts from "typescript";
 import {
   AGENTS_ENTRY,
   AGENTS_PUBLIC,
@@ -183,5 +184,81 @@ describe("the entry adds the stale-pick listeners, once each", () => {
       expect(added(entry, type)).toBe(1);
       expect(added(all, type)).toBe(1);
     }
+  });
+});
+
+function importedWrites(code: string): string[] {
+  const sf = ts.createSourceFile("part.js", code, ts.ScriptTarget.Latest, true);
+  const imported = new Set<string>();
+  for (const st of sf.statements)
+    if (ts.isImportDeclaration(st))
+      st.importClause?.namedBindings &&
+        ts.isNamedImports(st.importClause.namedBindings) &&
+        st.importClause.namedBindings.elements.forEach((e) =>
+          imported.add(e.name.text),
+        );
+  const shadowed = (id: ts.Identifier) => {
+    for (let n: ts.Node | undefined = id.parent; n; n = n.parent) {
+      const local = (d: ts.Node) =>
+        (ts.isVariableDeclaration(d) || ts.isParameter(d)) &&
+        ts.isIdentifier(d.name) &&
+        d.name.text === id.text;
+      if (ts.isFunctionLike(n) && n.parameters.some(local)) return true;
+      if (ts.isBlock(n) || ts.isSourceFile(n))
+        for (const st of n.statements)
+          if (
+            ts.isVariableStatement(st) &&
+            st.declarationList.declarations.some(local) &&
+            !ts.isSourceFile(n)
+          )
+            return true;
+    }
+    return false;
+  };
+  const out: string[] = [];
+  const visit = (n: ts.Node) => {
+    let target: ts.Expression | undefined;
+    if (
+      ts.isBinaryExpression(n) &&
+      n.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+      n.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+    )
+      target = n.left;
+    else if (
+      (ts.isPrefixUnaryExpression(n) || ts.isPostfixUnaryExpression(n)) &&
+      (n.operator === ts.SyntaxKind.PlusPlusToken ||
+        n.operator === ts.SyntaxKind.MinusMinusToken)
+    )
+      target = n.operand;
+    if (
+      target &&
+      ts.isIdentifier(target) &&
+      imported.has(target.text) &&
+      !shadowed(target)
+    )
+      out.push(target.text);
+    ts.forEachChild(n, visit);
+  };
+  visit(sf);
+  return out;
+}
+
+describe("no agents-page module assigns a name it imports", () => {
+  it("finds =, op= and ++ on an import, not on a local of the same name", () => {
+    const head = 'import { a, b, c } from "/agents-core.js";\n';
+    expect(importedWrites(head + "function f() { a = 1; }")).toEqual(["a"]);
+    expect(importedWrites(head + "b += 2; c++;")).toEqual(["b", "c"]);
+    expect(importedWrites(head + "function f(a) { a = 1; }")).toEqual([]);
+    expect(importedWrites(head + "function f() { let b; b = 1; }")).toEqual([]);
+    expect(importedWrites(head + "const o = {}; o.a = 1;")).toEqual([]);
+  });
+
+  it("the real page and its parts write only their own top-level names", () => {
+    const bad = agentsFiles().flatMap((f) =>
+      importedWrites(
+        fs.readFileSync(path.join(AGENTS_PUBLIC, f), "utf-8"),
+      ).map((n) => `${f}: ${n}`),
+    );
+    expect(bad).toEqual([]);
   });
 });
