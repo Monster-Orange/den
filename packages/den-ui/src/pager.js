@@ -20,9 +20,14 @@ function fmt(lang, n) {
   }
 }
 
+const RUN = /\d[\d.,\u00a0\u202f]*(?:\s*[–/-]\s*\d[\d.,\u00a0\u202f]*)+/g;
+const ltr = (t) => t.replace(RUN, "\u2066$&\u2069");
+
 function fill(tpl, lang, vars) {
-  return String(tpl ?? "").replace(/\{(\w+)\}/g, (all, k) =>
-    k in vars ? fmt(lang, vars[k]) : all,
+  return ltr(
+    String(tpl ?? "").replace(/\{(\w+)\}/g, (all, k) =>
+      k in vars ? fmt(lang, vars[k]) : all,
+    ),
   );
 }
 
@@ -246,7 +251,7 @@ function compactHtml(m, open) {
   const f = formFor(m.href({ page: 1 }), m.href({ page: 2 }), "page");
   const sr = fill(w.pageSr ?? "", m.lang, { p: m.page, n: m.pages ?? m.page });
   const of = counted
-    ? `<span class="den-pager-of" aria-hidden="true">/ ${esc(fmt(m.lang, m.pages))}</span>`
+    ? `<span class="den-pager-of" aria-hidden="true">\u2066/ ${esc(fmt(m.lang, m.pages))}\u2069</span>`
     : "";
   const field =
     `<form class="den-pager-form den-pager-cform" method="get" novalidate action="${esc(f.action)}" data-den-pager-form="page">${hidden(f.keep)}` +
