@@ -141,7 +141,7 @@ function formFor(a, b, fallback) {
     [...keys].find((k) => ua.searchParams.get(k) !== ub.searchParams.get(k)) ??
     fallback;
   const keep = [...ua.searchParams].filter(([k]) => k !== name);
-  return { action: ua.pathname, name, keep, hash: ua.hash };
+  return { action: ua.pathname + ua.hash, name, keep };
 }
 
 function hidden(keep) {
@@ -382,7 +382,8 @@ function hydratePages(root, opts) {
   }
   const formHref = (form) => {
     const q = new URLSearchParams(new win.FormData(form)).toString();
-    return `${form.getAttribute("action") || ""}${q ? `?${q}` : ""}`;
+    const [base, hash] = (form.getAttribute("action") || "").split("#");
+    return `${base}${q ? `?${q}` : ""}${hash ? `#${hash}` : ""}`;
   };
 
   const onChange = (e) => {
@@ -467,7 +468,7 @@ function hydratePages(root, opts) {
         `${Math.max(8, r.top - menu.offsetHeight - 4)}px`,
       );
     }
-    menu.querySelector("select,a[href],button")?.focus();
+    menu.querySelector("select,a[href],button")?.focus({ preventScroll: true });
   };
   root.addEventListener("change", onChange);
   root.addEventListener("submit", onSubmit);
