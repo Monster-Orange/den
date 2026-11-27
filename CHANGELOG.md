@@ -6,11 +6,13 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
-## [0.4.92] - unreleased
-
 ### Changed
 
 - A browser tab that goes away without closing its terminal (a crash, a sleeping laptop, a lost network) no longer keeps an agent's terminal at its size for up to a minute and a half. Den now checks every 10 s that each terminal window still answers. A window that misses a check is gone by the next one, and it hands the size on as a closed page does. The interval is a new Setting, Terminal connection check (`sessions.io_ping_seconds`). (issue 1913)
+
+## [0.4.92] - unreleased
+
+### Changed
 
 - A pull request that changes `shell.js` or a data file at the top of `tests/` (such as `tests/affected-map.json`) no longer runs every test. A `shell.js` change runs every browser spec, the tests that read it and the tests that use a helper that reads it; a data file runs the tests that read it, and the map runs its own tests. The CI replay now picks the tests that read a changed file by path, as CI does. (issue 1805)
 
