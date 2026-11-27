@@ -1843,7 +1843,14 @@ import {
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
-import { pageMax } from "./paging.js";
+import {
+  isPageError,
+  pageMax,
+  pageOf,
+  readPageAsk,
+  sendPageError,
+} from "./paging.js";
+import { CHANGELOG_PAGE } from "../../shared/list-page.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -10730,7 +10737,18 @@ async function handleRequest(
     try {
       const raw = fs.readFileSync(changelogPath, "utf-8");
       const entries = parseChangelog(raw);
-      return sendJson(res, entries);
+      const q = new URL(req.url ?? "/", "http://localhost").searchParams;
+      if (!["limit", "cursor", "page", "at"].some((k) => q.has(k)))
+        return sendJson(res, entries);
+      const ask = readPageAsk(q, "changelog");
+      if (isPageError(ask)) return sendPageError(res, ask);
+      if (!q.has("limit")) ask.limit = Math.min(CHANGELOG_PAGE, ask.limit);
+      const { items, ...at } = pageOf(
+        entries.map((e, i) => ({ e, n: entries.length - i })),
+        ask,
+        { key: (r) => r.n, id: (r) => r.e.version, order: "desc", total: true },
+      );
+      return sendJson(res, { items: items.map((r) => r.e), ...at });
     } catch {
       return sendJson(res, []);
     }
