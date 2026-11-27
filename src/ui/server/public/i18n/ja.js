@@ -4240,6 +4240,7 @@
     "account.retry": "再試行",
     "account.name": "名前",
     "account.role": "役割",
+    "account.toDevices": "サインイン中のブラウザは「デバイス」にあります",
     "set.ui.viaGithub": "GitHub でサインイン",
     "set.ui.viaCode": "コードで承認",
     "set.ui.viaAgentView": "{agent} の読み取り専用の閲覧",

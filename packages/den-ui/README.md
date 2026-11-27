@@ -923,6 +923,18 @@ pop-up.
   replaces it, Back closes it, and closing takes the entry back off.
   With `shown: true` (a link with the parameter) it is drawn open; with
   no script it is a `<dialog open>` of links and plain forms.
+  With `shown: false` it is drawn closed and kept out of view until
+  `open()`: build it once, append it, and open it from a button.
+- A link in a pane to another pane: `<a href="?<param>=<pane>"
+  data-dn-to="<pane>" data-dn-at="<entry>">` (`data-dn-at` optional)
+  switches panes in place; ⌘-, Ctrl- or Shift-click still opens the
+  address. `data-dn-hit` is the search's own and not for pane links.
+- A `<form>` in a pane saves in place: through `onSave(form, pane)` when
+  given (`{ ok, message }` or `{ ok: false, error }`), else a fetch of
+  its action with `x-dn-pane: 1` whose reply replaces the pane body when
+  it carries `x-dn-pane`. Save is held with the kit's dots, and "Saved"
+  or the error shows at the pane's top. Controls that save on change
+  through their own code don't submit, so the kit leaves them alone.
 - A field marked `data-dn-typed` that differs from its saved value makes
   closing ask "Discard your change to {field}?" (the kit's confirm).
 - At 600px or less: full screen, the list first (44px rows with ›), then

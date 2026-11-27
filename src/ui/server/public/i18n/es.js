@@ -4382,6 +4382,8 @@
     "account.retry": "Reintentar",
     "account.name": "Nombre",
     "account.role": "Rol",
+    "account.toDevices":
+      "Tus navegadores con sesión iniciada están en Dispositivos",
     "set.ui.viaGithub": "sesión iniciada con GitHub",
     "set.ui.viaCode": "aprobado con un código",
     "set.ui.viaAgentView": "vista de solo lectura de {agent}",

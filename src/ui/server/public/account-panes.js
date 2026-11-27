@@ -1,13 +1,3 @@
-/**
- * The Account pop-up's panes (issue 1926's dialogs; the kit's dialog-nav,
- * DS #5): what belongs to the person, from what Den already keeps. Each
- * pane fills its body on open through the kit's `load(pane, body)`.
- *   profile        who you are, and the UI preferences that are yours
- *   access         how you signed in, and the GitHub link (read-only)
- *   devices        this browser, your linked browsers, pairing one
- *   notifications  the bell and alerts, the registry's rows
- * The owner's link/unlink flow and the sign-in policy stay in Settings.
- */
 import { DEN_SETTINGS, seenAgo } from "/settings-registry.js";
 import { drawRows, settingsCtx } from "/settings-rows.js";
 import { localizeRow } from "/settings-page.js";
@@ -29,11 +19,9 @@ const esc = (s) =>
       ],
   );
 
-/** One read-only row: its label, then its value (HTML the caller escaped). */
 const kv = (label, valueHtml) =>
   `<div class="dn-kv"><span>${esc(label)}</span><span>${valueHtml}</span></div>`;
 
-/** How this browser is signed in, in words (GET /api/session's identity). */
 export function signedInWords(identity, t) {
   const id = identity ?? {};
   if (id.kind === "github")
@@ -46,7 +34,6 @@ export function signedInWords(identity, t) {
   return t("account.viaOther");
 }
 
-/** The GitHub link's state, read-only (GET /api/web/owner). */
 export function githubWords(owner, t, now = Date.now()) {
   if (!owner) return t("account.ghUnread");
   const o = owner.owner;
@@ -75,7 +62,6 @@ function accessHtml({ session, owner, account }, t) {
   );
 }
 
-/** Who you are, from GET /api/session's identity: name, login, role. */
 export function whoOf(identity) {
   const id = identity ?? {};
   if (id.kind === "github") return { name: id.name, login: id.login };
@@ -96,25 +82,24 @@ function profileHtml({ session, account }, t) {
         : esc(t("account.ghNone")),
     ) +
     (owner ? kv(t("account.role"), esc(t("acct.roleOwner"))) : "") +
-    `<div data-acct-rows></div>`
+    `<div data-acct-rows></div>` +
+    `<p class="dn-pane-d"><a href="?account=devices" data-dn-to="devices">${esc(t("account.toDevices"))}</a></p>`
   );
 }
 
-/** The registry's rows by id, in the person's language. */
 const localRows = (ids, shell) =>
   ids
     .map(registryRow)
     .filter(Boolean)
-    .map((r) => localizeRow(r, shell.tr));
+    .map((r) => localizeRow(r, shell.tr))
+    .map((r) => (r.id === "cli.signin" ? { ...r, description: "" } : r));
 
-/** The Settings dialog's ctx (GET /api/settings, saves, the Saved line). */
 const rowsCtx = (shell) =>
   settingsCtx({
     shell,
     appearance: { appearanceState, ensureAppearance, setAppearance },
   });
 
-/** Draw rows `ids` under `host` as Settings draws them; false if unread. */
 async function mountRows(host, ids, shell) {
   const ctx = await rowsCtx(shell);
   if (!ctx) return false;
@@ -125,7 +110,6 @@ async function mountRows(host, ids, shell) {
   return true;
 }
 
-/** The rows' stylesheets, linked once whatever page the pop-up is over. */
 function linkStyles() {
   for (const href of ["/settings-rows.css", "/account-panes.css"]) {
     if (document.querySelector(`link[href="${href}"]`)) continue;
@@ -141,20 +125,14 @@ const PANE_ROWS = {
   devices: ["access.devices", "access.pair"],
 };
 
-/** Account › Notifications: Account's rows (inAccount) no other pane draws. */
 export const notificationRows = () => {
   const taken = new Set(Object.values(PANE_ROWS).flat());
   return DEN_SETTINGS.filter((r) => inAccount(r) && !taken.has(r.id));
 };
 
-/** A registry row by id (DEN_SETTINGS), or null. */
 export const registryRow = (id) =>
   DEN_SETTINGS.find((r) => r.id === id) ?? null;
 
-/**
- * Fill `body` with pane `pane`. `deps`: { t, shell } (window.denShell). A failed read says so
- * in the pane, with Try again; nothing is shown as empty that wasn't read.
- */
 export async function loadAccountPane(pane, body, deps) {
   const { t } = deps;
   linkStyles();

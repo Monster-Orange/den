@@ -450,6 +450,15 @@ export function hydrateDialogNav(dialog, opts = {}) {
         phone() && was === "list" ? "push" : "replace",
       );
       if (phone()) $(".dn-pane:not([hidden]) .dn-back")?.focus();
+    } else if (t.matches("a[data-dn-to]")) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || !section(t.dataset.dnTo))
+        return;
+      e.preventDefault();
+      show(t.dataset.dnTo, t.dataset.dnAt || null);
+      (phone()
+        ? $(".dn-pane:not([hidden]) .dn-back")
+        : $("a.dn-row[aria-current]")
+      )?.focus();
     } else if (t.matches("[data-dn-hit]")) {
       const pane = t.dataset.dnHit;
       const at = t.dataset.dnAt;
