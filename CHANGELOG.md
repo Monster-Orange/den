@@ -4,7 +4,11 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.91] - unreleased
+## [0.4.92] - unreleased
+
+- Restart many agents with one Allow. When two or more agents ask to be restarted (with the new `agent_restart_self` ask), the bell shows one card, "Restart N agents when idle": each restarts at its next idle moment on the same conversation, and any row can be taken out before Allow. After an update changes Den's own tools, Den offers that card itself, and questions agents already asked about restarting for new tools join it. The Agents page has "Restart idle (N)" on each project and, on a wider screen, "Restart all idle agents (N)", and says which agents restart now and which wait. (issue 1406)
+
+## [0.4.91] - 2026-11-26
 
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)
 - An install reached through a symlinked folder (its `node_modules` a link to another folder) no longer restarts its terminal host, ending open terminals, at every Den start. Den now compares the terminal module the host loaded and the one installed by the file they resolve to, not by how the path is spelled. A module that's gone or replaced still restarts the host.
@@ -41,7 +45,6 @@ config and manifest changes a distribution must make to move to it under
 - `gate run` holds a command only where it records the command's process group, until that record is written. Any other run starts at once, so a new way to run a command can't be left waiting for a start that never comes.
 - A fresh install with no owner linked yet no longer logs "Owner's GitHub display name not kept: no linked owner" at every start. Every other reason a name isn't kept is still logged.
 - minimatch, used by the TypeScript lint parser, is now 11.0.9, past a denial-of-service flaw in its brace patterns (GHSA-g3hv-75wg-m249; below 11.0.1). It's dev-only, not in the published package: `npm ls minimatch --omit=dev` shows only 5.1.9, outside the flaw's range. The lock also no longer lists the PTY module (@lydell/node-pty) as a required dependency; package.json has it as optional only.
-- Restart many agents with one Allow. When two or more agents ask to be restarted (with the new `agent_restart_self` ask), the bell shows one card, "Restart N agents when idle": each restarts at its next idle moment on the same conversation, and any row can be taken out before Allow. After an update changes Den's own tools, Den offers that card itself, and questions agents already asked about restarting for new tools join it. The Agents page has "Restart idle (N)" on each project and, on a wider screen, "Restart all idle agents (N)", and says which agents restart now and which wait. (issue 1406)
 - A test install stays a test install after Den restarts itself: from the agent tool, the page's Restart, a self-update, or a self-update's rollback. Before, the restarted server came back without its test-install mark. Agents, terminals and npm still never see the mark (issue 832).
 - A test install launched with a name map for Den's own address checks keeps it when Den restarts itself, as it keeps its test-install mark. A normal install's restart never gains one, and agents and terminals still never see it (issue 1786)
 - A pull request's `github_watch` reports only that pull request's own checks. For each workflow it counts the newest run on the head: an older run a label or an edit replaced, a run cancelled by a newer one, and `workflow_dispatch` or `push` runs that only share the head's commit are left out. Before it reports a failure it checks which run the failure came from, which can add one interval. (issue 1279)
@@ -52,6 +55,7 @@ config and manifest changes a distribution must make to move to it under
 - An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 - A relaunched agent's first prompt now says the current local time, so it counts times and ETAs from now, not from its handoff or older messages.
 - Doctor says when agents commit without a signing key. A self-update's pin commit is signed with the agents' key when one is set. When no key is set and the branch requires signed commits, the pin goes to a pull request instead of a push that would be refused, and the bell says why.
+- Den's own tests: the helper that starts a test server now reads a server's log file when its output goes there. A port another test took is tried again on a new port, and any other failed start shows the log's last 40 lines. (issue 1845)
 
 ## [0.4.90] - 2026-11-25
 
