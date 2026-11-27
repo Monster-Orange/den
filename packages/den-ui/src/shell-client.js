@@ -836,6 +836,8 @@ export function hydrateBell(btn, opts = {}) {
   btn.addEventListener("click", () => (isOpen() ? close() : open()));
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !isOpen()) return;
+    for (const dlg of document.querySelectorAll("dialog[open]"))
+      if (!dlg.contains(pop)) return;
     if (opts.onEscape && opts.onEscape(e) === true) return;
     e.preventDefault();
     close(true);
