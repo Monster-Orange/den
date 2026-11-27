@@ -15,12 +15,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -34,7 +35,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    browser = await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -96,7 +97,7 @@ async function open(
     natives.push(`${d.type()}: ${d.message()}`);
     void d.dismiss();
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, url));
+  await signInPage(p, s!.stateDir, s!.base, url);
   await p.waitForFunction(
     () =>
       Boolean((window as never as { denShell?: unknown }).denShell) &&

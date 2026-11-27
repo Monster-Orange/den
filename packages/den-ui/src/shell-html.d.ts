@@ -54,7 +54,12 @@ export interface NavItem {
    * A count. `what` (0.7.3): what it counts; the kit words it with the
    * name ("North · Den, 3 waiting"). Hosts pass data, never the words.
    */
-  badge?: { n: number | string; bad?: boolean; what?: BadgeWhat } | null;
+  badge?: {
+    n: number | string;
+    bad?: boolean;
+    warn?: boolean;
+    what?: BadgeWhat;
+  } | null;
   /** HTML in place of the icon (a status dot). */
   lead?: string;
   mono?: boolean;
@@ -104,12 +109,20 @@ export interface RailModel {
   account?: Account | null;
   lang?: string;
   collapsed?: boolean;
+  /** Issue 1444: the folded sections' ids; never the current page's. */
+  folded?: string[];
 }
 export interface ShellModel extends RailModel {
   product?: Product;
   slots?: Slots;
   /** false: no Report button (reports off). */
   report?: boolean;
+  /**
+   * Issue 694: false for a page with no rail. The top bar draws no ☰ and
+   * no aria-controls for the rail (stamped data-nav-shape="no-rail");
+   * shellHtml draws no rail. Default true.
+   */
+  rail?: boolean;
 }
 export declare function navItemHtml(
   n: NavItem,
@@ -135,6 +148,8 @@ export declare function railGroupHtml(
   g: NavGroup,
   body: string,
   lang?: string,
+  /** Issue 1444: drawn data-folded (hydrateRailFolds hides its entries). */
+  folded?: boolean,
 ): string;
 export declare function railHtml(model?: RailModel): string;
 export declare function versionChipHtml(o?: {
@@ -203,6 +218,8 @@ export interface SearchOptions {
   /** false: no ⌘K inside, and no aria-keyshortcuts. */
   shortcut?: boolean;
   lang?: string;
+  /** The host's placeholder: one word, or words per locale ({ en, es, ja }). */
+  placeholder?: string | Readonly<Record<string, string>>;
 }
 export interface BellButtonOptions {
   count?: number;
@@ -235,7 +252,7 @@ export interface BellPanelOptions {
    * Issue 101: the rows of the panel's two sections, in place of rows:
    * the kit heads them "Needs you" (always first) and "Earlier".
    */
-  sections?: { needs: string; earlier?: string };
+  sections?: { needs: string; done?: string; earlier?: string };
   /** The empty state: its words, and HTML under them. */
   empty?: { text?: string; more?: string };
   after?: string;
@@ -285,6 +302,14 @@ export declare function bellButtonHtml(o?: BellButtonOptions): string;
 export declare function bellPanelHtml(o?: BellPanelOptions): string;
 /** The rail's account entry; nobody known, "". */
 export declare function accountHtml(a: Account | null | undefined): string;
+/**
+ * Issue 656: whether a display name is just the login (trimmed, a leading
+ * "@" dropped, case ignored). The kit draws such a name as no name.
+ */
+export declare function sameAsLogin(
+  name: string | null | undefined,
+  login: string | null | undefined,
+): boolean;
 /** Who is signed in, as the kit draws it: its lines and its shape. */
 export declare function accountWho(
   a: Account | null | undefined,
@@ -370,6 +395,58 @@ export interface AppearanceMenu {
   lang?: string;
 }
 export declare function appearanceMenuHtml(o?: AppearanceMenu): string;
+/** One row of a kit menu (◐ ▾, the account menu and the page menu draw theirs with it). */
+export interface MenuRow {
+  label: string;
+  /** A link (a disabled one is drawn as a button: nothing to follow). */
+  href?: string | null;
+  /** A radio: aria-checked. */
+  checked?: boolean | null;
+  /** data-kind and data-value: what a pick reports. */
+  kind?: string | null;
+  value?: string | number | null;
+  id?: string | null;
+  /** A class of its own, after den-mi. */
+  cls?: string | null;
+  /** aria-disabled="true". */
+  disabled?: boolean;
+  /** The id of the line that says why. */
+  describedBy?: string | null;
+}
+export declare function menuRowHtml(r: MenuRow): string;
+/** A host's words: text, or a key in the kit's tables (addStrings) and its vars. */
+export type HostWords =
+  | string
+  | { key: string; vars?: Record<string, unknown> };
+/** An item of the page action menu, or a rule. */
+export type PageMenuItem =
+  | {
+      id: string;
+      label: HostWords;
+      /** A link to follow; else a button (onSelect). */
+      href?: string;
+      disabled?: boolean;
+      /** Why it is disabled: drawn under it, and its description. */
+      note?: HostWords;
+      /** Where to turn it on: the note becomes a row to follow. */
+      noteHref?: string;
+      /** Its own pick (hydratePageMenu), before opts.onSelect. */
+      onSelect?: (item: PageMenuItem) => void;
+    }
+  | { hr: true };
+/** More ▾: the kit's button, a menu button. */
+export declare function pageMenuButtonHtml(o?: {
+  id?: string;
+  size?: "sm";
+  lang?: string;
+}): string;
+/** The page action menu's rows, from data. */
+export declare function pageMenuHtml(o: {
+  /** The menu button's id: each row's id is "<id>-<item id>". */
+  id?: string;
+  items: PageMenuItem[];
+  lang?: string;
+}): string;
 export interface WaitingOptions {
   /** The words before the dot ("stale server"). */
   label?: string;

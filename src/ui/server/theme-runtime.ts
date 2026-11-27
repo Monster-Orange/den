@@ -307,6 +307,108 @@ const BASE_CSS = [
 ];
 
 /**
+ * Issue 168: the eight project colours, per mode, as tokens (--pc-<name>).
+ * None orange or red; each 3:1 against the page in its mode. For edges,
+ * dots and tiles only: text is never coloured by project. Every theme
+ * gets them: they mark projects, not a brand.
+ */
+export const PROJECT_COLOUR_TOKENS: Record<
+  ThemeMode,
+  Record<string, string>
+> = {
+  light: {
+    blue: "hsl(212 70% 42%)",
+    teal: "hsl(176 60% 30%)",
+    green: "hsl(135 50% 30%)",
+    purple: "hsl(272 50% 48%)",
+    pink: "hsl(330 60% 44%)",
+    gold: "hsl(44 80% 36%)",
+    brown: "hsl(25 40% 34%)",
+    slate: "hsl(215 14% 40%)",
+  },
+  dark: {
+    blue: "hsl(212 80% 66%)",
+    teal: "hsl(176 55% 55%)",
+    green: "hsl(135 45% 58%)",
+    purple: "hsl(272 70% 76%)",
+    pink: "hsl(330 70% 70%)",
+    gold: "hsl(44 85% 60%)",
+    brown: "hsl(25 45% 62%)",
+    slate: "hsl(215 18% 68%)",
+  },
+};
+
+/**
+ * Issue 788: a theme's edges and buttons as the kit's tokens. Unset, edges
+ * are solid and the buttons filled (tokens.css's defaults, the same values).
+ */
+function shapeTokenLines(shape: NonNullable<ThemeManifest["shape"]>): string[] {
+  const out = [
+    `  --edge-style: ${shape.edge === "dashed" ? "dashed" : "solid"};`,
+  ];
+  if (shape.buttons === "outline")
+    out.push(
+      "  --primary-bg: transparent;",
+      "  --primary-border: var(--border-strong);",
+      "  --primary-text: var(--text);",
+      "  --danger-bg: transparent;",
+      "  --danger-border: var(--bad);",
+      "  --danger-text: var(--bad);",
+      // Issue 1137: danger is the one solid edge, 2px; one hover tint for
+      // every button; disabled is a faint label at full opacity; the focus
+      // ring in --text, 2px out.
+      "  --danger-edge-width: 2px;",
+      "  --danger-edge-style: solid;",
+      "  --hover-tint: color-mix(in srgb, var(--text) 6%, transparent);",
+      "  --btn-disabled-text: var(--faint);",
+      "  --btn-disabled-opacity: 1;",
+      "  --focus-ring: var(--text);",
+      "  --focus-offset: 2px;",
+    );
+  return out;
+}
+
+/** Type and shape on :root, then one block of colour tokens per mode. */
+function tokenLines(theme: ThemeManifest): string[] {
+  const type = theme.type ?? {};
+  const shape = theme.shape ?? {};
+  const sans = fontStack(type.sans, DEFAULT_TYPE.sans);
+  const lines: string[] = [
+    ":root {",
+    `  --sans: ${sans};`,
+    `  --mono: ${fontStack(type.mono, DEFAULT_TYPE.mono)};`,
+    `  --display: ${fontStack(type.display, sans)};`,
+    `  --ja: ${fontStack(type.ja, DEFAULT_TYPE.ja)};`,
+    `  --radius: ${shape.radius ?? "8px"};`,
+    `  --radius-button: ${shape["radius-button"] ?? "6px"};`,
+    `  --density: ${shape.density === "compact" ? "0.85" : "1"};`,
+    ...shapeTokenLines(shape),
+    "}",
+  ];
+  const def: ThemeMode = theme.default_mode ?? "dark";
+  for (const mode of [def, def === "dark" ? "light" : "dark"] as ThemeMode[]) {
+    const c = theme.modes[mode];
+    const sel =
+      mode === def
+        ? `:root,\n:root[data-mode="${mode}"]`
+        : `:root[data-mode="${mode}"]`;
+    lines.push(`${sel} {`, `  color-scheme: ${mode};`);
+    for (const t of COLOR_TOKENS) lines.push(`  --${t}: ${c[t]};`);
+    // den-ui UK-1: only when set; else the kit's tokens.css default holds.
+    for (const t of OPTIONAL_COLOR_TOKENS)
+      if (c[t]) lines.push(`  --${t}: ${c[t]};`);
+    for (const [name, v] of Object.entries(PROJECT_COLOUR_TOKENS[mode]))
+      lines.push(`  --pc-${name}: ${v};`);
+    lines.push(
+      `  --shadow: ${c.shadow ?? (mode === "dark" ? "0 12px 30px rgb(0 0 0 / 0.5)" : "0 8px 24px rgb(0 0 0 / 0.14)")};`,
+      `  --bar: ${c.bar ?? "none"};`,
+      "}",
+    );
+  }
+  return lines;
+}
+
+/**
  * The theme as CSS: @font-face for its fonts, type and shape on :root, and
  * one block of color tokens per mode, selected by <html data-mode>. The
  * theme's default mode also applies when data-mode is unset. Then Den's
@@ -323,39 +425,22 @@ export function renderThemeCss(id: string, theme: ThemeManifest): string {
         `@font-face { font-family: "${f.family}"; src: url("${themeAssetUrl(id, file.path)}") format("woff2"); font-weight: ${hi ? `${lo} ${hi}` : lo}; font-style: ${file.style ?? "normal"}; font-display: swap; }`,
       );
     }
-  const type = theme.type ?? {};
-  const shape = theme.shape ?? {};
-  const sans = fontStack(type.sans, DEFAULT_TYPE.sans);
-  lines.push(
-    ":root {",
-    `  --sans: ${sans};`,
-    `  --mono: ${fontStack(type.mono, DEFAULT_TYPE.mono)};`,
-    `  --display: ${fontStack(type.display, sans)};`,
-    `  --ja: ${fontStack(type.ja, DEFAULT_TYPE.ja)};`,
-    `  --radius: ${shape.radius ?? "8px"};`,
-    `  --radius-button: ${shape["radius-button"] ?? "6px"};`,
-    `  --density: ${shape.density === "compact" ? "0.85" : "1"};`,
-    "}",
-  );
-  const def: ThemeMode = theme.default_mode ?? "dark";
-  for (const mode of [def, def === "dark" ? "light" : "dark"] as ThemeMode[]) {
-    const c = theme.modes[mode];
-    const sel =
-      mode === def
-        ? `:root,\n:root[data-mode="${mode}"]`
-        : `:root[data-mode="${mode}"]`;
-    lines.push(`${sel} {`, `  color-scheme: ${mode};`);
-    for (const t of COLOR_TOKENS) lines.push(`  --${t}: ${c[t]};`);
-    // den-ui UK-1: only when set; else the kit's tokens.css default holds.
-    for (const t of OPTIONAL_COLOR_TOKENS)
-      if (c[t]) lines.push(`  --${t}: ${c[t]};`);
-    lines.push(
-      `  --shadow: ${c.shadow ?? (mode === "dark" ? "0 12px 30px rgb(0 0 0 / 0.5)" : "0 8px 24px rgb(0 0 0 / 0.14)")};`,
-      `  --bar: ${c.bar ?? "none"};`,
-      "}",
-    );
-  }
-  lines.push(...BASE_CSS);
+  lines.push(...tokenLines(theme), ...BASE_CSS);
+  return `${lines.join("\n")}\n`;
+}
+
+/**
+ * Issue 788: only the theme's tokens, for a page with the kit and no Den
+ * server (the kit's themes/<id>.css, linked after tokens.css). A theme with
+ * fonts can't be one: their URLs are Den's.
+ */
+export function renderThemeTokens(id: string, theme: ThemeManifest): string {
+  if (theme.fonts?.length)
+    throw new Error(`${id}: a theme with fonts needs Den to serve them`);
+  const lines = [
+    `/* ${theme.name} ${theme.version} (${id}, den.theme/v1). Built from den-theme.json by scripts/build-sketch-theme.ts: do not edit. */`,
+    ...tokenLines(theme),
+  ];
   return `${lines.join("\n")}\n`;
 }
 

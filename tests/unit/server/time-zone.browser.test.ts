@@ -15,13 +15,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserType, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 // Three days ago at 05:30 UTC: the evening before in Los Angeles, the
 // afternoon of that day in Tokyo, so the date shown names the zone.
@@ -53,9 +54,7 @@ const browsers: Partial<Record<"chromium" | "webkit", Browser>> = {};
 const errors: string[] = [];
 
 async function connect(type: BrowserType): Promise<Browser> {
-  return process.env.DEN_PW_WS
-    ? type.connect(process.env.DEN_PW_WS, { exposeNetwork: "<loopback>" })
-    : type.launch();
+  return launchBrowser(type);
 }
 
 beforeAll(async () => {
@@ -118,7 +117,7 @@ async function open(
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, route));
+  await signInPage(p, s!.stateDir, s!.base, route);
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
   return p;
 }
@@ -159,7 +158,7 @@ for (const name of ["chromium", "webkit"] as const) {
       expect(await bell.getAttribute("title")).toMatch(/Pacific/);
 
       // Settings › Time zone: Tokyo. No reload: the marker survives.
-      await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#appearance"));
+      await signInPage(p, s!.stateDir, s!.base, "/settings#appearance");
       await p.waitForFunction(
         () => !!(window as { denShell?: unknown }).denShell,
       );

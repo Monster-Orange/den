@@ -4,7 +4,8 @@
  * agents (ctx.agent: their real hook events into Den), read back through
  * GET /api/notifications and the page's badge.
  *
- * Unit tests for the same paths: tests/unit/server/bell-needs-you.test.ts.
+ * Unit tests for the same paths: tests/unit/server/bell-needs-you.test.ts,
+ * bell-142-turn-end.test.ts and bell-142.integration.test.ts.
  * Names are this check's own (gate142-*); teardown marks their items read,
  * removes the agents, and puts the one setting it turns on back.
  */
@@ -15,6 +16,7 @@ export const clauses = [
   "a plain idle agent goes to Updates (no badge)",
   "Den's Allow-the-update ask counts",
   "opening the agent removes its Updates items and the count drops",
+  "a held write waiting on the person's Allow counts, and its item goes when it is withdrawn",
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 180000;
@@ -116,14 +118,118 @@ async function pageBadge(ctx) {
   });
 }
 
+/**
+ * A turn's end as Claude Code sends it: the answer on screen, then its
+ * Stop hook with the answer as `last_assistant_message` (the hook tells
+ * Den the question it ended on). Not `ctl.stop()`: that stops the agent.
+ */
+async function turnEnd(a, answer) {
+  await a.ctl.print(answer);
+  await a.ctl.hook("Stop", {
+    stop_hook_active: false,
+    last_assistant_message: answer,
+  });
+}
+
+/**
+ * Its counts are read: stop it, so the next stub's start stays under the
+ * bed's agents.max_concurrent (4 by default, other agents count too).
+ */
+async function done(a) {
+  await a.ctl.stop();
+}
+
 /** A stub agent under this check's own name, recorded for teardown. */
 async function stub(ctx, state, role) {
   const name = `gate142-${role}-${state.tag}`;
   const ctl = await ctx.agent(name);
   const a = { name, id: ctl?.id ?? name, ctl };
   state.made.push(a);
+  // A handle creates nothing: start the agent and wait until it runs,
+  // so its session (and its file) exist before sessionStart. A refused
+  // start (agents.max_concurrent reached) says so here, not later as a
+  // missing file.
+  const r = await ctl.start("tester");
+  if (r && typeof r.code === "number" && r.code !== 0)
+    throw new Error(
+      `${name}: the bed refused to start it (agents.max_concurrent?): ${String(r.all ?? r.err ?? r.out ?? "").slice(0, 200)}`,
+    );
+  a.runMs = await ctl.running(20000);
   await ctl.sessionStart?.();
   return a;
+}
+
+/** POST through the bed's signed-in API, keeping the status. */
+async function postStatus(ctx, path, body) {
+  const r = await ctx.api(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  let b = null;
+  try {
+    b = await r.json();
+  } catch {
+    /* no body */
+  }
+  return { status: r.status, body: b };
+}
+
+/** The bell's item for held request `id`: where it is, and whether read. */
+async function heldItem(ctx, id) {
+  const b = await json(ctx, "/api/notifications");
+  const is = (n) => n.subject === `record:held-${id}`;
+  const needs = itemsOf(b.groups).filter(is);
+  return {
+    unread: b.unread ?? 0,
+    needs: needs.length,
+    needsUnread: needs.filter((n) => !n.read).length,
+    kind: needs[0]?.kind ?? null,
+    updates: itemsOf(b.updates?.groups).filter(is).length,
+  };
+}
+
+/** Polls the held item until `ok(view)` or WAIT_MS; the last view. */
+async function untilHeld(ctx, id, ok) {
+  const end = Date.now() + WAIT_MS;
+  let v = await heldItem(ctx, id);
+  while (!ok(v) && Date.now() < end) {
+    await sleep(500);
+    v = await heldItem(ctx, id);
+  }
+  return v;
+}
+
+/** Clause 4's held write: raise, read the bell, withdraw, read again. */
+async function heldWrite(ctx, state) {
+  const before = (await json(ctx, "/api/notifications")).unread ?? 0;
+  const asked = await postStatus(ctx, "/api/approvals", {
+    action: "workspace_create",
+    args: { name: `gate142-held-${state.tag}` },
+    note: "Issue 142 live check: withdrawn by the check at once; never Allow it.",
+  });
+  const id = asked.body?.id ?? null;
+  if (!id)
+    return {
+      asked: asked.status,
+      code: asked.body?.code ?? null,
+      off: asked.body?.code === "approvals_off",
+    };
+  state.held.push(id);
+  const waiting = await untilHeld(ctx, id, (v) => v.needsUnread > 0);
+  const badge = await pageBadge(ctx);
+  const wd = await postStatus(ctx, `/api/approvals/${id}/withdraw`, {});
+  if (wd.status === 200) state.held = state.held.filter((x) => x !== id);
+  const gone = await untilHeld(ctx, id, (v) => v.needs + v.updates === 0);
+  return {
+    asked: asked.status,
+    before,
+    waiting,
+    badge,
+    withdraw: wd.status,
+    withdrawnState: wd.body?.state ?? null,
+    gone,
+  };
 }
 
 export async function setup(ctx) {
@@ -131,6 +237,8 @@ export async function setup(ctx) {
   return {
     tag: Date.now().toString(36),
     made: [],
+    // Held requests this check raised and has not withdrawn yet.
+    held: [],
     // Turn-finished items are off by default; clause 3 needs them shown.
     finishedWasOn: settings?.bell_kinds?.finished === true,
   };
@@ -156,6 +264,7 @@ export async function run(ctx, state) {
       badge: await pageBadge(ctx),
       apiUnread: (await bellFor(ctx, a)).unread,
     };
+    await done(a);
   }
 
   // 2a. ask_human: needs you, counted.
@@ -168,13 +277,13 @@ export async function run(ctx, state) {
       unreadNeeds: v.needs.filter((n) => !n.read).length,
       waiting: v.waiting.map((w) => w.why),
     };
+    await done(a);
   }
   // 2b. A turn that ends on a question, then Claude Code's idle notice:
   // still needs you (the idle notice doesn't undo it).
   {
     const a = await stub(ctx, state, "turnq");
-    await a.ctl.print(`Built it.\n\n${QUESTION}`);
-    await a.ctl.stop();
+    await turnEnd(a, `Built it.\n\n${QUESTION}`);
     await a.ctl.idlePrompt();
     const v = await until(ctx, a, (v) => v.needs.some((n) => !n.read));
     seen.endedAsking = {
@@ -182,6 +291,7 @@ export async function run(ctx, state) {
       unreadNeeds: v.needs.filter((n) => !n.read).length,
       waiting: v.waiting.map((w) => w.why),
     };
+    await done(a);
   }
 
   // 3. A plain idle agent: its turn's end under Updates, nothing counted.
@@ -189,8 +299,7 @@ export async function run(ctx, state) {
     const a = await stub(ctx, state, "idle");
     state.idle = a;
     const before = (await bellFor(ctx, a)).unread;
-    await a.ctl.print("Built it. All checks pass.");
-    await a.ctl.stop();
+    await turnEnd(a, "Built it. All checks pass.");
     await a.ctl.idlePrompt();
     const v = await until(ctx, a, (v) => v.updates.length > 0);
     // The idle notice comes after the turn's end; give it time to land.
@@ -218,7 +327,18 @@ export async function run(ctx, state) {
       updates: itemsOf(b.updates?.groups).filter(isAsk).length,
       older: itemsOf(b.older?.groups).filter(isAsk).length,
     };
+    // Why there is none, if none: the bed's last update check.
+    const uc = (await json(ctx, "/api/settings").catch(() => null))
+      ?.update_check;
+    seen.updateCheck = uc
+      ? { everyMinutes: uc.everyMinutes ?? null, last: uc.last ?? null }
+      : null;
   }
+
+  // 4b. A held write waiting on the person's Allow, raised as the person
+  // (a gate holds no agent's token): counted while it waits; withdrawn by
+  // its asker (never a person's decision), its item goes.
+  seen.held = await heldWrite(ctx, state);
 
   // 5. Open the idle agent: its Updates items go, and the count drops.
   {
@@ -257,6 +377,9 @@ export async function run(ctx, state) {
 }
 
 export async function teardown(ctx, state) {
+  // A held write the check raised never sits over later checks' pages.
+  for (const id of state?.held ?? [])
+    await postStatus(ctx, `/api/approvals/${id}/withdraw`, {}).catch(() => {});
   for (const a of state?.made ?? []) {
     try {
       const v = await bellFor(ctx, a);
@@ -313,7 +436,12 @@ function rows(s) {
   const any = u ? u.needs + u.updates + u.older : 0;
   out.push(
     !u || any === 0
-      ? { clause: clauses[3], ok: null, skip: "needs-pending-update" }
+      ? {
+          clause: clauses[3],
+          ok: null,
+          skip: "needs-pending-update",
+          detail: lastCheck(s?.updateCheck),
+        }
       : {
           clause: clauses[3],
           ok: u.needs > 0 && u.updates === 0 && u.needsUnread > 0,
@@ -330,7 +458,42 @@ function rows(s) {
       o.afterCount < o.beforeCount,
     detail: JSON.stringify(o ?? null),
   });
+  const h = s?.held;
+  out.push(
+    h?.off
+      ? {
+          clause: clauses[5],
+          ok: null,
+          skip: "needs-held-writes-on",
+          detail: "the bed turned held writes off (mcp.approvals: false)",
+        }
+      : {
+          clause: clauses[5],
+          ok:
+            !!h?.waiting &&
+            h.waiting.needsUnread === 1 &&
+            h.waiting.kind === "decision" &&
+            h.waiting.updates === 0 &&
+            h.waiting.unread > h.before &&
+            (h.badge === null || h.badge === String(h.waiting.unread)) &&
+            h.withdraw === 200 &&
+            h.withdrawnState === "withdrawn" &&
+            h.gone.needs + h.gone.updates === 0 &&
+            h.gone.unread < h.waiting.unread,
+          detail: JSON.stringify(h ?? null),
+        },
+  );
   return out;
+}
+
+/** The bed's last update check, in words, for a skip. */
+function lastCheck(uc) {
+  if (!uc?.last)
+    return uc
+      ? `no update check has run yet (every ${uc.everyMinutes} min)`
+      : "no update check has run on this bed";
+  const l = uc.last;
+  return `last update check (${l.at}): ${l.did}${l.version ? ` ${l.version}` : ""}${l.why ? `: ${l.why}` : ""}`;
 }
 
 export function expect(cells) {

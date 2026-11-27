@@ -31,8 +31,8 @@ import { needsDocker } from "./repo-detect.js";
 import { readMcpConfig } from "../../shared/den-config.js";
 import { approvalsState } from "../mcp/tools.js";
 import type { WebProbe } from "./mcp-connect.js";
-import { denWebBase } from "../../shared/web-dial.js";
-import { readWebUrl } from "../../shared/web-url.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
+import { readWebUrl } from "../../shared/web/web-url.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
 
@@ -42,6 +42,7 @@ export interface OnboardCheck {
   detail: string;
   /** A command the agent can run to fix it. */
   fix?: string;
+  notes?: string[];
   /** A question for the person, when only they can fix it. */
   ask?: string;
   /**
@@ -53,7 +54,42 @@ export interface OnboardCheck {
   port?: number;
   /** A Settings link (a path with ?q=) where a person fixes it. */
   settings?: string;
+  /**
+   * Issue 563: the terminal host's own answer (its pid, start, Den version
+   * and loaded terminal module), on its doctor row.
+   */
+  host?: {
+    pid: number | null;
+    startedAt: string | null;
+    den: string | null;
+    /** Issue 597: the id of the code the host runs (null: unknown). */
+    code?: string | null;
+    pty: { path: string; version: string | null; id: string | null } | null;
+  };
+  /**
+   * Issue 731: Den's own refresh of the terminal host: waiting for agents
+   * mid-turn since `since` (ISO UTC, for a page to show in the viewer's
+   * zone), at most `waitSeconds`; or failed, with why.
+   */
+  refresh?: {
+    state: "waiting" | "failed";
+    since: string;
+    waitSeconds: number;
+    /** Issue 732: agents a background job they started holds it for. */
+    jobs?: { agent: string; minutes: number }[];
+    endedAt?: string;
+    why?: string;
+  };
+  /**
+   * Issue 731: the held write that fixes it (an MCP tool of the same name,
+   * or POST /api/approvals { action }), never a CLI line.
+   */
+  held?: { action: string; title: string };
 }
+
+/** The web row's words when the sign-in lives on a host other local apps share. */
+export const SIGNIN_HOST_RISK =
+  "the sign-in lives on this machine's own name, so other apps you open on it could see the sign-in: set up the https address";
 
 /** Settings' row for this install's address (web.url), as a ?q= link. */
 export const ADDRESS_SETTINGS_LINK = "/settings?q=web.url";
@@ -167,11 +203,14 @@ export async function onboardingChecks(
   const unset = address
     ? ""
     : `; this install's address is not set (Settings › Den's address, ${ADDRESS_SETTINGS_LINK})`;
+  // Without an https address the sign-in lives on a host other local apps
+  // share (browsers share a host's cookies across its ports).
+  const risk = address?.startsWith("https:") ? "" : `; ${SIGNIN_HOST_RISK}`;
   if (probe.kind === "up")
     out.push({
       id: "web",
       status: "ok",
-      detail: `web app up${probe.version ? ` (Den ${probe.version})` : ""}${unset}`,
+      detail: `web app up${probe.version ? ` (Den ${probe.version})` : ""}${unset}${risk}`,
       ...shown,
       port: webPort,
     });

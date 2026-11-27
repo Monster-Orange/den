@@ -9,13 +9,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { NotificationStore } from "../../../src/shared/notifications.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -24,10 +25,7 @@ let latest = "";
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw.chromium.connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw.chromium.launch();
+    browser = await launchBrowser(pw.chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -79,7 +77,7 @@ async function open(path: string): Promise<Page> {
     }
   }, latest);
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, path));
+  await signInPage(p, s!.stateDir, s!.base, path);
   await p.waitForSelector("#den-bell");
   await p.waitForFunction(
     () => document.querySelector(".den-bell-n")?.textContent === "1",

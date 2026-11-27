@@ -11,19 +11,24 @@
  * picker's first option is "Create a Hub project named <name>", the name
  * editable; Create asks Hub (the working pop-up meanwhile); an owner gets
  * Hub's Allow right in the row, anyone else is told who must allow it;
- * the row links on its own once Hub says it is allowed.
+ * the row links on its own once Hub says it is allowed. Issue 651: no
+ * pop-up on Settings draws in the browser's serif font (Unlink, Report,
+ * and a bare dialog that sets no font of its own), and at desktop width
+ * Switch and Unlink share one row beside the list.
  *
  * The demo distribution (helpers/agents-page-server.ts). Needs Playwright's
  * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it. Invented names only.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
+import { shortDots } from "./helpers/short-dots.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -34,11 +39,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -68,9 +69,10 @@ const BLOG = { id: "proj_blog2", slug: "blog", name: "Blog" };
 async function page(
   answer?: (method: string, body: unknown) => unknown,
   language?: string,
+  width = 375,
 ): Promise<{ p: Page; puts: unknown[] }> {
   const ctx = await browser!.newContext({
-    viewport: { width: 375, height: 900 },
+    viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
   await ctx.addInitScript((v) => {
@@ -104,12 +106,14 @@ async function page(
         body: JSON.stringify(answer(r.request().method(), body)),
       });
     });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings?ws=north#workspace"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings?ws=north#workspace");
   if (language) {
     await setLanguage(p, language);
     await p.reload();
   }
   await p.waitForSelector('[data-setting="workspace.hub"] [data-hubp]');
+  // Issue 699: the pop-up after a held button's dots, at 300 ms here.
+  await shortDots(p);
   return { p, puts };
 }
 
@@ -131,6 +135,92 @@ const rowText = (p: Page) =>
   p.$eval('[data-setting="workspace.hub"]', (el) => el.textContent ?? "");
 const fits = (p: Page) =>
   p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+
+/** A linked row: north ↔ Back office, Blog the one to switch to. */
+const LINKED = () => ({
+  ok: true,
+  project: "north",
+  hub: BACK,
+  connected: true,
+  suggestions: [{ ...BACK, why: "repo" }],
+  projects: [BLOG, BACK],
+});
+
+/**
+ * Elements in the open dialog (itself included) whose computed font is
+ * the browser's serif default: a font-family with no sans-serif,
+ * monospace or system-ui in it.
+ */
+const serifIn = (p: Page, sel: string) =>
+  p.$eval(sel, (d) =>
+    [d, ...Array.from(d.querySelectorAll("*"))]
+      .map((el) => ({
+        el:
+          el.tagName.toLowerCase() +
+          (typeof el.className === "string" && el.className.trim()
+            ? "." + el.className.trim().split(/\s+/).join(".")
+            : ""),
+        ff: getComputedStyle(el).fontFamily,
+      }))
+      .filter((x) => !/sans-serif|monospace|system-ui/i.test(x.ff))
+      .map((x) => `${x.el}: ${x.ff}`),
+  );
+
+describe("issue 651: pop-ups use Den's font; Switch and Unlink in one row", () => {
+  it("the Unlink pop-up: nothing in it is serif", async () => {
+    if (skip()) return;
+    const { p } = await page(LINKED, undefined, 1280);
+    await p.click("[data-hubp-more] summary");
+    await p.click('[data-hubp-action="unlink"]');
+    await p.waitForSelector("#hubp-dlg[open]");
+    expect(await serifIn(p, "#hubp-dlg")).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("Report from the top bar: nothing in it is serif", async () => {
+    if (skip()) return;
+    const { p } = await page(LINKED, undefined, 1280);
+    await p.click(".den-rb-top");
+    await p.waitForSelector("dialog.fb-dlg[open]");
+    expect(await serifIn(p, "dialog.fb-dlg[open]")).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("a pop-up that sets no font of its own still gets Den's (the kit's base)", async () => {
+    if (skip()) return;
+    const { p } = await page(LINKED, undefined, 1280);
+    await p.evaluate(() => {
+      const d = document.createElement("dialog");
+      d.id = "bare-dlg";
+      d.innerHTML =
+        "<h2>Title</h2><p>Text</p><input value='a'><select><option>b</option></select>" +
+        "<textarea>c</textarea><button type='button'>OK</button>";
+      document.body.append(d);
+      d.showModal();
+    });
+    expect(await serifIn(p, "#bare-dlg")).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
+  it("at 1280 px, Switch and Unlink share one row beside the list", async () => {
+    if (skip()) return;
+    const { p } = await page(LINKED, undefined, 1280);
+    await p.click("[data-hubp-more] summary");
+    const box = async (sel: string) => (await (await p.$(sel))!.boundingBox())!;
+    const list = await box("#hubp-sel");
+    const sw = await box('[data-hubp-action="link"]');
+    const un = await box('[data-hubp-action="unlink"]');
+    const mid = (b: { y: number; height: number }) => b.y + b.height / 2;
+    // One row: Switch and Unlink on the same line, Unlink after Switch.
+    expect(Math.abs(mid(sw) - mid(un))).toBeLessThanOrEqual(4);
+    expect(un.x).toBeGreaterThan(sw.x + sw.width);
+    // Beside the list: the same line, to its right.
+    expect(Math.abs(mid(sw) - mid(list))).toBeLessThanOrEqual(4);
+    expect(sw.x).toBeGreaterThan(list.x + list.width);
+    expect(await fits(p)).toBeLessThanOrEqual(0);
+    await p.context().close();
+  }, 60_000);
+});
 
 describe("Settings › Project setup › Hub project (H5)", () => {
   it("not connected (the real server): says so and where to connect", async () => {
@@ -359,10 +449,12 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     );
     await p.fill("#hubp-new", "North Star");
     await p.click('[data-hubp-action="link"]');
-    // The working pop-up while Hub is asked.
-    await p.waitForSelector('dialog.bz-dlg[open][data-state="working"]', {
+    // Issue 1054: while Hub is asked, Create holds (its dots, aria-busy);
+    // no pop-up.
+    await p.waitForSelector('[data-hubp-action="link"][aria-busy="true"]', {
       timeout: 5000,
     });
+    expect(await p.locator("dialog.bz-dlg[open]").count()).toBe(0);
     await p.waitForSelector('[data-hubp-state="creating"]', {
       timeout: 15_000,
     });
@@ -495,8 +587,8 @@ describe("Settings › Project setup › Hub project (H5)", () => {
       if (b.workspaces?.north) b.workspaces.north.hub_project = BACK;
       return r.fulfill({ response: res, body: JSON.stringify(b) });
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/?ws=north"));
-    await p.waitForSelector(".content-header #ws-hub-project");
+    await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
+    await p.waitForSelector("#content #ws-hub-project");
     expect(await p.textContent("#ws-hub-project")).toBe("Hub: Back office");
     expect(await p.getAttribute("#ws-hub-project", "href")).toBe(
       "/settings?project=north#workspace",
@@ -507,6 +599,98 @@ describe("Settings › Project setup › Hub project (H5)", () => {
     expect(await p.$("#ws-hub-project")).toBeNull();
     await ctx.close();
   }, 60_000);
+
+  it("issue 646: the chip names the company (the company alone on a phone); a link to another Hub reads Another Hub", async () => {
+    if (skip()) return;
+    const open = async (width: number, away: boolean) => {
+      const ctx = await browser!.newContext({
+        viewport: { width, height: 900 },
+      });
+      await ctx.addInitScript((v) => {
+        try {
+          for (const k of ["den-changelog-seen", "acme-changelog-seen"])
+            localStorage.setItem(k, v);
+        } catch {
+          /* none */
+        }
+      }, latest);
+      const p = await ctx.newPage();
+      p.on("pageerror", (e) => errors.push(e.message));
+      await p.route("**/api/workspaces", async (r) => {
+        const res = await r.fetch();
+        const b = (await res.json()) as {
+          workspaces: Record<string, Record<string, unknown>>;
+          hubElsewhere?: Record<string, true>;
+        };
+        if (b.workspaces?.north) b.workspaces.north.hub_project = BACK;
+        if (away) b.hubElsewhere = { north: true };
+        return r.fulfill({ response: res, body: JSON.stringify(b) });
+      });
+      await p.route(
+        (u) => u.pathname === "/api/hub",
+        (r) =>
+          r.fulfill({
+            contentType: "application/json",
+            body: JSON.stringify({
+              configured: true,
+              connected: true,
+              state: "connected",
+              url: "https://hub.example.test",
+              team: "Acme Co",
+            }),
+          }),
+      );
+      await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
+      await p.waitForSelector("#content #ws-hub-project");
+      return p;
+    };
+    // The words come from the page's own catalog, filled the way it fills them.
+    const tr = (pg: Page, key: string, vars: Record<string, string> = {}) =>
+      pg.evaluate(
+        ([k, v]) =>
+          Object.entries(v).reduce(
+            (a, [n, x]) => a.split(`{${n}}`).join(x),
+            String(
+              (
+                window as unknown as { denShell: { t: (k: string) => string } }
+              ).denShell.t(k),
+            ),
+          ),
+        [key, vars] as const,
+      );
+    const v = { company: "Acme Co", name: BACK.name, host: "hub.example.test" };
+    let p = await open(1440, false);
+    await p.waitForFunction(
+      () =>
+        document.getElementById("ws-hub-project")?.dataset.hubChip ===
+          "linked" && !!document.querySelector("#ws-hub-project [data-hub-co]"),
+    );
+    expect((await p.textContent("#ws-hub-project"))?.trim()).toBe(
+      await tr(p, "ws.hubChipCo", v),
+    );
+    expect(await p.getAttribute("#ws-hub-project", "title")).toBe(
+      await tr(p, "ws.hubChipTip", v),
+    );
+    await p.context().close();
+    p = await open(390, false);
+    await p.waitForSelector("#ws-hub-project [data-hub-co]");
+    expect(await p.isVisible("#ws-hub-project [data-hub-pj]")).toBe(false);
+    expect(await p.isVisible("#ws-hub-project [data-hub-co]")).toBe(true);
+    await p.context().close();
+    p = await open(1440, true);
+    expect(await p.getAttribute("#ws-hub-project", "data-hub-chip")).toBe(
+      "elsewhere",
+    );
+    expect((await p.textContent("#ws-hub-project"))?.trim()).toBe(
+      await tr(p, "ws.hubAway"),
+    );
+    expect(await p.getAttribute("#ws-hub-project", "href")).toBe(
+      "/settings?project=north#workspace",
+    );
+    // The project shows its own name, not the old Hub's.
+    expect(await p.textContent("#content h2")).not.toContain(BACK.name);
+    await p.context().close();
+  }, 90_000);
 
   it("no page errors", () => {
     expect(errors).toEqual([]);

@@ -9,7 +9,7 @@
   max-width: 100%;
   max-height: calc(100vh - 32px);
   padding: 0;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 12px;
   background: var(--raised, var(--surface, var(--bg)));
   color: var(--text);
@@ -66,7 +66,7 @@
   gap: 6px;
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 999px;
   font-size: 13px;
   cursor: pointer;
@@ -83,7 +83,7 @@
 .fb-b textarea {
   font: 13px var(--sans);
   padding: 7px 9px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
@@ -102,7 +102,7 @@
   font-size: 13px;
 }
 .fb-b details {
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-radius: 6px;
   padding: 6px 8px;
   font-size: 13px;
@@ -118,7 +118,7 @@
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   display: inline-grid;
   place-items: center;
   font: 11px var(--mono);
@@ -143,7 +143,7 @@
 }
 .fb-pill {
   font: 11px var(--mono);
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 999px;
   padding: 1px 8px;
 }
@@ -181,7 +181,7 @@
   min-height: 40px;
   padding: 0 14px;
   border-radius: 0.2rem;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   background: var(--surface, var(--bg));
   color: var(--text);
   font: 13px var(--sans);
@@ -197,16 +197,21 @@
 }
 .fb-btns button:focus-visible,
 .fb-btns a:focus-visible {
-  outline: 2px solid var(--accent-text, var(--accent));
-  outline-offset: 2px;
+  outline: 2px solid var(--focus-ring, var(--accent-text, var(--accent)));
+  outline-offset: var(--focus-offset, 2px);
 }
 .fb-ico {
   width: 16px;
   height: 16px;
   flex: none;
 }
+/* Issue 1499: the first step's screenshot part, swapped in place when
+   the capture ends. It adds no box. */
+[data-shot-area] {
+  display: contents;
+}
 .fb-shot {
-  border: 1px solid var(--border);
+  border: 1px var(--edge-style, solid) var(--border);
   border-radius: 6px;
   overflow: hidden;
   background: var(--sunken, var(--bg));
@@ -223,11 +228,44 @@
 .fb-shot img {
   cursor: default;
 }
+/* Issue 1499: the shot's box while it's being taken, the size of the
+   shot to come, so nothing moves when it lands (Hub Design). */
+.fb-shot[data-wait] {
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: var(--radius, 6px);
+  line-height: normal;
+}
+/* Review: a shot not included yet (being taken, or not checked) is a
+   faded thumbnail, its note and Include it above it (Hub Design). */
+.fb-shot[data-late] {
+  box-sizing: border-box;
+  width: 240px;
+  max-width: 100%;
+  /* Faded through its colours, not opacity: its words keep full contrast
+     (Hub Design). */
+  background: color-mix(in srgb, var(--sunken, var(--bg)) 50%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--border-strong, var(--border)) 50%,
+    transparent
+  );
+}
+.fb-shot[data-late] img {
+  opacity: 0.5;
+}
+.fb-shot-wait {
+  aspect-ratio: var(--shot-ar);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
 .fb-kbd input[type="number"] {
   width: 5em;
   font: 13px var(--sans);
   padding: 4px 6px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
@@ -249,9 +287,6 @@
   text-decoration: underline;
   cursor: pointer;
 }
-.fb-my {
-  width: min(560px, calc(100vw - 32px));
-}
 .fb-tabs {
   display: flex;
   gap: 6px;
@@ -261,7 +296,7 @@
   min-height: 32px;
   padding: 0 12px;
   border-radius: 999px;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   background: var(--surface, var(--bg));
   color: var(--text);
   font: 13px var(--sans);
@@ -284,7 +319,7 @@
   gap: 10px;
   align-items: center;
   padding: 8px 2px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border); /* issue 1137: a row divider stays solid */
   font-size: 13px;
 }
 .fb-row:last-child {
@@ -307,7 +342,7 @@
   min-height: 32px;
   padding: 0 10px;
   border-radius: 0.2rem;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   background: var(--surface, var(--bg));
   color: var(--text);
   font: 13px var(--sans);
@@ -328,7 +363,7 @@
   min-height: 32px;
   padding: 0 10px;
   border-radius: 0.2rem;
-  border: 1px solid var(--border-strong, var(--border));
+  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   background: var(--surface, var(--bg));
   color: var(--text);
   font: 13px var(--sans);
@@ -371,6 +406,10 @@
     width: auto;
     max-width: 100%;
     display: inline-block;
+  }
+  .fb-shot-wait {
+    width: min(100%, calc(45vh * var(--shot-k)));
+    margin-inline: auto;
   }
 }
 @media (min-width: 601px) {

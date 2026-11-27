@@ -185,43 +185,558 @@
       .sa-term .xterm .xterm-viewport {
         background-color: var(--sunken);
       }
-      /* 0.4.46 Start fresh: its button, and the confirm. */
+      /* 0.4.46 Start fresh: its button (the confirm is the kit's, issue 669). */
       .sa-acts {
         display: flex;
         justify-content: flex-end;
         margin: 4px 0;
       }
-      .sa-fresh-dlg {
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        padding: 0;
-        background: var(--surface, var(--bg));
-        color: var(--text);
-        width: min(420px, calc(100vw - 32px));
-      }
-      .sa-fresh-dlg::backdrop {
-        background: rgba(0, 0, 0, 0.25);
-      }
-      .sa-fresh-b {
-        padding: 16px 18px;
+      /* Issue 52: the agent's views and the Coach tab (mock v2). */
+      .sa-tabs {
         display: flex;
-        flex-direction: column;
-        gap: 10px;
+        gap: 2px;
+        border-bottom: 1px solid var(--border);
+        margin: 0 0 14px;
       }
-      .sa-fresh-b h2 {
-        font-size: 15px;
-        margin: 0;
+      .sa-tabs [role="tab"] {
+        padding: 8px 14px;
+        min-height: 36px;
+        background: none;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        color: var(--muted);
+        font: inherit;
+        cursor: pointer;
       }
-      .sa-fresh-b p {
-        margin: 0;
+      .sa-tabs [role="tab"].on {
+        color: var(--text);
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      #sa-coach[hidden],
+      #sa-body[hidden],
+      #sa-pane[hidden] {
+        display: none;
+      }
+      .co-runbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        margin-bottom: 12px;
+      }
+      .co-st {
+        flex: 1;
+        min-width: 220px;
+      }
+      .co-st b {
+        font-weight: 600;
+      }
+      .co-st small {
+        display: block;
+        color: var(--muted);
         font-size: 13px;
-        line-height: 1.5;
       }
-      .sa-fresh-acts {
+      .co-bad {
+        color: var(--bad);
+      }
+      .co-prog {
+        height: 6px;
+        border-radius: 3px;
+        background: var(--sunken);
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .co-prog i {
+        display: block;
+        height: 100%;
+        background: var(--accent-fill, var(--accent));
+      }
+      .co-emp {
+        border: 1px dashed var(--border-strong, var(--border));
+        border-radius: 10px;
+        padding: 28px 18px;
+        text-align: center;
+        background: var(--surface);
+      }
+      .co-emp h3 {
+        margin: 0 0 6px;
+      }
+      .co-emp p {
+        margin: 0 auto 12px;
+        max-width: 52ch;
+        color: var(--muted);
+      }
+      .co-tiles {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .co-tl {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        padding: 8px 12px;
+      }
+      .co-tl small {
+        display: block;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      .co-tl b {
+        font-size: 19px;
+        font-weight: 600;
+      }
+      .co-tl i {
+        font-style: normal;
+        color: var(--faint, var(--muted));
+        font-size: 12.5px;
+        margin-left: 6px;
+      }
+      .co-tt {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 2px 0 8px;
+        font-size: 13.5px;
+        color: var(--muted);
+      }
+      .co-seg {
+        display: inline-flex;
+        border: 1px solid var(--border-strong, var(--border));
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .co-seg button {
+        padding: 4px 10px;
+        min-height: 28px;
+        background: none;
+        border: 0;
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+      }
+      .co-seg button.on {
+        background: var(--accent-fill, var(--accent));
+        color: var(--on-accent);
+      }
+      .co-tw {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+      }
+      .co-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        background: var(--surface);
+      }
+      .co-table th {
+        font-weight: 600;
+        text-align: right;
+        padding: 0;
+        background: var(--raised, var(--surface));
+        border-bottom: 1px solid var(--border);
+        font-size: 12px;
+        line-height: 1.25;
+        vertical-align: bottom;
+      }
+      .co-table th button {
+        all: unset;
+        display: block;
+        box-sizing: border-box;
+        width: 100%;
+        padding: 8px 6px;
+        color: var(--muted);
+        cursor: pointer;
+        text-align: inherit;
+      }
+      .co-table td {
+        text-align: right;
+        padding: 9px 6px;
+        border-bottom: 1px solid var(--border);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .co-table th:first-child,
+      .co-table td:first-child {
+        text-align: left;
+        padding-left: 12px;
+        position: sticky;
+        left: 0;
+        background: var(--surface);
+      }
+      .co-table tbody tr:last-child td {
+        border-bottom: 0;
+      }
+      .co-r {
+        cursor: pointer;
+      }
+      .co-r.sel td {
+        background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+      }
+      .co-hi {
+        color: var(--warn);
+        font-weight: 600;
+      }
+      .co-why,
+      .co-muted,
+      .co-foot {
+        color: var(--muted);
+      }
+      .co-foot {
+        font-size: 12.5px;
+        margin: 6px 0 0;
+      }
+      .co-cards {
+        display: none;
+      }
+      .co-ac {
+        display: block;
+        width: 100%;
+        text-align: left;
+        font: inherit;
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        padding: 10px 12px;
+        margin-bottom: 8px;
+        cursor: pointer;
+      }
+      .co-ac .h {
+        display: flex;
+        justify-content: space-between;
+        font-weight: 600;
+      }
+      .co-ac .g {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 12px;
+        margin-top: 6px;
+        font-size: 13.5px;
+        color: var(--muted);
+      }
+      .co-ac .g b {
+        color: var(--text);
+        font-weight: 600;
+      }
+      .co-det {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        margin-top: 12px;
+      }
+      .co-det h4 {
+        margin: 0;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border);
+        font-size: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .co-det .co-sp {
+        margin-left: auto;
+        color: var(--muted);
+        font-weight: 400;
+        font-size: 13px;
+      }
+      .co-back {
+        display: none;
+      }
+      .co-cols {
+        display: grid;
+        grid-template-columns: 1.4fr 1fr;
+      }
+      .co-cols > div {
+        padding: 10px 14px;
+        min-width: 0;
+      }
+      .co-cols > div + div {
+        border-left: 1px solid var(--border);
+      }
+      .co-det h5 {
+        margin: 0 0 6px;
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .co-cv {
+        display: grid;
+        grid-template-columns: 128px 96px 1fr;
+        gap: 8px;
+        padding: 5px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 13.5px;
+      }
+      .co-cv:last-child {
+        border: 0;
+      }
+      .co-cv small {
+        color: var(--muted);
+      }
+      .co-kd {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 10px;
+        font-size: 12px;
+        border: 1px solid var(--border-strong, var(--border));
+        color: var(--muted);
+      }
+      .co-kd.rot {
+        color: var(--warn);
+        border-color: var(--warn);
+      }
+      .co-mix {
+        margin-bottom: 10px;
+      }
+      .co-bar {
+        display: flex;
+        height: 14px;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 4px 0;
+        border: 1px solid var(--border);
+      }
+      .co-bar i {
+        display: block;
+      }
+      .co-bar .m-opus {
+        background: var(--violet);
+      }
+      .co-bar .m-sonnet {
+        background: var(--info);
+      }
+      .co-bar .m-haiku {
+        background: var(--ok);
+      }
+      .co-bar .m-other {
+        background: var(--faint, var(--muted));
+      }
+      .co-mix small {
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      /* Mock v6: findings under the table, each with Dismiss. */
+      .co-findings {
+        margin-top: 16px;
+      }
+      .co-fh {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+      .co-fh .co-muted {
+        font-weight: 400;
+        font-size: 13px;
+        margin-left: 6px;
+      }
+      .co-ftable td,
+      .co-ftable th {
+        text-align: left;
+        white-space: normal;
+        vertical-align: top;
+      }
+      .co-ftable td:first-child,
+      .co-ftable th:first-child {
+        position: static;
+      }
+      .co-ftable td:last-child {
+        text-align: right;
+        white-space: nowrap;
+      }
+      .co-ftable th {
+        padding: 8px 6px;
+        color: var(--muted);
+      }
+      .co-fwhy {
+        color: var(--muted);
+        max-width: 520px;
+      }
+      .co-fcards {
+        display: none;
+      }
+      .co-fc {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        padding: 10px 12px;
+        margin-bottom: 8px;
+      }
+      .co-fc b,
+      .co-fc small {
+        display: block;
+      }
+      .co-fc small {
+        color: var(--muted);
+        margin: 2px 0 8px;
+      }
+      .co-fdis-wide {
+        width: 100%;
+        justify-content: center;
+        min-height: 44px;
+      }
+      /* Issue 110 (mock v3): the change in words, Apply's states. */
+      .co-fchg {
+        margin: 4px 0 0;
+        color: var(--text);
+      }
+      .co-apl {
+        margin: 6px 0 0;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .co-fact > * + * {
+        margin-left: 6px;
+      }
+      .co-chip {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--border-strong, var(--border));
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12.5px;
+        white-space: nowrap;
+      }
+      .co-chip.wait {
+        color: var(--warn);
+        border-color: var(--warn);
+      }
+      .co-chip.ok {
+        color: var(--ok);
+      }
+      .co-chip.bad {
+        color: var(--bad);
+        border-color: var(--bad);
+      }
+      .co-fc .co-fdis-wide + .co-fdis-wide {
+        margin-top: 8px;
+      }
+      .co-fc .co-chip {
+        margin-top: 8px;
+      }
+      .co-fnone {
+        border: 1px dashed var(--border-strong, var(--border));
+        border-radius: var(--radius);
+        padding: 14px;
+        color: var(--muted);
+        background: var(--surface);
+      }
+      .co-toast {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        margin-bottom: 8px;
+        border: 1px solid var(--border-strong, var(--border));
+        border-radius: 999px;
+        background: var(--raised, var(--surface));
+        color: var(--text);
+      }
+      .co-link {
+        all: unset;
+        color: var(--accent-text, var(--accent));
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .co-link:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+      }
+      .co-fail {
+        color: var(--bad);
+        margin: 8px 0 0;
+      }
+      .co-fdn {
+        color: var(--muted);
+        margin: 10px 0 4px;
+      }
+      .co-fdl {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        opacity: 0.75;
+      }
+      .co-fdl li {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
-        justify-content: flex-end;
+        gap: 4px 12px;
+        align-items: baseline;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .co-sr {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      /* Phone: one card per agent; the detail is its own view. */
+      @media (max-width: 600px) {
+        .co-tiles,
+        .co-tw,
+        .co-foot,
+        .co-tt-l {
+          display: none;
+        }
+        .co-cards,
+        .co-fcards {
+          display: block;
+        }
+        .co-ftw {
+          display: none;
+        }
+        .co-runbar .den-btn {
+          width: 100%;
+          justify-content: center;
+          min-height: 44px;
+        }
+        .co-report.co-has-detail {
+          display: none;
+        }
+        .co-det {
+          border: 0;
+          background: none;
+          margin: 0;
+        }
+        .co-det h4 {
+          padding: 0 0 8px;
+          border: 0;
+        }
+        .co-back {
+          display: inline-flex;
+          all: unset;
+          font-weight: 600;
+          cursor: pointer;
+          min-height: 44px;
+          align-items: center;
+        }
+        .co-dname,
+        .co-close {
+          display: none;
+        }
+        .co-det .co-sp {
+          margin-left: 0;
+          flex-basis: 100%;
+        }
+        .co-cols {
+          grid-template-columns: 1fr;
+        }
+        .co-cols > div {
+          padding: 0 0 10px;
+        }
+        .co-cols > div + div {
+          border-left: 0;
+        }
       }
     </style>
   </head>
@@ -251,8 +766,48 @@
           >
         </div>
       </div>
+      <!-- Issue 52: the agent's views, Terminal (as it was) and Coach. -->
+      <div
+        class="sa-tabs"
+        id="sa-tabs"
+        role="tablist"
+        aria-label="Agent views"
+        data-t-attr="aria-label:co.tabs"
+      >
+        <button
+          type="button"
+          role="tab"
+          id="sa-tab-terminal"
+          data-tab="terminal"
+          aria-controls="sa-body"
+          aria-selected="true"
+          class="on"
+          data-t="co.tab.terminal"
+        >
+          Terminal
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="sa-tab-coach"
+          data-tab="coach"
+          aria-controls="sa-coach"
+          aria-selected="false"
+          tabindex="-1"
+          data-t="co.tab.coach"
+        >
+          Coach
+        </button>
+      </div>
       <div id="sa-body" aria-busy="true" aria-live="polite"></div>
       <div id="sa-pane"></div>
+      <div
+        id="sa-coach"
+        role="tabpanel"
+        aria-labelledby="sa-tab-coach"
+        aria-busy="true"
+        hidden
+      ></div>
 
       <script type="module">
         import {
@@ -263,6 +818,7 @@
           initWorkspacePill,
         } from "/header.js";
         import { mountServerAgentPage } from "/server-agent-page.js";
+        import { mountTabs } from "/coach-tab.js";
         void Promise.all([
           initHealth(),
           initWorkspacePill(),
@@ -270,6 +826,7 @@
           initChangelog(),
         ]).then(initLogBadge);
         void mountServerAgentPage(document.getElementById("den-content"));
+        mountTabs(document);
       </script>
     </main>
   </body>

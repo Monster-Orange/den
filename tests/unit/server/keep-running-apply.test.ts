@@ -170,7 +170,8 @@ describe("Keep agents running after logout: the sign-in token line", () => {
       t,
     );
     expect(set.state).toBe("set");
-    expect(set.text).toMatch(/^keep\.tokenSet \{"date":".*2026.*"\}$/);
+    // The kit's date (issue 668): the year only when it isn't this year's.
+    expect(set.text).toMatch(/^keep\.tokenSet \{"date":"Nov 16(, 2026)?"\}$/);
     expect(
       keepTokenLine({ configured: true, set_at: null, store: "Doppler" }, t),
     ).toEqual({ state: "set", text: 'keep.tokenStore {"store":"Doppler"}' });

@@ -14,12 +14,18 @@
  *   - a public file runs the specs of every page that loads it;
  *   - and tests that read files by path rather than import them: the
  *     public/ and src/ walkers, the docs, changelog and examples readers,
- *     and tests that run a scripts/ file.
+ *     and tests that run a scripts/ file;
+ *   - each test that starts Den as a process, when its subject changes
+ *     (issue 708; below).
+ * --check also fails on a test that starts Den with no subject, unless it
+ * is on the map's `subjectless` list (which only shrinks).
  * The everything list, the smoke set and $comment are kept as they are.
  */
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import { globToRegExp } from "./affected-tests.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MAP = path.join(ROOT, "tests", "affected-map.json");
@@ -29,6 +35,7 @@ const SELF = "tests/unit/test-infra/affected-tests.test.ts";
 /** The route a spec opens → the page file the server sends for it. */
 const PAGES = {
   agents: "agents.html",
+  terminals: "agents.html",
   settings: "settings.html",
   services: "services.html",
   "local-dev": "local-dev.html",
@@ -115,7 +122,164 @@ export function pagesOpened(text) {
   return pages;
 }
 
-export function buildRules() {
+// --- tests that start Den as a process (issue 708) -------------------------
+//
+// A test that runs bin/den, or tsx on a src/ entry, or the server through
+// startDenServer, reaches Den over a pipe or HTTP: no import links it to
+// the modules that process loads. Linking it to the entry's whole import
+// closure would run it for nearly any change (the server loads most of
+// src/), so each one is linked to its subject instead:
+//   - the src files named like the test (hub-delivery.integration →
+//     hub-delivery.ts, hub-delivery-loop.ts, hub-delivery-service.ts);
+//   - the src files it names, by path or by file name;
+//   - the globs the map's `subjects` declares for it.
+// One with none fails the selector's test, unless it is on the map's
+// `subjectless` list, which only shrinks.
+
+/** Starts Den: bin/den, tsx's cli on an entry, or startDenServer(…). */
+const STARTS =
+  /(?<!function )startDenServer\(|["']bin["'],\s*["']den["']|["']bin\/den["']\)|["']tsx["'],\s*["']dist["']/;
+
+/** The files under tests/ that `file` imports (relative imports only). */
+function testImports(file) {
+  const out = [];
+  for (const m of read(file).matchAll(
+    /(?:from|import)\s*\(?\s*["'](\.[^"']+)["']/g,
+  )) {
+    const p = path.posix.join(path.posix.dirname(file), m[1]);
+    const ts = p.replace(/\.js$/, ".ts");
+    for (const c of [ts, p])
+      if (
+        c.startsWith("tests/") &&
+        fs.existsSync(path.join(ROOT, c)) &&
+        fs.statSync(path.join(ROOT, c)).isFile()
+      ) {
+        out.push(c);
+        break;
+      }
+  }
+  return out;
+}
+
+/** The given tests that start Den, themselves or through a test helper. */
+export function startsDen(tests) {
+  const memo = new Map();
+  const starts = (f, seen) => {
+    if (memo.has(f)) return memo.get(f);
+    if (seen.has(f)) return false;
+    seen.add(f);
+    const r =
+      STARTS.test(read(f)) || testImports(f).some((i) => starts(i, seen));
+    memo.set(f, r);
+    return r;
+  };
+  return tests.filter((t) => starts(t, new Set()));
+}
+
+let srcFiles = null;
+const shimPaths = () => {
+  const f = path.join(ROOT, "scripts", "shims.json");
+  return new Set(
+    fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf-8")).shims : [],
+  );
+};
+const sources = () => {
+  if (srcFiles) return srcFiles;
+  const shims = shimPaths();
+  return (srcFiles = fs
+    .readdirSync(path.join(ROOT, "src"), { recursive: true })
+    .map((f) => `src/${f.split(path.sep).join("/")}`)
+    .filter((f) => f.endsWith(".ts") && !shims.has(f))
+    .sort());
+};
+
+/**
+ * A test's subject: the src files named like it, the src files its text
+ * names (a path, or a file name only one or two src files have), and the
+ * globs `declared` gives it.
+ */
+export function subjectOf(test, text, declared = {}) {
+  const src = sources();
+  const stem = path.posix
+    .basename(test)
+    .replace(/\.test\.ts$/, "")
+    .replace(/\.(integration|browser|polling)$/, "");
+  const out = new Set(
+    src.filter((f) => {
+      const b = path.posix.basename(f, ".ts");
+      return b === stem || b.startsWith(`${stem}-`);
+    }),
+  );
+  for (const m of (text ?? "").matchAll(
+    /(?<![\w/.-])((?:src\/[\w/.-]+\/)?[\w.-]+\.ts)\b/g,
+  )) {
+    const named = m[1].startsWith("src/")
+      ? src.filter((f) => f === m[1])
+      : src.filter((f) => path.posix.basename(f) === m[1]);
+    if (named.length && named.length <= 2) named.forEach((f) => out.add(f));
+  }
+  for (const g of declared[test] ?? []) out.add(g);
+  return [...out].sort();
+}
+
+/** Each test that starts Den, with its subject ([] when it has none). */
+function starterSubjects(map, tests = listTests()) {
+  return startsDen(tests.filter((t) => t !== SELF)).map((t) => [
+    t,
+    subjectOf(t, read(t), map.subjects ?? {}),
+  ]);
+}
+
+/**
+ * missing: starts Den, has no subject, and isn't on the subjectless list.
+ * stale: on the list, but it has a subject now, or starts no Den.
+ */
+export function subjectGaps(map) {
+  const listed = new Set(map.subjectless ?? []);
+  const subj = new Map(starterSubjects(map));
+  const missing = [...subj]
+    .filter(([t, s]) => !s.length && !listed.has(t))
+    .map(([t]) => t);
+  const stale = [...listed].filter(
+    (t) => !subj.has(t) || subj.get(t).length > 0,
+  );
+  return {
+    missing: missing.sort(),
+    stale: stale.sort(),
+    empty: emptySubjects(map),
+  };
+}
+
+/**
+ * Issue 709: each declared subject names a test that is there, and each
+ * of its globs names at least one file in the repo. A typo or a moved
+ * file would otherwise count as a subject that never runs the test.
+ */
+function emptySubjects(map) {
+  const files = execFileSync("git", ["ls-files"], {
+    cwd: ROOT,
+    encoding: "utf-8",
+  })
+    .split("\n")
+    .filter(Boolean);
+  const out = [];
+  for (const [test, globs] of Object.entries(map.subjects ?? {})) {
+    if (!fs.existsSync(path.join(ROOT, test))) {
+      out.push(`${test}: the test isn't there`);
+      continue;
+    }
+    for (const g of [globs].flat()) {
+      const re = typeof g === "string" && g.trim() ? globToRegExp(g) : null;
+      if (!re || !files.some((f) => re.test(f)))
+        out.push(`${test}: ${JSON.stringify(g)}`);
+    }
+  }
+  return out;
+}
+
+const readMap = () => JSON.parse(fs.readFileSync(MAP, "utf-8"));
+
+export function buildRules(map = readMap()) {
   const tests = listTests();
   const specs = tests.filter((t) => t.endsWith(".browser.test.ts"));
   const others = tests.filter(
@@ -181,6 +345,18 @@ export function buildRules() {
       why: "the UI catalogs",
     },
     {
+      when: [
+        `${PUB}/settings-registry.js`,
+        `${PUB}/settings-common.js`,
+        `${PUB}/settings-ui-*.js`,
+        `${PUB}/settings-rows-*.js`,
+        "tests/fixtures/settings-registry-order.json",
+      ],
+      run: ["tests/unit/server/settings-registry-order.test.ts"],
+      importers: ["tests/unit/server/helpers/settings-sources.ts"],
+      why: "the Settings rows: their pin and the tests that read them",
+    },
+    {
       when: [`${PUB}/**`],
       run: others.filter(
         (t) =>
@@ -209,6 +385,11 @@ export function buildRules() {
       run: others.filter((t) => /["'`]examples["'`/]/.test(read(t))),
       why: "tests that read examples/",
     },
+    {
+      when: ["gate/**"],
+      run: tests.filter((t) => t.startsWith("tests/unit/test-infra/gate-")),
+      why: "the live checks' own tests (runners, shape, clauses)",
+    },
   );
   // Scripts a test runs by path (a spawn is not an import).
   for (const f of fs
@@ -223,21 +404,96 @@ export function buildRules() {
         why: `tests that run scripts/${f}`,
       });
   }
+  for (const f of fs
+    .readdirSync(path.join(ROOT, "gate"))
+    .filter((f) => f.endsWith(".mjs"))
+    .sort()) {
+    const run = tests.filter(
+      (t) => t !== SELF && read(t).includes(`gate/${f}`),
+    );
+    if (run.length)
+      rules.push({
+        when: [`gate/${f}`],
+        run,
+        why: `tests that load gate/${f}`,
+      });
+  }
+  // Tests that start Den as a process: each runs when its subject changes.
+  const starters = starterSubjects(map, tests);
+  for (const [t, subject] of starters)
+    if (subject.length)
+      rules.push({
+        when: subject,
+        run: [t],
+        why: "starts Den as a process: its subject",
+      });
+  // Issue 728: a test declared in `subjects` that STARTS can't see (it
+  // runs a scaffolded distribution's own bin) runs on its globs too.
+  const seen = new Set(starters.map(([t]) => t));
+  for (const [t, globs] of Object.entries(map.subjects ?? {}))
+    if (!seen.has(t))
+      rules.push({
+        when: [globs].flat().sort(),
+        run: [t],
+        why: "runs Den as a process (declared): its subject",
+      });
   return rules.filter((r) => r.run.length);
 }
 
-function main(argv) {
-  const map = JSON.parse(fs.readFileSync(MAP, "utf-8"));
-  const rules = buildRules();
+export async function mapText(map) {
+  const prettier = await import("prettier");
+  const config = (await prettier.resolveConfig(MAP)) ?? {};
+  return prettier.format(JSON.stringify(map, null, 2) + "\n", {
+    ...config,
+    filepath: MAP,
+  });
+}
+
+export async function formIssue(text) {
+  let map;
+  try {
+    map = JSON.parse(text);
+  } catch (err) {
+    return `tests/affected-map.json is not JSON (${err.message})`;
+  }
+  return (await mapText(map)) === text
+    ? null
+    : "tests/affected-map.json is not in the generator's form: run node scripts/affected-map.mjs";
+}
+
+async function main(argv) {
+  const map = readMap();
+  const rules = buildRules(map);
   if (argv.includes("--check")) {
-    if (JSON.stringify(map.rules) === JSON.stringify(rules)) return 0;
-    console.error(
-      "tests/affected-map.json is out of date: run node scripts/affected-map.mjs (then prettier)",
-    );
-    return 1;
+    const { missing, stale, empty } = subjectGaps(map);
+    for (const e of empty)
+      console.error(
+        `tests/affected-map.json "subjects": ${e} names no file: fix the path or drop it`,
+      );
+    for (const t of missing)
+      console.error(
+        `${t} starts Den but has no subject: name it like its module, or add it to "subjects" in tests/affected-map.json`,
+      );
+    for (const t of stale)
+      console.error(
+        `${t} is on "subjectless" but has a subject now (or starts no Den): take it off`,
+      );
+    if (missing.length || stale.length || empty.length) return 1;
+    if (JSON.stringify(map.rules) !== JSON.stringify(rules)) {
+      console.error(
+        "tests/affected-map.json is out of date: run node scripts/affected-map.mjs",
+      );
+      return 1;
+    }
+    const issue = await formIssue(fs.readFileSync(MAP, "utf-8"));
+    if (issue) {
+      console.error(issue);
+      return 1;
+    }
+    return 0;
   }
   map.rules = rules;
-  fs.writeFileSync(MAP, JSON.stringify(map, null, 2) + "\n");
+  fs.writeFileSync(MAP, await mapText(map));
   return 0;
 }
 
@@ -245,5 +501,5 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
 }

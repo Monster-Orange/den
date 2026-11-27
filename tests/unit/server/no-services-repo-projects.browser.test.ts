@@ -14,9 +14,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -32,11 +33,7 @@ function write(file: string, content: string): void {
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -112,7 +109,7 @@ describe("issue 277: the project page has no buttons that would do nothing", () 
     const p = await ctx.newPage();
     const errors: string[] = [];
     p.on("pageerror", (e) => errors.push(e.message));
-    await p.goto(signInUrl(path.join(tmp, "home"), base, "/local-dev"));
+    await signInPage(p, path.join(tmp, "home"), base, "/local-dev");
     const cfg = p.locator('tr.repo[data-repo="cfg"]');
     const shop = p.locator('tr.repo[data-repo="shop"]');
     await cfg.waitFor({ timeout: 30_000 });

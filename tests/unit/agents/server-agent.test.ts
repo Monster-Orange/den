@@ -318,6 +318,9 @@ describe("its folder (SRV-1b)", () => {
         updateWaitChecks: 2,
         role: "lead",
         pinCommit: "push",
+        securityUpdateSkipsQuestions: true,
+        securityUpdateSkipsBusy: true,
+        updateRestartWaitMs: 900_000,
       });
       expect(
         readServerAgentConfig(
@@ -347,6 +350,9 @@ describe("its folder (SRV-1b)", () => {
         updateWaitChecks: 2,
         role: "lead",
         pinCommit: "push",
+        securityUpdateSkipsQuestions: true,
+        securityUpdateSkipsBusy: true,
+        updateRestartWaitMs: 900_000,
       });
       for (const bad of [0, 0.4, 61, "2", Number.NaN])
         expect(() =>

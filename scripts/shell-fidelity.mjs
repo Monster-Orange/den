@@ -6,7 +6,10 @@
  *   node scripts/shell-fidelity.mjs --proto <den-shell.html> --real <url>
  *        [--page /services] [--widths 1440,1024] [--brand den|mo]
  *        [--mode dark|light] [--theme <id>] [--shots <dir>] [--json <file>]
- *        [--proto-fonts 1]
+ *        [--proto-fonts 1] [--cli <path>]
+ *
+ * Its settings writes carry the person's token: DEN_WEB_TOKEN, else
+ * `<--cli> web token --print` (default `den`).
  *
  * Loads the prototype (file) and the real page (a running Den, demo data)
  * at the same viewport, finds matched element pairs (the top bar, brand,
@@ -64,6 +67,44 @@ const WIDTHS = (args.widths ?? "1440,1024").split(",").map(Number);
 const BRAND = args.brand ?? "den";
 const MODE = args.mode ?? "dark";
 const REAL = args.real.replace(/\/$/, "");
+
+/**
+ * A settings write to the real Den, with the person's token (a write needs
+ * a sign-in or the CLI's token): DEN_WEB_TOKEN, else `<--cli> web token
+ * --print` (default `den`). Never printed. A refused write stops the run:
+ * a measurement on the wrong settings is no measurement.
+ */
+let TOKEN = process.env.DEN_WEB_TOKEN ?? null;
+async function postSettings(body) {
+  if (!TOKEN) {
+    const { execFileSync } = await import("child_process");
+    // Sign-in: the token is printed only in a terminal (script(1); macOS
+    // and util-linux spell it differently).
+    const cmd = [args.cli ?? "den", "web", "token", "--print"];
+    const shown = execFileSync(
+      "script",
+      process.platform === "darwin"
+        ? ["-q", "/dev/null", ...cmd]
+        : [
+            "-qec",
+            cmd.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(" "),
+            "/dev/null",
+          ],
+      { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+    TOKEN = /den_pt_[A-Za-z0-9_-]+/.exec(shown)?.[0] ?? "";
+  }
+  const r = await fetch(`${REAL}/api/settings`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${TOKEN}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok)
+    throw new Error(`shell-fidelity: POST /api/settings answered ${r.status}`);
+}
 
 /** Den page → the prototype's page id. */
 const PROTO_PAGE = {
@@ -1033,11 +1074,7 @@ async function openReal(browser, width) {
     colorScheme: MODE,
   });
   // The rail expanded, as the prototype starts.
-  await fetch(`${REAL}/api/settings`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ shell: { collapsed: false } }),
-  });
+  await postSettings({ shell: { collapsed: false } });
   const p = await ctx.newPage();
   // Demo health: everything up but one, so the Services badge shows.
   const real = await (await fetch(`${REAL}/api/health`)).json().catch(() => []);
@@ -1085,11 +1122,7 @@ async function main() {
   if (args.theme) {
     const cur = await (await fetch(`${REAL}/api/settings`)).json();
     restoreTheme = cur.appearance?.theme ?? null;
-    await fetch(`${REAL}/api/settings`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appearance: { theme: args.theme, mode: MODE } }),
-    });
+    await postSettings({ appearance: { theme: args.theme, mode: MODE } });
   }
   const rows = [];
   let failed = 0;
@@ -1175,12 +1208,7 @@ async function main() {
       await real.ctx.close();
     }
   } finally {
-    if (args.theme)
-      await fetch(`${REAL}/api/settings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appearance: { theme: restoreTheme } }),
-      });
+    if (args.theme) await postSettings({ appearance: { theme: restoreTheme } });
     await browser.close();
   }
   const w = (s, n) => String(s).padEnd(n).slice(0, n);

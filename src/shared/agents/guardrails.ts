@@ -20,6 +20,12 @@
  * matter `den_hooks` / `den_instructions`), the persona winning.
  */
 import { ATTENTION_EVENTS } from "./guardrails/attention-hook.js";
+import {
+  HOOK_CALL_DEFAULT,
+  hookCallBudgetSeconds,
+  hookCallFlags,
+  type HookCall,
+} from "./guardrails/hook-call.js";
 import * as fs from "fs";
 import * as path from "path";
 import { enginePath, scriptEntrypoint, type EngineCommand } from "../engine.js";
@@ -125,7 +131,26 @@ export interface ApiOnlyArgs {
  */
 export interface InboxHookArgs {
   base: string;
+  /** Issue 609: how the check calls Den (user.yml agent_hooks.*). */
+  call?: HookCall;
 }
+
+/**
+ * Issue 1264: what the PreToolUse hook needs to send an agent's heavy runs
+ * through the gate: this install's own CLI (absolute path) and the gate's
+ * settings.json, read on each call (route_agents, route_commands).
+ */
+export interface GateRouteArgs {
+  cli: string;
+  settings: string;
+}
+
+/** `--hub-inbox <base>` and, given, issue 609's call flags. */
+const inboxFlags = (inbox: InboxHookArgs): string[] => [
+  "--hub-inbox",
+  inbox.base,
+  ...(inbox.call ? hookCallFlags(inbox.call) : []),
+];
 
 /** The tools the PreToolUse hook sees: with D47 rules, the file tools too. */
 export const PRETOOL_MATCHER = "Bash|Read";
@@ -144,6 +169,8 @@ export function hookCommands(
   apiOnly?: ApiOnlyArgs,
   /** D41: Den's proxy to Hub, for the inbox check. */
   inbox?: InboxHookArgs,
+  /** Issue 1264: route heavy runs through the gate. */
+  gate?: GateRouteArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -166,6 +193,7 @@ export function hookCommands(
         ...(apiOnly
           ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
           : []),
+        ...(gate ? ["--gate", gate.cli, "--gate-settings", gate.settings] : []),
       ],
     }),
     stop: commandLine(
@@ -175,7 +203,7 @@ export function hookCommands(
           ...c.args,
           ...known.flatMap((k) => ["--known", k]),
           ...(handback ? [] : ["--no-handback"]),
-          ...(inbox ? ["--hub-inbox", inbox.base] : []),
+          ...(inbox ? inboxFlags(inbox) : []),
         ],
       }))(more(scriptEntrypoint("src/shared/agents/guardrails/stop-hook.ts"))),
     ),
@@ -227,15 +255,97 @@ export function guardrailHooks(
  * (attention-hook.ts). Merged beside Den's other hooks. PermissionRequest
  * prints nothing, so Claude Code still asks the person.
  */
-export function attentionHooks(base: string): Record<string, unknown[]> {
+export function attentionHooks(
+  base: string,
+  /** Issue 609: each try's wait, retries, pause (user.yml agent_hooks.*). */
+  call: HookCall = HOOK_CALL_DEFAULT,
+  /** Issue 609: where a lost mark is recorded, and for which agent. */
+  lost?: { file: string; agent: string },
+): Record<string, unknown[]> {
   const cmd = commandLine(
     ((c: EngineCommand): EngineCommand => ({
       command: c.command,
-      args: [...c.args, "--den", base],
+      args: [
+        ...c.args,
+        "--den",
+        base,
+        ...hookCallFlags(call),
+        ...(lost ? ["--lost", lost.file, "--agent", lost.agent] : []),
+      ],
     }))(scriptEntrypoint("src/shared/agents/guardrails/attention-hook.ts")),
   );
-  const entry = { hooks: [{ type: "command", command: cmd, timeout: 10 }] };
+  // The runtime's own limit on the hook covers every try (issue 609).
+  const entry = {
+    hooks: [
+      {
+        type: "command",
+        command: cmd,
+        timeout: Math.max(10, hookCallBudgetSeconds(call)),
+      },
+    ],
+  };
   return Object.fromEntries(ATTENTION_EVENTS.map((e) => [e, [entry]]));
+}
+
+/**
+ * Issue 936: every agent's note for a write its sandbox refused, after a
+ * tool and after a failed one (guardrails/sandbox-refusal.ts). It says
+ * nothing outside the sandbox.
+ */
+export function subagentHooks(
+  base: string,
+  call: HookCall = HOOK_CALL_DEFAULT,
+): Record<string, unknown[]> {
+  const c = scriptEntrypoint("src/shared/agents/guardrails/subagent-hook.ts");
+  return {
+    PreToolUse: [
+      {
+        matcher: "Agent|Task",
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: c.command,
+              args: [...c.args, "--den", base, ...hookCallFlags(call)],
+            }),
+            timeout: Math.max(10, hookCallBudgetSeconds(call)),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export function sandboxRefusalHooks(): Record<string, unknown[]> {
+  const entry = {
+    hooks: [
+      {
+        type: "command",
+        command: commandLine(
+          scriptEntrypoint("src/shared/agents/guardrails/sandbox-refusal.ts"),
+        ),
+        timeout: 10,
+      },
+    ],
+  };
+  return { PostToolUse: [entry], PostToolUseFailure: [entry] };
+}
+
+/**
+ * Issue 609: at least `seconds` for each of `event`'s hooks (the Stop
+ * hook's inbox check makes the same tries as the attention hook).
+ */
+export function widenHookTimeouts(
+  hooks: Record<string, unknown> | null,
+  event: string,
+  seconds: number,
+): void {
+  const entries = hooks?.[event];
+  if (!Array.isArray(entries)) return;
+  for (const e of entries as { hooks?: { timeout?: number }[] }[])
+    for (const h of e.hooks ?? [])
+      if (typeof h.timeout === "number" && h.timeout < seconds)
+        h.timeout = seconds;
 }
 
 /** Two `hooks` blocks as one: each event's entries, the first's first. */
@@ -249,6 +359,56 @@ export function mergeHooks(
   for (const [k, v] of Object.entries(b))
     out[k] = [...((out[k] as unknown[] | undefined) ?? []), ...v];
   return out;
+}
+
+export function envGuardHooks(
+  dir: string = GUARDRAILS_DIR,
+  node: string = process.execPath,
+): Record<string, unknown[]> {
+  return {
+    PreToolUse: [
+      {
+        matcher: "Bash",
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: node,
+              args: [path.join(dir, "pretooluse.mjs"), "--no-guardrails"],
+            }),
+            timeout: 10,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export const NO_ENV_GUARD_FLAG = "--no-env-guard";
+
+export function withEnvMask(
+  hooks: Record<string, unknown>,
+  args: readonly string[],
+): void {
+  const q = (a: string) => `'${a.replace(/'/g, `'\\''`)}'`;
+  const tail = args.map(q).join(" ");
+  const pre = hooks.PreToolUse as
+    | { hooks?: { command?: string }[] }[]
+    | undefined;
+  for (const m of pre ?? [])
+    for (const h of m.hooks ?? [])
+      if (typeof h.command === "string" && h.command.includes("pretooluse.mjs"))
+        h.command = `${h.command} ${tail}`;
+}
+
+export function withoutEnvGuard(hooks: Record<string, unknown>): void {
+  const pre = hooks.PreToolUse as
+    | { hooks?: { command?: string }[] }[]
+    | undefined;
+  for (const m of pre ?? [])
+    for (const h of m.hooks ?? [])
+      if (typeof h.command === "string" && h.command.includes("pretooluse.mjs"))
+        h.command = `${h.command} ${NO_ENV_GUARD_FLAG}`;
 }
 
 /**
@@ -278,8 +438,7 @@ export function apiOnlyHooks(
                       "--inbox-only",
                       "--files",
                       inbox.files,
-                      "--hub-inbox",
-                      inbox.base,
+                      ...inboxFlags(inbox),
                     ],
                   }))(
                     scriptEntrypoint(
@@ -287,7 +446,10 @@ export function apiOnlyHooks(
                     ),
                   ),
                 ),
-                timeout: 30,
+                timeout: Math.max(
+                  30,
+                  hookCallBudgetSeconds(inbox.call ?? HOOK_CALL_DEFAULT),
+                ),
               },
             ],
           },

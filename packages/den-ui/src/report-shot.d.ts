@@ -26,10 +26,6 @@ export declare function rectOfPercent(
   h: number,
 ): Mask;
 export declare function toBlob(canvas: HTMLCanvasElement): Promise<Blob | null>;
-export declare function saveAndCopy(
-  canvas: HTMLCanvasElement,
-  name?: string,
-): Promise<{ saved: boolean; copied: boolean }>;
 export declare function canvasOf(
   src: string | Blob,
 ): Promise<HTMLCanvasElement | null>;

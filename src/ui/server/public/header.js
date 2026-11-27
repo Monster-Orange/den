@@ -10,7 +10,10 @@
  * the current env is counted.
  */
 
-import { buildScopeMenuModel } from "./workspace-picker.js";
+import {
+  buildScopeMenuModel,
+  PROJECT_COLOURS_KEY,
+} from "./workspace-picker.js";
 import { initAppearance } from "./appearance.js";
 import DenUI from "./den-kit.js";
 import { copyText, ensureWhatsNew } from "/kit/whatsnew.js";
@@ -52,7 +55,8 @@ if (typeof document !== "undefined") initBell();
 // Issue 172: an agent's need, also outside the bell (desktop).
 if (typeof document !== "undefined") initAlerts();
 // Issue 172 S2: the app manifest, so a phone can add this to its home
-// screen (an iPhone gets push only from there).
+// screen (an iPhone gets push only from there). Issue 644: the kit's head
+// snippet links it on every page Den serves; this is for a page without it.
 if (
   typeof document !== "undefined" &&
   document.head &&
@@ -60,7 +64,7 @@ if (
 ) {
   const l = document.createElement("link");
   l.rel = "manifest";
-  l.href = "/manifest.webmanifest";
+  l.href = "/site.webmanifest";
   document.head.appendChild(l);
 }
 if (typeof document !== "undefined")
@@ -76,9 +80,33 @@ if (typeof document !== "undefined")
     refreshHealth: (env, opts) => refreshHealth(env, opts),
   });
 
-// 5s between polls — measured from each poll's COMPLETION (schedulePoll
+// Between polls — measured from each poll's COMPLETION (schedulePoll
 // re-arms after renderHealth resolves), so slow probes can't overlap.
-const POLL_INTERVAL_MS = 5_000;
+// Issue 1022: fast only while the page is visible; both are Settings
+// (user.yml health_poll.*, read from /api/settings once a page).
+const _healthPoll = { visible: 5, hidden: 60 };
+let _healthPollRead = null;
+function _readHealthPoll() {
+  // SEC-1b: a refusal page makes no /api call; the defaults stand.
+  if (apiOff()) return Promise.resolve();
+  _healthPollRead ??= fetch("/api/settings", { headers: { accept: "json" } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((s) => {
+      const hp = s?.health_poll;
+      if (Number.isFinite(hp?.visible)) _healthPoll.visible = hp.visible;
+      if (Number.isFinite(hp?.hidden)) _healthPoll.hidden = hp.hidden;
+    })
+    .catch(() => {});
+  return _healthPollRead;
+}
+/** Issue 1022: ms until the next poll, by the page's visibility. */
+export function healthPollMs(hidden = document.hidden) {
+  return (hidden ? _healthPoll.hidden : _healthPoll.visible) * 1000;
+}
+/** Issue 1022: a hidden page's poll says so; the server keeps its answer longer. */
+function _hiddenQuery() {
+  return document.hidden ? "&hidden=1" : "";
+}
 
 // Last painted health results, keyed `repo/service`, so a new poll can seed
 // from them and update dots in place instead of collapsing the strip and
@@ -353,12 +381,65 @@ export function groupReposByApplication(repos, apps) {
  * no longer used: the view applies to every env.
  */
 export async function initWorkspacePill() {
+  _watchProjectColours();
   await _renderScopeMenu();
+}
+
+/**
+ * Issue 168: a colour saved in this tab (den:project-colours) or another
+ * (the storage stamp) repaints the chip, and with it every colour the
+ * shell knows (the bell's headings): no reload.
+ */
+let _coloursWatched = false;
+function _watchProjectColours() {
+  if (_coloursWatched || typeof window === "undefined") return;
+  _coloursWatched = true;
+  const again = () => void _renderScopeMenu();
+  window.addEventListener("den:project-colours", again);
+  window.addEventListener("storage", (e) => {
+    if (e.key === PROJECT_COLOURS_KEY) again();
+  });
 }
 
 /** Re-fetch and repaint the Workspace part (after a workspace change). */
 export async function refreshWorkspacePill() {
   await _renderScopeMenu();
+}
+
+// Issue 1051: a failed load of the menu is tried again, 1 s after the
+// first failure, doubling to every 30 s, until one answers. The menu it
+// had stays meanwhile; with none yet, the part stays hidden.
+const SCOPE_RETRY_FIRST_MS = 1_000;
+const SCOPE_RETRY_MAX_MS = 30_000;
+let _scopeShown = false;
+let _scopeRetryMs = 0;
+let _scopeRetry = null;
+
+/** Issue 1051: the wait before the next try, after `ms` (0: the first). */
+export function nextScopeRetryMs(ms) {
+  return ms ? Math.min(ms * 2, SCOPE_RETRY_MAX_MS) : SCOPE_RETRY_FIRST_MS;
+}
+
+function _scopeFailed(sh) {
+  if (!_scopeShown) sh.setWorkspaces(null);
+  if (_scopeRetry) return;
+  _scopeRetryMs = nextScopeRetryMs(_scopeRetryMs);
+  _scopeRetry = setTimeout(() => {
+    _scopeRetry = null;
+    _renderScopeMenu();
+  }, _scopeRetryMs);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener?.("pagehide", () => {
+    if (_scopeRetry) clearTimeout(_scopeRetry);
+    _scopeRetry = null;
+  });
+  // Back from the back/forward cache with no menu yet: try again now (the
+  // retry pagehide cleared would otherwise wait for the next render).
+  window.addEventListener?.("pageshow", (e) => {
+    if (e.persisted && !_scopeShown) _renderScopeMenu();
+  });
 }
 
 async function _renderScopeMenu() {
@@ -381,8 +462,10 @@ async function _renderScopeMenu() {
       ),
       onSelect: _switchScope,
     });
+    _scopeShown = true;
+    _scopeRetryMs = 0;
   } catch {
-    sh.setWorkspaces(null);
+    _scopeFailed(sh);
   }
 }
 
@@ -448,6 +531,7 @@ async function _switchScope(value, focus, inView) {
     return;
   }
   try {
+    // busy-ok: picked from the scope menu, which has closed; the page reloads
     await window.denShell.api("POST", "/api/scope", { scope: value });
   } catch (err) {
     if (err?.denApi) {
@@ -479,6 +563,7 @@ export async function switchView(name) {
  */
 async function _setFocus(name) {
   try {
+    // busy-ok: the same menu pick, before the view is stored
     await window.denShell.api("POST", "/api/workspaces", {
       name,
       action: "focus",
@@ -497,7 +582,7 @@ async function _setFocus(name) {
 
 /** Call once on page load. Does NOT manage env changes — caller handles that. */
 export async function initHealth() {
-  await envReady();
+  await Promise.all([envReady(), _readHealthPoll()]);
   if (configInvalid()) return;
   const env = healthEnv();
   const gen = ++pollGen;
@@ -538,7 +623,7 @@ function schedulePoll(env, gen) {
       // (that froze the chip at its last state until a page reload).
       schedulePoll(env, gen);
     }
-  }, POLL_INTERVAL_MS);
+  }, healthPollMs());
 }
 
 /**
@@ -558,9 +643,12 @@ async function renderHealth(env, gen = pollGen, force = false) {
     // Stream unavailable or broken (older server, a proxy that buffers SSE,
     // a dropped connection): the plain endpoint completes the cycle.
     fetchAll: () =>
-      fetch(`/api/health?env=${env}${force ? "&refresh=1" : ""}`, {
-        signal: AbortSignal.timeout(10_000),
-      })
+      fetch(
+        `/api/health?env=${env}${force ? "&refresh=1" : ""}${_hiddenQuery()}`,
+        {
+          signal: AbortSignal.timeout(10_000),
+        },
+      )
         .then((r) => r.json())
         .catch(() => null),
     // What the chip shows now, for a paint before this cycle completes.
@@ -620,7 +708,7 @@ function _streamHealth(env, force, onResult) {
       // force bypasses the server-side health cache — used right after a repo
       // sync, where the probes on disk may have just changed.
       es = new EventSource(
-        `/api/health/stream?env=${encodeURIComponent(env)}${force ? "&refresh=1" : ""}`,
+        `/api/health/stream?env=${encodeURIComponent(env)}${force ? "&refresh=1" : ""}${_hiddenQuery()}`,
       );
     } catch {
       clearTimeout(guard);

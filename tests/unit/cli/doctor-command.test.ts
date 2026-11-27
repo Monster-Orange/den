@@ -187,6 +187,76 @@ describe("doctor", () => {
     });
   });
 
+  it("issue 1334: the implicit secrets default, unavailable, is idle: ok and 'not in use yet', never ⚠", () => {
+    const rows = doctorRows(dist("environments: [local]\n"));
+    const secrets = rows.find((r) => r.kind === "secrets")!;
+    expect(secrets).toMatchObject({
+      implicit: true,
+      available: false,
+      idle: true,
+    });
+    expect(strategyCheck(secrets).status).toBe("ok");
+    expect(strategyCheck(secrets).detail).toContain("not in use yet");
+    const line = formatDoctor([secrets], "Den").find((l) =>
+      l.includes("secrets"),
+    )!;
+    expect(line).toContain("– not in use yet");
+    expect(line).not.toContain("✗");
+  });
+
+  it("issue 1334: a secrets provider someone chose, unavailable, still fails", () => {
+    const secrets = doctorRows(
+      dist("environments: [local]\nsecrets:\n  provider: doppler\n"),
+    ).find((r) => r.kind === "secrets")!;
+    expect(secrets.idle).toBeUndefined();
+    expect(strategyCheck(secrets).status).toBe("fail");
+  });
+
+  it("issue 1334: a kind no config selects (usage) with no source found yet (no transcripts) is idle, not ⚠", () => {
+    registerStrategy({
+      id: "off-a",
+      kind: "off-kind",
+      detect: () => ({ available: false, reason: "no transcripts yet" }),
+      capabilities: {},
+    });
+    const row = doctorRows(dist("environments: [local]\n")).find(
+      (r) => r.kind === "off-kind",
+    )!;
+    expect(row).toMatchObject({ available: false, idle: true, problem: false });
+    expect(strategyCheck(row).status).toBe("ok");
+  });
+
+  it("issue 1334: a source whose detect throws is never idle: still ✗ unavailable and warn", () => {
+    registerStrategy({
+      id: "throw-a",
+      kind: "throw-kind",
+      detect: () => {
+        throw new Error("probe broke");
+      },
+      capabilities: {},
+    });
+    const row = doctorRows(dist("environments: [local]\n")).find(
+      (r) => r.kind === "throw-kind",
+    )!;
+    expect(row).toMatchObject({ available: false, reason: "probe broke" });
+    expect(row.idle).toBeUndefined();
+    expect(strategyCheck(row).status).toBe("warn");
+    expect(formatDoctor([row], "Den").join("\n")).toContain("✗ unavailable");
+  });
+
+  it("issue 1334: the agent runtime missing with no agents is idle; with an agent it still warns", () => {
+    const none = doctorRows(dist("environments: [local]\n"), {
+      agents: () => 0,
+    }).find((r) => r.kind === "runtime")!;
+    expect(none).toMatchObject({ available: false, idle: true });
+    expect(strategyCheck(none).status).toBe("ok");
+    const some = doctorRows(dist("environments: [local]\n"), {
+      agents: () => 1,
+    }).find((r) => r.kind === "runtime")!;
+    expect(some.idle).toBeUndefined();
+    expect(strategyCheck(some).status).toBe("warn");
+  });
+
   it("an invalid edge.tls is reported, not thrown", () => {
     const [, tls] = doctorRows(
       dist("edge:\n  org: acme\n  domain: acme.localhost\n  tls: acme\n"),
@@ -336,7 +406,7 @@ describe("doctor names a bad agents: or sessions: key and carries on", () => {
     const r = configLines("Acme");
     expect(r.problem).toBe(true);
     expect(r.lines.filter((l) => l.includes("✗"))).toEqual([
-      "  agents  ✗  config/den.yml: agents.helpers.collapse_done: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb)",
+      "  agents  ✗  config/den.yml: agents.helpers.collapse_done: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds, list_wait_seconds, reader_rest_ms)",
       "  sessions  ✗  config/den.yml: sessions.max_concurrent: must be a whole number of at least 1",
     ]);
     expect(r.lines.join("\n")).not.toContain("hunter2");
@@ -454,6 +524,72 @@ describe("hubProjectLines (H5)", () => {
     expect(r.lines[2]).toContain("`acme hub link --suggested`");
     expect(r.checks).toHaveLength(2);
   });
+
+  it("issue 1334: an empty unlinked project (the built-in default) is ✓ nothing to link, never ⚠ or a link command", () => {
+    const r = hubProjectLines(
+      true,
+      [{ ws: "default", link: null, empty: true }],
+      "acme",
+    );
+    expect(r.checks).toEqual([
+      {
+        id: "hub:project:default",
+        status: "ok",
+        detail: "default: empty, nothing to link",
+      },
+    ]);
+    expect(r.lines).toEqual([
+      "  hub project  ✓  default: empty, nothing to link",
+    ]);
+    expect(r.lines.join("\n")).not.toContain("hub link");
+  });
+
+  it("issue 1334: a project with a repo and no link still warns; empties don't count toward --suggested", () => {
+    const r = hubProjectLines(
+      true,
+      [
+        { ws: "default", link: null, empty: true },
+        { ws: "shop", link: null, empty: false },
+      ],
+      "acme",
+    );
+    expect(r.checks.map((c) => [c.id, c.status])).toEqual([
+      ["hub:project:default", "ok"],
+      ["hub:project:shop", "warn"],
+    ]);
+    // One unlinked that matters: no "in one go" line.
+    expect(r.lines).toHaveLength(2);
+    expect(r.lines[1]).toContain("`acme hub link -p shop`");
+  });
+
+  it("issue 1334: an empty project linked is still ✓ linked, and a lost link on one still warns", () => {
+    const r = hubProjectLines(
+      true,
+      [
+        {
+          ws: "default",
+          link: { slug: "home", name: "home" },
+          empty: true,
+        },
+      ],
+      "acme",
+    );
+    expect(r.checks[0]).toMatchObject({ status: "ok" });
+    expect(r.checks[0].detail).toContain("linked to Hub project home");
+    const lost = hubProjectLines(
+      true,
+      [
+        {
+          ws: "default",
+          link: null,
+          empty: true,
+          lost: { slug: "home", at: "2026-11-12T10:00:00.000Z" },
+        },
+      ],
+      "acme",
+    );
+    expect(lost.checks[0]).toMatchObject({ status: "warn" });
+  });
 });
 
 describe("hubGithubLines (H5)", () => {
@@ -487,6 +623,55 @@ describe("hubGithubLines (H5)", () => {
       "gamma-co: Den Hub can read 1 of 4 repos. Change repos: https://github.com/organizations/gamma-co/settings/installations/9",
     );
     expect(r.checks.map((c) => c.status)).toEqual(["ok", "warn", "warn"]);
+  });
+
+  it("issue 526: an org Hub couldn't check says so, with no link, even when one is sent", () => {
+    const r = hubGithubLines({
+      orgs: [
+        {
+          org: "initech",
+          access: "error",
+          covered: 0,
+          total: 5,
+          error: "GitHub answered 503",
+          installUrl: "https://github.com/apps/den-hub/installations/new",
+          manageUrl:
+            "https://github.com/organizations/initech/settings/installations/9",
+        },
+        { org: "umbrella", access: "error", covered: 0, total: 1 },
+      ],
+    });
+    expect(r.lines[0]).toMatch(
+      /⚠ {2}Den Hub couldn't check initech on GitHub: GitHub answered 503\. Try again later\.$/,
+    );
+    expect(r.lines[1]).toMatch(
+      /⚠ {2}Den Hub couldn't check umbrella on GitHub\. Try again later\.$/,
+    );
+    expect(r.lines.join("\n")).not.toMatch(/https?:|Give Den Hub access/);
+    expect(r.checks[0]).toEqual({
+      id: "hub:github:initech",
+      status: "warn",
+      detail:
+        "Den Hub couldn't check initech on GitHub: GitHub answered 503. Try again later.",
+    });
+  });
+
+  it("issue 526: none with only a manage link offers Change repos", () => {
+    const r = hubGithubLines({
+      orgs: [
+        {
+          org: "globex",
+          access: "none",
+          covered: 0,
+          total: 2,
+          manageUrl:
+            "https://github.com/organizations/Globex/settings/installations/7",
+        },
+      ],
+    });
+    expect(r.lines[0]).toContain(
+      "globex: Den Hub can read no repos (no access). Change repos: https://github.com/organizations/Globex/settings/installations/7",
+    );
   });
 
   it("Hub couldn't answer: one warning in words", () => {

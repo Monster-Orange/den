@@ -24,14 +24,14 @@
  * - blog's `up` is a dev server that never exits (it serves blog's health
  *   port): after Start, "starting…" follows the health feed and Restart
  *   comes back; once it stops, the rail's ↗ greys out within a tick, as
- *   the panel says down, also with the top bar's View on another
- *   workspace;
+ *   the panel says down, also with the top bar's View on blog's own
+ *   project;
  * - Open in Graph, and a direct /graph#focus=<id>, focus the card, also
  *   with the View on one workspace (the Graph page's ?ws=);
- * - Open in Graph for a pin outside the View (View: north, blog in south)
- *   says "blog is in south, outside this View." with Show south, which
- *   switches the View and focuses the card; the View never switches by
- *   itself;
+ * - a pin outside the View (View: north, blog in south) is not in the rail
+ *   (issue 402), and /graph#focus=blog says "blog is in south, outside
+ *   this View." with Show south, which switches the View and focuses the
+ *   card; the View never switches by itself;
  * - blog's dev server listens 2 s after Start and answers a second late:
  *   the panel says starting… until up, never down, after Start and after
  *   Restart.
@@ -53,6 +53,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -67,7 +69,7 @@ const PTY = loadPty().available;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -75,9 +77,13 @@ beforeAll(async () => {
   stub = http.createServer((_q, r) => r.end("ok"));
   await new Promise<void>((r) => stub!.listen(0, "localhost", r));
   stubUrl = `http://localhost:${(stub.address() as AddressInfo).port}`;
+  // Issue 191: blog's port and its dev server are on 127.0.0.1, by
+  // number. A box run pins this process's localhost to 127.0.0.1, but the
+  // dev server is a child that isn't pinned: its listen on "localhost"
+  // took ::1 on macOS, and this file's fetch and /quit were refused.
   const closed = net.createServer();
-  await new Promise<void>((r) => closed.listen(0, "localhost", r));
-  deadUrl = `http://localhost:${(closed.address() as AddressInfo).port}`;
+  await new Promise<void>((r) => closed.listen(0, "127.0.0.1", r));
+  deadUrl = `http://127.0.0.1:${(closed.address() as AddressInfo).port}`;
   await new Promise<void>((r) => closed.close(() => r()));
   // blog's up: a dev server on blog's health port that never exits (GET
   // /quit stops it; it gives up by itself after 5 minutes). It listens 2 s
@@ -87,7 +93,7 @@ beforeAll(async () => {
   const port = new URL(deadUrl).port;
   const code =
     `const s=require("http").createServer((q,r)=>{if(q.url==="/quit"){r.end("ok");process.exit(0)}setTimeout(()=>r.end("ok"),1000)});` +
-    `setTimeout(()=>s.listen(${port},"localhost"),2000);setTimeout(()=>process.exit(0),300000)`;
+    `setTimeout(()=>s.listen(${port},"127.0.0.1"),2000);setTimeout(()=>process.exit(0),300000)`;
   devUp = `${JSON.stringify(process.execPath)} -e '${code}'`;
   s = await startAgentsPageServer({
     health: { notes: `${stubUrl}/health`, blog: `${deadUrl}/health` },
@@ -166,6 +172,7 @@ async function page(
     reducedMotion: "reduce",
     ...(touch ? { hasTouch: true, isMobile: true } : {}),
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -528,7 +535,8 @@ describe("the panel", () => {
     const [tab] = await Promise.all([
       p.context().waitForEvent("page"),
       p.click('.den-rail [data-pin="notes"]', {
-        modifiers: [process.platform === "darwin" ? "Meta" : "Control"],
+        // The browser's own OS picks it (a remote browser runs on another).
+        modifiers: ["ControlOrMeta"],
       }),
     ]);
     await tab.waitForURL(/\/services/);
@@ -811,11 +819,9 @@ describe("the panel", () => {
         () => document.activeElement?.closest(".den-rail") !== null,
       ),
     ).toBe(true);
-    await p.evaluate(() =>
-      (
-        window as unknown as { denShell: { pin(id: string): void } }
-      ).denShell.pin("notes"),
-    );
+    // Put the pins back as they were: notes pinned in north (issue 402:
+    // pinning again under All would make it a pin of no project).
+    expect(await s!.settings({ shell: { pins: ["notes", "blog"] } })).toBe(200);
     await p.context().close();
   }, 60_000);
 });
@@ -902,8 +908,9 @@ describe("a dev server whose up never exits (blog)", () => {
   it("once it stops, the rail's ↗ greys out within a tick of the panel saying down", async () => {
     if (skip()) return;
     const { p } = await page("/services");
-    // The View on north: blog (south) is out of view, still pinned.
-    await view(p, "north");
+    // The View on south, blog's own project: its pin shows under the
+    // filter (issue 402) and its ↗ follows the panel.
+    await view(p, "south");
     try {
       await p.reload();
       await p.waitForSelector(
@@ -998,15 +1005,17 @@ describe("Open in Graph for a pin outside the View", () => {
     await view(p, "north");
     try {
       await p.reload();
-      await p.waitForSelector('.den-rail [data-pin="blog"]', {
+      // Issue 402: filtered to north, the rail shows north's pins only;
+      // blog (south) stays pinned but is not drawn.
+      await p.waitForSelector('.den-rail [data-pin="notes"]', {
         timeout: 20_000,
       });
-      await p.click('.den-rail [data-pin="blog"]');
-      await p.waitForSelector(panel);
-      await Promise.all([
-        p.waitForURL(/\/graph/),
-        p.click(`${panel} [data-svx="graph"]`),
-      ]);
+      await p.waitForSelector('.den-rail [data-pin="blog"]', {
+        state: "detached",
+        timeout: 20_000,
+      });
+      // A link to blog's card (#focus=) still says where it is.
+      await p.goto(`${s!.base}/graph#focus=blog`);
       await p.waitForSelector(out, { timeout: 20_000 });
       expect((await p.textContent(`${out} span`))?.trim()).toBe(
         "blog is in south, outside this View.",

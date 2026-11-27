@@ -41,6 +41,8 @@ function io() {
       out: (s: string) => (o.out += s),
       err: (s: string) => (o.err += s),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
       // D80: the install's address the links are on.
       webUrl: () => ({ url: "https://den.acme.example.com", confirmed: true }),
     },
@@ -60,14 +62,14 @@ describe.each(AGENT_ENVS)("inside an agent's session (%s set)", (k, v) => {
   const expectRefused = (code: number, o: { out: string; err: string }) => {
     expect(code).toBe(1);
     expect(o.out).toBe("");
-    expect(o.err).toMatch(/An agent can't do this/);
+    expect(o.err).toMatch(/can't let a browser in from here/);
     // Nothing touched web.secret: no file was made.
     expect(fs.existsSync(path.join(tmp, "web.secret"))).toBe(false);
   };
 
-  it("web login --no-wait refuses", () => {
+  it("web login --no-wait refuses", async () => {
     const { o, io: i } = io();
-    expectRefused(cmdWebLogin(["--no-wait"], i), o);
+    expectRefused(await cmdWebLogin(["--no-wait"], i), o);
   });
 
   it("web login (waits) refuses", async () => {
@@ -75,9 +77,14 @@ describe.each(AGENT_ENVS)("inside an agent's session (%s set)", (k, v) => {
     expectRefused(await cmdWebLoginWait([], i), o);
   });
 
-  it("web approve <code> refuses (pairing lets a browser in)", async () => {
+  // Issue 819: a code is approved only from a signed-in browser, never
+  // from the CLI, so `web approve <code>` refuses everywhere.
+  it("web approve <code> refuses (only a signed-in browser approves)", async () => {
     const { o, io: i } = io();
-    expectRefused(await cmdWebApprove(["K7Q-42M"], i), o);
+    const code = await cmdWebApprove(["K7Q-42M"], i);
+    expect([code, o.out]).toEqual([1, ""]);
+    expect(o.err).toMatch(/approved only from a browser that is signed in/);
+    expect(fs.existsSync(path.join(tmp, "web.secret"))).toBe(false);
   });
 
   it.each([["link"], ["unlink"]])("web owner %s refuses", async (sub) => {
@@ -92,7 +99,7 @@ describe.each(AGENT_ENVS)("inside an agent's session (%s set)", (k, v) => {
 
   it("freshLoginLink (what `web open` hands the browser) throws", () => {
     expect(() => freshLoginLink(4100, "/", undefined, tmp)).toThrow(
-      /An agent can't do this/,
+      /can't let a browser in from here/,
     );
   });
 });
@@ -102,9 +109,9 @@ describe("in the person's own terminal", () => {
     delete process.env.DEN_AGENT;
     delete process.env.DEN_ACTOR_TOKEN;
   });
-  it("web login --no-wait prints a link", () => {
+  it("web login --no-wait prints a link", async () => {
     const { o, io: i } = io();
-    expect(cmdWebLogin(["--no-wait"], i)).toBe(0);
+    expect(await cmdWebLogin(["--no-wait"], i)).toBe(0);
     expect(o.out).toMatch(/^https:\/\/den\.acme\.example\.com\/auth\?c=/);
   });
   it("web claim-link prints one link to the page with ?claim=", () => {

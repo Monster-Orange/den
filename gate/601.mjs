@@ -1,0 +1,247 @@
+// Live check for issue 601: once Den's own https address is proven, the
+// sign-in session lives only there, as a host-only Secure cookie, and a
+// loopback name gets none (its sign-in page sends the browser to the
+// address). With no working https address, sign-in where the browser is
+// still works: no lockout, proven by a whole sign-in (a fresh link from
+// `web login --no-wait`, opened with no cookie, its session cookie, then a
+// signed-in request). After the address stops answering, the same whole
+// sign-in works again once web.address_unknown_keep_seconds passes. Its
+// first four clauses only read; the last runs after them, through the
+// harness's ctx.addressDead (the address down, the window set short).
+import { doctorChecks } from "./lib/read-json.mjs";
+export const issue = 601;
+export const clauses = [
+  "a real browser signed in through the address holds a host-only Secure __Host- session cookie, and the session answers signed in",
+  "once the address is proven, a loopback sign-in page sends the browser to the address (303) and sets no cookie",
+  "with no working https address, a person signs in on loopback from start to finish (link, session cookie, a signed-in request): no lockout",
+  "doctor's Sign-in row says where the sign-in lives",
+  "after the address stops answering and the window passes, a person signs in on loopback from start to finish",
+];
+export const matrix = { browsers: ["chromium"], widths: [1280] };
+export const timeoutMs = 300000;
+
+/** A loopback GET with nothing: its status, Location, whether it set a
+ * cookie, and whether it answered with a page. */
+async function loopback(port, path) {
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}${path}`, {
+      redirect: "manual",
+    });
+    const body = await r.text().catch(() => "");
+    return {
+      status: r.status,
+      location: r.headers.get("location") ?? "",
+      cookie: /den_session/i.test(r.headers.get("set-cookie") ?? ""),
+      page: /<html/i.test(body),
+    };
+  } catch (e) {
+    return {
+      status: 0,
+      location: "",
+      cookie: false,
+      error: String(e?.message ?? e).slice(0, 80),
+    };
+  }
+}
+
+/**
+ * Den's loopback port: from the bed's host address first (no signed-in
+ * call: once the address is proven, a loopback sign-in is sent to the
+ * address, so the bed's signed calls on loopback can't sign in), else
+ * from /api/server-info; 0 when neither answers (the loopback clauses are
+ * then not run).
+ */
+export async function loopbackPort(ctx) {
+  try {
+    const p = Number(new URL(ctx.hostUrl).port);
+    if (p > 0) return p;
+  } catch {
+    /* no host address */
+  }
+  try {
+    return Number((await ctx.api("/api/server-info"))?.port) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function setup() {
+  return {};
+}
+
+export async function run(ctx) {
+  const doc = await ctx.cli(["doctor", "--json"]);
+  const row = doctorChecks(doc).find((c) => c?.id === "signin_host") ?? null;
+  const proven = row?.status === "ok";
+
+  await ctx.goto(ctx.page, "/");
+  const origin = new URL(ctx.page.url()).origin;
+  const cookies = await ctx.page.context().cookies(origin);
+  const c = cookies.find(
+    (k) => k.name.startsWith("__Host-") && /session/.test(k.name),
+  );
+  const me = await ctx.page.evaluate(async () => {
+    const r = await fetch("/api/session", { credentials: "same-origin" });
+    const b = await r.json().catch(() => ({}));
+    return { status: r.status, signedIn: !!b.signedIn };
+  });
+  await ctx.shot("601-signed-in");
+
+  const port = await loopbackPort(ctx);
+  const signin = port ? await loopback(port, "/signin") : null;
+  // No https address: a whole sign-in where the browser is (clause 3).
+  const whole = port && !proven ? await signInOnLoopback(ctx, port) : null;
+
+  // Last: the address is down after this.
+  let afterDead;
+  if (
+    proven &&
+    origin.startsWith("https:") &&
+    typeof ctx.addressDead === "function"
+  ) {
+    try {
+      afterDead = await ctx.addressDead({ keepSeconds: 30, maxMs: 180000 });
+      if (port && !afterDead.timedOut && !afterDead.windowTimedOut)
+        afterDead.whole = await signInOnLoopback(ctx, port);
+    } catch (e) {
+      afterDead = { error: String(e?.message ?? e).slice(0, 80) };
+    }
+  }
+
+  const seen = {
+    origin,
+    https: origin.startsWith("https:"),
+    cookie: c
+      ? {
+          name: c.name.replace(/[^_-]+$/, "…"),
+          secure: c.secure,
+          hostOnly: !c.domain.startsWith("."),
+          path: c.path,
+        }
+      : null,
+    me,
+    proven,
+    row: row ? { status: row.status, detail: row.detail } : null,
+    port,
+    signin,
+    ...(whole ? { whole } : {}),
+    ...(afterDead ? { afterDead } : {}),
+  };
+  ctx.log?.(`601: ${JSON.stringify(seen)}`);
+  return seen;
+}
+
+/** A whole loopback sign-in, as a person does it with no https address: a
+ * fresh one-time link (ctx.loginLink, never logged), opened with no cookie (it answers 303
+ * with the session cookie), then /api/session with that cookie only. */
+async function signInOnLoopback(ctx, port) {
+  const base = `http://127.0.0.1:${port}`;
+  const out = { step: "link", ok: false };
+  try {
+    // The harness's raw link, in memory only: never in a result, note or log.
+    const link = await ctx.loginLink({ origin: base });
+    out.step = "auth";
+    const a = await fetch(link, { redirect: "manual" });
+    out.authStatus = a.status;
+    const to = a.headers.get("location");
+    out.authTo = !to
+      ? ""
+      : new URL(to, base).origin === base
+        ? "loopback"
+        : "elsewhere";
+    const jar = /(den_session[^=;]*)=([^;]+)/i.exec(
+      a.headers.get("set-cookie") ?? "",
+    );
+    if (!jar) return out;
+    out.cookie = jar[1].replace(/\d+$/, "…");
+    out.step = "session";
+    const s = await fetch(`${base}/api/session`, {
+      headers: { cookie: `${jar[1]}=${jar[2]}` },
+    });
+    const b = await s.json().catch(() => ({}));
+    out.status = s.status;
+    out.signedIn = !!b.signedIn;
+    out.ok = s.status === 200 && out.signedIn;
+    return out;
+  } catch (e) {
+    return { ...out, error: String(e?.message ?? e).slice(0, 80) };
+  }
+}
+
+const said = (x) =>
+  x
+    ? `stopped at ${x.step}${x.authStatus ? `; /auth → ${x.authStatus}${x.authTo ? " to " + x.authTo : ""}` : ""}${x.cookie ? `; cookie ${x.cookie}` : ""}${x.status ? `; /api/session → ${x.status} signedIn ${x.signedIn}` : ""}${x.error ? `; ${x.error}` : ""}${x.note ? `; ${x.note}` : ""}`
+    : "not run";
+
+export function expect(cells) {
+  const r = (Array.isArray(cells) ? cells[0]?.result : cells) ?? {};
+  const toAddress =
+    r.signin?.status === 303 &&
+    r.origin &&
+    r.signin.location.startsWith(r.origin) &&
+    !r.signin.cookie;
+  return [
+    !r.https
+      ? { clause: clauses[0], ok: null, skip: "needs-https-address" }
+      : {
+          clause: clauses[0],
+          ok: !!(
+            r.cookie?.secure &&
+            r.cookie.hostOnly &&
+            r.cookie.path === "/" &&
+            r.me?.signedIn
+          ),
+          note: `cookie ${JSON.stringify(r.cookie)}; /api/session ${r.me?.status} signedIn ${r.me?.signedIn}`,
+          evidence: ["601-signed-in"],
+        },
+    !r.proven || !r.port
+      ? {
+          clause: clauses[1],
+          ok: null,
+          skip: r.port ? "needs-proven-address" : "needs-loopback-port",
+        }
+      : {
+          clause: clauses[1],
+          ok: !!toAddress,
+          note: `loopback /signin → ${r.signin?.status} ${r.signin?.location ? "to the address" : "no Location"}${r.signin?.cookie ? ", set a cookie" : ""}`,
+        },
+    r.proven || !r.port
+      ? {
+          clause: clauses[2],
+          ok: null,
+          skip: r.port ? "needs-no-https-address" : "needs-loopback-port",
+        }
+      : {
+          clause: clauses[2],
+          ok: !!r.whole?.ok,
+          note: `${r.whole?.ok ? "signed in" : "not signed in"}: ${said(r.whole)} (loopback /signin → ${r.signin?.status})`,
+        },
+    {
+      clause: clauses[3],
+      ok:
+        !!r.row && (r.proven ? r.row.status === "ok" : r.row.status === "warn"),
+      note: r.row
+        ? `${r.row.status}: ${String(r.row.detail).slice(0, 120)}`
+        : "no signin_host row",
+    },
+    !r.afterDead
+      ? { clause: clauses[4], ok: null, skip: "needs-dead-address" }
+      : !r.port && !r.afterDead.error
+        ? { clause: clauses[4], ok: null, skip: "needs-loopback-port" }
+        : r.afterDead.timedOut || r.afterDead.windowTimedOut
+          ? {
+              clause: clauses[4],
+              ok: false,
+              note: r.afterDead.timedOut
+                ? `the address never stopped counting (waited ${r.afterDead.waitedMs} ms)`
+                : `loopback still sent to the address after ${r.afterDead.windowMs} ms`,
+            }
+          : {
+              clause: clauses[4],
+              ok: !!r.afterDead.whole?.ok,
+              note: r.afterDead.error
+                ? `addressDead failed: ${r.afterDead.error}`
+                : `${r.afterDead.whole?.ok ? "signed in" : "not signed in"} ${r.afterDead.windowMs ?? "?"} ms after the address left: ${said(r.afterDead.whole)}`,
+            },
+  ];
+}

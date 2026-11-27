@@ -1,5 +1,9 @@
 /** Shared by the edge tests that run a real Traefik in a throwaway container. */
 import { execFileSync } from "child_process";
+import * as os from "os";
+import * as path from "path";
+import { allowWrites } from "../../../write-guard.js";
+import { SHARE, shareTmp } from "../../../home-strays.cjs";
 import * as net from "net";
 import type { AddressInfo } from "net";
 
@@ -21,4 +25,17 @@ export async function freePort(): Promise<number> {
   const p = (s.address() as AddressInfo).port;
   await new Promise<void>((r) => s.close(() => r()));
   return p;
+}
+
+/**
+ * A temp folder Docker's VM can see: under ~/.den-test-docker, since
+ * Docker Desktop and OrbStack share only the home folder with it. Named
+ * to the write guard for this test file only, and named for this jest run; the suite removes it in its afterAll, and
+ * global teardown fails the run if it's still there.
+ */
+export function dockerShareTmp(prefix: string): string {
+  const home = os.homedir();
+  allowWrites(path.join(home, SHARE));
+  const run = process.env.DEN_TEST_RUN ?? String(process.pid);
+  return shareTmp({ home, prefix, run });
 }

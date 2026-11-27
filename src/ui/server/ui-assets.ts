@@ -33,9 +33,13 @@ export const UI_MODULES: readonly string[] = [
   "/bell.js",
   // Issue 172: alerts outside the bell (desktop notifications).
   "/alerts.js",
+  "/alert-sounds.js",
+  "/tab-count.js",
   // Issue 172 S2: the service worker that shows push alerts.
   "/den-sw.js",
   "/edge-page.js",
+  // Issue 455: Edge's card when another server holds the port.
+  "/address-card.js",
   // Issue 171: values the server sends, in the page's language.
   "/value-words.js",
   // Issue 209: the Verify page.
@@ -43,10 +47,17 @@ export const UI_MODULES: readonly string[] = [
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
+  "/agents-core.js",
+  "/agents-url.js",
   // D32: an agent's helpers, and the shared read-only transcript view.
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
   "/agent-order.js",
+  "/agent-bands.js",
+  // Issue 750: the agents page's By group view.
+  "/agent-groups.js",
+  // Issue 1407: one agent's answer to a restart for its tools.
+  "/restart-result.js",
   "/transcript-view.js",
   // The Start agent form's choices, shared by both (AG-10.0).
   "/agent-start.js",
@@ -70,6 +81,8 @@ export const UI_MODULES: readonly string[] = [
   "/view-scope.js",
   // ON-6: the server agent's page.
   "/server-agent-page.js",
+  // Issue 52: the Coach tab on the server agent's page.
+  "/coach-tab.js",
   // 0.4.18: the service panel (rail pins, Graph ⋯, Services names).
   "/svc-panel.js",
   // D30: the shared searchable picker (Settings › Agents › Rotation).
@@ -83,6 +96,14 @@ export const UI_MODULES: readonly string[] = [
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
+  "/peek.js",
+  "/peek.css",
+  // Issue 448: which shell the rail's Terminal opens.
+  "/shell-pick.js",
+  // Issue 482: the Terminals list's rules.
+  "/terminals-list.js",
+  // Issue 503: the words for a terminal that got no PTY.
+  "/pty-refusal.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
   // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).
@@ -98,6 +119,8 @@ export const UI_MODULES: readonly string[] = [
   // FB (den#81): the Report button in every pop-up's footer.
   "/report-inject.js",
   "/ws-delete-agents.js",
+  // Issue 806: Projects' Add Service, on the kit's dialog.
+  "/add-service.js",
 ];
 
 /** URL path → file inside node_modules. */
@@ -143,6 +166,8 @@ export const KIT_FILES: readonly string[] = [
   "fonts.css",
   "tokens.css",
   "base.css",
+  // Issue 788: the sketch theme (greys, dashed edges, outline buttons).
+  "themes/sketch.css",
   "busy.js",
   "busy-words.js",
   // den-ui 0.6.1: the working pop-up's look, linked (no injected <style>).
@@ -150,8 +175,40 @@ export const KIT_FILES: readonly string[] = [
   "dialog.js",
   // den-ui 0.6.2: the dialogs' look, linked (no injected <style>).
   "dialog.css",
+  // The save-state line for autosaving editors, and its look.
+  "savestate.js",
+  "savestate.css",
+  // Issues 548, 549, 551: the panel fold toggle and its edge strip, and the
+  // switch, with their looks.
+  "panel-fold.js",
+  "panel-fold.css",
+  // A non-modal popover anchored to what opened it, and its look.
+  "popover.js",
+  "popover.css",
+  "switch.js",
+  "switch.css",
+  // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.
+  "filter-bar.js",
+  "filter-bar.css",
+  "bulk-bar.js",
+  "bulk-bar.css",
+  // den-ui: the general button (issue 556; Den's own .den-btn moved into
+  // the kit) and the settings on/off row (issue 554).
+  "button.js",
+  "button.css",
+  "setting-row.js",
+  "setting-row.css",
+  "setting-field.js",
+  "setting-field.css",
+  // Issue 750: the group header (the agents page's By group view).
+  "group-header.js",
+  "group-header.css",
   // issue 206: date-times in the person's own zone.
   "time.js",
+  "attention.js",
+  // Issue 789: a preview in a sandboxed frame, and the script inside it.
+  "preview.js",
+  "preview-frame.js",
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",
@@ -179,6 +236,8 @@ export const KIT_FILES: readonly string[] = [
   // den-ui 0.7.0: the default theme's mark, for a host's brand
   // (markHtml({ src: "/kit/marks/den.svg", label })).
   "marks/den.svg",
+  // Issue 644: the same mark drawn for 16-18px (the kit's 18px brand).
+  "marks/den-16.svg",
 ];
 
 /** The kit's file for a /kit/ path, or null. */
@@ -242,6 +301,8 @@ const KIT_SHELL_NAMES = [
   "bellCount",
   "accountHtml",
   "accountMenuHtml",
+  // Issue 656: a name that is just the login is no name.
+  "sameAsLogin",
   "menuHasFilter",
   "menuFilterParts",
   "settingsHtml",
@@ -328,6 +389,9 @@ export function kitShellScript(
 
 /** The kit's stylesheets every page with the shell links, in this order. */
 export const KIT_PAGE_CSS: readonly string[] = [
+  // den-ui: the general button, .den-btn (issue 556). First, where Den's own
+  // rules for it came from (the frame's sheet, after the page's own).
+  "/kit/button.css",
   "/kit/shell.css",
   "/kit/whatsnew.css",
   "/kit/report.css",
@@ -336,6 +400,8 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/busy.css",
   // den-ui 0.6.2: the ask-and-tell dialogs' look, likewise.
   "/kit/dialog.css",
+  // Issue 750: the group header's look (the agents page's By group view).
+  "/kit/group-header.css",
 ];
 
 /**
@@ -358,14 +424,26 @@ export function kitPage(html: string): string {
     );
 }
 
+export function uiModuleFile(
+  pathname: string,
+  publicDir: string,
+): string | null {
+  if (pathname === "/health-rollup.js")
+    return path.join(publicDir, "../../../shared/health/rollup-rule.js");
+  return UI_MODULES.includes(pathname)
+    ? path.join(publicDir, pathname.slice(1))
+    : null;
+}
+
 /** Serves a UI module or vendored asset; false when `pathname` is neither. */
 export function serveUiAsset(
   res: http.ServerResponse,
   pathname: string,
   publicDir: string,
 ): boolean {
-  if (UI_MODULES.includes(pathname)) {
-    serveFile(res, path.join(publicDir, pathname.slice(1)));
+  const ui = uiModuleFile(pathname, publicDir);
+  if (ui) {
+    serveFile(res, ui);
     return true;
   }
   if (pathname === KIT_SHELL_SCRIPT) {
@@ -425,5 +503,109 @@ export function serveUiAsset(
     "Cache-Control": "public, max-age=86400",
   });
   res.end(fs.readFileSync(file));
+  return true;
+}
+
+// ── The kit's site files (issue 644) ─────────────────────────────────────────
+// One head snippet (packages/den-ui/src/site/head.html: the favicon, the
+// touch icon, the manifest, the theme colour) and the files it names, in
+// one kit folder, so every product on the kit emits the same tags. Each
+// file is served at the root (/favicon.ico, /site.webmanifest, …).
+
+/** The kit's site folder, in Den's own install. */
+export function kitSiteDir(engineRoot: string = getEngineRoot()): string {
+  return path.join(engineRoot, "packages", "den-ui", "src", "site");
+}
+
+/** The root paths the kit's site folder serves: every file but the snippet. */
+export const SITE_FILES: readonly string[] = [
+  "/favicon.ico",
+  "/favicon.svg",
+  "/apple-touch-icon.png",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/site.webmanifest",
+];
+
+let headSnippet: string | null = null;
+/** The kit's head snippet, read once. Empty when the kit lacks it. */
+export function kitHeadSnippet(): string {
+  if (headSnippet === null) {
+    try {
+      headSnippet = fs
+        .readFileSync(path.join(kitSiteDir(), "head.html"), "utf-8")
+        .trim();
+    } catch {
+      headSnippet = "";
+    }
+  }
+  return headSnippet;
+}
+
+/**
+ * A page with the kit's head snippet right after its <head> (once: a page
+ * that has it comes back unchanged). A page without a <head> is unchanged.
+ */
+export function sitePage(html: string): string {
+  const snip = kitHeadSnippet();
+  if (!snip || html.includes(snip)) return html;
+  const head = /<head(\s[^>]*)?>/i.exec(html);
+  if (!head) return html;
+  const at = head.index + head[0].length;
+  return html.slice(0, at) + snip + html.slice(at);
+}
+
+const SITE_TYPES: Record<string, string> = {
+  ".ico": "image/x-icon",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".webmanifest": "application/manifest+json",
+};
+
+/**
+ * Serves one of the kit's site files at its root path; false for any
+ * other path. The manifest is the kit's, with this product's name and
+ * where a phone's home screen opens (issue 172 S2: the agents).
+ */
+export function serveSiteFile(
+  res: http.ServerResponse,
+  pathname: string,
+  productTitle: string,
+): boolean {
+  if (!SITE_FILES.includes(pathname)) return false;
+  const file = path.join(kitSiteDir(), pathname.slice(1));
+  let bytes: Buffer;
+  try {
+    bytes = fs.readFileSync(file);
+  } catch {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not found");
+    return true;
+  }
+  if (pathname === "/site.webmanifest") {
+    const m = JSON.parse(bytes.toString("utf-8")) as Record<string, unknown>;
+    res.writeHead(200, {
+      "Content-Type": SITE_TYPES[".webmanifest"],
+      "Cache-Control": "no-store",
+    });
+    res.end(
+      JSON.stringify({
+        ...m,
+        name: productTitle,
+        short_name: productTitle,
+        start_url: "/agents",
+        scope: "/",
+      }),
+    );
+    return true;
+  }
+  res.writeHead(200, {
+    "Content-Type":
+      SITE_TYPES[path.extname(file)] ?? "application/octet-stream",
+    // The bytes change only with Den itself.
+    "Cache-Control": "public, max-age=86400",
+  });
+  res.end(bytes);
   return true;
 }

@@ -21,10 +21,11 @@ import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
 import * as path from "path";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+import { signedIn } from "./helpers/signed-in.js";
 /** The edge folder, with the invented proof in it (H1). */
 const edgeProofDir = (d: string) => (writeTestEdgeProof(d), d);
 
@@ -39,6 +40,7 @@ let port = 0;
 let server: ChildProcess;
 let serverLog: () => string = () => "";
 let gh: FakeGithub;
+let dockerAnswers = "";
 /** Every cookie and link this suite saw: none may reach the server's log. */
 const secrets: string[] = [];
 
@@ -114,6 +116,10 @@ const edge = (extra: Record<string, string> = {}) => ({
 const bearer = () => ({
   authorization: cliAuthHeaders(stateDir).Authorization ?? "",
 });
+/**
+ * A localhost page with no sign-in: Origin and what /api/session hands it
+ * (no CSRF token since 0.4.71).
+ */
 async function localCsrf(): Promise<Record<string, string>> {
   const s = json(
     await call("GET", "/api/session", { "sec-fetch-site": "same-origin" }),
@@ -123,6 +129,11 @@ async function localCsrf(): Promise<Record<string, string>> {
     "x-den-csrf": String(s.csrf),
     "sec-fetch-site": "same-origin",
   };
+}
+/** A signed-in localhost page: its cookie, Origin and its session's CSRF token. */
+async function localPage(): Promise<Record<string, string>> {
+  const s = await signedIn(stateDir, `http://localhost:${port}`);
+  return { ...s.headers, "sec-fetch-site": "same-origin" };
 }
 /** Poll `p` (the server's view of a flow) until it isn't pending. */
 async function settle(
@@ -154,12 +165,21 @@ beforeAll(async () => {
       "  org: acme",
       "  domain: acme.localhost",
       "  tls: none",
+      "  address_recheck_seconds: 1",
       "",
     ].join("\n"),
   );
   fs.writeFileSync(
     path.join(root, "config", "local", "user.yml"),
     "web:\n  github_client_id: Iv23liAcmeTest\n",
+  );
+  const bin = path.join(tmp, "bin");
+  dockerAnswers = path.join(tmp, "docker-answers");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(
+    path.join(bin, "docker"),
+    `#!/bin/sh\nwhile [ ! -e '${dockerAnswers}' ]; do sleep 0.1; done\necho "Error: No such object: $*" >&2\nexit 1\n`,
+    { mode: 0o755 },
   );
   const started = await startDenServer(
     TSX,
@@ -176,6 +196,7 @@ beforeAll(async () => {
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
         DEN_TEST_GITHUB_URL: gh.url,
+        PATH: `${path.join(tmp, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
       },
     },
     { timeoutMs: 40_000 },
@@ -189,6 +210,27 @@ afterAll(async () => {
   await stopServer(server);
   await gh.close();
   fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("the edge at this server's start (by design: fail closed)", () => {
+  const local = () =>
+    call("GET", "/api/settings", {
+      ...edge(),
+      "x-forwarded-for": "127.0.0.1",
+    });
+
+  it("nothing through the edge is believed until the start check answers; then this machine needs no sign-in", async () => {
+    expect((await local()).status).toBe(401);
+    fs.writeFileSync(dockerAnswers, "");
+    const until = Date.now() + 30_000;
+    let status = 0;
+    while (Date.now() < until) {
+      status = (await local()).status;
+      if (status === 200) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    expect(status).toBe(200);
+  }, 40_000);
 });
 
 describe("before an owner is linked", () => {
@@ -221,14 +263,21 @@ describe("before an owner is linked", () => {
     expect([r.status, json(r).code]).toEqual([401, "signin_required"]);
   });
 
-  it("0.4.12: on plain localhost an anonymous page (any agent's curl) can't link the owner", async () => {
+  it("0.4.12: on plain localhost an anonymous page (any agent's curl) can't link the owner: a write needs a sign-in on this machine too (0.4.71), and a signed-in page without its approval key can't either", async () => {
     const r = await call(
       "POST",
       "/api/web/owner/link",
       await localCsrf(),
       "{}",
     );
-    expect([r.status, json(r).code]).toEqual([403, "signin_to_approve"]);
+    expect([r.status, json(r).code]).toEqual([401, "signin_required"]);
+    const p = await call(
+      "POST",
+      "/api/web/owner/link",
+      await localPage(),
+      "{}",
+    );
+    expect([p.status, json(p).code]).toEqual([403, "signin_to_approve"]);
   });
 
   it("on localhost the person (the CLI's bearer) links the owner through the server's device flow; the token is dropped", async () => {
@@ -464,7 +513,8 @@ describe("Settings › Access", () => {
     const mine = json(await call("GET", "/api/web/sessions", edge({ cookie })))
       .sessions as { id: string; current?: boolean }[];
     const me = mine.find((s) => s.current)!;
-    const h = await localCsrf();
+    // A signed-in localhost page (a write needs a sign-in on this machine too, 0.4.71).
+    const h = await localPage();
     const r = await call(
       "POST",
       "/api/web/logout",
@@ -476,15 +526,24 @@ describe("Settings › Access", () => {
     expect([after.status, json(after).code]).toEqual([401, "signin_required"]);
   });
 
-  it("Pair a device: a one-time link for an edge hostname, which signs a browser in there once", async () => {
-    // 0.4.12: an anonymous localhost page can't make one; the person can.
+  it("Pair a device: a one-time link for an edge hostname, which opens the pairing screen there once (issue 819)", async () => {
+    // 0.4.12: an anonymous localhost page can't make one (a write needs a
+    // sign-in on this machine too, 0.4.71), nor a signed-in page without
+    // its approval key; the person can.
     const anon = await call(
       "POST",
       "/api/web/pair",
       await localCsrf(),
       JSON.stringify({ host: EDGE }),
     );
-    expect([anon.status, json(anon).code]).toEqual([403, "signin_to_approve"]);
+    expect([anon.status, json(anon).code]).toEqual([401, "signin_required"]);
+    const page = await call(
+      "POST",
+      "/api/web/pair",
+      await localPage(),
+      JSON.stringify({ host: EDGE }),
+    );
+    expect([page.status, json(page).code]).toEqual([403, "signin_to_approve"]);
     const h = bearer();
     expect(json(await call("GET", "/api/web/pair", h))).toEqual({
       hosts: [EDGE],
@@ -507,14 +566,24 @@ describe("Settings › Access", () => {
     secrets.push(url.href);
     expect([url.origin, url.pathname]).toEqual([`http://${EDGE}`, "/auth"]);
     const nav = { host: EDGE, "sec-fetch-site": "none", accept: "text/html" };
+    const count = async () =>
+      (
+        json(await call("GET", "/api/web/sessions", bearer())).sessions as
+          | unknown[]
+          | undefined
+      )?.length ?? 0;
+    const before = await count();
+    // Issue 819: the link alone signs nothing in: it opens the pairing
+    // screen, and a signed-in browser approves the device.
     const first = await call("GET", url.pathname + url.search, nav);
-    expect(first.status).toBe(303);
-    expect(cookieOf(first).length).toBeGreaterThan(0);
+    expect([first.status, cookieOf(first)]).toEqual([401, ""]);
+    expect(first.body).toMatch(
+      /"pair":\{"id":"[A-Za-z0-9_-]+","code":"[0-9A-Z]{3}-[0-9A-Z]{3}"/,
+    );
     const again = await call("GET", url.pathname + url.search, nav);
-    expect(again.status).toBe(401);
-    const list = json(await call("GET", "/api/web/sessions", bearer()))
-      .sessions as Record<string, unknown>[];
-    expect(list[0]).toMatchObject({ via: "link", host: EDGE });
+    expect([again.status, cookieOf(again)]).toEqual([401, ""]);
+    expect(again.body).not.toContain('"pair":');
+    expect(await count()).toBe(before);
   });
 
   it("unlinking the owner is shell-grade too; then Sign in with GitHub says to link one", async () => {

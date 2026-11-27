@@ -483,3 +483,130 @@ describe("AG-18: whether a turn is going (transcriptBusy)", () => {
     ).toBeNull();
   });
 });
+
+describe("issue 607: a turn cut by a terminal host restart", () => {
+  const w = "/w";
+  const at = (ms: number) => new Date(ms).toISOString();
+  /**
+   * As the reporter's transcript ended: an answer that called two tools,
+   * no result after them, then metadata-only records the resumed CLI wrote.
+   */
+  const cut = (lastAt: number) =>
+    line({
+      type: "user",
+      timestamp: at(lastAt - 5_000),
+      cwd: w,
+      message: { role: "user", content: "ship it" },
+    }) +
+    line({
+      type: "assistant",
+      timestamp: at(lastAt),
+      message: {
+        role: "assistant",
+        model: "m",
+        stop_reason: "tool_use",
+        content: [
+          { type: "tool_use", id: "t1", name: "Bash" },
+          { type: "tool_use", id: "t2", name: "Read" },
+        ],
+      },
+    }) +
+    Array.from({ length: 10 }, (_, i) =>
+      line(
+        i % 2
+          ? { type: "permission-mode", permissionMode: "default" }
+          : { type: "cost-state", n: i },
+      ),
+    ).join("");
+
+  it("its last turn record is older than the live session's start: idle", () => {
+    resetTurnCache();
+    const h = home();
+    const last = Date.now() - 10 * 60_000;
+    const file = transcript(h.env, h.work, "c607", cut(last));
+    // Busy with no session start to weigh it against, as before.
+    expect(transcriptBusy(file)).toBe(true);
+    expect(
+      transcriptBusy(file, Date.now(), undefined, undefined, last + 60_000),
+    ).toBe(false);
+    // den-claude passes the live session's start through.
+    expect(denClaude.turnBusy!("c607", h.env, { since: last + 60_000 })).toBe(
+      false,
+    );
+  });
+
+  it("a turn started in the current session still reads busy", () => {
+    resetTurnCache();
+    const h = home();
+    const last = Date.now() - 10 * 60_000;
+    const file = transcript(h.env, h.work, "c608", cut(last));
+    expect(
+      transcriptBusy(file, Date.now(), undefined, undefined, last - 60_000),
+    ).toBe(true);
+    expect(denClaude.turnBusy!("c608", h.env, { since: last - 60_000 })).toBe(
+      true,
+    );
+    // The kept verdict never carries one start's answer to another's.
+    expect(
+      transcriptBusy(file, Date.now(), undefined, undefined, last + 60_000),
+    ).toBe(false);
+    expect(
+      transcriptBusy(file, Date.now(), undefined, undefined, last - 60_000),
+    ).toBe(true);
+  });
+
+  it("a prompt from before the session with no answer yet: idle", () => {
+    resetTurnCache();
+    const h = home();
+    const last = Date.now() - 10 * 60_000;
+    const prompt = transcript(
+      h.env,
+      h.work,
+      "c609",
+      line({
+        type: "user",
+        timestamp: at(last),
+        cwd: w,
+        message: { role: "user", content: "and now?" },
+      }),
+    );
+    expect(transcriptBusy(prompt)).toBe(true);
+    expect(
+      transcriptBusy(prompt, Date.now(), undefined, undefined, last + 1),
+    ).toBe(false);
+  });
+
+  it("issue 1592: a rewrite in the same mtime tick is read again", () => {
+    resetTurnCache();
+    const h = home();
+    const since = Date.now() - 60_000;
+    // Written just now, cut before the session started: idle.
+    const file = transcript(h.env, h.work, "c611", cut(since - 30_000), 0);
+    const st = fs.statSync(file);
+    expect(transcriptBusy(file, Date.now(), undefined, undefined, since)).toBe(
+      false,
+    );
+    // The same tail written in the session, at the same size, in the same
+    // tick of a coarse file clock (Linux stamps mtimes by its timer tick).
+    fs.writeFileSync(file, cut(since + 30_000));
+    expect(fs.statSync(file).size).toBe(st.size);
+    fs.utimesSync(file, st.atime, st.mtime);
+    expect(transcriptBusy(file, Date.now(), undefined, undefined, since)).toBe(
+      true,
+    );
+  });
+
+  it("a turn record with no time reads as today", () => {
+    resetTurnCache();
+    const h = home();
+    const file = transcript(
+      h.env,
+      h.work,
+      "c610",
+      answer("m", "tool_use", ["Bash"]),
+    );
+    expect(
+      transcriptBusy(file, Date.now(), undefined, undefined, Date.now()),
+    ).toBe(true);
+  });
+});

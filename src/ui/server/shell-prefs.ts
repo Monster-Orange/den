@@ -7,17 +7,40 @@
  * The shell mirrors it to localStorage so the first paint does not wait on
  * the server.
  */
+import * as fs from "fs";
+import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../../shared/agent-actor.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
+import {
+  checkPins,
+  isObject,
+  MAX_PINS,
+  type Pin,
+  type PinProjects,
+} from "../../shared/shell-pins.js";
+
+// Pins are read by the server and by doctor (issue 1217): the code is in
+// src/shared/shell-pins.ts, exported here too for the server's callers.
+export {
+  MAX_PINS,
+  pinNotes,
+  pinnedItems,
+  pinProjectsOf,
+  type Pin,
+  type PinProjects,
+} from "../../shared/shell-pins.js";
 
 export interface ShellPrefs {
-  /** Pinned repos or services (`repo` or `repo/service`), in pin order. */
-  pins: string[];
+  /** Pinned repos or services, with the project each was pinned in, in pin order. */
+  pins: Pin[];
   /** The rail shows icons only. */
   collapsed: boolean;
   /** NAV page ids the rail leaves out (Settings is never one). */
   hidden: string[];
   /** NAV page ids in the engineer's order; pages not listed keep theirs. */
   order: string[];
+  /** Issue 1444: the rail sections (group ids) this person folded. */
+  folded: string[];
   /**
    * The runs dock is open (R16a, 0.3.0-dev.30, Ward QA 2026-11-05): it
    * starts collapsed to its bar; opening it is the engineer's choice and
@@ -31,16 +54,40 @@ export interface ShellPrefs {
    * is A to Z; a project not listed slots in A to Z. Never sent to Hub.
    */
   projectOrder: string[];
+  /**
+   * Issue 168: the colour this person chose for a project (slug to colour);
+   * a project not listed is Automatic. Yours only, never sent to Hub.
+   */
+  projectColours: Record<string, ProjectColour>;
 }
+
+/**
+ * Issue 168: the eight project colours (workspace-picker.js lists the
+ * same). No orange and no red: orange is the brand and the selection, red
+ * means a problem.
+ */
+export const PROJECT_COLOURS = [
+  "blue",
+  "teal",
+  "green",
+  "purple",
+  "pink",
+  "gold",
+  "brown",
+  "slate",
+] as const;
+export type ProjectColour = (typeof PROJECT_COLOURS)[number];
 
 export const SHELL_DEFAULTS: ShellPrefs = {
   pins: [],
   collapsed: false,
   hidden: [],
   order: [],
+  folded: [],
   dock: false,
   dockHeight: 0,
   projectOrder: [],
+  projectColours: {},
 };
 
 /** The dock height's bounds (the page also caps it at half the window). */
@@ -91,35 +138,45 @@ function checkProjectOrder(
   return { ok: true, value: out };
 }
 
-/** How many pins the rail keeps. */
-export const MAX_PINS = 24;
-const PIN =
-  /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}(\/[A-Za-z0-9][A-Za-z0-9._-]{0,99})?$/;
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
-
-function checkPins(
+function checkProjectColours(
   v: unknown,
-): { ok: true; value: string[] } | { ok: false; error: string } {
-  if (!Array.isArray(v))
-    return { ok: false, error: "shell.pins must be a list" };
-  const out: string[] = [];
-  for (const p of v) {
-    if (typeof p !== "string" || !PIN.test(p))
+  current: Record<string, ProjectColour> = {},
+):
+  | { ok: true; value: Record<string, ProjectColour> }
+  | { ok: false; error: string } {
+  if (!isObject(v))
+    return {
+      ok: false,
+      error: "shell.projectColours must be an object of project to colour",
+    };
+  const out: Record<string, ProjectColour> = { ...current };
+  for (const [slug, c] of Object.entries(v)) {
+    if (!WORKSPACE_NAME_RE.test(slug))
       return {
         ok: false,
-        error: `shell.pins: "${String(p)}" is not a repo or repo/service name`,
+        error: `shell.projectColours: "${slug}" is not a project`,
       };
-    if (!out.includes(p)) out.push(p);
+    if (c === null) {
+      delete out[slug];
+      continue;
+    }
+    if (!(PROJECT_COLOURS as readonly unknown[]).includes(c))
+      return {
+        ok: false,
+        error: `shell.projectColours: "${String(c)}" is not one of ${PROJECT_COLOURS.join(", ")}`,
+      };
+    out[slug] = c as ProjectColour;
   }
-  if (out.length > MAX_PINS)
-    return { ok: false, error: `shell.pins: at most ${MAX_PINS}` };
+  if (Object.keys(out).length > MAX_PROJECT_IDS)
+    return {
+      ok: false,
+      error: `shell.projectColours: at most ${MAX_PROJECT_IDS}`,
+    };
   return { ok: true, value: out };
 }
 
 function checkNavIds(
-  key: "hidden" | "order",
+  key: "hidden" | "order" | "folded",
   v: unknown,
 ): { ok: true; value: string[] } | { ok: false; error: string } {
   if (!Array.isArray(v))
@@ -129,7 +186,7 @@ function checkNavIds(
     if (typeof id !== "string" || !NAV_ID.test(id))
       return {
         ok: false,
-        error: `shell.${key}: "${String(id)}" is not a page id`,
+        error: `shell.${key}: "${String(id)}" is not a ${key === "folded" ? "rail section" : "page"} id`,
       };
     if (!out.includes(id)) out.push(id);
   }
@@ -138,18 +195,32 @@ function checkNavIds(
   return { ok: true, value: out };
 }
 
-/** The stored block, normalised: a missing or hand-broken field is its default. */
-export function shellPrefs(stored: unknown): ShellPrefs {
+/**
+ * The stored block, normalised: a missing or hand-broken field is its
+ * default. Old id-only pins migrate (issue 402, clause 6) by `projectsOf`.
+ */
+export function shellPrefs(
+  stored: unknown,
+  projectsOf?: PinProjects,
+): ShellPrefs {
   const out: ShellPrefs = {
     pins: [],
     collapsed: false,
     hidden: [],
     order: [],
+    folded: [],
     dock: false,
     dockHeight: 0,
     projectOrder: [],
+    projectColours: {},
   };
   if (!isObject(stored)) return out;
+  // Issue 168: a hand-broken entry is Automatic; the others stay.
+  if (isObject(stored.projectColours))
+    for (const [slug, c] of Object.entries(stored.projectColours)) {
+      const one = checkProjectColours({ [slug]: c });
+      if (one.ok) Object.assign(out.projectColours, one.value);
+    }
   if (stored.projectOrder !== undefined) {
     const o = checkProjectOrder(stored.projectOrder);
     if (o.ok) out.projectOrder = o.value;
@@ -159,10 +230,10 @@ export function shellPrefs(stored: unknown): ShellPrefs {
     const h = checkDockHeight(stored.dockHeight);
     if (h.ok) out.dockHeight = h.value;
   }
-  const pins = checkPins(stored.pins);
+  const pins = checkPins(stored.pins, projectsOf, true);
   if (pins.ok) out.pins = pins.value;
   if (typeof stored.collapsed === "boolean") out.collapsed = stored.collapsed;
-  for (const key of ["hidden", "order"] as const) {
+  for (const key of ["hidden", "order", "folded"] as const) {
     const ids = checkNavIds(key, stored[key]);
     if (ids.ok) out[key] = ids.value;
   }
@@ -173,14 +244,17 @@ export function shellPrefs(stored: unknown): ShellPrefs {
 export function mergeShellPrefs(
   current: ShellPrefs,
   patch: unknown,
+  projectsOf?: PinProjects,
 ): { ok: true; value: ShellPrefs } | { ok: false; error: string } {
   if (!isObject(patch)) return { ok: false, error: "shell must be an object" };
   const out: ShellPrefs = {
     ...current,
-    pins: [...current.pins],
+    pins: current.pins.map((p) => ({ ...p })),
     hidden: [...current.hidden],
     order: [...current.order],
+    folded: [...(current.folded ?? [])],
     projectOrder: [...(current.projectOrder ?? [])],
+    projectColours: { ...(current.projectColours ?? {}) },
   };
   for (const key of Object.keys(patch)) {
     // null clears a pref back to its default (0.3.0-dev.32): the stored
@@ -189,11 +263,22 @@ export function mergeShellPrefs(
       const d = SHELL_DEFAULTS[key as keyof ShellPrefs];
       (out as unknown as Record<string, unknown>)[key] = Array.isArray(d)
         ? []
-        : d;
+        : isObject(d)
+          ? {}
+          : d;
       continue;
     }
     if (key === "pins") {
-      const p = checkPins(patch.pins);
+      // Issue 1217: old pins moved to each of their projects can load past
+      // MAX_PINS, and the page posts the whole list, so a save is held to
+      // the larger of the cap and what was stored: unpinning always saves,
+      // and no save grows a list past the cap.
+      const p = checkPins(
+        patch.pins,
+        projectsOf,
+        false,
+        Math.max(MAX_PINS, current.pins.length),
+      );
       if (!p.ok) return p;
       out.pins = p.value;
     } else if (key === "collapsed") {
@@ -212,7 +297,12 @@ export function mergeShellPrefs(
       const o = checkProjectOrder(patch.projectOrder);
       if (!o.ok) return o;
       out.projectOrder = o.value;
-    } else if (key === "hidden" || key === "order") {
+    } else if (key === "projectColours") {
+      // Issue 168: one project's colour at a time; null is Automatic.
+      const c = checkProjectColours(patch.projectColours, out.projectColours);
+      if (!c.ok) return c;
+      out.projectColours = c.value;
+    } else if (key === "hidden" || key === "order" || key === "folded") {
       const ids = checkNavIds(key, patch[key]);
       if (!ids.ok) return ids;
       out[key] = ids.value;
@@ -221,15 +311,124 @@ export function mergeShellPrefs(
   return { ok: true, value: out };
 }
 
+/** A pin as user.yml keeps it: no `project` for none. */
+export type StoredPin = { item: string; project?: string };
+/** The shell block as user.yml keeps it. */
+export type StoredShell = Omit<Partial<ShellPrefs>, "pins"> & {
+  pins?: StoredPin[];
+};
+
 /** The block to store: none for the defaults, so user.yml stays lean. */
-export function storedShell(p: ShellPrefs): Partial<ShellPrefs> | undefined {
-  const out: Partial<ShellPrefs> = {};
-  if (p.pins.length) out.pins = p.pins;
+export function storedShell(p: ShellPrefs): StoredShell | undefined {
+  const out: StoredShell = {};
+  if (p.pins.length)
+    out.pins = p.pins.map((x) =>
+      x.project === null
+        ? { item: x.item }
+        : { item: x.item, project: x.project },
+    );
   if (p.collapsed) out.collapsed = true;
   if (p.hidden.length) out.hidden = p.hidden;
+  if (p.folded?.length) out.folded = p.folded;
   if (p.order.length) out.order = p.order;
   if (p.dock) out.dock = true;
   if (p.dockHeight) out.dockHeight = p.dockHeight;
   if (p.projectOrder?.length) out.projectOrder = p.projectOrder;
+  if (p.projectColours && Object.keys(p.projectColours).length)
+    out.projectColours = p.projectColours;
   return Object.keys(out).length ? out : undefined;
+}
+
+/** Issue 946: one pin's key (item and project). */
+const pinKey = (p: Pin) => `${p.item}\u0000${p.project ?? ""}`;
+
+/**
+ * Issue 946: a pin is more than a view pref: a held write on a pinned item
+ * waits for an Allow (approval-policy.ts, favorited). So a save by the
+ * fixture person (a test install's live checks) adds pins and takes off
+ * only the ones it added (`added`, kept in the state dir, never user.yml).
+ * The person's own pins always stay, in place; the fixture's follow, in
+ * the order it asked. Returns the pins to store and what the fixture owns.
+ */
+export function fixtureSave(
+  before: readonly Pin[],
+  asked: readonly Pin[],
+  added: readonly Pin[],
+): { pins: Pin[]; added: Pin[] } {
+  const own = new Set(added.map(pinKey));
+  const persons = before.filter((p) => !own.has(pinKey(p)));
+  const theirs = new Set(persons.map(pinKey));
+  const seen = new Set<string>();
+  const mine: Pin[] = [];
+  for (const p of asked) {
+    const k = pinKey(p);
+    if (theirs.has(k) || seen.has(k)) continue;
+    seen.add(k);
+    mine.push({ item: p.item, project: p.project ?? null });
+  }
+  return { pins: [...persons, ...mine], added: mine };
+}
+
+/** Issue 946: where the fixture person's own pins are recorded. */
+export function fixturePinsFile(stateDir: string): string {
+  return path.join(stateDir, "fixture-pins.json");
+}
+
+/** Issue 946: the pins the fixture person added (none when unreadable). */
+export function readFixturePins(stateDir: string): Pin[] {
+  try {
+    const v: unknown = JSON.parse(
+      fs.readFileSync(fixturePinsFile(stateDir), "utf8"),
+    );
+    if (!Array.isArray(v)) return [];
+    return v.flatMap((x) =>
+      x && typeof x === "object" && typeof (x as Pin).item === "string"
+        ? [
+            {
+              item: (x as Pin).item,
+              project:
+                typeof (x as Pin).project === "string"
+                  ? (x as Pin).project
+                  : null,
+            },
+          ]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Issue 946: record the fixture person's own pins (only those still stored). */
+export function writeFixturePins(
+  stateDir: string,
+  added: readonly Pin[],
+  stored: readonly Pin[],
+): void {
+  const now = new Set(stored.map(pinKey));
+  const keep = added.filter((p) => now.has(pinKey(p)));
+  const file = fixturePinsFile(stateDir);
+  if (!keep.length) {
+    fs.rmSync(file, { force: true });
+    return;
+  }
+  fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  writeFileAtomic(file, JSON.stringify(keep), { mode: 0o600 });
+}
+
+/**
+ * Issue 957: the fixture person's own pins, kept only while they are still
+ * stored. A pin dropped from user.yml (by hand, or any other way) leaves
+ * the record at once, so the same pin made again later is the person's.
+ * Rewrites the record when it shrinks.
+ */
+export function prunedFixturePins(
+  stateDir: string,
+  stored: readonly Pin[],
+): Pin[] {
+  const had = readFixturePins(stateDir);
+  const now = new Set(stored.map(pinKey));
+  const keep = had.filter((p) => now.has(pinKey(p)));
+  if (keep.length !== had.length) writeFixturePins(stateDir, keep, stored);
+  return keep;
 }

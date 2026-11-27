@@ -11,6 +11,9 @@ export const clauses = [
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 90000;
 
+// Read only (issue 845): reads /api/settings and Settings' keep-running switch.
+export const readOnly = true;
+
 export async function setup(ctx) {
   const s = await ctx.api("/api/settings");
   return {

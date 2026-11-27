@@ -14,9 +14,8 @@
  *                   `*`). That origin is the host from then on: anything
  *                   from another is ignored;
  *   3. Den mints a short-lived key for the person (POST /api/embed/keys:
- *      on this computer at once; elsewhere the person signs in in a Den
- *      pop-up, which hands the key back with postMessage to Den's own
- *      origin). The key stays in this page's memory: never in a URL,
+ *      the frame has no session, so the person allows it in a Den pop-up,
+ *      which hands the key back with postMessage to Den's own origin). The key stays in this page's memory: never in a URL,
  *      never in storage, never sent to the host. The frame sends no
  *      cookie (credentials: "omit");
  *   4. Den → host   { type: "den:connected", agent: { id, project, name } }.
@@ -203,7 +202,8 @@ async function say(body) {
 }
 
 /** The composer's Send: once more with a new key if this one expired. */
-async function send(body) {
+// The composer hands its Send button too (issue 698); it stays here.
+async function send({ button, ...body }) {
   if (!key) await connect();
   if (!key) throw new Error(t("emb.signinWhy"));
   let r = await say(body);

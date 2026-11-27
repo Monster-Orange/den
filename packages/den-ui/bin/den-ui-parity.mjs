@@ -123,7 +123,9 @@ export const COMPONENTS = {
   },
   whatsnew: {
     label: "What's new (release notes pop-up)",
-    markup: [id("cl-overlay"), cls("cl-overlay"), cls("cl-box")],
+    // Issue 793: now the kit's dialog frame (.cl-dlg); the old overlay's
+    // names still count as a copy.
+    markup: [id("cl-overlay"), cls("cl-dlg"), cls("cl-overlay"), cls("cl-box")],
     css: [
       "cl-overlay",
       "cl-box",
@@ -131,6 +133,9 @@ export const COMPONENTS = {
       "cl-body",
       "cl-footer",
       "cl-got-it",
+      "cl-dlg",
+      "cl-ver",
+      "cl-items",
     ],
     code: ["changelogView", "whatsNewHtml"],
     files: ["whatsnew.js", "whatsnew.css", "changelog-view.js"],
@@ -157,6 +162,18 @@ export const COMPONENTS = {
     css: ["bz-dlg"],
     code: ["configureBusy", "registerActions"],
     files: ["busy.js", "busy-words.js", "busy.css"],
+  },
+  // Issue 673: the one button. A product's own `.btn` (its class drawn, or
+  // a rule for it) is a copy; the kit's `.den-btn`, and a host's layout of
+  // it (`.acts .den-btn { margin… }`), are not.
+  button: {
+    label: "button (.den-btn: secondary, primary, danger, sm)",
+    markup: [
+      /(class(Name)?\s*[=:]\s*\\?["'`]|classList\.add\(\s*["'])([^"'`]*\s)?btn(?![\w-])/,
+    ],
+    css: ["btn"],
+    code: [],
+    files: [],
   },
   // 0.7.0: pieces of the top bar and rail a product drew itself before.
   // Its words and values go in the kit's options; its own HTML in a crumb's

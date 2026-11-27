@@ -8,6 +8,7 @@
  * chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import * as path from "path";
 import type { Browser } from "playwright";
 import {
   removeFrameTmp,
@@ -15,6 +16,8 @@ import {
   type FrameServer,
 } from "./helpers/error-frame-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: FrameServer | null = null;
 let browser: Browser | null = null;
@@ -22,7 +25,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -41,7 +44,9 @@ afterAll(async () => {
 describe("the Release page with environments: [local] only", () => {
   it("never requests status for env=undefined, and gets no 400", async () => {
     if (!browser) return;
-    const page = await browser.newPage();
+    const context = await browser.newContext();
+    await signIn(context, path.join(s!.tmp, "den-home"), s!.base);
+    const page = await context.newPage();
     const asked: string[] = [];
     const bad: string[] = [];
     page.on("response", (r) => {
@@ -57,6 +62,6 @@ describe("the Release page with environments: [local] only", () => {
       [],
     );
     expect(bad).toEqual([]);
-    await page.close();
+    await context.close();
   }, 60_000);
 });

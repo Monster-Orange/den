@@ -19,10 +19,12 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { readWebOwner } from "../../../src/shared/web-owner.js";
+import { readWebOwner } from "../../../src/shared/web/web-owner.js";
 import { startDenServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const SHOTS = process.env.DEN_SEC2_SHOTS ?? "";
@@ -50,14 +52,12 @@ beforeAll(async () => {
     // run-server instead (the Linux image, when this shell can't start a
     // GUI app: `launchctl managername` isn't Aqua). Its localhost and
     // *.localhost are this machine's (exposeNetwork), as for a local one.
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[ENGINE_NAME].connect(ws, { exposeNetwork: "<loopback>" })
-      : ENGINE_NAME === "chromium"
-        ? await pw.chromium.launch({
-            args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`],
-          })
-        : await pw[ENGINE_NAME].launch();
+    browser = await launchBrowser(
+      pw[ENGINE_NAME],
+      ENGINE_NAME === "chromium"
+        ? { args: [`--host-resolver-rules=MAP ${EDGE} 127.0.0.1`] }
+        : undefined,
+    );
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -164,7 +164,7 @@ describe("Connect your GitHub account, from another machine (D29)", () => {
     });
     await p.goto(`http://${EDGE}:${port}/settings`);
     await p.waitForSelector("#den-claim-title");
-    const buttons = await p.$$eval("#den-gh .acts .btn", (bs) =>
+    const buttons = await p.$$eval("#den-gh .acts .den-btn", (bs) =>
       bs.map((b) => ({
         id: b.id,
         text: (b.textContent ?? "").trim(),
@@ -188,12 +188,39 @@ describe("Connect your GitHub account, from another machine (D29)", () => {
 });
 
 describe("Connect your GitHub account, on this computer", () => {
+  it("0.4.71: not signed in here, This is my computer's address is the sign-in page for this computer, never a button back to itself", async () => {
+    if (skip()) return;
+    const ctx = await browser!.newContext({
+      viewport: { width: 1280, height: 900 },
+    });
+    const p = await ctx.newPage();
+    const back = `http://${EDGE}:${port}/settings`;
+    const r = await p.goto(
+      `http://localhost:${port}/attest?return=${encodeURIComponent(back)}`,
+    );
+    expect(r?.status()).toBe(401);
+    await p.waitForSelector("#den-signin");
+    expect(await text(p, "#den-signin-where")).toContain(
+      "runs on this computer",
+    );
+    expect(await p.locator("#den-claim-here").count()).toBe(0);
+    expect(await p.locator("#den-claim-title").count()).toBe(0);
+    // The way in: `web up` (it opens this page signed in), folded below.
+    expect(await p.textContent("#den-signin")).toContain("web up");
+    await ctx.close();
+  }, 60_000);
+
   it("leads the signed-out page; This is my computer goes round and starts the sign-in; a member gets in", async () => {
     if (skip()) return;
     gh.orgs["acme-co"] = { [OWNER.login]: "private" };
     const ctx = await browser!.newContext({
       viewport: { width: 390, height: 900 },
     });
+    // The person's browser on this machine is signed in at localhost, as
+    // `web up` does (0.4.71): /attest hands its code only to a signed-in
+    // browser there. The cookie is localhost's alone, so the edge address
+    // below is still signed out.
+    await signIn(ctx, stateDir, `http://localhost:${port}`);
     const p = await ctx.newPage();
     const errors: string[] = [];
     p.on("pageerror", (e) => errors.push(e.message));

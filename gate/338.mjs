@@ -1,6 +1,7 @@
 // Live check for #338: a runtime with no sign-in data says so in doctor, plainly, and nothing is guessed.
 // The line shows only under the always-on service with an agent on such a runtime; otherwise not run.
 // Read only.
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 338;
 export const clauses = [
   "a runtime catalog entry can carry sign-in data, and Claude Code moves onto it with no change in behaviour",
@@ -9,19 +10,22 @@ export const clauses = [
 ];
 export const timeoutMs = 90000;
 
+// Read only (issue 845): reads doctor's sign-in line.
+export const readOnly = true;
+
 export async function setup() {
   return {};
 }
 
 export async function run(ctx) {
-  const d = ctx.cli(["doctor"]);
-  const text = String(d.out + d.err);
-  const line =
-    text.split("\n").find((l) => /cannot sign in after logout/.test(l)) ?? null;
+  const d = ctx.cli(["doctor", "--json"]);
+  const checks = doctorChecks(d);
+  const byId = (id) => checks.find((c) => c?.id === id) ?? null;
+  const signIn = byId("where:runtime-sign-in");
   return {
     code: d.code,
-    line: line?.trim() ?? null,
-    always: /keep running|always/i.test(text),
+    line: signIn ? String(signIn.detail ?? "") : null,
+    always: /^always\b/.test(String(byId("where:service")?.detail ?? "")),
   };
 }
 

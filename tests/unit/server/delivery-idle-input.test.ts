@@ -43,3 +43,40 @@ describe("which agents Den won't type into", () => {
     );
   });
 });
+
+/**
+ * Issue 701: an ask_human question held the person's own comments, which
+ * were its answer, for good. Delivery holds only on a dialog, a held Allow
+ * or a pause; a question isn't one (its answer is what's delivered).
+ */
+const deliveryHeld = (
+  why: Map<string, string>,
+  approvals: string[],
+  paused: string[] = [],
+): Set<string> | undefined =>
+  (
+    attention as {
+      deliveryHeld?: (
+        w: Map<string, string>,
+        a: Iterable<string>,
+        p: Iterable<string>,
+      ) => Set<string>;
+    }
+  ).deliveryHeld?.(why, approvals, paused);
+
+describe("issue 701: which agents Hub deliveries wait for", () => {
+  const why = new Map([
+    ["idle", "input"],
+    ["prompt", "permission"],
+    ["asking", "asked"],
+  ]);
+
+  it("an agent that asked its person a question takes deliveries", () => {
+    expect(deliveryHeld(why, [])?.has("asking")).toBe(false);
+  });
+
+  it("a permission prompt, a held Allow or a pause still holds them", () => {
+    const held = deliveryHeld(why, ["agent:allow"], ["paused"]);
+    expect([...(held ?? [])].sort()).toEqual(["allow", "paused", "prompt"]);
+  });
+});

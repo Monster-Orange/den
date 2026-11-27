@@ -45,6 +45,7 @@ import {
 import { DEN_PTY_ID } from "../../shared/sessions/den-pty.js";
 import { AGENT_ACTOR_ENV, buildSessionEnv } from "../../shared/sessions/env.js";
 import { runSessionHost } from "../../shared/sessions/host.js";
+import { stopHost } from "../../shared/sessions/host-refresh.js";
 import {
   inWorkspace,
   resolveSession,
@@ -70,7 +71,7 @@ export const SESSIONS_HELP = {
     "Terminals that keep running when the web server restarts, owned by a",
     "session host (one per distribution, started on demand).",
     "",
-    "{cli} sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>",
+    "{cli} sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] [--json] -- <argv…>",
     "    run argv in a PTY as <dist>-<ws>:<n> (cwd: here); capped by sessions.max_concurrent",
     "    env: PATH, HOME, USER, LOGNAME, SHELL, TERM, COLORTERM, LANG, LC_*, TZ,",
     "    TMPDIR only; --keep-env NAME (exact, repeatable; audited) adds one",
@@ -404,6 +405,7 @@ async function start(args: string[], d: Resolved): Promise<number> {
     "--name": true,
     "--cwd": true,
     "--keep-env": "repeat",
+    "--json": false,
   });
   if (p.positional.length)
     throw new UsageError(
@@ -518,6 +520,20 @@ async function start(args: string[], d: Resolved): Promise<number> {
             : {}),
         },
       );
+      if (p.flags["--json"]) {
+        d.out(
+          JSON.stringify(
+            { session: contractInfo(info), dropped: [...dropped] },
+            null,
+            2,
+          ),
+        );
+        for (const k of kept.filter((x) => x.credentialShaped))
+          d.err(
+            `  ⚠ --keep-env ${k.name}: credential-shaped; passed because you named it`,
+          );
+        return 0;
+      }
       d.out(`started ${info.name} (id ${info.ref.id}, pid ${info.pid})`);
       // With an allowlist nearly everything is left out: the first few
       // names, then a count, so the line stays readable.
@@ -752,31 +768,33 @@ async function host(args: string[], d: Resolved): Promise<number> {
   const where = "sessions host";
   const p = parseArgs(where, args, { "--stop": false, "--stand-by": false });
   noExtra(where, p);
-  if (!p.flags["--stop"])
+  if (!p.flags["--stop"]) {
+    // Issue 503: a config it can't read keeps the default (0 s): the host
+    // still starts, and the config's own error shows elsewhere.
+    let ptyCloseMs = 0;
+    try {
+      ptyCloseMs = readSessionsConfig().ptyCloseSeconds * 1000;
+    } catch {
+      /* the default */
+    }
     return runSessionHost({
       stateDir: d.stateDir(),
       pty: () => loadPty(),
+      ptyCloseMs,
       // D18: the launchd job's: wait out a host started before it.
       standBy: Boolean(p.flags["--stand-by"]),
     });
+  }
   const c = await d.connectExisting();
   if (!c) {
     d.out("no session host is running");
     return 0;
   }
-  const pid = c.hostPid;
-  const running = (await c.list().catch(() => [])).filter(
-    (s) => !s.exited,
-  ).length;
-  const closed = new Promise<void>((r) => c.once("close", () => r()));
-  await c.shutdown();
-  // The host drops every connection, then removes its socket.
-  const sock = sessionPaths(d.stateDir()).socket;
-  const deadline = Date.now() + 5000;
-  await Promise.race([closed, new Promise((r) => setTimeout(r, 5000))]);
-  while (fs.existsSync(sock) && Date.now() < deadline)
-    await new Promise((r) => setTimeout(r, 50));
-  c.close();
+  // Issue 563: the same stop the web server uses after an update.
+  const { pid, ended: running } = await stopHost(
+    c,
+    sessionPaths(d.stateDir()).socket,
+  );
   d.out(
     `stopped the session host (pid ${pid})` +
       (running

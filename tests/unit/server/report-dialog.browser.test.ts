@@ -9,17 +9,26 @@
  * Every /api/report call is answered by the test (never the real `gh`).
  * The demo distribution (helpers/agents-page-server.ts). Invented names.
  */
-import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import type { Browser, Locator, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 // A page load, then the dialog: the first warms the browser up.
 jest.setTimeout(30_000);
@@ -30,13 +39,12 @@ const errors: string[] = [];
 
 beforeAll(async () => {
   try {
-    const { chromium } = await import("playwright");
-    // DEN_PW_WS: a Linux browser (the Playwright image), as on CI.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    // DEN_HELPERS_BROWSER=webkit runs it there; DEN_PW_WS connects to a
+    // Linux browser (the Playwright image), as on CI.
+    const pw = await import("playwright");
+    const engine =
+      process.env.DEN_HELPERS_BROWSER === "webkit" ? "webkit" : "chromium";
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -70,7 +78,6 @@ interface Fake {
   /** /api/report/github-send's answer, then the flow's polls. */
   app?: Record<string, unknown>;
   polls?: Record<string, unknown>[];
-  settings?: Record<string, unknown>;
   /** feedback.max_per_hour, as GET /api/report says it (default 5). */
   max?: number;
   /** Each send's X-Den-Request-Id. */
@@ -84,7 +91,20 @@ const PREVIEW = {
   repo: "acme-eng/engine",
 };
 
-async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
+/**
+ * A page in `lang` (English unless named). The language is the server's
+ * setting, shared by every test in the file, so each page sets its own
+ * just before it loads and checks the page came in it: a test never runs
+ * in a language a test before it left behind (issue 424: a timed-out
+ * test's loop set ja after it, and the next test read 報告).
+ */
+async function page(
+  fake: Fake,
+  width = 1440,
+  whatsNew = false,
+  lang: "en" | "es" | "ja" = "en",
+): Promise<Page> {
+  expect(await s!.settings({ language: lang })).toBe(200);
   const ctx = await browser!.newContext({
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
@@ -145,16 +165,20 @@ async function page(fake: Fake, width = 1440, whatsNew = false): Promise<Page> {
       );
     return json(r, 404, { ok: false });
   });
-  if (fake.settings)
-    await p.route("**/api/settings", async (r) => {
-      if (r.request().method() !== "GET") return r.continue();
-      const res = await r.fetch();
-      const j = await res.json();
-      await r.fulfill({ response: res, json: { ...j, ...fake.settings } });
-    });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(() => !!(window as { denShell?: unknown }).denShell);
+  expect(await p.evaluate(() => document.documentElement.lang)).toBe(lang);
   return p;
+}
+
+/**
+ * Issue 1244: close a test's page only once its route handlers are done.
+ * A route handler still running at a close would throw "Request context
+ * disposed" into the next test.
+ */
+async function closePage(p: Page): Promise<void> {
+  await p.unrouteAll({ behavior: "wait" });
+  await p.context().close();
 }
 
 const fresh = (
@@ -191,6 +215,12 @@ async function toReview(p: Page) {
 }
 
 describe("FB: Report an issue, the dialog", () => {
+  let restoreUserYml = (): void => {};
+  afterEach(() => {
+    restoreUserYml();
+    restoreUserYml = () => {};
+  });
+
   it("the top bar's Report button opens it; focus starts on Title", async () => {
     if (skip()) return;
     const p = await page(fresh());
@@ -203,7 +233,7 @@ describe("FB: Report an issue, the dialog", () => {
     expect(
       await p.evaluate(() => document.activeElement?.getAttribute("data-f")),
     ).toBe("title");
-    await p.context().close();
+    await closePage(p);
   });
 
   it("⌘⇧F opens it over an open dialog, which stays open", async () => {
@@ -224,7 +254,79 @@ describe("FB: Report an issue, the dialog", () => {
     ).toBe(true);
     // The report dialog is the one on top (it takes the clicks).
     await dlg(p).locator('[data-f="title"]').fill("x");
-    await p.context().close();
+    await closePage(p);
+  });
+
+  it("⌘⇧F opens it over an open menu, which stays open (issue 81)", async () => {
+    if (skip()) return;
+    const p = await page(fresh());
+    await p.click("#appearance-btn");
+    const menu = p.getByRole("menu");
+    await menu.waitFor();
+    await p.keyboard.press("ControlOrMeta+Shift+F");
+    await dlg(p).waitFor();
+    expect(await menu.isVisible()).toBe(true);
+    await dlg(p).locator('[data-f="title"]').fill("x");
+    await closePage(p);
+  });
+
+  it("on a phone, the open rail drawer has its own Report: its scrim covers the top bar (issue 81)", async () => {
+    if (skip()) return;
+    const p = await page(fresh(), 390);
+    // Closed: no Report on the rail (issue 94: it is in the top bar).
+    const onRail = p.locator("#den-rail [data-den-report]");
+    expect(await onRail.count()).toBe(0);
+    await p.click("#den-menu-btn");
+    const rb = p.locator(
+      "#den-rail [data-den-drawer-report] [data-den-report]",
+    );
+    await rb.waitFor({ state: "visible" });
+    // The top bar's Report is under the scrim: the drawer's is the one a
+    // tap reaches.
+    const box = (await rb.boundingBox())!;
+    expect(
+      await p.evaluate(
+        ([x, y]) =>
+          !!document
+            .elementFromPoint(x, y)
+            ?.closest("[data-den-drawer-report]"),
+        [box.x + box.width / 2, box.y + box.height / 2],
+      ),
+    ).toBe(true);
+    await rb.click();
+    await dlg(p).waitFor();
+    // The drawer makes the page inert; the form is on top of it, holds
+    // the focus, and takes typing.
+    expect(
+      await dlg(p).evaluate(
+        (d) =>
+          new Promise<boolean>((done) => {
+            const t0 = Date.now();
+            const tick = () =>
+              d.contains(document.activeElement)
+                ? done(true)
+                : Date.now() - t0 > 5000
+                  ? done(false)
+                  : requestAnimationFrame(tick);
+            tick();
+          }),
+      ),
+    ).toBe(true);
+    expect(await dlg(p).evaluate((d) => !!d.closest("[inert]"))).toBe(false);
+    const title = dlg(p).locator('[data-f="title"]');
+    await title.fill("fb-81-drawer");
+    expect(await title.inputValue()).toBe("fb-81-drawer");
+    await p.keyboard.press("Escape");
+    // Text typed: Esc asks to keep it; Discard closes.
+    await dlg(p).locator('[data-act="discard"]').click();
+    await dlg(p).waitFor({ state: "hidden" });
+    // Shut, the drawer's Report goes with it.
+    await p.keyboard.press("Escape");
+    await p.waitForFunction(
+      () => !document.body.classList.contains("den-rail-open"),
+    );
+    expect(await onRail.count()).toBe(0);
+    await closePage(p);
   });
 
   it("Write, Include, Review: the server's exact text, the public warning just above Send; Send files it (F6)", async () => {
@@ -277,7 +379,7 @@ describe("FB: Report an issue, the dialog", () => {
       "Browser",
       "Page",
     ]);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("not signed in to GitHub: F4 shows Den's GitHub App's code, nothing is sent until it is approved", async () => {
@@ -342,7 +444,7 @@ describe("FB: Report an issue, the dialog", () => {
         .getByRole("link", { name: "Open the issue" })
         .getAttribute("href"),
     ).toBe("https://github.com/acme-eng/engine/issues/43");
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a sixth in an hour: F7, and Finish later keeps it (F8)", async () => {
@@ -374,7 +476,7 @@ describe("FB: Report an issue, the dialog", () => {
     expect(f.drafts[0]).toMatchObject({
       title: "Pane drops at acme.local.example.com",
     });
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a limit without its number in the answer: the setting's, not a built-in 5", async () => {
@@ -391,7 +493,7 @@ describe("FB: Report an issue, the dialog", () => {
     await dlg(p)
       .getByRole("heading", { name: "You have sent 12 reports this hour" })
       .waitFor();
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a failed send: Try again is first and sends the same text again; Finish later stays", async () => {
@@ -428,7 +530,7 @@ describe("FB: Report an issue, the dialog", () => {
     // request, which the request ledger would otherwise answer with the
     // first one's failure.
     expect(f.ids![1]).not.toBe(f.ids![0]);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a failed send with GitHub's own page to finish on: Try again first, that page next", async () => {
@@ -460,7 +562,7 @@ describe("FB: Report an issue, the dialog", () => {
       ["later", false],
       ["back-review", false],
     ]);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("the same title open: F5; Add to the existing report sends addTo", async () => {
@@ -499,7 +601,7 @@ describe("FB: Report an issue, the dialog", () => {
       .getByText("Your details were added to the open report.")
       .waitFor();
     expect(f.sent[1]).toMatchObject({ addTo: 7 });
-    await p.context().close();
+    await closePage(p);
   });
 
   it("Esc with text typed asks to keep it; Discard closes", async () => {
@@ -518,7 +620,7 @@ describe("FB: Report an issue, the dialog", () => {
     await dlg(p).waitFor();
     await p.keyboard.press("Escape");
     await dlg(p).waitFor({ state: "hidden" });
-    await p.context().close();
+    await closePage(p);
   });
 
   it("at 390 px it is a bottom sheet with stacked buttons, the step as 1/3", async () => {
@@ -543,53 +645,62 @@ describe("FB: Report an issue, the dialog", () => {
     expect(
       (await dlg(p).locator(".fb-steps .fb-narrow").textContent())?.trim(),
     ).toMatch(/^1\/3 · Write$/);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("feedback.enabled: false hides the top bar's Report and ⌘⇧F", async () => {
     if (skip()) return;
-    const f = fresh();
-    f.settings = { feedback_enabled: false };
-    const p = await page(f);
+    const userYml = path.join(s!.tmp, "dist", "config", "local", "user.yml");
+    const before = fs.readFileSync(userYml, "utf-8");
+    restoreUserYml = () => fs.writeFileSync(userYml, before);
+    const user = (parseYaml(before) ?? {}) as Record<string, unknown>;
+    fs.writeFileSync(
+      userYml,
+      stringifyYaml({
+        ...user,
+        feedback: { ...(user.feedback as object), enabled: false },
+      }),
+    );
+    const p = await page(fresh());
     await p
       .locator("#den-shell [data-den-report]")
       .waitFor({ state: "hidden" });
     await p.keyboard.press("ControlOrMeta+Shift+F");
     await p.waitForTimeout(300);
     expect(await dlg(p).count()).toBe(0);
-    await p.context().close();
+    await p.evaluate(() => void fetch("/api/settings").catch(() => {}));
+    await p.reload();
+    await p
+      .locator("#den-shell [data-den-report]")
+      .waitFor({ state: "hidden" });
+    await closePage(p);
   });
 
-  it("in es and ja (1440 and 390)", async () => {
+  // One test per language and width (issue 424): each opens the form
+  // once, and each open takes the page's screenshot first, so four in one
+  // test came near the 30 s limit on a busy CI runner.
+  it.each([
+    ["es", 1440, "Informar de un problema", "Siguiente: Incluir"],
+    ["es", 390, "Informar de un problema", "Siguiente: Incluir"],
+    ["ja", 1440, "問題を報告", "次へ: 含める"],
+    ["ja", 390, "問題を報告", "次へ: 含める"],
+  ] as const)("in %s at %i px", async (lang, w, title, send) => {
     if (skip()) return;
-    for (const [lang, title, send] of [
-      ["es", "Informar de un problema", "Siguiente: Incluir"],
-      ["ja", "問題を報告", "次へ: 含める"],
-    ] as const) {
-      await s!.settings({ language: lang });
-      for (const w of [1440, 390]) {
-        const p = await page(fresh(), w);
-        await p.waitForFunction(
-          (l) => document.documentElement.lang === l,
-          lang,
-        );
-        await p.evaluate(() =>
-          (
-            window as unknown as { denShell: { report(): Promise<unknown> } }
-          ).denShell.report(),
-        );
-        await dlg(p).waitFor();
-        expect(await dlg(p).getAttribute("aria-label")).toBe(title);
-        expect(
-          (await dlg(p).locator('[data-act="next"]').textContent())?.trim(),
-        ).toBe(send);
-        expect(
-          await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
-        ).toBe(true);
-        await p.context().close();
-      }
-    }
-    await s!.settings({ language: "en" });
+    const p = await page(fresh(), w, false, lang);
+    await p.evaluate(() =>
+      (
+        window as unknown as { denShell: { report(): Promise<unknown> } }
+      ).denShell.report(),
+    );
+    await dlg(p).waitFor();
+    expect(await dlg(p).getAttribute("aria-label")).toBe(title);
+    expect(
+      (await dlg(p).locator('[data-act="next"]').textContent())?.trim(),
+    ).toBe(send);
+    expect(
+      await dlg(p).evaluate((d) => d.scrollWidth <= d.clientWidth + 1),
+    ).toBe(true);
+    await closePage(p);
   });
 
   it("What's new on a first visit carries its own Report; Report opens over it and keeps it; Esc closes What's new", async () => {
@@ -616,7 +727,7 @@ describe("FB: Report an issue, the dialog", () => {
     expect(await ov.count()).toBe(1);
     await p.keyboard.press("Escape");
     await ov.waitFor({ state: "hidden" });
-    await p.context().close();
+    await closePage(p);
   });
 
   it("no page errors", () => {
@@ -711,12 +822,13 @@ describe("FB: the screenshot and its mask", () => {
     await dlg(p)
       .getByText(/Drag on it to black out/)
       .waitFor();
-    await p.context().close();
+    await closePage(p);
   });
 
-  it("drag to black out; Undo; Review shows the masked image; Sent saves and copies it", async () => {
+  it("drag to black out; Undo; Review shows the masked image; the send carries it masked and saves nothing here", async () => {
     if (skip()) return;
-    const p = await page(fresh());
+    const f = fresh();
+    const p = await page(f);
     const mark = await drawerWithMark(p);
     const vw = await p.evaluate(() => innerWidth);
     const vh = await p.evaluate(() => innerHeight);
@@ -757,23 +869,21 @@ describe("FB: the screenshot and its mask", () => {
         [0, 0, 0],
       ),
     ).toBe(true);
-    const download = p.waitForEvent("download");
+    // Issue 403: filing never saves it to this computer.
+    let downloads = 0;
+    p.on("download", () => downloads++);
     await dlg(p).locator('[data-act="send"]').click();
-    const saved = await download;
-    expect(saved.suggestedFilename()).toBe("report-screenshot.png");
-    // The file itself: the mask is in its pixels (drawn in, not laid over),
-    // and what is outside it is the page.
-    // saveAs: a remote browser (DEN_PW_WS) has no local path for it.
-    const file = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), "den-fb-shot-")),
-      "shot.png",
-    );
-    await saved.saveAs(file);
-    const png = fs.readFileSync(file).toString("base64");
-    fs.rmSync(path.dirname(file), { recursive: true, force: true });
-    const inFile = (x: number, y: number) =>
+    await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
+    await p.waitForTimeout(300);
+    expect(downloads).toBe(0);
+    expect(await dlg(p).locator("[data-saved]").count()).toBe(0);
+    // Issue 403: the PNG the send carries has the mask in its pixels
+    // (drawn in, not laid over); what is outside it is the page.
+    const shot = String(f.sent[0]!.shot);
+    expect(shot).toMatch(/^data:image\/png;base64,/);
+    const inShot = (x: number, y: number) =>
       p.evaluate(
-        ([b64, px, py]) =>
+        ([src, px, py]) =>
           new Promise<number[]>((ok) => {
             const img = new Image();
             img.onload = () => {
@@ -788,16 +898,15 @@ describe("FB: the screenshot and its mask", () => {
                   .data.slice(0, 3),
               ]);
             };
-            img.src = `data:image/png;base64,${b64}`;
+            img.src = src as string;
           }),
-        [png, Math.round(x), Math.round(y)],
+        [shot, Math.round(x), Math.round(y)],
       );
-    expect(near(await inFile(mark.x, mark.y), [0, 0, 0])).toBe(true);
-    expect(near(await inFile(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
+    expect(near(await inShot(mark.x, mark.y), [0, 0, 0])).toBe(true);
+    expect(near(await inShot(mark.x - 55, mark.y - 55), [255, 0, 255])).toBe(
       true,
     );
-    await dlg(p).locator("[data-saved]").waitFor();
-    await p.context().close();
+    await closePage(p);
   });
 
   it("the keyboard way: an area by size and position, or the whole screenshot", async () => {
@@ -824,7 +933,7 @@ describe("FB: the screenshot and its mask", () => {
     expect(
       near(await pixelAt(p, "img[data-shot-review]", 5, 5), [0, 0, 0]),
     ).toBe(true);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("Don't include a screenshot: none on Review, nothing saved after sending", async () => {
@@ -843,7 +952,7 @@ describe("FB: the screenshot and its mask", () => {
     await p.waitForTimeout(300);
     expect(downloads).toBe(0);
     expect(await dlg(p).locator("[data-saved]").count()).toBe(0);
-    await p.context().close();
+    await closePage(p);
   });
 
   it("a page that can't be captured offers to send without one", async () => {
@@ -865,6 +974,6 @@ describe("FB: the screenshot and its mask", () => {
     await dlg(p).locator('[data-act="send"]').click();
     await dlg(p).getByRole("heading", { name: "Report sent" }).waitFor();
     expect(f.sent).toHaveLength(1);
-    await p.context().close();
+    await closePage(p);
   });
 });

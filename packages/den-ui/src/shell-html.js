@@ -52,7 +52,7 @@
  * search field with ⌘K inside), bellButtonHtml and bellPanelHtml (the
  * bell and its panel); and accountHtml (the rail's account entry).
  */
-import { esc, kitT } from "./strings.js";
+import { esc, kitT, safeId } from "./strings.js";
 import { icon } from "./icons.js";
 
 export { icon } from "./icons.js";
@@ -193,7 +193,9 @@ export function navItemHtml(n, navRole, lang) {
   const off = navOff(n.off);
   const extra = b
     ? '<span class="den-bdg' +
-      (b.bad ? " bad" : "") +
+      (b.bad ? " bad" : b.warn ? " warn" : "") +
+      '" data-badge="' +
+      (b.bad ? "bad" : b.warn ? "warn" : "") +
       '" aria-hidden="true">' +
       esc(b.n) +
       "</span>"
@@ -264,8 +266,13 @@ export function navItemHtml(n, navRole, lang) {
     : link;
 }
 
-/** A rail group: its heading (and "from <d>" tag) and its entries. */
-export function railGroupHtml(g, body, lang) {
+/**
+ * A rail group: its heading (and "from <d>" tag) and its entries, in
+ * div.den-gb. Issue 1444: `folded` marks it data-folded; the heading stays
+ * plain, and only hydrateRailFolds (shell-client.js) makes it the toggle,
+ * so a page with no script shows every entry.
+ */
+export function railGroupHtml(g, body, lang, folded) {
   const id = esc(g.id);
   const from = g.from;
   return (
@@ -273,6 +280,7 @@ export function railGroupHtml(g, body, lang) {
     id +
     '"' +
     (from ? ' aria-describedby="den-gd-' + id + '"' : "") +
+    (folded ? " data-folded" : "") +
     '><div class="den-gh" data-nav-role="group"><span id="den-gh-' +
     id +
     '">' +
@@ -293,8 +301,11 @@ export function railGroupHtml(g, body, lang) {
         esc(kitT(lang, "kit.from", { d: from })) +
         "</span>"
       : "") +
+    '<div class="den-gb" id="den-gb-' +
+    id +
+    '">' +
     body +
-    "</div>"
+    "</div></div>"
   );
 }
 
@@ -314,7 +325,12 @@ function collapseHtml(collapsed, lang) {
   );
 }
 
-/** The rail's content: the groups, the spacer, the foot, the toggle. */
+/**
+ * The rail's content: the groups, the spacer, then the foot (a host's
+ * foot entries, Settings, the account entry, the toggle) in one
+ * .den-rail-foot. The foot stays pinned at the rail's bottom while the
+ * groups scroll above it (issue 1341).
+ */
 export function railHtml({
   nav = [],
   groups = [],
@@ -323,8 +339,10 @@ export function railHtml({
   account,
   lang,
   collapsed,
+  folded = [],
 } = {}) {
   let html = "";
+  const fold = new Set(Array.isArray(folded) ? folded : []);
   for (const g of groups) {
     const items = nav.filter((n) => n.group === g.id);
     if (!items.length) continue;
@@ -332,15 +350,18 @@ export function railHtml({
       g,
       items.map((n) => navItemHtml(n, "page", lang)).join(""),
       lang,
+      fold.has(g.id) && !items.some((n) => n.current),
     );
   }
   html += '<div class="den-rail-grow"></div>';
+  html += '<div class="den-rail-foot">';
   html += foot
     .map((n) => (typeof n === "string" ? n : navItemHtml(n, undefined, lang)))
     .join("");
   html += settingsHtml(settings, lang);
   html += accountHtml(account);
   html += collapseHtml(!!collapsed, lang);
+  html += "</div>";
   return html;
 }
 
@@ -442,12 +463,16 @@ const SEARCH_AT = '<button type="button" class="den-search"';
  * (☰, the brand, and what `start` holds before the search: the crumbs),
  * the search in a fixed slot, and the chips (the host's `end`, then
  * Report, the bell, the version and ◐ ▾, pinned to the right edge).
+ * `rail: false` (issue 694): a page with no rail. No ☰ (it would open
+ * nothing) and nothing that points at the rail; the header is stamped
+ * data-nav-shape="no-rail" for the parity gate. The rest is the same bar.
  */
 export function topBarHtml({
   product = {},
   lang,
   slots = {},
   report = true,
+  rail = true,
 } = {}) {
   const name = product.name ?? "";
   const start = slots.start || "";
@@ -455,11 +480,15 @@ export function topBarHtml({
   const before = at < 0 ? start : start.slice(0, at);
   const search = at < 0 ? "" : start.slice(at);
   return (
-    '<header class="den-top">' +
+    (rail === false
+      ? '<header class="den-top" data-nav-shape="no-rail">'
+      : '<header class="den-top">') +
     '<div class="den-left">' +
-    '<button class="den-ib den-menu-btn" id="den-menu-btn" aria-label="' +
-    esc(kitT(lang, "kit.menu")) +
-    '" aria-expanded="false" aria-controls="den-rail">☰</button>' +
+    (rail === false
+      ? ""
+      : '<button class="den-ib den-menu-btn" id="den-menu-btn" aria-label="' +
+        esc(kitT(lang, "kit.menu")) +
+        '" aria-expanded="false" aria-controls="den-rail">☰</button>') +
     '<a class="den-brand" href="' +
     esc(product.href || "/") +
     '" title="' +
@@ -491,7 +520,8 @@ export function topBarHtml({
 /**
  * The whole shell: the skip link, the top bar and the rail (in its box:
  * no box of its own, display: contents; as ☰'s drawer it is the modal
- * dialog the rail sits in, so the rail stays a nav).
+ * dialog the rail sits in, so the rail stays a nav). `rail: false`
+ * (issue 694): the skip link and the bar without ☰, and no rail.
  */
 export function shellHtml(o = {}) {
   const lang = o.lang;
@@ -500,6 +530,13 @@ export function shellHtml(o = {}) {
     esc(kitT(lang, "kit.skip")) +
     "</a>" +
     topBarHtml(o) +
+    (o.rail === false ? "" : railBoxHtml(o))
+  );
+}
+
+function railBoxHtml(o) {
+  const lang = o.lang;
+  return (
     '<div class="den-rail-box" id="den-rail-box">' +
     '<nav class="den-rail" id="den-rail" aria-label="' +
     esc(kitT(lang, "kit.pages")) +
@@ -695,25 +732,37 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
   return html + (after || "") + "</div>";
 }
 
+function hostPlaceholder(placeholder, lang) {
+  let w = placeholder;
+  if (w && typeof w === "object") {
+    const l = String(lang || "en");
+    w = w[l] ?? w[l.split("-")[0]];
+  }
+  return typeof w === "string" && w.trim() ? w : null;
+}
+
 /**
- * The search field: the kit's placeholder ("Search…"), then ⌘K inside it,
- * as a button (the host's palette or page opens on it: hydrateSearch).
- *   searchHtml({ id?, shortcut?, lang })
- * Its placeholder and its name ("Search") are the kit's words, in the
- * page's language: one search in every product, so a host can't set them.
+ * The search field: a placeholder (the kit's "Search…", or the host's, one
+ * word or words per locale), then ⌘K inside it, as a button (hydrateSearch).
+ *   searchHtml({ id?, shortcut?, lang, placeholder? })
+ * Its name is what it shows, less a trailing "…" (WCAG 2.5.3).
  * `shortcut: false`: no ⌘K.
  */
-export function searchHtml({ id, shortcut, lang } = {}) {
+export function searchHtml({ id, shortcut, lang, placeholder } = {}) {
   const keys = shortcut !== false;
+  const host = hostPlaceholder(placeholder, lang);
+  const name = host
+    ? host.trim().replace(/\s*(…|\.\.\.)$/u, "") || host.trim()
+    : kitT(lang, "kit.search.label");
   return (
     '<button type="button" class="den-search" id="' +
     esc(id || "den-search") +
     '" aria-haspopup="dialog" data-nav-kit="search"' +
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
-    esc(kitT(lang, "kit.search.label")) +
+    esc(name) +
     '"><span class="den-search-ph">' +
-    esc(kitT(lang, "kit.search.ph")) +
+    esc(host ?? kitT(lang, "kit.search.ph")) +
     "</span>" +
     (keys ? '<kbd aria-hidden="true">⌘K</kbd>' : "") +
     '<span class="den-search-ic" aria-hidden="true">⌕</span></button>'
@@ -784,10 +833,10 @@ function bellRowHtml(it) {
  * `actions`: buttons beside the heading (Mark all read); `lead`: HTML
  * under the heading; `after`: HTML after the rows; `foot`: the footer (a
  * Report button). Every HTML part is the host's own.
- * Issue 101: `sections` { needs, earlier? } in place of rows: the kit
- * heads them "Needs you" (first, always; its own line when `needs` is
- * empty) and "Earlier" (when given), in its words; the host gives only
- * each section's rows.
+ * `sections` { needs, done?, earlier? } in place of rows: the
+ * kit heads them "Needs you" (first, always; its own line when `needs` is
+ * empty), "Done, not seen" (when given) and "Earlier" (when
+ * given), in its words; the host gives only each section's rows.
  */
 export function bellPanelHtml({
   title,
@@ -847,7 +896,6 @@ function bellSectionHtml(id, word, rows) {
   );
 }
 
-/** Issue 101: Needs you, then Earlier (the host's rows in each). */
 function bellSectionsHtml(s, lang) {
   const needs = s.needs || "";
   return (
@@ -859,6 +907,9 @@ function bellSectionsHtml(s, lang) {
           esc(kitT(lang, "kit.bell.needsNone")) +
           "</p>",
     ) +
+    (s.done
+      ? bellSectionHtml("done", kitT(lang, "kit.bell.done"), s.done)
+      : "") +
     (s.earlier
       ? bellSectionHtml("earlier", kitT(lang, "kit.bell.earlier"), s.earlier)
       : "")
@@ -877,7 +928,8 @@ function bellSectionsHtml(s, lang) {
  */
 /**
  * Who is signed in, as the kit draws it (0.7.1): the name on the first
- * line, @login on the second; @login alone when no name is known. The
+ * line, @login on the second; @login alone when no name is known, or when
+ * the name is just the login (sameAsLogin, issue 656). The
  * role is shown in the account menu's header only ({ menu: true }), on
  * its own line. From data: { name?, login?, role? }; with no
  * identity, { local: true } draws the kit's word for this computer. The old
@@ -885,10 +937,27 @@ function bellSectionsHtml(s, lang) {
  * release, as they were given, marked data-nav-legacy for the nav
  * inventory. Returns { lines: [first, second?], shape, legacy, full }.
  */
+/**
+ * Issue 656: whether a display name is just the login: the same once
+ * trimmed, a leading "@" dropped and case ignored. Such a name is no name.
+ */
+export function sameAsLogin(name, login) {
+  const norm = (v) =>
+    String(v ?? "")
+      .trim()
+      .replace(/^@/, "")
+      .toLowerCase();
+  return !!norm(login) && norm(name) === norm(login);
+}
+
 export function accountWho(a, { menu = false } = {}) {
   if (!a) return null;
   const legacy = a.label != null || a.detail != null;
-  const name = a.name ?? a.label ?? "";
+  // Issue 656: a name that is just the login is no name (@login alone).
+  const name =
+    a.name != null && !a.label && a.login && sameAsLogin(a.name, a.login)
+      ? ""
+      : (a.name ?? a.label ?? "");
   const login = a.login
     ? String(a.login).startsWith("@")
       ? String(a.login)
@@ -1002,26 +1071,122 @@ export function appearanceButtonHtml({ id, label, title, lang } = {}) {
   );
 }
 
-/** One row of a kit menu: a radio (checked set), a link or a button. */
-function menuRowHtml(r) {
+/**
+ * One row of a kit menu: a radio (checked set), a link or a button. The
+ * kit's own menus (◐ ▾, the account menu) and the page action menu draw
+ * their rows with it.
+ *   menuRowHtml({ label, href?, checked?, kind?, value?, id?, cls?,
+ *                 disabled?, describedBy? })
+ * disabled: aria-disabled="true", and a link becomes a button (nothing to
+ * follow); describedBy: the id of the line that says why.
+ */
+export function menuRowHtml(r) {
   const radio = r.checked != null;
-  const tag = r.href != null ? "a" : "button";
+  const link = r.href != null && !r.disabled;
+  const tag = link ? "a" : "button";
   return (
     "<" +
     tag +
-    ' class="den-mi" tabindex="-1" role="' +
+    ' class="den-mi' +
+    (r.cls ? " " + esc(r.cls) : "") +
+    '" tabindex="-1" role="' +
     (radio ? "menuitemradio" : "menuitem") +
     '"' +
     (radio ? ' aria-checked="' + (r.checked ? "true" : "false") + '"' : "") +
-    (r.href != null ? ' href="' + esc(r.href) + '"' : ' type="button"') +
+    (link ? ' href="' + esc(r.href) + '"' : ' type="button"') +
     (r.kind ? ' data-kind="' + esc(r.kind) + '"' : "") +
     (r.value != null ? ' data-value="' + esc(r.value) + '"' : "") +
+    (r.id ? ' id="' + esc(r.id) + '"' : "") +
+    (r.disabled ? ' aria-disabled="true"' : "") +
+    (r.describedBy ? ' aria-describedby="' + esc(r.describedBy) + '"' : "") +
     '><span class="den-mi-l">' +
     esc(r.label) +
     "</span></" +
     tag +
     ">"
   );
+}
+
+/** A host's words: text, or { key, vars } in the kit's tables (addStrings). */
+const words = (w, lang) =>
+  w == null
+    ? ""
+    : typeof w === "object"
+      ? w.key
+        ? kitT(lang, w.key, w.vars)
+        : ""
+      : String(w);
+
+/**
+ * The page action menu's button (issue 555): "More ▾", the kit's button
+ * (button.css), a menu button. hydratePageMenu (shell-client.js) opens
+ * its menu.
+ *   pageMenuButtonHtml({ id?, size?: "sm", lang })
+ */
+export function pageMenuButtonHtml({ id, size, lang } = {}) {
+  return (
+    '<button type="button" class="den-btn' +
+    (size === "sm" ? " sm" : "") +
+    ' den-pmenu-btn" id="' +
+    esc(safeId(id || "den-pmenu")) +
+    '" aria-haspopup="menu" aria-expanded="false">' +
+    esc(kitT(lang, "kit.pmenu.more")) +
+    ' <span aria-hidden="true">▾</span></button>'
+  );
+}
+
+/**
+ * The page action menu's rows (issue 555), from data.
+ *   pageMenuHtml({ id, items, lang })
+ * id: the menu button's (each row's id is "<id>-<item id>"). Each item:
+ *   { id, label, href?, disabled?, note?, noteHref? }  or  { hr: true }
+ * label and note: the host's words, or { key, vars } in the kit's tables
+ * (a host adds its keys with addStrings). A disabled item has
+ * aria-disabled and is described by its note, drawn right under it: a row
+ * to follow when the note has an href (where to turn it on), else a line.
+ * An item with no id or no label draws nothing.
+ */
+export function pageMenuHtml({ id, items, lang } = {}) {
+  const base = safeId(id || "den-pmenu");
+  return (items || [])
+    .map((it) => {
+      if (!it) return "";
+      if (it.hr) return '<div class="den-hr" role="separator"></div>';
+      const label = words(it.label, lang);
+      if (it.id == null || it.id === "" || !label) return "";
+      const rowId = base + "-" + safeId(it.id);
+      const note = it.disabled ? words(it.note, lang) : "";
+      const noteId = rowId + "-note";
+      return (
+        menuRowHtml({
+          label,
+          href: it.href,
+          kind: "page",
+          value: it.id,
+          id: rowId,
+          cls: "den-pmi",
+          disabled: !!it.disabled,
+          describedBy: note ? noteId : null,
+        }) +
+        (!note
+          ? ""
+          : it.noteHref != null
+            ? menuRowHtml({
+                label: note,
+                href: it.noteHref,
+                kind: "note",
+                value: it.id,
+                id: noteId,
+                cls: "den-mwhy",
+              })
+            : '<p class="den-mnote den-mwhy" id="' +
+              esc(noteId) +
+              '">' +
+              esc(note) +
+              "</p>")
+      );
+    })
+    .join("");
 }
 
 /**

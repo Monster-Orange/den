@@ -32,6 +32,27 @@
  *     tried again at every pass; the bell says it once. With pin_commit:
  *     pr it opens a pull request instead; the approval policy (issue 160)
  *     may hold it for the person's Allow.
+ *   - Issue 562: a version npm marks a security release (den.security:
+ *     true in its package.json, read from npm's version data only) doesn't
+ *     wait on the server agent's question or permission prompt: those
+ *     conversations resume after the restart. It still waits on a pending
+ *     Allow and for the turn's end, and the bell says the question is
+ *     still open. server_agent.security_update_skips_questions: false
+ *     turns it off. An unreadable mark is no mark.
+ *   - Issue 562 review: the install takes a while, so once it is done the
+ *     restart reads the wait again (holdRestart): a security release
+ *     waitPast, any other the plain check. A working turn or a pending
+ *     Allow holds it, every few seconds, at most
+ *     server_agent.update_restart_wait_seconds; then it restarts anyway
+ *     (the new version is installed), says why, and leaves a bell line.
+ *   - Issue 603: a security release doesn't wait for a working turn
+ *     either: it installs at that pass, on the security path, and its
+ *     restart waits for the turn to end (holdRestart, bounded). The
+ *     restart is the web server's; the turn lives in the terminal host,
+ *     which a restart keeps unless its code changed (issue 597). A
+ *     pending Allow or an update under way still holds it; a wait that
+ *     can't be read is no turn. server_agent.security_update_skips_busy:
+ *     false turns it off. The log and the audit say it went ahead.
  *
  * Every input is a function (tests fake each); the server wires them.
  */
@@ -44,12 +65,16 @@ import { UPDATE_WAIT_CHECKS_DEFAULT } from "../../shared/den-config.js";
 
 // The state file and doctor's line live in src/shared (the CLI reads them).
 export {
+  firstCheckDelay,
   readCheckState,
+  scheduleUpdateChecks,
   selfUpdateSummary,
+  tickBegun,
   tickText,
   updateCheckFile,
   writeCheckState,
   type CheckState,
+  type CheckTimers,
   type UpdateTick,
 } from "../../shared/update-check-state.js";
 
@@ -144,6 +169,176 @@ export function updateWaitNotes(
   };
 }
 
+/** Issue 562: the bell item after a security update past an open question. */
+export const SECURITY_UPDATE_SUBJECT = "record:den-update-security";
+
+/**
+ * Issue 562: say Den updated for a security fix while `agent` waited on
+ * the person; its question is still open (it resumes after the restart).
+ */
+export function securityUpdateNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  version: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: SECURITY_UPDATE_SUBJECT,
+    scope: "workspace/den-server",
+    text: `${title} updated for a security fix while ${agent} was waiting on you; its question is still open`,
+    msg: { key: "bell.m.updatedSecurity", vars: { agent, v: version } },
+    link: "/server-agent",
+  });
+}
+
+/** Issue 629: the bell item while Den's note waits on the person's dialog. */
+export const BACK_NOTE_HELD_SUBJECT = "record:den-back-note-held";
+
+/**
+ * Issue 629: Den is back, and its note to `agent` waits: a dialog for the
+ * person is open in its terminal, and Den never types into one.
+ */
+export function backNoteHeldNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: BACK_NOTE_HELD_SUBJECT,
+    scope: "workspace/den-server",
+    text: `${title} is back; its note to ${agent} waits until you answer ${agent} in its terminal`,
+    msg: { key: "bell.m.backNoteHeld", vars: { agent } },
+    link: "/server-agent",
+  });
+}
+
+/** Issue 629: the bell item while Den's tools note waits on a dialog. */
+export const TOOLS_NOTE_HELD_SUBJECT = "record:hub-tools-note-held";
+
+/**
+ * Issue 629: Den restarted `agent` to load Hub's tools, and its note
+ * saying so waits: a dialog for the person is open in its terminal.
+ */
+export function toolsNoteHeldNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  workspace: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: `${TOOLS_NOTE_HELD_SUBJECT}:${agent}`,
+    scope: `workspace/${workspace}`,
+    text: `${title} reconnected Hub's tools for ${agent}; its note waits until you answer ${agent} in its terminal`,
+    msg: { key: "bell.m.toolsNoteHeld", vars: { agent } },
+    link: "/agents",
+  });
+}
+
+/** Issue 749: the bell item for an agent whose Hub tools still didn't load. */
+export const TOOLS_LIST_FAILED_SUBJECT = "record:hub-tools-list-failed";
+
+/**
+ * Issue 749: listing Hub's tools failed again after Den's one restart for
+ * it, so Den stops restarting `agent` and tells its person once.
+ */
+export function toolsListFailedNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  workspace: string,
+  error: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: `${TOOLS_LIST_FAILED_SUBJECT}:${agent}`,
+    scope: `workspace/${workspace}`,
+    text: `${agent} can't use Hub's tools: ${error}. ${title} restarted it once; restart it from Agents once Hub is fixed`,
+    msg: { key: "bell.m.toolsListFailed", vars: { agent } },
+    link: "/agents",
+  });
+}
+
+/**
+ * Issue 629: clear every waiting-note bell item. The loop that kept a note
+ * is in memory: after Den restarts, nothing waits any more, so an item
+ * left over would never go. How many it cleared.
+ */
+export function clearToolsNotesHeld(
+  store: Pick<NotificationStore, "remove">,
+): number {
+  return store.remove((x) =>
+    x.subject.startsWith(`${TOOLS_NOTE_HELD_SUBJECT}:`),
+  );
+}
+
+/** Issue 562 review: the bell line after a restart that stopped waiting. */
+export const RESTARTED_WORKING_SUBJECT = "record:den-update-restarted-working";
+
+/** Issue 562 review: Den restarted to finish an update while `agent` worked. */
+export function restartedWhileWorkingNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  version: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: RESTARTED_WORKING_SUBJECT,
+    scope: "workspace/den-server",
+    text: `${title} restarted to finish an update while ${agent} was working`,
+    msg: { key: "bell.m.restartedWhileWorking", vars: { agent, v: version } },
+    link: "/server-agent",
+  });
+}
+
+/** Issue 562 review: how often holdRestart reads the wait again. */
+export const RESTART_HOLD_EVERY_MS = 5_000;
+
+/**
+ * Issue 562 review: hold an installed update's restart until `waitWhy`
+ * says null (a read that fails counts as working), re-reading every
+ * `everyMs`, at most `maxMs`. Then it goes anyway: `timedOut` is why it
+ * still waited (logged, and `timedOut()` called once).
+ */
+export async function holdRestart(d: {
+  waitWhy(): Promise<UpdateWait | null>;
+  maxMs: number;
+  everyMs?: number;
+  now?(): number;
+  sleep?(ms: number): Promise<void>;
+  log?(line: string): void;
+  timedOut?(why: UpdateWait): void;
+  /** Each pass: keeps the update marked under way while it waits. */
+  keepAlive?(): void;
+}): Promise<{ heldMs: number; timedOut: UpdateWait | null }> {
+  const now = d.now ?? Date.now;
+  const sleep =
+    d.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const every = Math.max(1, d.everyMs ?? RESTART_HOLD_EVERY_MS);
+  const start = now();
+  for (;;) {
+    const why = await d.waitWhy().catch(() => "busy" as const);
+    const held = now() - start;
+    if (!why) return { heldMs: held, timedOut: null };
+    if (held >= d.maxMs) {
+      d.log?.(
+        `update check: the update's restart waited ${Math.round(held / 1000)} s (${WAIT_TEXT[why]}): it restarts anyway after ${Math.round(d.maxMs / 1000)} s, server_agent.update_restart_wait_seconds`,
+      );
+      d.timedOut?.(why);
+      return { heldMs: held, timedOut: why };
+    }
+    try {
+      d.keepAlive?.();
+    } catch {
+      /* the mark is best effort; the hold goes on */
+    }
+    await sleep(Math.min(every, d.maxMs - held));
+  }
+}
+
 /** #142: a bell item asking the person to Allow a Den update. */
 export function isUpdateAsk(n: {
   subject: string;
@@ -190,6 +385,23 @@ export interface UpdateCheckDeps {
   waitWhy?(): Promise<UpdateWait | null>;
   /** Issue 327: what the server agent waits on, since when, or null. */
   waitWhat?(): WaitDetail | null;
+  /**
+   * Issue 562: why an update would wait leaving out the server agent's
+   * own question or permission prompt (a pending Allow, a working turn,
+   * an update under way), or null. Absent: a security release waits too.
+   */
+  waitPast?(): Promise<UpdateWait | null>;
+  /**
+   * Issue 562: whether npm's version data marks `version` a security
+   * release (den.security); null: npm can't say (unmarked, asked again).
+   */
+  security?(version: string): Promise<boolean | null>;
+  /** Issue 562: server_agent.security_update_skips_questions (default true). */
+  securitySkipsQuestions?(): boolean;
+  /** Issue 603: server_agent.security_update_skips_busy (default true). */
+  securitySkipsBusy?(): boolean;
+  /** Issue 562: the bell: updated past the agent's question or prompt. */
+  securityNote?(version: string, why: "asked" | "permission"): void;
   /** #251: server_agent.update_wait_checks (default 2). */
   waitChecks?(): number;
   /** #251: a line for the server log and the audit trail. */
@@ -222,11 +434,19 @@ export interface UpdateCheckDeps {
   pinCommit?(version: string): Promise<PinStep>;
   /** #176: the bell: the pin pushed, or (once) why it isn't. */
   pinNotice?(step: PinStep): void;
-  /** Run the update now (auto). */
+  /**
+   * Run the update now (auto). Issue 562 review: `security`: it goes past
+   * the agent's question, so its restart reads waitPast again.
+   */
   update(
     version: string,
     reason: string,
-  ): Promise<{ ok: boolean; error?: string }>;
+    opts?: { security: boolean },
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    rollbackFailed?: import("./den-update.js").RollbackFailed;
+  }>;
   /** Hold "update Den to X" for the person; false when it couldn't. */
   ask(version: string, reason: string): Promise<boolean> | boolean;
   /**
@@ -260,18 +480,67 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
   // Issue 327: a bell item from before a restart may be there: the first
   // pass that doesn't wait clears it.
   let noted = true;
-  const waitWhy = async (): Promise<UpdateWait | null> =>
-    d.waitWhy
-      ? d.waitWhy().catch(() => "busy" as const)
-      : (await d.idle().catch(() => false))
-        ? null
-        : "busy";
+  /**
+   * Issue 603: whether the last read's "busy" is a working turn (read as
+   * such), not a read that failed or idle()'s plain "not idle".
+   */
+  let turnRead = false;
+  const waitWhy = async (): Promise<UpdateWait | null> => {
+    turnRead = false;
+    if (!d.waitWhy) return (await d.idle().catch(() => false)) ? null : "busy";
+    try {
+      const w = await d.waitWhy();
+      turnRead = w === "busy";
+      return w;
+    } catch {
+      return "busy";
+    }
+  };
+  const waitPast = async (
+    read: () => Promise<UpdateWait | null>,
+  ): Promise<UpdateWait | null> => {
+    turnRead = false;
+    try {
+      const w = await read();
+      turnRead = w === "busy";
+      return w;
+    } catch {
+      return "busy";
+    }
+  };
   const notWaiting = () => {
     lastWhy = null;
     personPasses = 0;
     if (noted) {
       noted = false;
       d.waitDone?.();
+    }
+  };
+  /** Issue 562: each version's security mark, once npm said it. */
+  const marks = new Map<string, boolean>();
+  const marked = async (v: string): Promise<boolean> => {
+    if (!d.security) return false;
+    const known = marks.get(v);
+    if (known !== undefined) return known;
+    const m = await d.security(v).catch(() => null);
+    if (m === null) return false;
+    marks.set(v, m);
+    return m;
+  };
+  /** Issue 562: may this pass go past the agent's question or prompt? */
+  const skipsQuestions = (): boolean => {
+    try {
+      return d.securitySkipsQuestions?.() ?? true;
+    } catch {
+      return false;
+    }
+  };
+  /** Issue 603: may this pass go past a working turn? */
+  const skipsBusy = (): boolean => {
+    try {
+      return d.securitySkipsBusy?.() ?? true;
+    } catch {
+      return false;
     }
   };
   let pinUncommitted = 0;
@@ -412,7 +681,26 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         }
         return { did: "asked", version: want };
       }
-      const wait = await waitWhy();
+      let wait = await waitWhy();
+      // Issue 562: a security release goes past the agent's own question
+      // or permission prompt, never past an Allow or a working turn.
+      let past: "asked" | "permission" | null = null;
+      if (
+        (wait === "asked" || wait === "permission") &&
+        d.waitPast &&
+        skipsQuestions() &&
+        (await marked(want))
+      ) {
+        const was = wait;
+        wait = await waitPast(d.waitPast);
+        if (!wait) past = was;
+      }
+      // Issue 603: nor for a working turn: the restart waits for its end.
+      let pastTurn = false;
+      if (wait === "busy" && turnRead && skipsBusy() && (await marked(want))) {
+        wait = null;
+        pastTurn = true;
+      }
       if (wait) {
         const at = waitsOnPerson(wait)
           ? (() => {
@@ -452,16 +740,42 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         };
       }
       notWaiting();
-      const r = await d.update(want, reason).catch((e: unknown) => ({
-        ok: false,
-        error: e instanceof Error ? e.message : String(e),
-      }));
-      if (r.ok) return { did: "updating", version: want };
+      if (past)
+        d.log?.(
+          `update check: Den ${want} is a security release: it updates past ${WAIT_TEXT[past]}`,
+        );
+      if (pastTurn)
+        d.log?.(
+          `update check: Den ${want} is a security release: it updates while ${WAIT_TEXT.busy}; the restart waits for the turn to end`,
+        );
+      const security = !!past || pastTurn;
+      const r = await d
+        .update(want, reason, { security })
+        .catch((e: unknown) => ({
+          ok: false,
+          error: e instanceof Error ? e.message : String(e),
+        }));
+      if (r.ok) {
+        if (!security) return { did: "updating", version: want };
+        if (past) d.securityNote?.(want, past);
+        return { did: "updating", version: want, security: true };
+      }
       const why = r.error ?? "the update didn't run";
-      d.notice(want, `Den couldn't update to ${want}: ${why}`, {
-        key: "bell.m.updateFailed",
-        vars: { v: want, why },
-      });
+      const rb = "rollbackFailed" in r ? r.rollbackFailed : undefined;
+      if (rb)
+        d.notice(
+          want,
+          `Den couldn't update to ${want}, and the rollback failed too: Den ${rb.from} may not start. Put the pin back on ${rb.from} in ${rb.root} and run npm install there. Why: ${rb.why}`,
+          {
+            key: "bell.m.updateRollbackFailed",
+            vars: { v: want, from: rb.from, root: rb.root, why: rb.why },
+          },
+        );
+      else
+        d.notice(want, `Den couldn't update to ${want}: ${why}`, {
+          key: "bell.m.updateFailed",
+          vars: { v: want, why },
+        });
       return { did: "failed", version: want, why };
     },
   };

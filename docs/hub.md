@@ -42,8 +42,21 @@ Everything happens in **Settings › Hub**. Nobody copies a token or edits a fil
 5. Hub sends you back to Settings › Hub, connected. Settings shows your company, your role, who
    signed in and this install's name in Hub (`<cli> on <machine>`).
 
-Connect also links each project here to its Hub project. Where Den can't tell which one fits, it asks
-you. See [Projects and Hub projects](#projects-and-hub-projects).
+Connect also proposes a Hub project for each project here, and you link them all with one press. See
+[Projects and Hub projects](#projects-and-hub-projects).
+
+**The right company.** Connect sends Hub the repos of this Den's projects (`repos=<owner/repo>,…`, at
+most 50). Hub ranks the companies you may connect to by them, with your own sign-in: one that holds
+those repos first. When one company clearly fits, Hub picks it for you to confirm. Nothing about which
+company holds which repos reaches anyone but you. An older Hub ignores the list. Connected, Settings ›
+Hub shows the company. **Switch company** runs the same Connect to pick another one.
+
+**One review.** Back from Hub, Settings › Hub shows a row per project: the Hub project it gets and why
+(the same repo, then the same name), or "Create <name>" when none fits. A project that was linked on
+another Hub says so on its row. **Change** opens a list of the company's Hub projects in the row, with
+a search and the suggestion on top. **Connect and link all** links every row at once. All the new
+projects go to Hub as one plan: an owner presses Apply once in Hub, and Den links each one by itself.
+The review then says what was linked, and opens Hub's plan page for the new ones.
 
 The token Hub gives this install is kept in this install's secrets store (a 1Password item or a
 Doppler key, when the install keeps secrets there). Otherwise it is kept in a file only you can read,
@@ -119,6 +132,22 @@ it next runs. Items wait through a restart of Den. The server agent doesn't take
 Hub sees where each one is: queued, delivered, working, done or failed. The agent's card says
 "Working on N Hub comments".
 
+Den fetches the comments itself; Hub never calls the install, so an install on a local-only address
+gets them too. Den keeps a stream open to Hub and reads the list as well when the stream fails. Hub
+sends a keep-alive on the stream every 25 seconds and ends it itself after a while; Den opens it
+again at once. No bytes for `hub.delivery_stream_silence_seconds` and Den reopens it.
+
+When Den has had no good read from Hub for `hub.delivery_alert_minutes` (a stream that opened, a
+keep-alive, or a list answer), the bell says "Hub comments aren't arriving", with the reason: the
+token wasn't accepted, Hub refused, Den can't reach Hub, or the stream keeps closing or goes silent.
+It goes away on the next good read. A quiet Hub with no comments never raises it.
+
+The stream can stay open while comments stop coming. When no comment has come for
+`hub.delivery_stale_hours`, Den reads Hub's list. If comments wait there, the bell and doctor say
+the stream is open but Hub lists comments it hasn't sent. It goes away when a comment comes. The
+server's log has a line each time the stream opens or closes and each time the list's answer
+changes, with counts and ids only, never a comment's text.
+
 ### When Hub is down
 
 An agent never fails to start because of Hub: it starts without Hub's tools. When Hub answers again,
@@ -133,9 +162,10 @@ shows Hub's name for it.
 Den links to a Hub project by its hidden ID, so renaming the project or its short name in Hub doesn't
 break the link.
 
-**Connect links them.** After Connect, Den links each project whose match is clear: one Hub project
-with the same repos, or, when none has its repos, one with the same name. Connect's message says how
-many it linked and how many need your pick.
+**Connect proposes, you link.** After Connect, nothing is linked yet. Settings › Hub's review proposes
+a Hub project for each project: one with the same repos, or, when none has its repos, one with the
+same name. Connect's message, and the bell, say how many wait. Press **Connect and link all** to link
+them.
 
 **"Den can't tell which fits."** When two Hub projects share a project's repos, or its repos and its
 name point to different ones, Den doesn't guess. The bell says "N projects need your pick". Settings ›
@@ -147,6 +177,13 @@ Hub lists each such project with Hub's choices, none picked. Pick one and press 
 are an owner, **Allow in Hub** is right there in the row. If you aren't, the row says an owner must
 allow it. Either way, Den links the project by itself once the new Hub project is made. Den's own
 agent can ask the same with its held write `hub_project_create`.
+
+**An agent links it for you.** An agent can ask to link a project to an existing Hub project with its
+held write `hub_link`, for instance after this install moves to another Hub. It names the Hub project
+by its id or slug, never its name. The Allow shows the project, its Hub project now, and the one it
+will be. You press **Allow** and Den links it, as `hub link` does; **Deny** leaves it as it was. A Hub
+project the connected Hub doesn't list, such as an id from another Hub, is refused before you're
+asked. The audit trail records who asked and who allowed.
 
 Den never links on its own beyond the clear matches and a new Hub project you asked for. Each link is
 recorded in the audit trail.
@@ -173,11 +210,40 @@ Three switches in Settings › Hub turn them on or off:
   agent finished the Hub comments it was given.
 - **Projects need your pick:** Den can't tell which Hub project fits a project. Hub's decisions follow
   this switch too.
-- **Shared with you:** an agent shared a doc or mock with you. The switch is ready; Den doesn't show
-  these yet.
+- **Shared with you:** someone on Hub, a person or an agent, shared a doc or mock with you. Den writes
+  the words itself in your language ("kim shared Pricing mock with you", plus their note), from the
+  item's name, title and sharer. A click opens it on your connected Hub; a link anywhere else opens
+  Hub's home instead.
 
 All three are on by default. A switch that is off hides the item and its count. The item is still
 kept, and `<cli> notifications list` still lists it.
+
+## Groups
+
+Groups are a Den Hub feature. Den never stores or computes them: it reads them from Hub with the install's token, `GET <hub>/api/groups`, and keeps them in memory for `hub.groups_cache_seconds`.
+
+Set it in **Settings › Hub › Groups from Hub**: Auto, On or Off. Or run `den config hub.groups=auto`, `=on` or `=off`. It takes effect at the next read, with no restart.
+
+- **Auto** (the default): groups show when your Den Hub supports them, that is, when Hub's whoami lists `groups.read`.
+- **On**: Den reads Hub's groups whatever Hub's whoami lists.
+- **Off**: Den never asks Hub for groups.
+
+Den writes On and Off to `user.yml` as `true` and `false`, and Auto as no key, so older Dens read the same file. `den config hub.groups` prints the value in force. Only a person can change it: an agent's or the fixture person's change is refused. While groups are off, while Auto finds no Hub or no `groups.read`, or while Hub has no groups list (it answers 404), the Agents page shows nothing about groups, and Den logs nothing about them.
+
+`den hub groups` prints the same read as the Agents page gets, as one line of JSON. Add `--fresh` to read Hub now.
+
+- **Group.** The Agents list's switch (Need, Project, Group) can show your agents by group, each group's lead first. Agents in no group sit under "Not in a group". A group's header opens it in Hub.
+- **Message group.** This opens Hub's own composer in a new tab, and you send with your own Hub sign-in. Den never sends to a group itself.
+- **Reached.** A group message reaches each member through Den's usual delivery. Hub shows each member's state from Den's answer:
+  - The agent got it: Reached.
+  - It's stopped: waiting.
+  - Its Hub tools didn't load: held, with the reason `hub_tools_unavailable`. Hub shows "Can't reach Hub", with Restart. An older Hub that doesn't list `deliveries.ack_held` gets `queued` with the same reason.
+- **When there are no groups.** With groups showing, Den shows one quiet line and no group view in these cases:
+  - No Hub is connected (with On; Auto shows nothing then).
+  - Hub answers 403 `groups_not_in_plan` (groups aren't in the company's plan).
+  - Hub answers 403 `install_refused` (the install's person is a guest in the company). A 403 with no code, from an older Hub, reads the same way.
+
+  A 403 with any other code, or no answer, shows no groups. Den reads only Hub's code, never its words.
 
 ## Config reference
 
@@ -186,24 +252,40 @@ Settings › Hub writes what you need. You rarely set these by hand.
 Den reads `hub.*` from the org config (`config/<name>.yml`), then from `config/local/user.yml`. The
 user file wins.
 
-| Key                              | Default            | What it does                                                                                                                              |
-| -------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `hub.url`                        | none               | Hub's address. https, or http only to this machine. Unset: no Hub at all.                                                                 |
-| `hub.token`                      | none               | Where this install's token is kept. Connect sets it. A secret ref, the name of a `secrets.refs` entry, or `file:` / `keychain:` / `env:`. |
-| `hub.mcp_url`                    | `<hub.url>/mcp`    | Hub's tools address. Connect sets it from Hub's answer.                                                                                   |
-| `hub.allow_tools`                | `true`             | Agents use Hub's tools without asking.                                                                                                    |
-| `hub.inbox_on_stop`              | `nudge`            | An agent about to stop is asked once to answer the Hub comments waiting on it. `off`: never asked.                                        |
-| `hub.inbox_watch`                | `true`             | Den reads Hub's inbox and types new items into their agents. `false`: it doesn't.                                                         |
-| `hub.inbox_poll_seconds`         | `30` (at least 5)  | How often Den reads Hub's inbox.                                                                                                          |
-| `hub.inbox_backoff_max_seconds`  | `600` (at least 5) | The longest wait between inbox reads while Hub doesn't answer.                                                                            |
-| `hub.delivery_poll_seconds`      | `30` (at least 5)  | How often Den reads Hub's comments when Hub has no live stream.                                                                           |
-| `hub.delivery_heartbeat_seconds` | `15` (at least 5)  | How often Den tells Hub an agent is still working on a comment.                                                                           |
-| `hub.sync_check_seconds`         | `30` (at least 5)  | How often Den checks whether its project list changed, to send it to Hub.                                                                 |
-| `hub.names_check_seconds`        | `300` (at least 5) | How often Den asks Hub for its projects' names, so a rename in Hub shows here.                                                            |
-| `hub.mcp_retry_seconds`          | `30` (at least 5)  | How often Den checks whether Hub answers again, for agents that started without its tools.                                                |
-| `hub.mcp_retry_attempts`         | `0` (no limit)     | How many times Den restarts one agent for Hub's tools before it leaves it to you.                                                         |
-| `hub.tools_check_seconds`        | `300` (at least 5) | How often Den reads Hub's tool list, to tell agents what changed.                                                                         |
-| `hub.tools_restart`              | `true`             | When Hub's tools change, an agent that reads its tools only at launch restarts at its next idle. `false`: it is told instead.             |
+| Key                                    | Default            | What it does                                                                                                                                                     |
+| -------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hub.url`                              | none               | Hub's address. https, or http only to this machine. Unset: no Hub at all.                                                                                        |
+| `hub.token`                            | none               | Where this install's token is kept. Connect sets it. A secret ref, the name of a `secrets.refs` entry, or `file:` / `keychain:` / `env:`.                        |
+| `hub.mcp_url`                          | `<hub.url>/mcp`    | Hub's tools address. Connect sets it from Hub's answer.                                                                                                          |
+| `hub.allow_tools`                      | `true`             | Agents use Hub's tools without asking.                                                                                                                           |
+| `hub.delivery_loop`                    | `true`             | Every agent in a project connected to Hub gets the Hub delivery loop in its instructions. `false`: off for this install. Bad value: ignored, and doctor says so. |
+| `hub.inbox_on_stop`                    | `nudge`            | An agent about to stop is asked once to answer the Hub comments waiting on it. `off`: never asked.                                                               |
+| `hub.inbox_watch`                      | `true`             | Den reads Hub's inbox and types new items into their agents. `false`: it doesn't.                                                                                |
+| `hub.inbox_poll_seconds`               | `30` (at least 5)  | How often Den reads Hub's inbox.                                                                                                                                 |
+| `hub.inbox_backoff_max_seconds`        | `600` (at least 5) | The longest wait between inbox reads while Hub doesn't answer.                                                                                                   |
+| `hub.inbox_reads_per_second`           | `2` (above 0)      | The most inbox reads Den makes a second, for all its agents together. Each agent is read at most once per poll.                                                  |
+| `hub.delivery_poll_seconds`            | `30` (at least 5)  | How often Den reads Hub's comments when Hub has no live stream.                                                                                                  |
+| `hub.delivery_alert_minutes`           | `15` (`0`: off)    | Minutes with no good read of Hub's comments before doctor warns and the bell says they aren't arriving.                                                          |
+| `hub.delivery_stale_hours`             | `6` (`0`: off)     | Hours with the stream open and no comment before Den reads Hub's list; comments waiting there and doctor and the bell warn.                                      |
+| `hub.delivery_stream_silence_seconds`  | `75` (`0`: off)    | No bytes on the comment stream this long (three of Hub's 25 s keep-alives), and Den reopens it.                                                                  |
+| `hub.delivery_held_note_seconds`       | `60` (at least 5)  | How long text waits for an agent that isn't at its prompt before the bell says so.                                                                               |
+| `hub.delivery_held_bell_minutes`       | `5` (at least 1)   | How long a Hub comment waits for a busy agent (or one with a dialog, a held Allow, a pause) before the bell says so, and why.                                    |
+| `hub.delivery_answer_minutes`          | `30` (at least 1)  | A typed comment whose turn never shows as ended is "delivered, no answer yet" after this; the agent's next comments go on.                                       |
+| `hub.delivery_state_timeout_seconds`   | `60` (at least 5)  | The longest Den waits to read one agent's state; that agent's comments wait, the others go on.                                                                   |
+| `hub.delivery_type_timeout_seconds`    | `120` (at least 5) | The longest one agent's paste holds the others' comments.                                                                                                        |
+| `hub.delivery_heartbeat_seconds`       | `15` (at least 5)  | How often Den tells Hub an agent is still working on a comment.                                                                                                  |
+| `hub.sync_check_seconds`               | `30` (at least 5)  | How often Den checks whether its project list changed, to send it to Hub.                                                                                        |
+| `hub.names_check_seconds`              | `300` (at least 5) | How often Den asks Hub for its projects' names, so a rename in Hub shows here.                                                                                   |
+| `hub.mcp_retry_seconds`                | `30` (at least 5)  | How often Den checks whether Hub answers again, for agents that started without its tools.                                                                       |
+| `hub.mcp_retry_attempts`               | `0` (no limit)     | How many times Den restarts one agent for Hub's tools before it leaves it to you.                                                                                |
+| `hub.tools_check_seconds`              | `300` (at least 5) | How often Den reads Hub's tool list, to tell agents what changed.                                                                                                |
+| `hub.tools_restart`                    | `true`             | When Hub's tools change, an agent that reads its tools only at launch restarts at its next idle. `false`: it is told instead.                                    |
+| `hub.agent_tokens`                     | `true`             | Each agent calls Hub with its own token, bound to it on Hub. `false`: every agent uses the install's token.                                                      |
+| `hub.agent_token_retry_seconds`        | `600` (at least 5) | How long Den waits to ask again when Hub couldn't give an agent its own token.                                                                                   |
+| `hub.agent_token_revoke_retry_seconds` | `600` (at least 5) | How often Den tries again to revoke a removed agent's token when Hub didn't answer. Den also tries at each start.                                                |
+| `hub.agent_token_max_age_days`         | `30` (`0`: never)  | An agent's token older than this is replaced at its next Hub call: Den gets a new one. Hub ends the old one. No click.                                           |
+| `hub.groups`                           | `auto`             | `auto`, `on` or `off`: whether Den reads Hub's groups for the Agents page. Auto: when Hub's whoami lists `groups.read`. Off: Den never asks Hub.                 |
+| `hub.groups_cache_seconds`             | `30` (5 to 3600)   | How long the Agents page keeps Hub's groups in memory before it reads them again. Den stores no groups.                                                          |
 
 Two more keys touch Hub:
 
@@ -222,8 +304,17 @@ A bad value names its key. Settings › Hub shows the problem, for example
 - `✓` when connected, with the company, this install's name and your role.
 - `⚠` when not, with the reason and whether to Connect or Reconnect.
 
+A "Hub comments" row shows the Hub the server reads comments from, whether its stream is open, the
+last good read and the last comment, when the cursor last moved, and the last list read. It warns,
+with the reason, after `hub.delivery_alert_minutes` with no good read, or when comments wait in Hub
+after `hub.delivery_stale_hours` with the stream open.
+
 When connected, it also has a row per project (linked to which Hub project, or not linked) and a row
 on Den Hub's GitHub access. A Hub that is down never fails doctor: agents still run.
+
+Each link records the Hub and company it was made on. A link to another Hub, or to another company on
+this one, counts as not linked: Den sends Hub no project for it, and doctor fails its row (`✗`),
+naming where it points. Link it again in Settings › Hub's review.
 
 ## Troubleshooting
 

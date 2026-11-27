@@ -29,6 +29,8 @@ import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -177,7 +179,7 @@ beforeAll(async () => {
     )[0]?.version ?? "";
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -199,6 +201,11 @@ async function open(
   before?: (ctx: BrowserContext) => Promise<void>,
 ): Promise<Page> {
   const ctx = await browser!.newContext({ viewport });
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   await before?.(ctx);
   await ctx.addInitScript((v) => {
     try {
@@ -858,6 +865,36 @@ async function itemsOnTop(p: Page, items: string): Promise<boolean[]> {
 }
 
 /**
+ * What each item's centre hits, for a failure's message: the item's rect,
+ * the window's height, and the element `elementFromPoint` found there.
+ */
+async function topHits(p: Page, items: string): Promise<unknown> {
+  return p.$$eval(items, (es) => ({
+    innerHeight: window.innerHeight,
+    items: es.map((e) => {
+      const r = e.getBoundingClientRect();
+      const at = document.elementFromPoint(
+        r.left + r.width / 2,
+        r.top + r.height / 2,
+      );
+      const name = (n: Element | null) =>
+        n
+          ? `${n.tagName.toLowerCase()}${n.id ? `#${n.id}` : ""}${
+              n.className && typeof n.className === "string"
+                ? `.${n.className.trim().split(/\s+/).join(".")}`
+                : ""
+            }`
+          : null;
+      return {
+        rect: [r.left, r.top, r.width, r.height].map(Math.round),
+        hit: name(at),
+        hitParent: name(at?.parentElement ?? null),
+      };
+    }),
+  }));
+}
+
+/**
  * A menu sits beside its trigger: its box starts within a few pixels of
  * the trigger's edge (below or above it), and overlaps it sideways, never
  * at the window's corner (0.4.17-dev.0's regression).
@@ -1058,12 +1095,39 @@ describe("0.4.17: menus in the top layer, Visit ↗, the favourite star", () => 
   }, 45_000);
 });
 
+/** The Tests page's module list, served as `n` modules (issue 1343). */
+async function serveModules(
+  ctx: BrowserContext,
+  n: number,
+  held?: Promise<void>,
+): Promise<void> {
+  await ctx.route("**/api/modules?*", async (route) => {
+    await held;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify(
+        Array.from({ length: n }, (_, i) => ({
+          name: `module-${i + 1}`,
+          displayName: `module-${i + 1}`,
+          icon: "•",
+          testCount: 0,
+        })),
+      ),
+    });
+  });
+}
+
 describe("0.4.17: the Tests module picker", () => {
   it("opens on top of the output pane: every item is on top and clickable", async () => {
     if (!browser) return;
     const ctx = await browser.newContext({
       viewport: { width: 1440, height: 900 },
     });
+    await signIn(
+      ctx,
+      path.join(tmp, "home", ".acme"),
+      `http://localhost:${port}`,
+    );
     await ctx.addInitScript((v) => {
       try {
         localStorage.setItem("den-changelog-seen", v);
@@ -1072,23 +1136,35 @@ describe("0.4.17: the Tests module picker", () => {
         /* none */
       }
     }, latest);
+    // Several modules, as a distribution with suites has: the list reaches
+    // past the controls into the output pane below. Issue 1343: served as
+    // the page's own list, not written over it, which the page's own load
+    // could replace while the test measured.
+    await serveModules(ctx, 8);
     const p = await ctx.newPage();
     await p.goto(api("/test-runs"));
-    await p.waitForSelector("#module-picker-btn");
-    // Several modules, as a distribution with suites has: the list reaches
-    // past the controls into the output pane below.
-    await p.$eval("#module-check-list", (l) => {
-      l.innerHTML = Array.from(
-        { length: 8 },
-        (_, i) =>
-          `<label class="module-check-item"><input type="checkbox" checked /><span>module-${i + 1}</span></label>`,
-      ).join("");
-    });
+    await p.waitForFunction(
+      () => document.querySelectorAll("#module-check-list label").length === 8,
+    );
     await p.click("#module-picker-btn");
     const dd = "#module-picker-dropdown";
     const on = await itemsOnTop(p, `${dd} .module-check-item`);
-    expect(on.length).toBeGreaterThan(0);
-    expect(on).toEqual(on.map(() => true));
+    // All modules, then the 8.
+    expect(on).toHaveLength(9);
+    if (!on.every(Boolean))
+      expect({
+        on,
+        menu: await p.$eval(dd, (m) => ({
+          rect: ((r) => [r.left, r.top, r.width, r.height].map(Math.round))(
+            m.getBoundingClientRect(),
+          ),
+          open: m.matches(":popover-open"),
+          style: m.getAttribute("style"),
+          cls: m.className,
+          scrollTop: m.scrollTop,
+        })),
+        hits: await topHits(p, `${dd} .module-check-item`),
+      }).toEqual({ on: on.map(() => true) });
     expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(true);
     // Beside its button, not at the window's corner.
     const at = await besideTrigger(p, dd, "#module-picker-btn");
@@ -1099,5 +1175,49 @@ describe("0.4.17: the Tests module picker", () => {
     await p.mouse.click(5, 880);
     expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(false);
     await ctx.close();
+  }, 30_000);
+  it("issue 1343: a list that arrives after it opened is placed again, inside a short window", async () => {
+    if (!browser) return;
+    const ctx = await browser.newContext({
+      viewport: { width: 1440, height: 420 },
+    });
+    try {
+      await signIn(
+        ctx,
+        path.join(tmp, "home", ".acme"),
+        `http://localhost:${port}`,
+      );
+      await ctx.addInitScript((v) => {
+        try {
+          localStorage.setItem("den-changelog-seen", v);
+          localStorage.setItem("acme-changelog-seen", v);
+        } catch {
+          /* none */
+        }
+      }, latest);
+      let release = () => {};
+      const held = new Promise<void>((r) => (release = r));
+      await serveModules(ctx, 8, held);
+      const p = await ctx.newPage();
+      await p.goto(api("/test-runs"));
+      await p.waitForSelector("#module-picker-btn");
+      await p.click("#module-picker-btn");
+      const dd = "#module-picker-dropdown";
+      expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(true);
+      release();
+      await p.waitForFunction(
+        () =>
+          document.querySelectorAll("#module-check-list label").length === 8,
+      );
+      // The page places it in the same task as the render: read it now.
+      const box = await p.$eval(dd, (m) => {
+        const r = m.getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, vh: window.innerHeight };
+      });
+      expect([box.top >= 0, box.bottom <= box.vh]).toEqual([true, true]);
+      expect(await p.$eval(dd, (m) => m.matches(":popover-open"))).toBe(true);
+    } finally {
+      await ctx.close();
+    }
   }, 30_000);
 });

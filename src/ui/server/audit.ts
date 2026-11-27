@@ -19,11 +19,35 @@ import {
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
+import type { CliAuditRow, QueuedAuditRow } from "../../shared/audit-queue.js";
+import { auditVia } from "../../shared/test-person.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { redactSecrets } from "../../shared/redact.js";
+import {
+  AUDIT_FILE as TRAIL_NAME,
+  AUDIT_SET_ASIDE_DIR as SET_ASIDE_DIR,
+  AUDIT_SET_ASIDE_MARK as SET_ASIDE_MARK,
+} from "../../shared/audit-file.js";
 
 export { actorFromHeaders } from "../../shared/agent-actor.js";
 
 export interface AuditEntry {
   ts: string;
+  /**
+   * Issue 1369: taken in from the queue a process outside the server
+   * (the CLI, a script, an agent's `den` command) writes when it couldn't
+   * send its entry. A report, never anyone's word: it has no principal,
+   * is marked unverified, and its time is the server's; what the writer
+   * said of itself, its OS user and the file's time are in `reported`.
+   */
+  queued?: true;
+  reported?: {
+    principal?: string;
+    at?: string;
+    via?: string;
+    uid: number;
+    written: string;
+  };
   /** "agent" only for an agent's actor token (SEC-1c); a claim never is. */
   actor: "agent" | "user";
   /**
@@ -33,6 +57,12 @@ export interface AuditEntry {
    * sets; absent for a call without one.
    */
   principal?: string;
+  /**
+   * Issue 636: "test-person" for a row made by a request that came by a
+   * test bed's test-person path (the CLI acting as the person; the guard
+   * lets the path in only there). Absent otherwise.
+   */
+  via?: "test-person";
   /**
    * SEC-1c: what the caller's x-den-actor headers claimed, when no actor
    * token proved it (unverified is then set). A label, never the actor.
@@ -71,6 +101,12 @@ export interface AuditEntry {
    * named, so each one's activity list shows it (`GET /api/activity`).
    */
   addresses?: string[];
+  /**
+   * Issue 597: the agents an action touched, in full (the detail, cut at
+   * 400 characters, has the counts): e.g. the terminal host's restart's
+   * resumed, failed and cut-mid-turn agents.
+   */
+  agents?: Record<string, unknown>;
 }
 
 type Sink = (line: string, actor: AgentActor | null) => void;
@@ -79,8 +115,8 @@ const RING_MAX = 200;
 const ring: AuditEntry[] = [];
 let sink: Sink | null = null;
 
-/** The persisted ring's file name, in the state dir. */
-export const AUDIT_FILE = "audit.jsonl";
+/** The persisted ring's file name, in the state dir (shared/audit-file.ts). */
+export { AUDIT_FILE, AUDIT_SET_ASIDE_DIR } from "../../shared/audit-file.js";
 let file: string | null = null;
 let fileLines = 0;
 
@@ -118,15 +154,11 @@ function persist(entry: AuditEntry): void {
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     if (fileLines + 1 > RING_MAX * 2) {
       // Compact to the ring (which already holds this entry).
-      const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(
-        tmp,
+      writeFileAtomic(
+        file,
         ring.map((e) => JSON.stringify(e)).join("\n") + "\n",
-        {
-          mode: 0o600,
-        },
+        { mode: 0o600 },
       );
-      fs.renameSync(tmp, file);
       fileLines = ring.length;
       return;
     }
@@ -136,6 +168,47 @@ function persist(entry: AuditEntry): void {
   } catch {
     /* the trail stays in memory; the log line still goes out */
   }
+}
+
+/**
+ * Issue 1391: agents may now read the trail, and rows written before
+ * every row was redacted may hold a value (a setting's text, an older
+ * CLI's command line). At the server's first start on this version,
+ * before the trail is read or added to, the trail and every copy beside
+ * it (audit.jsonl.*) move into AUDIT_SET_ASIDE_DIR, denied to agents.
+ * Moved whole, by rename, never rewritten: old free text can't be told
+ * apart safely. Once: a marker in the folder, written whole. A start
+ * that stopped part-way finishes the move under a new name, never over
+ * one moved before.
+ */
+export function setAsideOldTrail(
+  stateDir: string,
+  now: () => Date = () => new Date(),
+): { moved: number } {
+  const dir = path.join(stateDir, SET_ASIDE_DIR);
+  const mark = path.join(dir, SET_ASIDE_MARK);
+  if (fs.lstatSync(mark, { throwIfNoEntry: false })) return { moved: 0 };
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dir, 0o700);
+  const taken = (p: string) => !!fs.lstatSync(p, { throwIfNoEntry: false });
+  let moved = 0;
+  for (const name of fs.readdirSync(stateDir).sort()) {
+    if (name !== TRAIL_NAME && !name.startsWith(`${TRAIL_NAME}.`)) continue;
+    const from = path.join(stateDir, name);
+    const st = fs.lstatSync(from, { throwIfNoEntry: false });
+    // A file, or a link (moved as the link, never followed).
+    if (!st || !(st.isFile() || st.isSymbolicLink())) continue;
+    let to = path.join(dir, name);
+    for (let n = 1; taken(to); n++) to = path.join(dir, `${name}.${n}`);
+    fs.renameSync(from, to);
+    moved++;
+  }
+  writeFileAtomic(
+    mark,
+    JSON.stringify({ at: now().toISOString(), moved }) + "\n",
+    { mode: 0o600 },
+  );
+  return { moved };
 }
 
 /** Where audit lines go (the server log); null to disconnect. */
@@ -157,16 +230,31 @@ export function recordAction(
     reason?: string;
     addresses?: string[];
     targetWorkspace?: string;
+    /** Issue 597: the agents it touched, in full. */
+    agents?: Record<string, unknown>;
+    /** Issue 1369: a queued entry's report (it is no one's word). */
+    queued?: NonNullable<AuditEntry["reported"]>;
   },
   /** The credential's actor (request-guard principalOf). */
   principal?: string,
 ): AuditEntry {
   const claim = actor?.unverified ? actor : null;
   const verified = actor && !actor.unverified ? actor : null;
-  const entry: AuditEntry = {
+  const via = action.queued ? undefined : auditVia();
+  // Issue 1369: a queued entry is no one's word: never a principal.
+  if (action.queued) principal = undefined;
+  const built: AuditEntry = {
     ts: new Date().toISOString(),
     actor: verified ? "agent" : "user",
+    ...(action.queued
+      ? {
+          queued: true as const,
+          unverified: true as const,
+          reported: action.queued,
+        }
+      : {}),
     ...(principal ? { principal } : {}),
+    ...(via ? { via } : {}),
     ...(claim
       ? {
           claimed: {
@@ -198,7 +286,14 @@ export function recordAction(
     ...(action.outcome ? { outcome: action.outcome } : {}),
     ...(action.reason ? { reason: clean(action.reason, 300) } : {}),
     ...(action.addresses?.length ? { addresses: action.addresses } : {}),
+    ...(action.agents ? { agents: action.agents } : {}),
   };
+  // Issue 1391: agents may read the trail, so no entry keeps a secret:
+  // every string in it, however deep, whoever wrote it (a setting's
+  // value, a den command's row, a queued report's command line, an
+  // agent's claim, an error in the agents block). The log line below
+  // uses the same, redacted entry.
+  const entry = redactAll(built);
   ring.push(entry);
   if (ring.length > RING_MAX) ring.shift();
   persist(entry);
@@ -207,15 +302,69 @@ export function recordAction(
   // A refusal whose detail is its reason names what it touched instead.
   const what = entry.addresses
     ? entry.addresses.join(", ")
-    : entry.reason && action.detail === entry.reason
+    : entry.reason && entry.detail === entry.reason
       ? ""
-      : action.detail;
+      : entry.detail;
   sink?.(
-    `${mark} ${action.verb}${what ? ` ${what}` : ""}${why}${actorSuffix(actor)}` +
-      (principal && !verified ? ` · as ${principal}` : ""),
+    `${mark} ${entry.verb}${what ? ` ${what}` : ""}${why}${redactSecrets(actorSuffix(actor))}` +
+      (entry.principal && !verified ? ` · as ${entry.principal}` : "") +
+      (via ? " · by the test-person path" : "") +
+      (action.queued ? " · queued by a process, unverified" : ""),
     actor,
   );
   return entry;
+}
+
+/**
+ * Issue 1369: a queued entry from a process outside the server (the CLI's
+ * auditConfig, through audit-queue.ts), recorded as a report: unverified,
+ * no principal, at the server's time.
+ */
+export function recordQueuedAuditRow(row: QueuedAuditRow): AuditEntry {
+  return recordAction(null, {
+    verb: row.verb,
+    detail: row.detail,
+    ...(row.outcome ? { outcome: row.outcome } : {}),
+    ...(row.reason ? { reason: row.reason } : {}),
+    queued: { ...row.reported, ...(row.via ? { via: row.via } : {}) },
+  });
+}
+
+/**
+ * Issue 1369: an entry a process outside the server sent over its
+ * authenticated call: recorded as the request's credential says (its
+ * actor and principal), at the server's time. The body's verb, detail,
+ * outcome and reason only (cliAuditRowOf): never a who or a when.
+ */
+export function recordSentAuditRow(
+  actor: Actor,
+  row: CliAuditRow,
+  principal?: string,
+): AuditEntry {
+  return recordAction(
+    actor,
+    {
+      verb: row.verb,
+      detail: row.detail,
+      ...(row.outcome ? { outcome: row.outcome } : {}),
+      ...(row.reason ? { reason: row.reason } : {}),
+    },
+    principal,
+  );
+}
+
+/**
+ * Issue 1391: `v` with redactSecrets over every string in it, at any
+ * depth (arrays and plain objects walked; other values as they are).
+ */
+function redactAll<T>(v: T): T {
+  if (typeof v === "string") return redactSecrets(v) as T;
+  if (Array.isArray(v)) return v.map((x) => redactAll(x)) as T;
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, redactAll(x)]),
+    ) as T;
+  return v;
 }
 
 /** One line, printable characters only, at most `max` long. */

@@ -6,7 +6,7 @@ description: Install Den, Monster Orange's local dev orchestrator, and hand the 
 # Install Den
 
 You are installing Den on this person's machine. Den runs their repos locally and shows them in a browser. Your job
-is short: install it, name it, start it, and hand over the link. **Den's own agent takes it from there.** It adds
+is short: install it, name it, start it, and hand over to the person. **Den's own agent takes it from there.** It adds
 their repos and starts their services, with the person allowing each change in the browser.
 
 You do three things only. You don't add repos or create workspaces: those are Den's own agent's job. Keep your
@@ -53,15 +53,19 @@ person (`ask`).
 2. `cd <dir> && npm install`
 3. From here on, the Den command is `./bin/<name>`, run from `<dir>`.
 
-## 3. Start the web server and hand over the link
+## 3. Start the web server and hand over
 
 1. `./bin/<name> web up --no-open --json`. It answers `{ok, url, port}`.
-2. `./bin/<name> web claim-link --json`. It answers `{url, expiresAt}`: a one-time setup link that signs the
-   person's browser in, so they can allow Den's agent's changes. It lasts 30 minutes and works once.
-3. Hand over, in a few short sentences:
-   - **Open** the `url` from `claim-link`, in your browser on this machine. "Den's own agent takes it from there."
+2. Hand over, in a few short sentences:
+   - **Sign in, on this computer:** run `./bin/<name> web open` in your own terminal, from `<dir>`. It opens Den
+     in your browser here, signed in, so you can allow Den's agent's changes.
+   - **Sign in, from another computer** (Den runs on a server or a computer you're not at): connect with
+     `ssh -t <host>` (the `-t` matters), then run `./bin/<name> web login` from `<dir>`. Open the link it prints in
+     your browser on the computer you're at, and type the code it shows if asked. "Den's own agent takes it from
+     there."
    - **Your Den** lives in `<dir>`, and its command is `./bin/<name>`.
-   - If the link has expired, run `./bin/<name> web claim-link` yourself for a new one.
+
+Sign-in links are printed only in the person's own terminal, so you never ask for one.
 
 That's all. Don't go on to add repos.
 
@@ -72,3 +76,13 @@ That's all. Don't go on to add repos.
 3. If there is neither, ask the person **one** clear question, with your best guess as the default.
 4. If you're stuck after two tries, stop. Tell them what you ran, what it said, and where Den writes its logs
    (`~/.<name>/`), so they can get help.
+
+## After install: sending feedback about Den
+
+**Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
+the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
+person to press it. An agent can't press it yet: a `den report` command and agent tool are coming (issue 565).
+
+**Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
+Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo
+is public: never paste secrets, tokens, private repo names, customer or company names, or internal URLs.

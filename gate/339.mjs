@@ -1,6 +1,7 @@
 /* eslint-env browser */
 // Live check for #339: `agents accounts list` and Settings › Agents show each vendor's sign-in accounts by
 // label and status, never a token or an email. Nothing is added, set, ordered or removed. Read only.
+import { readJson } from "./lib/read-json.mjs";
 export const issue = 339;
 export const clauses = [
   "`agents accounts` (list, add, set-token, order, remove) on the command line",
@@ -14,9 +15,19 @@ export const timeoutMs = 90000;
 const EMAIL = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
 const TOKENISH = /\b(sk-[A-Za-z0-9_-]{12,}|[A-Za-z0-9_-]{40,})\b/;
 
+// Read only (issue 845): reads `agents accounts list` and Settings › Agents' accounts.
+export const readOnly = true;
+
 export async function setup(ctx) {
-  const l = ctx.cli(["agents", "accounts", "list"]);
-  return { code: l.code, out: String(l.out), err: String(l.err) };
+  const l = ctx.cli(["agents", "accounts", "list", "--json"]);
+  const list = readJson(l, "agents accounts list");
+  return {
+    code: l.code,
+    out: JSON.stringify(list),
+    err: String(l.err ?? ""),
+    runtime: list?.runtime ?? null,
+    accounts: Array.isArray(list?.accounts) ? list.accounts : null,
+  };
 }
 
 export async function run(ctx, s) {
@@ -63,8 +74,8 @@ export function expect(cells) {
   return [
     {
       clause: clauses[0],
-      ok: r0.code === 0 && /^\S.*\(\S+\):/m.test(r0.out),
-      detail: `agents accounts list: ${r0.code}; ${r0.out.split("\n").slice(0, 4).join(" / ") || r0.err.slice(0, 120)} (add, set-token, order and remove change accounts: not run)`,
+      ok: r0.code === 0 && !!r0.runtime?.id && (r0.accounts?.length ?? 0) > 0,
+      detail: `agents accounts list --json: ${r0.code}; ${r0.accounts ? `${r0.runtime?.name} (${r0.runtime?.id}): ${r0.accounts.map((a) => `${a.id} ${a.label} ${a.tokenSet ? "token set" : "no token"}`).join(" / ")}` : r0.err.slice(0, 120)} (add, set-token, order and remove change accounts: not run)`,
     },
     {
       clause: clauses[1],

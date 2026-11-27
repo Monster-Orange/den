@@ -36,12 +36,20 @@ describe("live checks: gate/<issue>.mjs", () => {
         "409.mjs: matrix.browsers must list chromium or webkit",
         "409.mjs: matrix.widths must be widths in px (200 or more)",
         "409.mjs: timeoutMs is not a positive whole number",
+        "410.mjs: expect takes one argument, the result (the harness calls expect(result)); it declares 2",
+        "411.mjs: line 8: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)",
+        "411.mjs: line 11: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)",
+        '412.mjs: line 4: skip reason "needs a test Hub" is not "person" or "needs-<thing>" (put the words in why)',
+        '412.mjs: line 6: skip reason "needs ctx.hub" is not "person" or "needs-<thing>" (put the words in why)',
+        "413.mjs: items must list its own issue (413)",
+        "413.mjs: items must be issue numbers (whole numbers above 0)",
+        "414.mjs: items must be on one line, `export const items = [414, …];` (the bed reads it from the source)",
         "notes.mjs: the name is not <issue number>.mjs",
       ],
     });
   });
 
-  it("checks expect's rows: ok null only with a skip reason, every clause answered", () => {
+  it("checks expect's rows: ok null only with a skip reason, every clause answered once", () => {
     const js = `
       const { checkRows } = await import("./scripts/gate-shape.mjs");
       const c = ["a", "b"];
@@ -51,6 +59,7 @@ describe("live checks: gate/<issue>.mjs", () => {
         skipWithOk: checkRows([{ clause: "a", ok: true, skip: "person" }, { clause: "b", ok: true }], c),
         missing: checkRows([{ clause: "a", ok: true }], c),
         stranger: checkRows([{ clause: "a", ok: true }, { clause: "b", ok: "yes" }, { clause: "z", ok: true }], c),
+        twice: checkRows([{ clause: "a", ok: true }, { clause: "b", ok: true }, { clause: "a", ok: true }], c),
       }));`;
     const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
       cwd: ROOT,
@@ -65,6 +74,8 @@ describe("live checks: gate/<issue>.mjs", () => {
         "row 2: ok is not true, false or null",
         'row 3: clause "z" is not one of clauses',
       ],
+      // CONTRIBUTING.md: expect answers each clause once.
+      twice: ['row 3: clause "a" is answered more than once'],
     });
   });
 

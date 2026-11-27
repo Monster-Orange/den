@@ -50,12 +50,29 @@ afterAll(() => {
 const AGENTS_MAY: Record<string, string> = {
   "POST /api/approvals":
     "asks the person to allow a held write; nothing runs until they do",
+  "POST /api/approvals/:id/withdraw":
+    "takes back its own held write (issue 142); another's is refused, nothing runs",
   "POST /api/activity": "an agent's report of a refused call, appended only",
+  "POST /api/audit/cli":
+    "issue 1369: an agent's den command's audit entry, appended only, recorded as the agent",
   "GET /api/service/exec":
     "MCP service lifecycle: up, down, restart, local only (checked for an agent)",
   "HEAD /api/service/exec": "as GET",
   "GET /api/run": "MCP tests_run: starts a test run",
   "HEAD /api/run": "as GET",
+  // 0.4.71: log reads run a command for their output, so they need a
+  // credential; an agent's token still reads them (MCP logs_tail, logs_search).
+  "GET /api/service/logs": "MCP logs_tail: follows a service's log",
+  "HEAD /api/service/logs": "as GET",
+  "GET /api/service/taillog": "MCP logs_tail: tails a service's log",
+  "HEAD /api/service/taillog": "as GET",
+  "GET /api/service/history": "a service's log history, read only",
+  "HEAD /api/service/history": "as GET",
+  "GET /api/logs/search": "MCP logs_search: searches the logs",
+  "HEAD /api/logs/search": "as GET",
+  "GET /api/manifest/validate":
+    "MCP manifest_validate: reads a manifest inside a repo, never quoting it",
+  "HEAD /api/manifest/validate": "as GET",
   "POST /api/workspace/sync": "MCP sync: git clone and pull in the checkouts",
   "GET /api/workspace/sync": "the same sync, streamed (as the page does)",
   "HEAD /api/workspace/sync": "as GET",
@@ -66,8 +83,18 @@ const AGENTS_MAY: Record<string, string> = {
   "POST /api/report/preview": "composes a report's text; writes nothing",
   "POST /api/report/drafts":
     "an agent's report stays a draft, stamped as its own, for its person to send",
+  "POST /api/agents/self/github-watches":
+    "MCP github_watch: its own watch in the shared GitHub watcher, in its project's repos (checked there)",
+  "POST /api/agents/self/github-watches/cancel":
+    "MCP github_watch_cancel: stops one of its own watches",
   "POST /api/agents/self/attention":
     "NT-1: the agent's own waiting mark, by its own token only",
+  "POST /api/notifications/withdraw":
+    "issue 1008: withdraws the agent's own question; another agent's is refused and recorded",
+  "POST /api/agents/self/view":
+    "issue 796: a one-time link to the agent's own read-only view of these pages; it changes nothing",
+  "POST /api/agents/self/issue-write":
+    "issue_write: by the agent's own token only, in its own project's repos; audited and rate-limited",
   "POST /hub/*": "D52: the agent's own Hub calls, with its own Hub token",
   "PUT /hub/*": "as POST",
   "DELETE /hub/*": "as POST",
@@ -140,6 +167,21 @@ describe("every route that changes something is a person's, or listed for agents
       expect([q, run(q)]).toEqual([q, null]);
     for (const q of ["cmd=migrate&env=local", "cmd=up&env=prod", "env=local"])
       expect([q, run(q)]).toEqual([q, expect.stringMatching(/only/)]);
+  });
+
+  it("issue 964: the schedule routes are classed writes an agent's token is refused", () => {
+    for (const p of [
+      "/api/verify/schedules/allow",
+      "/api/verify/schedules/run",
+      "/api/verify/schedules/revoke",
+    ]) {
+      const r = ROUTES.find((x) => x.path === p);
+      expect([p, r?.cls]).toEqual([p, "mutating"]);
+      expect([p, agentRefusal(agent, "POST", p, "mutating")]).toEqual([
+        p,
+        expect.any(String),
+      ]);
+    }
   });
 
   it("each listed one is a write route an agent does reach", () => {

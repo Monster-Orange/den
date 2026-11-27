@@ -94,8 +94,16 @@ function scrollPlan(skip) {
     }
     return m;
   };
+  // What skip() leaves out, with everything inside it (issue 1499: the
+  // Report form is open while the page is taken; nothing in it is read or
+  // touched).
+  const skipped = [];
   for (const el of document.body ? document.body.querySelectorAll("*") : []) {
-    if (el === se || skip(el)) continue;
+    if (el === se || skipped.some((r) => r.contains(el))) continue;
+    if (skip(el)) {
+      skipped.push(el);
+      continue;
+    }
     if (getComputedStyle(el).position === "sticky") {
       // Where sticky put it, against where it would be without: read with
       // position static for one synchronous moment (nothing is painted).
@@ -142,9 +150,18 @@ function scrollPlan(skip) {
       // that the moved content is positioned too.
       if (m.sticky && cs.zIndex === "auto") css += "z-index:1;";
     }
-    if (css || m.text) plan.push({ el, css, text: m.text });
+    if (css || m.text)
+      plan.push({
+        el,
+        css,
+        text: m.text,
+        still: m.sticky && !m.dx && !m.dy && !m.clip && !m.text,
+      });
   }
-  return plan;
+  // Issue 1341: sticky parts sticky hasn't moved (the rail's foot in a
+  // rail that fits) need nothing when nothing else moved either: the
+  // plain capture, as before they were sticky.
+  return plan.every((x) => x.still) ? [] : plan.map(({ still, ...x }) => x);
 }
 
 /** The SVG (a data: URL) with each tagged clone changed as planned. */
@@ -303,41 +320,6 @@ export function rectOfPercent(x, y, w, h) {
 
 export function toBlob(canvas) {
   return new Promise((ok) => canvas.toBlob(ok, "image/png"));
-}
-
-/**
- * After sending: the masked screenshot copied (where the browser allows
- * it) and saved as a file. Which of the two worked.
- */
-export async function saveAndCopy(canvas, name = "report-screenshot.png") {
-  const blob = await toBlob(canvas);
-  const out = { copied: false, saved: false };
-  if (!blob) return out;
-  try {
-    if (navigator.clipboard?.write && typeof ClipboardItem === "function") {
-      await navigator.clipboard.write([
-        new ClipboardItem({ "image/png": blob }),
-      ]);
-      out.copied = true;
-    }
-  } catch {
-    /* not allowed here: the file is still saved */
-  }
-  try {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.hidden = true;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    out.saved = true;
-  } catch {
-    /* no download here */
-  }
-  return out;
 }
 
 /** An image (a Blob or a data: URL) back as a canvas, or null. */

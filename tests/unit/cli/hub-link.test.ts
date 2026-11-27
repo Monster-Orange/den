@@ -9,7 +9,7 @@ import {
   cmdHubLink,
   type HubLinkDeps,
 } from "../../../src/ui/cli/hub-link-command.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import { ACTOR_TOKEN_ENV } from "../../../src/shared/actor-token.js";
 
 const BACK = {
@@ -158,6 +158,24 @@ describe("hub link --suggested (#68)", () => {
     expect(j.page).toBe(
       "https://den.example.test/settings#agents.hub_link_all",
     );
+  });
+
+  it("issue 649: never offers the catch-all project `default`", async () => {
+    const r = sug({ projects: () => ["back-office", "default"] });
+    expect(await cmdHubLink(["--suggested", "--json"], r.deps)).toBe(0);
+    const j = JSON.parse(r.out[0]) as { projects: { project: string }[] };
+    expect(j.projects.map((p) => p.project)).toEqual(["back-office"]);
+    const t = sug({ projects: () => ["back-office", "default"] });
+    expect(await cmdHubLink(["--suggested"], t.deps)).toBe(0);
+    expect(t.out.join("\n")).toContain("Hub suggests (1):");
+    expect(t.out.join("\n")).not.toContain("default →");
+  });
+
+  it("issue 1334: never offers an empty project (no repos, services or agents)", async () => {
+    const r = sug({ empty: (ws) => ws === "lone" });
+    expect(await cmdHubLink(["--suggested", "--json"], r.deps)).toBe(0);
+    const j = JSON.parse(r.out[0]) as { projects: { project: string }[] };
+    expect(j.projects.map((p) => p.project)).toEqual(["back-office", "site"]);
   });
 
   it("Hub not connected: says so, exit 1; with -p or a Hub project: usage", async () => {

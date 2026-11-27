@@ -24,7 +24,7 @@
 import * as http from "http";
 import * as https from "https";
 import { githubEndpoints, type GithubEndpoints } from "./github-app.js";
-import { githubDisplayName } from "./web-owner.js";
+import { githubDisplayName } from "./web/web-owner.js";
 
 export interface DeviceCode {
   deviceCode: string;
@@ -86,7 +86,7 @@ export interface GithubDeviceClient {
    */
   api?(
     token: string,
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PATCH",
     path: string,
     body?: unknown,
   ): Promise<{ status: number; body: Record<string, unknown> }>;

@@ -23,12 +23,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const PTY = loadPty().available;
 const SHOTS = process.env.DEN_AGENTS_SHOTS;
@@ -43,7 +44,7 @@ let latest = "";
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -90,6 +91,8 @@ async function page(s: AgentsPageServer, url: string): Promise<Page> {
       /* none */
     }
   }, latest);
+  // The person's browser, signed in as `web up` does (0.4.71).
+  await signIn(ctx, s.stateDir, s.base);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
   await p.goto(url.startsWith("http") ? url : `${s.base}${url}`);
@@ -121,7 +124,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
     expect(await p.isDisabled("#ag-go")).toBe(false);
     // AG-12.1: what isn't installed, and Install… (later).
     expect(await text(p, "#ag-r-miss")).toBe(
-      "Not found on this machine: Claude Code, Gemini CLI, Grok Build · Install… later",
+      "Not found on this machine: Claude Code, Gemini CLI, Grok Build, Antigravity CLI · Install… later",
     );
     // Picking the persona's own runtime: Start is disabled, and says why.
     await p.selectOption("#ag-runtime", "");
@@ -144,6 +147,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
       ["Claude Code — not installed", true],
       ["Gemini CLI — not installed", true],
       ["Grok Build — not installed", true],
+      ["Antigravity CLI — not installed", true],
       ["Generic command — the persona has no argv template", true],
     ]);
     // Enter doesn't start it either.
@@ -163,10 +167,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
 
   it("unavailable on the Workspaces page's form too", async () => {
     if (skip()) return;
-    const p = await page(
-      missing!,
-      signInUrl(missing!.stateDir, missing!.base, "/?ws=north"),
-    );
+    const p = await page(missing!, "/?ws=north");
     await p.waitForSelector("#agent-start-open");
     await p.click("#agent-start-open");
     await p.waitForSelector(
@@ -199,6 +200,7 @@ describe("AG-0.2: the runtime's readiness, before Start", () => {
       "Codex CLI · 0.50.0 · Den tools: coming",
       "Gemini CLI — not installed",
       "Grok Build — not installed",
+      "Antigravity CLI — not installed",
       "Generic command — the persona has no argv template",
     ]);
     await p.context().close();

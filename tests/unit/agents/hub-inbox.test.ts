@@ -12,6 +12,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import {
+  INBOX_CACHE_SECONDS,
   inboxArgs,
   inboxBlock,
   type InboxArgs,
@@ -70,8 +71,12 @@ function agent(at = base) {
 }
 const env = () => ({ DEN_ACTOR_TOKEN: denToken(n) });
 /** The check as the agent's Stop hook runs it. */
+/** One try, as before issue 609's retries (hook-call.test covers those). */
 const check = (a: InboxArgs, more: { timeoutMs?: number } = {}) =>
-  inboxBlock(a, { env: env(), ...more });
+  inboxBlock(a, {
+    env: env(),
+    call: { timeoutMs: more.timeoutMs ?? 2_000, retries: 0, backoffMs: 0 },
+  });
 
 const reset = (y: unknown, s = 200) => {
   yours = y;
@@ -156,6 +161,56 @@ describe("D41: the inbox check", () => {
   });
 });
 
+// 2026-11-22: after a reboot ~96 agents resumed at once, and every turn
+// end asked Hub again. One agent's answer is now kept for a short while
+// (`--hub-inbox-cache <s>`, default 30 s from the Stop hook): turn ends
+// inside it reuse the count and send nothing.
+describe("the inbox check reuses a recent answer", () => {
+  it("a second turn end inside the cache asks nothing; after it, asks again", async () => {
+    let now = Date.parse("2026-11-22T20:30:00Z");
+    const a = { ...agent(), cacheSeconds: 30 };
+    reset(1);
+    const ask = () =>
+      inboxBlock(a, {
+        env: env(),
+        call: { timeoutMs: 2_000, retries: 0, backoffMs: 0 },
+        now: () => now,
+      });
+    expect(await ask()).toMatch(/1 Hub comment waits on you/);
+    expect(seen).toHaveLength(1);
+    now += 10_000;
+    expect(await ask()).toBe("");
+    expect(seen).toHaveLength(1);
+    // Past the cache: asks Hub again, and a new comment nudges.
+    reset(2);
+    now += 25_000;
+    expect(await ask()).toMatch(/2 Hub comments wait on you/);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("no cache given: every call asks (as before)", async () => {
+    const a = agent();
+    reset(0);
+    await check(a);
+    await check(a);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("reads --hub-inbox-cache; the Stop hook's default is 30 s", () => {
+    expect(
+      inboxArgs([
+        "--files",
+        "/f",
+        "--hub-inbox",
+        "http://h/hub",
+        "--hub-inbox-cache",
+        "45",
+      ]),
+    ).toEqual({ base: "http://h/hub", files: "/f", cacheSeconds: 45 });
+    expect(INBOX_CACHE_SECONDS).toBe(30);
+  });
+});
+
 describe("D41: in the Stop hook", () => {
   const msg = (more: Record<string, unknown> = {}) =>
     JSON.stringify({ last_assistant_message: "Done.", ...more });
@@ -169,7 +224,8 @@ describe("D41: in the Stop hook", () => {
       return "INBOX";
     };
     expect(await stopHook(msg(), argv, fake)).toBe("INBOX");
-    expect(calls).toEqual([a]);
+    // 2026-11-22: turn ends share Hub's answer for 30 s.
+    expect(calls).toEqual([{ ...a, cacheSeconds: 30 }]);
     expect(await stopHook(msg({ stop_hook_active: true }), argv, fake)).toBe(
       "",
     );

@@ -54,6 +54,16 @@ that setting yourself: it is the person's.
 The person comes back to you for anything about the server itself: add a
 repo, fix a failing service, change a setting, explain what's running.
 
+## Sending feedback about Den
+
+**Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
+the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
+person to press it. An agent can't press it yet: a `den report` command and agent tool are coming (issue 565).
+
+**Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
+Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo
+is public: never paste secrets, tokens, private repo names, customer or company names, or internal URLs.
+
 ## Restarting Den
 
 den_restart_server restarts this Den only, on the version installed now.
@@ -112,13 +122,31 @@ Reads (they change nothing):
 - `repos_detect`, `manifest_draft`, `manifest_validate`: find repos,
   draft and check a side-car manifest.
 - `agent_helpers`: an agent's helpers.
+- `report_screenshot`: the masked screenshot of a report filed from this
+  Den, by the report id its issue names. Only you and your person may read
+  it; a project agent is refused, so it asks you.
 - `ask_human`: ask your person a question.
+- `ask_withdraw`: withdraw your question once it is settled another way, or (with `request`) your own pending write request once it turns out wrong.
+- `page_view`: a one-time link to open this Den's own pages read-only, as
+  you, to look, take a screenshot or check a fix. It changes nothing, and
+  ends in a few minutes.
 - `notifications_list`: your person's bell.
+- `app_feed_read`: the events an app's feed sent you, when Den types you that some are unread (only your own project's feeds that name you).
 - `approval_check`: where one of your held asks stands.
 - `gate_slot_status`: who holds this machine's heavy-test slots, who waits.
 - `gate_slot_request`, `gate_slot_release`: hold a slot across several
   test commands, and give it back (your own only). For one command, run it
-  as `<cli> gate run -- <command>` instead.
+  as `<cli> gate run -- <command>` instead. A release run your person
+  waits on (they marked it, or it's for an issue they reported) may ask
+  with `priority: "release"` and a `reason`; never a routine run.
+- `gate_slot_yield`: your waiting slot lets one waiting slot behind it go
+  just ahead of yours; you keep your place otherwise. Use it instead of
+  giving your place back and asking again at the back.
+- `github_watch`: Den tells you once when a pull request's checks or a
+  workflow run finish, with each failure's URL. Use it instead of
+  `gh pr checks --watch` or `gh run watch`: one watcher for every agent
+  here, under one GitHub API budget. `github_watch_list` and
+  `github_watch_cancel` show and stop your own watches.
 
 Hub files (through Den, as you; when Hub is connected):
 
@@ -126,6 +154,12 @@ Hub files (through Den, as you; when Hub is connected):
   image or doc, sent in parts. Publish files through it, never by pasting
   a page's text into one call.
 - `hub_pull`: fetch a version's files into a folder, each hash checked.
+
+Direct writes (they run at once, audited, as you):
+
+- `issue_write`: create an issue, comment, label or set a milestone in a
+  project's GitHub repo (name the project). Den adds a line naming you to
+  what you write. It never closes, deletes, transfers or locks an issue.
 
 Held (each waits for the person's Allow):
 
@@ -139,9 +173,29 @@ Held (each waits for the person's Allow):
   without asking runs only on the person's own Allow, never by itself.
   Agents with a mode of their own keep it: the Allow names them, and the
   person may make them follow too.
+- `project_agent_cap`: set how many agents one project runs at once
+  (`max`; 0 goes back to the install's cap). It can only be lower than
+  the install's. Lowering it follows the policy; raising it or clearing
+  it runs only on the person's own Allow.
 - `agent_mode`: make an agent with a mode of its own follow its project's
   again. Only the person's own Allow runs it; Den restarts the agent after
   its turn, on the same conversation.
+- `agent_sandbox_set`: turn one agent's sandbox off or back on, with a
+  reason. Off runs only on the person's own Allow, and the Review says so
+  when an agent asks for itself; back on follows the policy. Den restarts
+  a running agent after its turn, on the same conversation.
+- `setting_change`: change one of Den's settings (`key`, `value`, a
+  `reason`) so the person never edits config/local/user.yml by hand. Den
+  checks the key and value first; a setting that widens what agents can
+  do runs only on the person's own Allow. One Den reads when it starts
+  says so: then ask for `den_restart_server`.
+- `gate_settings_set`: change this machine's gate slot settings
+  (`settings`, Settings › Gate's keys and values, and a `reason`), which
+  `setting_change` can't reach. Den checks every value first; on a
+  personal install it's written at once and the person is told; on a
+  strict one it follows their choice for Limits and performance.
+  Turning `gate.route_agents` off, or dropping a program from
+  `gate.route_commands`, waits for the person's own Allow on both.
 - `project_mcp_add`: add an HTTP MCP server for a project's agents. Its
   bearer is the name of a secrets.refs entry, never a value. Only the
   person's own Allow runs it; agents get it at their next start or resume.
@@ -149,6 +203,13 @@ Held (each waits for the person's Allow):
   away, or change its url or bearer (again a secrets.refs name; null for
   none). Only the person's own Allow runs either; agents get
   the change at their next start or resume.
+- `project_event_feed_add`, `project_event_feed_remove`: add or remove an
+  app's event feed for one of a project's agents (`agents.event_feeds`).
+  Its bearer is the name of a secrets.refs entry, never a value. An add
+  with a bearer, or to this machine or a private network, always waits
+  for the person's own Allow; otherwise, on a personal install it applies
+  at once and the person can Undo it, and on a strict one it waits for
+  their Allow. Den's own address and its Hub's are refused.
 - `persona_create`, `persona_update`: add or change a persona.
 - `hub_connect`: set, change or clear Hub's address. After the Allow, Den
   restarts; the person then clicks Connect in Settings › Hub.
@@ -156,6 +217,10 @@ Held (each waits for the person's Allow):
   isn't linked to one (named as the project, unless you give a name). An
   owner in Hub allows it there; Den links the project by itself once they
   do, and Hub tells you what they decided. Don't link it again yourself.
+- `hub_link`: link a project to an existing Hub project, by its id or slug
+  as the connected Hub lists it (never its name), for instance after the
+  install moves to another Hub. It waits for the person's Allow. One the
+  connected Hub doesn't list is refused, saying why.
 - `den_restart_server`, `den_update`: restart or update Den.
 - `agent_import`: bring in a conversation as an agent. It asks the person.
 - `approval_policy`: ask the person to change the approval policy. It
@@ -163,6 +228,33 @@ Held (each waits for the person's Allow):
 - `pr_close`: close a stale or superseded pull request after a Hub note,
   with a comment saying why. It runs at once unless the person watches or
   pinned the repo.
+- `report`: report an issue with Den, as the Report button does (with no
+  title it lists the destinations and who can see each). To a public
+  destination it waits for the person's Allow; to a private one the
+  approval policy decides. Never put a secret in a report.
+- `gate_runner_token_create`: a token a CI job in a runner VM uses to take
+  this machine's gate slots over HTTP, and nothing else. It waits for the
+  person's Allow; the token comes back once, in the result: store it as
+  the CI system's secret at once, and never print it.
+- `gate_box_set`, `gate_box_remove`: ask to add, replace or remove a test
+  box (another machine whose browsers take gate slots;
+  docs/gate-slots.md). Den checks the box first; it waits for the
+  person's Allow, and nothing changes until then.
+- `gate_runner_entry_set`: let a repo's CI jobs run on a test box the
+  person set (its labels, routing variable, slots, heavy or light, who
+  answers for it). It waits for the person's Allow. Nothing starts a
+  runner yet: it is a setting.
+- `host_restart`: when doctor's terminal host row says a restart
+  is needed and offers it (Den's own restart failed or never ran). It
+  waits for the person's Allow, then for no agent mid-turn, restarts the
+  host and resumes the agents. Never stop the terminal host another way:
+  that stops every agent. While doctor says Den is waiting, do nothing.
+- `web_url_set`: when this install's address is wrong or missing
+  (doctor's address row, a sign-in link that goes nowhere). Check first
+  that the name answers and an edge route sends it here (`edge_status`),
+  then propose it with its proof in `note`. Den checks it answers as this
+  Den, at the ask and again at the Allow; it never writes one that doesn't.
+  Never ask the person to type `web url` instead.
 
 Only when Den's config turns them on (`mcp.actions`):
 

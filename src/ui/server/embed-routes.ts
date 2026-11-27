@@ -35,6 +35,7 @@
  * Every key mint and every message is audited (its length, never its text).
  * The embed key reaches nothing else (request-guard.ts, EMBED_KEY_ROUTES).
  */
+import { line, reviewLines } from "../../shared/review-lines.js";
 import type * as http from "http";
 import * as path from "path";
 import { WORKSPACE_NAME_RE, type Actor } from "../../shared/agent-actor.js";
@@ -54,7 +55,7 @@ import {
   ServerKeys,
   type ServerKeyView,
 } from "./embed-server-keys.js";
-import { embedDelivery, type Delivery } from "../../shared/hub-delivery.js";
+import { embedDelivery, type Delivery } from "../../shared/hub/hub-delivery.js";
 import { randomBytes } from "crypto";
 import {
   checkOrigin,
@@ -760,19 +761,21 @@ export function appKeyOps(d: AppKeyDeps): {
         },
         summary: `let ${o.origin} message ${rec.id} in ${rec.workspace} and read its state`,
         params: { agent: rec.id, project: rec.workspace, origin: o.origin },
-        details: [
-          `Makes a key for ${o.origin}'s own backend. It reaches only ${rec.id} in ${rec.workspace}: its state, and messages typed after its turn ends.`,
-          "The key is shown once, here, after you allow. Den keeps only its hash.",
-          "You can revoke it any time in Settings › Embedding.",
-        ],
-        detailKeys: [
-          {
-            key: "ap.det.embed_key_create.reach",
-            vars: { origin: o.origin, agent: rec.id, project: rec.workspace },
-          },
-          { key: "ap.det.embed_key_create.once" },
-          { key: "ap.det.embed_key_create.revoke" },
-        ],
+        ...reviewLines([
+          line(
+            `Makes a key for ${o.origin}'s own backend. It reaches only ${rec.id} in ${rec.workspace}: its state, and messages typed after its turn ends.`,
+            "ap.det.embed_key_create.reach",
+            { origin: o.origin, agent: rec.id, project: rec.workspace },
+          ),
+          line(
+            "The key is shown once, here, after you allow. Den keeps only its hash.",
+            "ap.det.embed_key_create.once",
+          ),
+          line(
+            "You can revoke it any time in Settings › Embedding.",
+            "ap.det.embed_key_create.revoke",
+          ),
+        ]),
       };
     },
     run(a) {
@@ -804,17 +807,17 @@ export function appKeyOps(d: AppKeyDeps): {
         args: { id: k.id },
         summary: `revoke ${k.origin}'s key for ${k.agent} in ${k.project}`,
         params: { agent: k.agent, project: k.project, origin: k.origin },
-        details: [
-          `${k.origin} can no longer message ${k.agent} or read its state with this key.`,
-          "Messages it sent that wait for the agent's turn are still typed.",
-        ],
-        detailKeys: [
-          {
-            key: "ap.det.embed_key_revoke.reach",
-            vars: { origin: k.origin, agent: k.agent },
-          },
-          { key: "ap.det.embed_key_revoke.held" },
-        ],
+        ...reviewLines([
+          line(
+            `${k.origin} can no longer message ${k.agent} or read its state with this key.`,
+            "ap.det.embed_key_revoke.reach",
+            { origin: k.origin, agent: k.agent },
+          ),
+          line(
+            "Messages it sent that wait for the agent's turn are still typed.",
+            "ap.det.embed_key_revoke.held",
+          ),
+        ]),
       };
     },
     run(a) {

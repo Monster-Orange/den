@@ -18,8 +18,18 @@ export interface HubAddressDeps {
   disconnect: (
     force: boolean,
   ) => Promise<{ ok: boolean; error?: string; message?: string }>;
+  /**
+   * Issue 726: the address was written: the old Hub's state is archived
+   * and its bell items go (hub-change.ts noteHub).
+   */
+  changed?: (url: string | null) => Promise<unknown>;
   /** Restart Den after answering. */
   restart: (reason: string) => Promise<{ ok: boolean; error?: string }>;
+  switching: (s: {
+    to: string;
+    from: string;
+    at: string;
+  }) => void | Promise<void>;
 }
 
 const current = (user: Record<string, unknown>): string => {
@@ -57,29 +67,73 @@ export function checkHubAddress(
         : "no Hub address is set; nothing to clear",
     };
   const leaving = connected(d.readUser());
+  const switching = !!(leaving && p.url && was);
+  // Issue 205: each Review line with its message key.
+  type Line = [string, { key: string; vars?: Record<string, string> }];
+  const lines: Line[] = [
+    p.url
+      ? was
+        ? [
+            `Hub's address: ${was} → ${p.url}.`,
+            { key: "ap.det.hub_connect.set", vars: { was, url: p.url } },
+          ]
+        : [
+            `Hub's address: none → ${p.url}.`,
+            { key: "ap.det.hub_connect.setNew", vars: { url: p.url } },
+          ]
+      : [
+          `Hub's address ${was} is cleared; this Den stops using Hub.`,
+          { key: "ap.det.hub_connect.clear", vars: { was } },
+        ],
+    ...(switching
+      ? [
+          [
+            `Den stays on ${was} with its key until you sign in to ${p.url}.`,
+            { key: "ap.det.hub_connect.keep", vars: { was, url: p.url ?? "" } },
+          ] as Line,
+          [
+            `After your Allow, ${p.url}'s sign-in opens. Once that Hub answers, Den switches to it and ${was} revokes its key; if it fails, Den stays on ${was} and says why.`,
+            {
+              key: "ap.det.hub_connect.signin",
+              vars: { was, url: p.url ?? "" },
+            },
+          ] as Line,
+        ]
+      : []),
+    ...(leaving && !switching
+      ? [
+          [
+            "Den disconnects from the Hub it uses now first, so that Hub revokes its key.",
+            { key: "ap.det.hub_connect.leave" },
+          ] as Line,
+        ]
+      : []),
+    ...(switching
+      ? []
+      : [
+          [
+            "Then Den restarts, and agents get Hub's tools when they next restart.",
+            { key: "ap.det.hub_connect.restart" },
+          ] as Line,
+        ]),
+    ...(p.url && !switching
+      ? [
+          [
+            "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
+            { key: "ap.det.hub_connect.connect" },
+          ] as Line,
+        ]
+      : []),
+  ];
   return {
     ok: true,
     // A different Hub, or none: agents lose Hub's tools until Connect.
     personOnly: true,
     args: { url: p.url },
     summary: p.url ? `set Hub's address to ${p.url}` : "clear Hub's address",
-    params: { url: p.url ?? "", was },
-    details: [
-      p.url
-        ? `Hub's address: ${was || "none"} → ${p.url}.`
-        : `Hub's address ${was} is cleared; this Den stops using Hub.`,
-      ...(leaving
-        ? [
-            "Den disconnects from the Hub it uses now first, so that Hub revokes its key.",
-          ]
-        : []),
-      "Then Den restarts, and agents get Hub's tools when they next restart.",
-      ...(p.url
-        ? [
-            "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
-          ]
-        : []),
-    ],
+    params: { url: p.url ?? "", was, ...(p.url ? {} : { clears: "1" }) },
+    details: lines.map((l) => l[0]),
+    detailKeys: lines.map((l) => l[1]),
   };
 }
 
@@ -91,8 +145,23 @@ export async function runHubAddress(
   url?: string | null;
   error?: string;
   next?: string;
+  connect?: true;
 }> {
   const target = wanted(a);
+  const was = current(d.readUser());
+  if (connected(d.readUser()) && target && was) {
+    const p = patchHubUrl(d.readUser(), target);
+    if (!p.ok) return p;
+    if (p.url && p.url !== was) {
+      await d.switching({ to: p.url, from: was, at: new Date().toISOString() });
+      return {
+        ok: true,
+        url: p.url,
+        connect: true,
+        next: `Allowed. Den stays on ${was} until your person signs in to ${p.url} (their browser opens its sign-in; Settings › Hub has it too). Then Den switches, and ${was} revokes its key.`,
+      };
+    }
+  }
   if (connected(d.readUser()))
     await d
       .disconnect(false)
@@ -103,6 +172,7 @@ export async function runHubAddress(
   const p = patchHubUrl(user, target);
   if (!p.ok) return p;
   d.writeUser(user);
+  await d.changed?.(p.url).catch(() => undefined);
   const r = await d.restart(
     p.url ? `Hub's address set to ${p.url}` : "Hub's address cleared",
   );

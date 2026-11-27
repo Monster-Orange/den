@@ -6,7 +6,8 @@
  *
  *   - discovery: AG-0.1's search for every entry, installed first, each
  *     with its version; the interactive shell (`$SHELL -ilc`) asked once,
- *     only while a runtime is still missing, and named as the source;
+ *     first (issue 456: its PATH is the first choice), and named as the
+ *     source;
  *   - paths, this machine's only: the workspace's wins over user.yml's,
  *     which wins over what the search finds;
  *   - Set path runs the version command and refuses a path that isn't
@@ -67,12 +68,13 @@ function codexOnPath(r: Rig): string {
 const ids = (rows: { id: string }[]) => rows.map((x) => x.id);
 
 describe("the catalog", () => {
-  it("ships Claude Code, Codex CLI, Gemini CLI and Grok Build, each valid by its own validator", () => {
+  it("ships Claude Code, Codex CLI, Gemini CLI, Grok Build and Antigravity CLI, each valid by its own validator", () => {
     expect(ids(BUILTIN_CATALOG)).toEqual([
       "den-claude",
       "codex",
       "gemini",
       "grok",
+      "antigravity",
     ]);
     for (const e of BUILTIN_CATALOG) {
       expect(validateCatalogEntry(e, e.id)).toEqual(e);
@@ -86,6 +88,7 @@ describe("the catalog", () => {
       ["codex", "OpenAI", "codex"],
       ["gemini", "Google", "gemini"],
       ["grok", "xAI", "grok"],
+      ["antigravity", "Google", "agy"],
     ]);
   });
 
@@ -150,6 +153,8 @@ describe("the catalog", () => {
       ["gemini", "esc-cr", undefined, undefined],
       // Grok Build: no documented key; the default.
       ["grok", undefined, undefined, undefined],
+      // Antigravity CLI: Ctrl+J (LF) inserts a newline.
+      ["antigravity", "lf", undefined, undefined],
     ]);
     expect(softNewlineSeq(BUILTIN_CATALOG[0])).toBe("\x1b\r");
     expect(softNewlineSeq(BUILTIN_CATALOG[1])).toBe("\n");
@@ -212,6 +217,7 @@ describe("discovery", () => {
       "codex",
       "gemini",
       "grok",
+      "antigravity",
       "generic",
     ]);
     expect(rows[1]).toMatchObject({
@@ -233,6 +239,7 @@ describe("discovery", () => {
       "den-claude",
       "gemini",
       "grok",
+      "antigravity",
       "generic",
     ]);
     expect(fs.existsSync(r.ran)).toBe(false);
@@ -275,15 +282,42 @@ describe("discovery", () => {
     );
   });
 
-  it("nothing missing: the interactive shell is never asked", async () => {
+  it("issue 456: nothing missing, the interactive shell is still asked once (its PATH is the first choice)", async () => {
     const r = await rig();
     const asked = path.join(r.dir, "shell-asked");
     const shell = write(
       path.join(r.dir, "fake-shell"),
       `#!/bin/sh\necho "$1" >> "${asked}"\n`,
     );
-    for (const b of ["codex", "gemini", "grok"])
+    for (const b of ["codex", "gemini", "grok", "agy"])
       write(path.join(path.dirname(r.claude), b), fakeCli(r.ran, `${b} 1.0.0`));
+    r.deps.env = { ...r.deps.env, DEN_LOGIN_SHELL: shell };
+    const d = resolveAgentsDeps(r.deps);
+    await listRuntimes(d);
+    await listRuntimes(d);
+    expect(fs.readFileSync(asked, "utf-8").trim().split("\n")).toEqual([
+      "-ilc",
+    ]);
+  });
+
+  it("every catalog runtime's path set: the interactive shell is never asked", async () => {
+    const r = await rig();
+    const asked = path.join(r.dir, "shell-asked");
+    const shell = write(
+      path.join(r.dir, "fake-shell"),
+      `#!/bin/sh\necho "$1" >> "${asked}"\n`,
+    );
+    for (const [id, b] of [
+      ["codex", "codex"],
+      ["gemini", "gemini"],
+      ["grok", "grok"],
+      ["antigravity", "agy"],
+    ])
+      r.runtimeBins[id] = write(
+        path.join(path.dirname(r.claude), b),
+        fakeCli(r.ran, `${b} 1.0.0`),
+      );
+    r.runtimeBins["den-claude"] = r.claude;
     r.deps.env = { ...r.deps.env, DEN_LOGIN_SHELL: shell };
     await listRuntimes(resolveAgentsDeps(r.deps));
     expect(fs.existsSync(asked)).toBe(false);

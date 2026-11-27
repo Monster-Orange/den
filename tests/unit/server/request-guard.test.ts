@@ -20,14 +20,68 @@ const ctx = (edge: string[] = []): GuardContext => ({
   loopbackNames: ["localhost", "127.0.0.1", "[::1]"],
   edgeHosts: () => edge,
   verifyBearer: (t) => (t === "den_pt_good" ? "person:someone" : null),
-  csrfToken: "the-csrf",
+  // The cookie's value names the session; "good" is the live one.
+  session: (r) =>
+    /den_session_\d+=good/.test(String(r.headers.cookie ?? ""))
+      ? { key: "k".repeat(64), csrf: "the-csrf" }
+      : null,
 });
+/** A signed-in browser's cookie (0.4.71: a write needs one on loopback too). */
+const SIGNED = `den_session_${PORT}=good`;
+/**
+ * A request from a signed-in browser (these checks are what a session still
+ * has to pass); `cookie: ""` for one with no session.
+ */
 const req = (
   method: string,
   headers: Record<string, string>,
 ): http.IncomingMessage =>
-  ({ method, headers }) as unknown as http.IncomingMessage;
+  ({
+    method,
+    headers: { cookie: SIGNED, ...headers },
+  }) as unknown as http.IncomingMessage;
 const local = `localhost:${PORT}`;
+
+describe("a sign-in on this machine too (0.4.71)", () => {
+  it("a write, an upgrade or a GET that runs something with no session or bearer: 401 signin_required, whatever its Origin and token", () => {
+    for (const [m, p, extra] of [
+      ["POST", "/api/settings", {}],
+      ["DELETE", "/api/workspaces/x", {}],
+      ["GET", "/api/sessions/s1/io", { upgrade: "websocket" }],
+      ["GET", "/api/run", { "sec-fetch-site": "same-origin" }],
+      ["GET", "/api/service/taillog", { "sec-fetch-site": "same-origin" }],
+    ] as const) {
+      const r = checkRequest(
+        {
+          method: m,
+          url: p,
+          headers: {
+            host: local,
+            origin: `http://${local}`,
+            "x-den-csrf": "the-csrf",
+            ...extra,
+          },
+        } as unknown as http.IncomingMessage,
+        ctx(),
+      );
+      expect([p, r]).toMatchObject([
+        p,
+        { ok: false, status: 401, code: "signin_required" },
+      ]);
+    }
+  });
+  it("a read with no session passes, as before", () => {
+    const r = checkRequest(
+      {
+        method: "GET",
+        url: "/api/settings",
+        headers: { host: local },
+      } as unknown as http.IncomingMessage,
+      ctx(),
+    );
+    expect(r).toMatchObject({ ok: true, session: null });
+  });
+});
 
 describe("the Host allowlist", () => {
   it.each([
@@ -166,7 +220,7 @@ describe("the Origin check", () => {
         req("GET", { host: local, origin: "http://evil.example" }),
         ctx(),
       ),
-    ).toMatchObject({ ok: true, principal: null });
+    ).toMatchObject({ ok: true });
   });
 });
 
@@ -194,10 +248,11 @@ describe("CSRF and the bearer", () => {
       ),
     ).toEqual({
       ok: true,
-      principal: { kind: "person-browser" },
+      principal: { kind: "person-browser", session: "k".repeat(64) },
       via: "loopback",
       beyond: false,
-      session: null,
+      edgeLocal: false,
+      session: { key: "k".repeat(64), csrf: "the-csrf" },
     });
   });
   it("no Origin with a valid bearer passes, as person:<user>; CSRF skipped", () => {
@@ -211,6 +266,7 @@ describe("CSRF and the bearer", () => {
       principal: { kind: "person", actor: "person:someone" },
       via: "loopback",
       beyond: false,
+      edgeLocal: false,
       session: null,
     });
     expect(
@@ -283,11 +339,12 @@ describe("GET /api/session's caller", () => {
 
 describe("GETs that run something (route-classes: shell-grade / mutating)", () => {
   const run = "/api/run?pillar=smoke";
+  // A signed-in browser's (0.4.71): these checks come on top of the sign-in.
   const get = (url: string, headers: Record<string, string>) =>
     ({
       method: "GET",
       url,
-      headers: { host: local, ...headers },
+      headers: { host: local, cookie: SIGNED, ...headers },
     }) as unknown as http.IncomingMessage;
 
   it.each([
@@ -412,12 +469,18 @@ describe("the sign-in GETs (/auth, the GitHub sign-in poll) with no fetch metada
     },
   );
   it("another mutating GET with neither header and no bearer is still refused", () => {
-    for (const u of ["/api/run?pillar=smoke", "/api/workspace/exec"])
+    for (const u of ["/api/run?pillar=smoke", "/api/workspace/exec"]) {
+      // Signed in, with neither header: refused all the same.
+      expect(
+        checkRequest(get(u, { cookie: SIGNED }, local), ctx()),
+      ).toMatchObject({ ok: false, status: 403, code: "origin_rejected" });
+      // Not signed in (0.4.71): a sign-in comes first, here too.
       expect(checkRequest(get(u, {}, local), ctx())).toMatchObject({
         ok: false,
-        status: 403,
-        code: "origin_rejected",
+        status: 401,
+        code: "signin_required",
       });
+    }
     // Beyond loopback it never gets that far: a sign-in comes first.
     expect(
       checkRequest(get("/api/run", {}, `${LAN}:${PORT}`), lanCtx()),

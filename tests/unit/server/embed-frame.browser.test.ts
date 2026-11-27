@@ -27,12 +27,13 @@ import type { Browser, Frame, Page } from "playwright";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { ScriptedPty } from "../sessions/helpers/fake-pty.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signIn, signedIn, signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -72,10 +73,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -101,6 +99,8 @@ beforeAll(async () => {
     session: { backend: "den-pty", id: sid },
     sessionName: "acme-north:scout",
   });
+  // Issue 664: at its input prompt, so a message is typed in.
+  pty.emit("> ");
   // Another web app: one server, two origins.
   hostServer = http.createServer((req, res) => {
     const u = new URL(req.url ?? "/", "http://x");
@@ -138,8 +138,30 @@ async function newPage(): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 900, height: 700 },
   });
+  // The person's browser, signed in at Den's own origin (as `web up` does).
+  await signIn(ctx, s.stateDir, s.base);
   return ctx.newPage();
 }
+
+/**
+ * The frame sends no cookie, so it has no session, on this computer too
+ * (0.4.71): the pane offers Sign in to Den; its pop-up (a Den window,
+ * signed in) Allows in one click and hands the key back.
+ */
+async function allowInPopUp(p: Page, f: Frame): Promise<void> {
+  const btn = f.locator("#emb-signin");
+  await btn.waitFor({ timeout: 15_000 });
+  const [pop] = await Promise.all([p.waitForEvent("popup"), btn.click()]);
+  await pop.locator("#emc-allow").click();
+  // It closes itself once it has handed the key back; the next Sign in to
+  // Den opens a new one (a window still open by that name would be reused).
+  if (!pop.isClosed()) await pop.waitForEvent("close", { timeout: 10_000 });
+}
+
+const isConnected = () =>
+  (window as unknown as { got: { data: { type?: string } }[] }).got.some(
+    (m) => m.data?.type === "den:connected",
+  );
 
 /** Open `hostOrigin`'s page framing Den's `target`. */
 async function frame(p: Page, hostOrigin: string, target: string) {
@@ -269,7 +291,7 @@ describe("issue 103: a listed origin frames the pane", () => {
     await list([LISTED]);
     const p = await newPage();
     // A Den cookie in this browser: signed in at Den's own origin.
-    await p.goto(signInUrl(s.stateDir, s.base, "/settings"));
+    await signInPage(p, s.stateDir, s.base, "/settings");
     const cookies = await p.context().cookies(s.base);
     expect(cookies.some((c) => c.name.startsWith("den_session_"))).toBe(true);
     const sent: { url: string; cookie: string | undefined }[] = [];
@@ -283,6 +305,7 @@ describe("issue 103: a listed origin frames the pane", () => {
     await frame(p, LISTED, "/embed/p/north/agents/scout");
     const f = await denFrame(p, 15_000);
     expect(f).not.toBeNull();
+    await allowInPopUp(p, f!);
     await p.waitForFunction(
       () =>
         (window as unknown as { got: { data: { type?: string } }[] }).got.some(
@@ -334,13 +357,102 @@ describe("issue 103: a listed origin frames the pane", () => {
         r.url,
         false,
       ]);
+    // The key came from Den's own pop-up (signed in); the frame only uses it.
     expect(sent.map((r) => r.url)).toEqual(
       expect.arrayContaining([
         expect.stringContaining("/embed/p/north/agents/scout"),
-        expect.stringContaining("/api/embed/keys"),
         expect.stringContaining("/api/embed/say"),
       ]),
     );
+    await p.context().close();
+  }, 90_000);
+});
+
+describe("issue 104: the pane's way back to Den", () => {
+  it("once connected, Open in Den names that agent's page and opens it in a new tab", async () => {
+    if (!browser) return;
+    await list([LISTED]);
+    const p = await newPage();
+    await signInPage(p, s.stateDir, s.base, "/settings");
+    await frame(p, LISTED, "/embed/p/north/agents/scout");
+    const f = await denFrame(p, 15_000);
+    expect(f).not.toBeNull();
+    const open = f!.locator("#emb-open");
+    // Hidden until the pane knows its agent.
+    expect(await open.isVisible()).toBe(false);
+    await allowInPopUp(p, f!);
+    await p.waitForFunction(isConnected, undefined, { timeout: 20_000 });
+    await open.waitFor({ state: "visible", timeout: 10_000 });
+    // Its words: the catalog's emb.open in the pane's language, the Den's
+    // title filled in. Found by role and that name, not only by id.
+    const words = await f!.evaluate(() => {
+      const m = (
+        window as unknown as {
+          denMessages?: Record<string, Record<string, string>>;
+        }
+      ).denMessages;
+      const lang = document.documentElement.lang || "en";
+      return (m?.[lang]?.["emb.open"] ?? m?.en?.["emb.open"] ?? "").trim();
+    });
+    expect({
+      worded: words.length > 0,
+      filled: !/__\w+__/.test(words),
+    }).toEqual({ worded: true, filled: true });
+    const named = f!.getByRole("link", { name: words, exact: true });
+    await named.waitFor({ state: "visible", timeout: 5_000 });
+    expect(await named.getAttribute("id")).toBe("emb-open");
+    const link = await open.evaluate((a: HTMLAnchorElement) => ({
+      href: a.getAttribute("href"),
+      target: a.target,
+      rel: a.rel,
+      key: a.dataset.t,
+    }));
+    expect(link).toMatchObject({
+      href: "/p/north/agents/scout",
+      target: "_blank",
+      rel: "noopener noreferrer",
+      key: "emb.open",
+    });
+    // The server answers the deep link itself (issue 103) ...
+    const answered = p.context().waitForEvent("response", {
+      predicate: (r) => new URL(r.url()).pathname === "/p/north/agents/scout",
+      timeout: 10_000,
+    });
+    const opened = p.context().waitForEvent("page");
+    await open.click();
+    const tab = await opened;
+    const first = await answered;
+    expect(first.status()).toBe(200);
+    // ... and the Agents page reads it as its own address for that agent.
+    await tab.waitForURL(
+      (u) =>
+        u.pathname === "/agents" &&
+        u.searchParams.get("agent") === "scout" &&
+        u.searchParams.get("ws") === "north",
+      { timeout: 10_000 },
+    );
+    expect(new URL(tab.url()).origin).toBe(new URL(s.base).origin);
+    await tab.close();
+  });
+});
+
+describe("0.4.71: the pane on this computer", () => {
+  it("asks once per load: one click on Allow connects; a reload asks again, in one click (the key lives in the frame's memory only)", async () => {
+    if (!browser) return;
+    await list([LISTED]);
+    const p = await newPage();
+    for (const load of ["first", "reload"]) {
+      if (load === "first")
+        await frame(p, LISTED, "/embed/p/north/agents/scout");
+      else await p.reload();
+      const f = await denFrame(p, 15_000);
+      expect(f).not.toBeNull();
+      // Not connected before the Allow: the frame has no session.
+      await f!.locator("#emb-signin").waitFor({ timeout: 15_000 });
+      expect([load, await p.evaluate(isConnected)]).toEqual([load, false]);
+      await allowInPopUp(p, f!);
+      await p.waitForFunction(isConnected, undefined, { timeout: 20_000 });
+    }
     await p.context().close();
   }, 90_000);
 });
@@ -408,11 +520,13 @@ describe("issue 103: the pop-up for a browser on another computer", () => {
 async function connected(): Promise<{ p: Page; f: Frame }> {
   // The agent's program takes pastes (as Claude Code does): a message is
   // one bracketed paste, its newlines kept, then Enter.
-  pty.emit("\x1b[?2004h");
+  // Issue 664: at its input prompt, so a message is typed in.
+  pty.emit("\x1b[?2004h> ");
   const p = await newPage();
   await frame(p, LISTED, "/embed/p/north/agents/scout");
   const f = await denFrame(p, 15_000);
   expect(f).not.toBeNull();
+  await allowInPopUp(p, f!);
   await p.waitForFunction(
     () =>
       (window as unknown as { got: { data: { type?: string } }[] }).got.some(
@@ -523,21 +637,20 @@ describe("issue 103: share this page", () => {
         "This page is 3 KB, more than the 1 KB limit, so it was not added. Settings › Embedding sets the limit.",
       );
       expect(await f.locator(".agc-chip").count()).toBe(0);
-      const err = (await got(p)).find((m) => m.data?.type === "den:error")!
-        .data as unknown as { code: string; limit: number };
+      const err = (await got(p)).find(
+        (m) =>
+          m.data?.type === "den:error" &&
+          (m.data as { code?: string }).code !== "signin_required",
+      )!.data as unknown as { code: string; limit: number };
       expect(err.code).toBe("context_too_large");
       expect(err.limit).toBe(1024);
       await p.context().close();
       // Den checks again on Send: a page past the limit gets 413.
-      const sj = (await (await fetch(`${s.base}/api/session`)).json()) as {
-        csrf: string;
-      };
       const m = await fetch(`${s.base}/api/embed/keys`, {
         method: "POST",
         headers: {
-          origin: s.base,
+          ...(await signedIn(s.stateDir, s.base)).headers,
           "content-type": "application/json",
-          "x-den-csrf": sj.csrf,
         },
         body: JSON.stringify({
           project: "north",
@@ -571,17 +684,13 @@ describe("issue 103: share this page", () => {
 });
 
 describe("issue 103: the pane's key", () => {
-  /** The loopback CSRF token and a mint, as the frame asks. */
+  /** A mint, as the pop-up asks: a signed-in session and its token. */
   async function mint(origin: string) {
-    const sj = (await (await fetch(`${s.base}/api/session`)).json()) as {
-      csrf: string;
-    };
     return fetch(`${s.base}/api/embed/keys`, {
       method: "POST",
       headers: {
-        origin: s.base,
+        ...(await signedIn(s.stateDir, s.base)).headers,
         "content-type": "application/json",
-        "x-den-csrf": sj.csrf,
       },
       body: JSON.stringify({ project: "north", agent: "scout", origin }),
     });
@@ -612,15 +721,11 @@ describe("issue 103: the pane's key", () => {
   it("another project's agent: none", async () => {
     if (!browser) return;
     await list([LISTED]);
-    const sj = (await (await fetch(`${s.base}/api/session`)).json()) as {
-      csrf: string;
-    };
     const r = await fetch(`${s.base}/api/embed/keys`, {
       method: "POST",
       headers: {
-        origin: s.base,
+        ...(await signedIn(s.stateDir, s.base)).headers,
         "content-type": "application/json",
-        "x-den-csrf": sj.csrf,
       },
       body: JSON.stringify({
         project: "south",
@@ -647,12 +752,26 @@ describe("issue 103: the pane's key", () => {
     );
   });
 
-  it("a page on another site can't mint one: its Origin is refused", async () => {
+  it("a page on another site can't mint one: its Origin is refused, signed in or not", async () => {
     if (!browser) return;
     await list([LISTED]);
-    const r = await fetch(`${s.base}/api/embed/keys`, {
+    const unsigned = await fetch(`${s.base}/api/embed/keys`, {
       method: "POST",
       headers: { origin: LISTED, "content-type": "application/json" },
+      body: JSON.stringify({
+        project: "north",
+        agent: "scout",
+        origin: LISTED,
+      }),
+    });
+    expect(unsigned.status).toBe(401);
+    const r = await fetch(`${s.base}/api/embed/keys`, {
+      method: "POST",
+      headers: {
+        ...(await signedIn(s.stateDir, s.base)).headers,
+        origin: LISTED,
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         project: "north",
         agent: "scout",

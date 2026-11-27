@@ -13,12 +13,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -29,11 +30,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -104,7 +101,7 @@ async function page(
       });
     });
   if (language) {
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+    await signInPage(p, s!.stateDir, s!.base, "/settings#agents");
     await p.evaluate(
       (l) =>
         (
@@ -117,7 +114,7 @@ async function page(
       language,
     );
     await p.reload();
-  } else await p.goto(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+  } else await signInPage(p, s!.stateDir, s!.base, "/settings#agents");
   try {
     await p.waitForSelector(`${ROW} [data-hubla]`);
   } catch (e) {

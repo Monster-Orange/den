@@ -38,7 +38,6 @@ const ctx = (): GuardContext => ({
             session: { name: "s1", id: "s1" },
           }
         : null,
-  csrfToken: "start-csrf",
   session: () => null,
   peerIsLoopback: (r) => r.socket?.remoteAddress === "127.0.0.1",
   peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),
@@ -221,5 +220,15 @@ describe("approving (someone already in)", () => {
           ctx(),
         ),
       ]).toMatchObject([p, { ok: false, code: "agent_forbidden" }]);
+  });
+  it("issue 1371: an agent's token is refused Undo of a setting at the guard: 403", () => {
+    expect(
+      checkRequest(
+        req("POST", "/api/settings/undo", {
+          authorization: "Bearer den_at_agent",
+        }),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: false, status: 403, code: "agent_forbidden" });
   });
 });

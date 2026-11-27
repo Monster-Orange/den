@@ -26,6 +26,8 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -49,10 +51,7 @@ beforeAll(async () => {
     // DEN_HUB_RAIL_BROWSER=webkit (Safari's engine) runs the same tests
     // there. DEN_PW_WS=ws://localhost:<port>/ uses a browser behind a
     // Playwright run-server; its localhost is this machine's.
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -82,6 +81,7 @@ async function open(
     viewport: { width: opts.width ?? 1280, height: 900 },
     reducedMotion: "reduce",
   });
+  await signIn(ctx, s!.stateDir, s!.base);
   await ctx.addInitScript((v) => {
     try {
       for (const k of ["den-changelog-seen", "acme-changelog-seen"])
@@ -201,11 +201,15 @@ describe("the rail's Hub link", () => {
       const { p } = await open(answer);
       await link(p).waitFor({ timeout: 10_000 });
       expect(
+        // The foot's first entry (issue 1341: the foot is one
+        // .den-rail-foot, right after the spacer), then Settings.
         await link(p).evaluate((a) => [
-          a.previousElementSibling?.className,
+          a.parentElement?.previousElementSibling?.className,
+          a.parentElement?.className,
+          a.previousElementSibling,
           (a.nextElementSibling as HTMLElement | null)?.dataset.nav,
         ]),
-      ).toEqual(["den-rail-grow", "settings"]);
+      ).toEqual(["den-rail-grow", "den-rail-foot", null, "settings"]);
       await p.context().close();
     }
   }, 60_000);
@@ -303,7 +307,7 @@ describe("the rail's Hub link", () => {
       r.fulfill({ contentType: "text/html", body: "<title>Hub</title>Hub" }),
     );
     await link(p).waitFor({ timeout: 10_000 });
-    const mod = process.platform === "darwin" ? "Meta" : "Control";
+    const mod = "ControlOrMeta"; // the browser's own OS picks it
     const palette = async () => {
       await p.keyboard.press(`${mod}+k`);
       await p.locator("#den-pal-list li[data-i]").first().waitFor();
@@ -345,7 +349,7 @@ describe("the rail's Hub link", () => {
       state: "unreachable",
     });
     await link(p).waitFor({ timeout: 10_000 });
-    const mod = process.platform === "darwin" ? "Meta" : "Control";
+    const mod = "ControlOrMeta"; // the browser's own OS picks it
     await p.keyboard.press(`${mod}+k`);
     const first = p.locator("#den-pal-list li[data-i]").first();
     await first.waitFor();
@@ -363,7 +367,7 @@ describe("the rail's Hub link", () => {
   it("D51: with no Hub set up, ⌘K has no Hub", async () => {
     if (!browser) return;
     const { p } = await open({ configured: false });
-    const mod = process.platform === "darwin" ? "Meta" : "Control";
+    const mod = "ControlOrMeta"; // the browser's own OS picks it
     await p.keyboard.press(`${mod}+k`);
     await p.locator("#den-pal-list li[data-i]").first().waitFor();
     expect(

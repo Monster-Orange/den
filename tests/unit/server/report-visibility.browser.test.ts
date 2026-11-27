@@ -2,7 +2,8 @@
  * Issue 415: a Den whose Report destination is private says so. Den's own
  * GET /api/report (report-routes.ts, with a fake `gh`: no network) feeds
  * the kit's Report form, as den-kit.js does; Review shows the private pill
- * and no public warning. A failed lookup reads as public.
+ * and no public warning. A failed lookup reads as not known, with the
+ * caution kept (never "Public repository").
  *
  * On a bare page built from the kit's own files, in Chromium and WebKit.
  * DEN_PW_WS: Den's own Playwright server instead of a local browser.
@@ -11,7 +12,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
@@ -21,6 +21,10 @@ import {
   type ReportRouteDeps,
 } from "../../../src/ui/server/report-routes.js";
 import { feedbackSettings } from "../../../src/shared/report-store.js";
+import { launchBrowser } from "../helpers/browser.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://den-vis.test";
@@ -33,11 +37,7 @@ beforeAll(async () => {
       ["chromium", pw.chromium],
       ["webkit", pw.webkit],
     ] as const)
-      browsers[name] = process.env.DEN_PW_WS
-        ? await kind.connect(process.env.DEN_PW_WS, {
-            exposeNetwork: "<loopback>",
-          })
-        : await kind.launch();
+      browsers[name] = await launchBrowser(kind);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -57,7 +57,7 @@ function den(
   clock: () => number = Date.now,
 ): ReportRouteDeps {
   const said = Array.isArray(answer) ? [...answer] : [answer];
-  const state = fs.mkdtempSync(path.join(os.tmpdir(), "den-vis-b-"));
+  const state = tempDir("den-vis-b-");
   return {
     settings: () =>
       feedbackSettings(
@@ -210,7 +210,7 @@ describe.each(["chromium", "webkit"])(
         () => t,
       );
       let p = await review(b, d);
-      expect((await seen(p)).pill).toBe("Public repository");
+      expect((await seen(p)).pill).toBe("Visibility not known");
       await p.context().close();
       t += 2 * 60_000;
       p = await review(b, d);
@@ -222,7 +222,7 @@ describe.each(["chromium", "webkit"])(
       await p.context().close();
     }, 60_000);
 
-    it("a failed lookup: public, as before", async () => {
+    it("a failed lookup: not known, with the caution", async () => {
       const b = browsers[name];
       if (!b) return;
       const p = await review(
@@ -230,7 +230,7 @@ describe.each(["chromium", "webkit"])(
         den({ code: 1, stdout: "", stderr: "HTTP 404: Not Found" }),
       );
       expect(await seen(p)).toEqual({
-        pill: "Public repository",
+        pill: "Visibility not known",
         warn: 1,
         note: 0,
       });

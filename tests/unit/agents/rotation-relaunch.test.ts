@@ -17,7 +17,7 @@
  * A real host on a temp socket, a scripted PTY (nothing runs), and a
  * `claude` shim that must never run. Invented names only.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
@@ -42,6 +42,25 @@ import {
 import { GOOD_HANDOFF } from "./helpers/handoff.js";
 import { setRotateValue } from "../../../src/shared/agents/rotate-settings.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+
+const mockZone: { value: string | null } = { value: null };
+jest.mock("../../../src/shared/den-config.js", () => {
+  const actual = jest.requireActual(
+    "../../../src/shared/den-config.js",
+  ) as Record<string, unknown>;
+  const read = actual.readUserConfig as () => Record<string, unknown>;
+  return {
+    ...actual,
+    readUserConfig: () => ({
+      ...read(),
+      ...(mockZone.value ? { time_zone: mockZone.value } : {}),
+    }),
+  };
+});
+const OTHER_ZONE =
+  Intl.DateTimeFormat().resolvedOptions().timeZone === "Asia/Tokyo"
+    ? "Europe/Berlin"
+    : "Asia/Tokyo";
 
 const servers: http.Server[] = [];
 afterEach(async () => {
@@ -68,6 +87,13 @@ async function started(r: Rig, id = "be-dev"): Promise<string> {
   c.write(rec(r, id).session.id, Buffer.from("build the export\r"));
   await settle();
   c.close();
+  // Issue 658: prompted, its runtime wrote the conversation (a temp
+  // projects folder): only the runtime's own record makes one to resume.
+  const cc = path.join(r.dir, "claude-config");
+  const dir = path.join(cc, "projects", "-work-north");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${rec(r, id).resumeToken!}.jsonl`), "{}\n");
+  r.deps.env = { ...r.deps.env, CLAUDE_CONFIG_DIR: cc };
   return rec(r, id).resumeToken!;
 }
 
@@ -238,6 +264,8 @@ describe("a session that rotated after 3 compactions", () => {
         reason: "compactions",
         compactions: 3,
         conversation: t1,
+        // Issue 658: the conversation it started.
+        next: t2,
       },
     ]);
     // The handoff is kept aside; the new conversation counts from 0.
@@ -291,6 +319,30 @@ describe("a session that rotated after 3 compactions", () => {
     expect(r.made).toHaveLength(2);
     expect(r.made[1].args[0]).toBe("--session-id");
   }, 20_000);
+});
+
+describe("issue 1318: a relaunch says the time in the install's zone", () => {
+  it("names user.yml's time_zone, not the process's zone", async () => {
+    mockZone.value = OTHER_ZONE;
+    try {
+      const r = await rig();
+      await started(r);
+      compact(r, "be-dev", 3);
+      writeHandoff(r, "be-dev");
+      await stop(r);
+      setRotateValue(r.stateDir, "install", undefined, "on_due", "ask");
+      expect(await agents(r, "relaunch", "be-dev")).toBe(0);
+      const p = r.made[r.made.length - 1];
+      const first = p.args[p.args.length - 1];
+      expect(first).toMatch(
+        new RegExp(
+          `It is now .+ \\(UTC[+-]\\d\\d:\\d\\d, ${OTHER_ZONE.replace("/", "\\/")}\\)\\.`,
+        ),
+      );
+    } finally {
+      mockZone.value = null;
+    }
+  });
 });
 
 describe("the other trigger and the settings", () => {

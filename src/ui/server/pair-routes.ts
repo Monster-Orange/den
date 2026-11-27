@@ -3,8 +3,9 @@
  *
  *   POST /api/signin/code          a new request (sign-in free; an allowed
  *                                  Origin, no CSRF token: the signed-out
- *                                  page holds none). Its poll id, code,
- *                                  expiry, and the commands that approve it
+ *                                  page holds none). Its poll id, handle,
+ *                                  code, and expiry; one client address
+ *                                  makes so many a minute (issue 819)
  *   GET  /api/signin/code/<id>     its state; approved: the session cookie,
  *                                  once (the request is consumed)
  *   DELETE /api/signin/code/<id>  D67: its page is going; a pending
@@ -12,13 +13,19 @@
  *   POST /api/signin/code/<id>/withdraw  issue 320: the same, as the
  *                                  page's sendBeacon sends it (Safari
  *                                  drops a keepalive DELETE as a page goes)
- *   GET  /api/web/waiting          the requests waiting (shell-grade)
- *   POST /api/web/approve {code}   approve one (shell-grade: `<cli> web
- *                                  approve`, Settings › Access)
- *   POST /api/web/deny {code}      deny one (shell-grade)
+ *   GET  /api/web/waiting          the requests waiting (shell-grade): each
+ *                                  one's handle, device, address, age and
+ *                                  the `web login` run it came from; never
+ *                                  its code (issue 819)
+ *   POST /api/web/approve {ref, code}  approve one with the code typed off
+ *                                  its screen (issue 819: a person's
+ *                                  signed-in browser only, Settings › Access)
+ *   POST /api/web/deny {ref}       deny one (the same; no code needed)
  *
- * Approve and deny are audited with the actor; neither the code nor the
- * poll id is logged.
+ * Issue 819: approving or denying needs a person's signed-in browser
+ * holding its approval key (`approver`): never the CLI's bearer, an
+ * agent's token or the fixture person. Approve and deny are audited with
+ * the actor; neither the code nor the poll id is logged.
  */
 import type * as http from "http";
 import type { PairRequests, PairView } from "./pair-requests.js";
@@ -31,11 +38,24 @@ export interface PairRouteDeps {
   signIn: (req: http.IncomingMessage) => { cookie: string; approveKey: string };
   /** The client's address for a new request's record, when Den knows it. */
   client: (req: http.IncomingMessage) => string | undefined;
-  /** The commands that approve `code`: on the server, and by ssh from the browser's machine. */
-  commands: (
+  /**
+   * Issue 1333: the client address's mesh name, if it has one (a reverse
+   * lookup). Asked after the request is made; the page never waits on it.
+   */
+  clientName?: (client: string) => Promise<string | null>;
+  /**
+   * Issue 819: why this request may not approve or deny a device (not a
+   * person's signed-in browser with its approval key), or null when it may.
+   */
+  approver: (
     req: http.IncomingMessage,
-    code: string,
-  ) => { approve: string; ssh: string };
+  ) => { status: number; code: string; error: string } | null;
+  /** Issue 819: a request a sign-in link opened was decided, or signed in. */
+  linkEnded?: (
+    link: string,
+    how: "denied" | "signed-in",
+    req: http.IncomingMessage,
+  ) => void;
   /** Record an approve or deny (who, what, whether it was refused). */
   audit: (
     req: http.IncomingMessage,
@@ -60,21 +80,67 @@ export function isPairRoute(pathname: string): boolean {
   );
 }
 
+/**
+ * A waiting request as the approver sees it. Issue 819: never its code
+ * (the person reads that off the new device's own screen and types it).
+ */
 function waitingJson(v: PairView): Record<string, unknown> {
   return {
-    code: v.code,
+    ref: v.ref,
     device: v.device,
     ...(v.client ? { client: v.client } : {}),
+    ...(v.clientName ? { clientName: v.clientName } : {}),
+    ...(v.host ? { host: v.host } : {}),
     createdAt: new Date(v.createdAt).toISOString(),
     expiresAt: new Date(v.expiresAt).toISOString(),
+    ...(v.link ? { fromLink: true } : {}),
+    ...(v.linkAt ? { fromLogin: new Date(v.linkAt).toISOString() } : {}),
   };
 }
+
+/**
+ * Issue 1333: the Den address a request opened (its Host header), kept
+ * only when it is a plain host or host:port, so the approver's dialog
+ * shows nothing a page could invent beyond a name.
+ */
+export function denAddressOf(req: http.IncomingMessage): string | undefined {
+  const h = req.headers?.host;
+  if (typeof h !== "string" || h.length > 255) return undefined;
+  return /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:\d{1,5})?$/.test(h)
+    ? h.toLowerCase()
+    : undefined;
+}
+
+/** Issue 819: why a new request wasn't made, for its page. */
+export const CREATE_REFUSED: Record<
+  "rate_limited" | "full",
+  { status: number; code: string; error: string }
+> = {
+  rate_limited: {
+    status: 429,
+    code: "too_many_requests",
+    error:
+      "Too many sign-in requests from this address. Wait a minute, then try again.",
+  },
+  full: {
+    status: 503,
+    code: "too_many_waiting",
+    error:
+      "Too many devices are waiting to be approved. Wait a few minutes, then try again.",
+  },
+};
 
 const ERRORS: Record<string, { status: number; error: string }> = {
   malformed: {
     status: 400,
     error:
       "That isn't a code: it is six letters and digits, like K7Q-42M (the signed-out page shows it).",
+  },
+  // Issue 819: the typed code isn't the one that device's screen shows.
+  wrong: {
+    status: 400,
+    error:
+      "That code doesn't match the one on that device's screen. Check it and type it again.",
   },
   unknown: {
     status: 404,
@@ -109,19 +175,35 @@ export async function handlePairRoutes(
   res.setHeader("Cache-Control", "no-store");
 
   if (pathname === "/api/signin/code" && method === "POST") {
-    const r = deps.pairs.create({
+    const client = deps.client(req);
+    const r = deps.pairs.tryCreate({
       userAgent: req.headers["user-agent"],
-      client: deps.client(req),
+      client,
+      host: denAddressOf(req),
     });
+    if (!r.ok) {
+      const e = CREATE_REFUSED[r.error];
+      deps.sendJson(res, { ok: false, code: e.code, error: e.error }, e.status);
+      return true;
+    }
     deps.sendJson(res, {
       ok: true,
       id: r.id,
+      ref: r.ref,
       code: r.code,
       expiresAt: new Date(r.expiresAt).toISOString(),
       // What is left, for the page's own countdown (no clock skew).
       expiresIn: Math.max(0, r.expiresAt - Date.now()),
-      ...deps.commands(req, r.code),
     });
+    if (client && deps.clientName) {
+      const ref = r.ref;
+      deps.clientName(client).then(
+        (n) => {
+          if (n) deps.pairs.setClientName(ref, n);
+        },
+        () => {},
+      );
+    }
     return true;
   }
   const p = POLL_PATH.exec(pathname);
@@ -152,11 +234,17 @@ export async function handlePairRoutes(
       return true;
     }
     if (v.state === "approved") {
-      if (!deps.pairs.claim(p[1])) {
+      // Issue 1299: sign in first. A refused sign-in (the sessions file
+      // busy or unreadable) throws with the approval kept, so the next
+      // poll signs in. Nothing awaits between get() and claim(), so the
+      // claim cannot be lost after the session is made.
+      const s = deps.signIn(req);
+      const claimed = deps.pairs.claim(p[1]);
+      if (!claimed) {
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
-      const s = deps.signIn(req);
+      if (claimed.link) deps.linkEnded?.(claimed.link, "signed-in", req);
       res.setHeader("Set-Cookie", s.cookie);
       res.setHeader("Cache-Control", "no-store");
       // The approval key goes to this answer only (web-session.ts).
@@ -184,10 +272,22 @@ export async function handlePairRoutes(
     method === "POST"
   ) {
     const verb = pathname === "/api/web/approve" ? "approve" : "deny";
-    let body: { code?: unknown } = {};
+    const refused = deps.approver(req);
+    if (refused) {
+      req.resume();
+      deps.audit(req, verb, "a waiting device", refused.code);
+      deps.sendJson(
+        res,
+        { ok: false, code: refused.code, error: refused.error },
+        refused.status,
+      );
+      return true;
+    }
+    let body: { code?: unknown; ref?: unknown } = {};
     try {
       body = (JSON.parse((await deps.readBody(req)) || "{}") ??
         {}) as typeof body;
+      if (typeof body !== "object" || Array.isArray(body)) throw new Error();
     } catch {
       deps.sendJson(
         res,
@@ -200,20 +300,50 @@ export async function handlePairRoutes(
       );
       return true;
     }
+    // Issue 819: the request's handle (the list's) and the typed code.
+    const ref = body.ref;
+    const code = body.code;
+    if (
+      (ref !== undefined &&
+        (typeof ref !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(ref))) ||
+      (code !== undefined && (typeof code !== "string" || code.length > 32)) ||
+      (ref === undefined && code === undefined)
+    ) {
+      deps.sendJson(
+        res,
+        {
+          ok: false,
+          code: "bad_request",
+          error: "the body is { ref, code }: the request, and its code",
+        },
+        400,
+      );
+      return true;
+    }
+    const pick = {
+      ...(ref !== undefined ? { ref } : {}),
+      ...(code !== undefined ? { code } : {}),
+    };
     const r =
-      verb === "approve"
-        ? deps.pairs.approve(String(body.code ?? ""))
-        : deps.pairs.deny(String(body.code ?? ""));
+      verb === "approve" ? deps.pairs.approve(pick) : deps.pairs.deny(pick);
     if (!r.ok) {
-      const e = ERRORS[r.error];
+      // A handle that names nothing any more: that request ended.
+      const e =
+        ERRORS[r.error === "unknown" && ref !== undefined ? "ended" : r.error];
       deps.audit(req, verb, "a waiting device", e.error);
       deps.sendJson(
         res,
-        { ok: false, code: r.error, error: e.error },
+        {
+          ok: false,
+          code: r.error === "unknown" && ref !== undefined ? "ended" : r.error,
+          error: e.error,
+        },
         e.status,
       );
       return true;
     }
+    if (verb === "deny" && r.request.link)
+      deps.linkEnded?.(r.request.link, "denied", req);
     const who = [r.request.device, r.request.client].filter(Boolean).join(", ");
     deps.audit(req, verb, `a waiting device (${who})`);
     deps.sendJson(res, { ok: true, ...waitingJson(r.request) });

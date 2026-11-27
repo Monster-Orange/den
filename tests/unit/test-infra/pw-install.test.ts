@@ -74,7 +74,7 @@ describe("CI installs Playwright only through scripts/ci-pw-install.sh", () => {
     expect(users).toEqual(
       expect.arrayContaining([
         "ci.yml:tests",
-        "release.yml:tests",
+        "release-gates.yml:tests",
         "repeat.yml:repeat",
       ]),
     );
@@ -146,6 +146,12 @@ echo "fake npx $* (attempt $n)"
 if [ "$part" = install-deps ] && [ -e "$FAKE_DIR/lock" ]; then
   echo "E: Could not get lock (fake)"; exit 100
 fi
+if [ "$part" = install-deps ] && [ -n "\${CI_PW_APT_SOURCES:-}" ]; then
+  ls "$CI_PW_APT_SOURCES" > "$FAKE_DIR/sources-at-install" 2>/dev/null
+  if grep -qsF packages.microsoft.com "$CI_PW_APT_SOURCES"/*; then
+    echo "E: Failed to fetch https://packages.microsoft.com/ubuntu/26.04/prod/dists/resolute/InRelease  403  Forbidden"; exit 100
+  fi
+fi
 if [ "$part" = install-deps ] && [ -n "\${FAKE_ARCHIVES:-}" ]; then
   ls "$FAKE_ARCHIVES" > "$FAKE_DIR/archives-at-install" 2>/dev/null
   touch "$FAKE_ARCHIVES/fetched_1.0_amd64.deb"
@@ -171,6 +177,14 @@ rm -f "$1/lock"
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pw-install-"));
     fs.mkdirSync(path.join(tmp, "bin"));
     fs.writeFileSync(path.join(tmp, "bin", "npx"), FAKE, { mode: 0o755 });
+    fs.writeFileSync(
+      path.join(tmp, "bin", "apt-cache"),
+      `#!/bin/bash
+echo " 500 http://archive.example/mirror noble-updates/main amd64 Packages"
+[ -n "\${FAKE_NO_UBUNTU:-}" ] && echo "     release o=vendor-other,a=noble" || echo "     release v=24.04,o=Ubuntu,a=noble-updates,n=noble,l=Ubuntu,c=main,b=amd64"
+`,
+      { mode: 0o755 },
+    );
     fs.writeFileSync(path.join(tmp, "bin", "fake-apt-leftover"), LEFTOVER, {
       mode: 0o755,
     });
@@ -198,6 +212,7 @@ rm -f "$1/lock"
           CI_PW_APT_CACHE: path.join(dir, "apt-cache"),
           CI_PW_APT_ARCHIVES: path.join(dir, "apt-archives"),
           CI_PW_SUDO: "",
+          CI_PW_APT_SOURCES: path.join(dir, "no-sources"),
           CI_PW_DEPS_SECONDS: "2",
           CI_PW_INSTALL_SECONDS: "2",
           ...env,
@@ -283,6 +298,115 @@ rm -f "$1/lock"
     expect([r.deps, r.install]).toEqual([2, 0]);
     expect(r.out).toMatch(/::error::.*install-deps.*failed twice/);
   }, 30_000);
+
+  it("install-deps fails on a runner with no Ubuntu apt sources: no retry, and the error says why and never to re-run", () => {
+    const r = run("no-ubuntu", {
+      FAKE_HANG_install_deps: "1",
+      FAKE_NO_UBUNTU: "1",
+      ImageOS: "ubuntu26",
+      ImageVersion: "20261116.88.1",
+    });
+    expect(r.code).not.toBe(0);
+    expect([r.deps, r.install]).toEqual([1, 0]);
+    expect(r.out).toMatch(
+      /::error::.*ubuntu26 20261116\.88\.1.*no Ubuntu apt sources.*never re-run/,
+    );
+    expect(r.out).not.toMatch(/(?<!never )re-run the job/);
+  }, 30_000);
+
+  it("failing twice names the runner image and asks for a fresh head, never a re-run", () => {
+    const r = run("deps-twice-hint", {
+      FAKE_HANG_install_deps: "1 2",
+      ImageOS: "ubuntu26",
+      ImageVersion: "20261116.88.1",
+    });
+    expect(r.out).toMatch(
+      /::error::.*failed twice.*ubuntu26 20261116\.88\.1.*fresh head/,
+    );
+    expect(r.out).not.toMatch(/(?<!never )re-run the job/);
+  }, 30_000);
+
+  const MS_SOURCE =
+    "Types: deb\nURIs: https://packages.microsoft.com/ubuntu/26.04/prod\nSuites: resolute\nComponents: main\n";
+  const withSources = (name: string) => {
+    const dir = path.join(tmp, `${name}-sources`);
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, "azure-cli.sources"), MS_SOURCE);
+    fs.writeFileSync(
+      path.join(dir, "microsoft-named.list"),
+      "deb http://archive.example/ubuntu noble main\n",
+    );
+    return dir;
+  };
+  const atInstall = (name: string) =>
+    fs.readFileSync(path.join(tmp, name, "sources-at-install"), "utf-8");
+
+  it("an apt source naming packages.microsoft.com (it 403s) is set aside for install-deps, matched by content, and put back after", () => {
+    const sources = withSources("ms-403");
+    const r = run("ms-403", { CI_PW_APT_SOURCES: sources });
+    expect(r.code).toBe(0);
+    expect([r.deps, r.install]).toEqual([1, 1]);
+    expect(atInstall("ms-403")).not.toContain("azure-cli.sources");
+    expect(atInstall("ms-403")).toContain("microsoft-named.list");
+    expect(fs.readdirSync(sources).sort()).toEqual([
+      "azure-cli.sources",
+      "microsoft-named.list",
+    ]);
+    expect(
+      fs.readFileSync(path.join(sources, "azure-cli.sources"), "utf-8"),
+    ).toBe(MS_SOURCE);
+  });
+
+  it("the Microsoft source is put back when install-deps fails twice too", () => {
+    const sources = withSources("ms-fail");
+    const r = run("ms-fail", {
+      CI_PW_APT_SOURCES: sources,
+      FAKE_HANG_install_deps: "1 2",
+    });
+    expect(r.code).not.toBe(0);
+    expect(atInstall("ms-fail")).not.toContain("azure-cli.sources");
+    expect(
+      fs.readFileSync(path.join(sources, "azure-cli.sources"), "utf-8"),
+    ).toBe(MS_SOURCE);
+  }, 30_000);
+
+  it("with the Microsoft source aside, no Ubuntu sources still fails fast, and the source is put back", () => {
+    const sources = withSources("ms-no-ubuntu");
+    const r = run("ms-no-ubuntu", {
+      CI_PW_APT_SOURCES: sources,
+      FAKE_HANG_install_deps: "1",
+      FAKE_NO_UBUNTU: "1",
+    });
+    expect(r.code).not.toBe(0);
+    expect([r.deps, r.install]).toEqual([1, 0]);
+    expect(r.out).toMatch(/::error::.*no Ubuntu apt sources/);
+    expect(atInstall("ms-no-ubuntu")).not.toContain("azure-cli.sources");
+    expect(fs.readdirSync(sources)).toContain("azure-cli.sources");
+  }, 30_000);
+
+  it("a Microsoft source that can't be put back is kept where it was set aside, with a warning, never deleted", () => {
+    const sources = withSources("ms-stuck");
+    const sudo = path.join(tmp, "ms-stuck-sudo");
+    fs.writeFileSync(
+      sudo,
+      `#!/bin/bash
+[ "$1" = mv ] && [ "\${3%/*}" = "${sources}" ] && exit 1
+exec "$@"
+`,
+      { mode: 0o755 },
+    );
+    const r = run("ms-stuck", { CI_PW_APT_SOURCES: sources, CI_PW_SUDO: sudo });
+    expect(r.code).toBe(0);
+    expect(fs.readdirSync(sources)).not.toContain("azure-cli.sources");
+    const kept = /::warning::could not put \S+ back: kept in (\S+)/.exec(
+      r.out,
+    )?.[1];
+    expect(kept).toBeDefined();
+    expect(
+      fs.readFileSync(path.join(kept as string, "azure-cli.sources"), "utf-8"),
+    ).toBe(MS_SOURCE);
+    fs.rmSync(kept as string, { recursive: true, force: true });
+  });
 
   it("the browsers are arguments: chromium and webkit when none are given", () => {
     const r = run("chromium-only", {}, ["chromium"]);

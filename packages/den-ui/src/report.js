@@ -14,8 +14,10 @@
  *                 Copy report only.
  *       info()           → { repos: [{ repo }], maxPerHour, captureSeconds }
  *                 each repo may say its visibility ("public" | "private" |
- *                 "internal"; missing or anything else reads as public)
- *                 and an audience (who can see it, plain text)
+ *                 "internal" | "unknown"; missing or anything else is
+ *                 "unknown": a "Visibility not known" pill and a caution,
+ *                 never the public pill nor a private claim) and an
+ *                 audience (who can see it, plain text)
  *       diagnostics()    → { sections: { name: text } }  shown on Include
  *       preview(form, headers)  → { status, data: { title, body } }
  *                 the text the product will post (its redactor's); else
@@ -26,6 +28,14 @@
  *       githubSend(form, headers), githubPoll(id)   a device-flow sign-in
  *       saveDraft(form, headers) → { status, data: { draft: { id } } }
  *                 Finish later (hidden without it)
+ *       shotShare(repo) → { share, recipient } | null   issue 403: whether
+ *                 the masked screenshot would go on to someone (Review
+ *                 shows "goes to <recipient>" with a checkbox, else "text
+ *                 only"). send/githubSend then carry `shot` (the masked
+ *                 PNG as a data URL) and `shareShot` (the box: unticked
+ *                 until the person ticks it for this report);
+ *                 their answer's `shot`: { where: "hub", recipient } or
+ *                 { where: "local", why? }, said once it is sent
  *     busy(action, run, opts)   the working pop-up (busy.js's busyAction
  *               with the product's words), for the slow calls
  *     mine()    opens "My reports" (the link is hidden without it)
@@ -58,6 +68,62 @@ const esc = kitEsc;
 
 export function configureReport(o = {}) {
   Object.assign(cfg, o);
+}
+
+const VIS = ["public", "private", "internal"];
+
+/**
+ * Issue 1127: a refusal for a listed name (code "words") in the person's
+ * language: each hit's field, line and the person's own phrase that
+ * matched, with neutral words to use; never the list. No hits: the install's list can't be read. Any
+ * other answer: null (not this one's).
+ */
+export function reportRefusalText(data, lng) {
+  if (!data || data.code !== "words") return null;
+  const tr = (key, vars) => kitT(lng, key, vars);
+  const hits = Array.isArray(data.hits) ? data.hits : [];
+  if (!hits.length) return tr("kit.report.wordsList");
+  const where = hits
+    .map((h) =>
+      tr("kit.report.wordsAt", {
+        field:
+          h.field === "title" || h.field === "description"
+            ? tr(`kit.report.field.${h.field}`)
+            : String(h.field),
+        line: Number(h.line) || 0,
+        phrase: String(h.phrase ?? ""),
+      }),
+    )
+    .join("; ");
+  return tr("kit.report.words", { where });
+}
+
+/**
+ * Who can see a report sent to `repo`, one of the host's info().repos[]
+ * (issue 415). Public, private and internal only when the host says so;
+ * anything else is "unknown": the form then neither says public nor claims
+ * private, and keeps the caution (mask anything private). The audience
+ * shows only on private and internal. Gives the pill (after the
+ * destination) and the note (above Send) as markup, every word escaped.
+ */
+export function reportVisibility(repo, lng) {
+  const r = repo || {};
+  const l = lng ?? lang();
+  const say = (key, vars) => esc(kitT(l, key, vars));
+  const visibility = VIS.includes(r.visibility) ? r.visibility : "unknown";
+  const closed = visibility === "private" || visibility === "internal";
+  const audience = closed ? String(r.audience || "").trim() : "";
+  const key = { public: "pub", private: "priv", internal: "int" }[visibility];
+  const pill = `<span class="fb-pill" data-vis="${visibility}">${say(
+    `kit.report.${key || "unk"}`,
+  )}</span>${audience ? `<span class="fb-fine">${esc(audience)}</span>` : ""}`;
+  const note =
+    visibility === "public"
+      ? `<div class="fb-warn" role="note"><b>${say("kit.report.pub")}.</b> ${say("kit.report.pubW")}</div>`
+      : closed
+        ? `<p class="fb-fine" role="note" data-vis-note>${audience ? say("kit.report.privW", { who: audience }) : say("kit.report.privN")}</p>`
+        : `<div class="fb-warn" role="note" data-vis-unknown>${say("kit.report.unkW")}</div>`;
+  return { visibility, audience, pill, note };
 }
 
 /** The report as text, from the form alone (no product preview). */
@@ -237,17 +303,32 @@ export async function openReport(opts = {}) {
     viaApp: false,
     // The screenshot: a canvas, or null when the page couldn't be taken.
     shot: null,
+    // Issue 1499: the form opens at once; the shot fills in when taken.
+    // shotWait: still being taken. shotFailed: taking it failed.
+    // shotSeen: shown on the first step (where the person can black it
+    // out): only then can it go.
+    shotWait: false,
+    shotFailed: false,
+    shotSeen: false,
+    // The window's shape when Report was picked: the shot's, so its box
+    // is the right size before it's there.
+    shotRatio: [window.innerWidth || 4, window.innerHeight || 3],
     masks: [],
     noShot: false,
     drag: null,
-    saved: null,
+    // Issue 403: whether the screenshot would go on (shotShare), and the
+    // person's box for this report: a tick per report, so it starts
+    // unticked (Vision, 2026-11-18).
+    share: null,
+    shareShot: false,
   };
   const self = { dlg, st, close };
   const sends = () => !!(ad.send || ad.fileReport);
   current = self;
 
   const ad = cfg.adapter || {};
-  const [info, diag, shots] = await Promise.all([
+  let shots = null;
+  const [info, diag, shotsMod] = await Promise.all([
     ad.info ? Promise.resolve(ad.info()).catch(() => ({})) : {},
     ad.diagnostics ? Promise.resolve(ad.diagnostics()).catch(() => ({})) : {},
     // Loaded only when a report opens: a page without the screenshot
@@ -263,8 +344,11 @@ export async function openReport(opts = {}) {
     ensureCss(),
   ]);
   st.info = info || {};
-  // Taken before the dialog is on the page, so it shows what the person
-  // saw: the page and any pop-up open over it.
+  shots = shotsMod;
+  // Started before the dialog is on the page, and never awaited before it
+  // opens (issue 1499): the form shows at once, the shot fills in. It
+  // skips the dialog, so it shows what the person saw: the page and any
+  // pop-up open over it.
   // A draft brings its own: Finish later's from this browser (with its
   // masks), an agent's from its record.
   const fromDraft = async () => {
@@ -277,15 +361,48 @@ export async function openReport(opts = {}) {
     }
     return typeof d.shot === "string" ? shots.canvasOf(d.shot) : null;
   };
-  st.shot = !shots
+  const taking = !shots
     ? null
     : opts.draft
-      ? await fromDraft()
-      : await shots.capture({
+      ? fromDraft()
+      : shots.capture({
           seconds: st.info.captureSeconds || 15,
           skip: (el) => el.classList?.contains("fb-dlg"),
         });
   if (current !== self) return self;
+  if (taking) {
+    st.shotWait = true;
+    Promise.resolve(taking)
+      .catch(() => null)
+      .then((canvas) => {
+        if (current !== self) return;
+        st.shotWait = false;
+        st.shotFailed = !canvas;
+        // Only the shot's own box: the words being typed, the focus and
+        // everything else stay where they are (Hub Design: no jump).
+        const area = dlg.querySelector("[data-shot-area]");
+        if (st.step === "review" && area) {
+          // Shown, never included by itself: masking is on the first step,
+          // so it goes only once the person chooses it there.
+          st.shot = canvas || null;
+          area.outerHTML = reviewShotHtml();
+          return;
+        }
+        st.shot = canvas || null;
+        if (st.step !== "write" || !area) return;
+        const box = area.querySelector("[data-shot-box]");
+        if (canvas && box && !opts.draft) {
+          box.outerHTML = shotBoxHtml();
+          st.shotSeen = true;
+          paintShot();
+        } else {
+          // A draft's shot brings its masks and Don't include, which sit
+          // outside the box: the whole area, below the words being typed.
+          area.outerHTML = shotAreaHtml();
+          if (canvas) paintShot();
+        }
+      });
+  }
   document.body.append(dlg);
   st.diag = diag?.sections || diag || {};
   st.repo = st.repo || st.info.repos?.[0]?.repo || "";
@@ -297,40 +414,145 @@ export async function openReport(opts = {}) {
   function allSections() {
     return { ...st.diag, ...st.client };
   }
-  /**
-   * Who can see the selected repo (issue 415): public unless the host says
-   * private or internal, with the host's audience words then.
-   */
-  function vis(repos) {
-    const r = repos.find((x) => x.repo === st.repo) || {};
-    const v =
-      r.visibility === "private" || r.visibility === "internal"
-        ? r.visibility
-        : "public";
-    const who = v === "public" ? "" : String(r.audience || "").trim();
-    return { v, who };
-  }
-  /** The pill after the destination, then the audience when not public. */
-  function visPill(repos) {
-    const { v, who } = vis(repos);
-    const key = { public: "pub", private: "priv", internal: "int" }[v];
-    return `<span class="fb-pill" data-vis="${v}">${esc(t(`kit.report.${key}`))}</span>${who ? `<span class="fb-fine">${esc(who)}</span>` : ""}`;
-  }
-  /** Above Send: the public warning, or a quiet line for a private repo. */
-  function visNote(repos) {
-    const { v, who } = vis(repos);
-    if (v === "public")
-      return `<div class="fb-warn" role="note"><b>${esc(t("kit.report.pub"))}.</b> ${esc(t("kit.report.pubW"))}</div>`;
-    return `<p class="fb-fine" role="note" data-vis-note>${esc(who ? t("kit.report.privW", { who }) : t("kit.report.privN"))}</p>`;
-  }
+  /** Who can see the selected repo (issue 415): see reportVisibility. */
+  const selected = (repos) => repos.find((x) => x.repo === st.repo) || {};
+  const visPill = (repos) => reportVisibility(selected(repos), lang()).pill;
+  const visNote = (repos) => reportVisibility(selected(repos), lang()).note;
   /** Whether a screenshot goes with the report. */
   function shotOn() {
-    return !!st.shot && !st.noShot;
+    return !!st.shot && st.shotSeen && !st.noShot;
   }
   function maskedShot() {
     return shots.masked(st.shot, st.masks);
   }
+  /**
+   * Issue 403: where the screenshot goes, on Review, before sending: to
+   * the recipient (with the person's box), or nowhere ("text only").
+   */
+  function shareHtml() {
+    if (!ad.shotShare || !sends() || !st.share) return "";
+    return st.share.share
+      ? `<label class="fb-tools" data-share><input type="checkbox" data-f="shareshot"${st.shareShot ? " checked" : ""}> ${esc(t("kit.report.shareTo", { recipient: st.share.recipient }))}</label>`
+      : `<p class="fb-fine" data-share>${esc(t("kit.report.shareNo"))}</p>`;
+  }
+  /** Issue 403: where the screenshot went, once sent (and why not Hub). */
+  function shotOutcomeHtml() {
+    const o = st.sent?.shot;
+    if (!o || typeof o !== "object") return "";
+    if (o.where === "hub" && o.recipient)
+      return `<p class="fb-fine" data-shot-outcome>${esc(t("kit.report.shotWent", { recipient: o.recipient }))}</p>`;
+    if (o.where === "local" && o.why) {
+      const k = `kit.report.why.${o.why}`;
+      const why = t(k) === k ? t("kit.report.why.refused") : t(k);
+      return `<p class="fb-fine" data-shot-outcome>${esc(t("kit.report.shotStayed", { why }))}</p>`;
+    }
+    return "";
+  }
+  /** What a send carries for the screenshot (issue 403). */
+  function shotPayload() {
+    if (!shotOn()) return {};
+    return {
+      shot: maskedShot().toDataURL("image/png"),
+      shareShot: !!(st.share?.share && st.shareShot),
+    };
+  }
+  /** Asks the product whether the screenshot would go on (issue 403). */
+  async function loadShare() {
+    if (!ad.shotShare || !sends() || !shotOn()) return;
+    const repo = st.repo;
+    const r = await Promise.resolve(ad.shotShare(repo)).catch(() => null);
+    if (st.repo !== repo) return;
+    st.share =
+      r && typeof r.share === "boolean"
+        ? { share: r.share, recipient: String(r.recipient || "") }
+        : { share: false, recipient: "" };
+    if (st.share.share && !st.share.recipient) st.share.share = false;
+  }
   const pct = (v) => Math.round(v * 100);
+  /**
+   * The shot's box (issue 1499): while it's being taken, the size of the
+   * shot to come, saying so; then the shot itself, in the same place. On
+   * the first step a canvas to black areas out on; on Review a picture.
+   */
+  /**
+   * The waiting box's size, through CSSOM: a style attribute in the HTML
+   * is an inline style, which a page's `style-src 'self'` refuses.
+   */
+  function sizeShotBoxes() {
+    const [w, h] = st.shotRatio;
+    for (const el of dlg.querySelectorAll("[data-shot-box][data-wait]")) {
+      el.style.setProperty("--shot-ar", `${w} / ${h}`);
+      el.style.setProperty("--shot-k", (w / h).toFixed(4));
+    }
+  }
+  function shotBoxHtml(where = "write") {
+    // Review: a shot not included (still being taken, or landed since and
+    // not yet checked) is a faded thumbnail, so it doesn't read as posted.
+    const late = where === "review" && !shotOn() ? " data-late" : "";
+    if (st.shotWait)
+      return `<div class="fb-shot" data-shot-box data-wait${late}${where === "write" && st.noShot ? " hidden" : ""}><div class="fb-shot-wait"><span class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</span></div></div>`;
+    if (where === "review")
+      return `<div class="fb-shot" data-shot-box${late}><img data-shot-review alt="${esc(late ? t("kit.report.shotNotIn") : t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`;
+    return `<div class="fb-shot" data-shot-box${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>`;
+  }
+  /**
+   * The first step's screenshot part, drawn whole at once: its note, its
+   * box (being taken, then the shot) and its tools. Only a failed shot
+   * swaps it for the no-screenshot words.
+   */
+  function shotAreaHtml() {
+    if (!st.shotWait && !st.shot)
+      return `<div data-shot-area><p class="fb-fine" role="status">${esc(t("kit.report.ncap"))}</p></div>`;
+    if (st.shot) st.shotSeen = true;
+    return `<div data-shot-area><p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
+${shotBoxHtml()}
+<div class="fb-tools">${st.noShot ? "" : btn("undo", t("kit.report.undo"))}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("kit.report.masks", { n: st.masks.length }))}</span></div>
+${
+  st.noShot
+    ? ""
+    : `<details class="fb-kbd"${st.kbd ? " open" : ""}><summary>${esc(t("kit.report.kbdMask"))}</summary>
+<div class="fb-tools">${[
+        ["x", "kit.report.mx"],
+        ["y", "kit.report.my"],
+        ["w", "kit.report.mw"],
+        ["h", "kit.report.mh"],
+      ]
+        .map(
+          ([k, l]) =>
+            `<label>${esc(t(l))} <input type="number" data-m="${k}" min="0" max="100" step="1" value="${k === "w" || k === "h" ? 20 : 0}"></label>`,
+        )
+        .join(
+          "",
+        )}${btn("addmask", t("kit.report.addMask"))}${btn("maskall", t("kit.report.maskAll"))}</div>
+<ul class="fb-masks">${st.masks
+        .map(
+          (m, i) =>
+            `<li>${esc(t("kit.report.area", { x: pct(m.x), y: pct(m.y), w: pct(m.w), h: pct(m.h) }))} <button type="button" data-act="rmmask" data-i="${i}">${esc(t("kit.report.rmMask"))}</button></li>`,
+        )
+        .join("")}</ul></details>`
+}</div>`;
+  }
+  /**
+   * Review's screenshot part. A shot seen on the first step (where the
+   * person blacks out anything private) goes, as before. One still being
+   * taken shows its box; one that landed since shows in it, but goes only
+   * if the person picks "Include it", which opens the first step to mask
+   * it and comes back here. Otherwise the report goes without it, and
+   * this says so. A failed one says why there's none.
+   */
+  function reviewShotHtml() {
+    let h = "";
+    if (st.noShot) h = "";
+    else if (shotOn())
+      h = `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div>${shotBoxHtml("review")}${shareHtml()}`;
+    else if (st.shotWait)
+      h = `<div class="fb-h">${esc(t("kit.report.shot"))}</div><p class="fb-fine" data-shot-late>${esc(t("kit.report.shotLateWait"))}</p>${shotBoxHtml("review")}`;
+    else if (st.shot)
+      h = `<div class="fb-h">${esc(t("kit.report.shot"))}</div><div class="fb-tools"><span class="fb-fine" data-shot-late>${esc(t("kit.report.shotLateIn"))}</span>${btn("shotinclude", t("kit.report.shotInclude"))}</div>${shotBoxHtml("review")}`;
+    else if (st.shotFailed)
+      h = `<p class="fb-fine" role="status" data-shot-failed>${esc(t("kit.report.shotFailed"))}</p>`;
+    return `<div data-shot-area>${h}</div>`;
+  }
   /** Draws the screenshot with its masks (and one being dragged). */
   function paintShot() {
     const c = dlg.querySelector("canvas[data-shot]");
@@ -409,38 +631,8 @@ export async function openReport(opts = {}) {
 <label class="fb-f">${esc(t("kit.report.titleL"))}<input type="text" data-f="title" maxlength="200" value="${esc(st.title)}"></label>
 <label class="fb-f">${esc(t("kit.report.desc"))}<textarea data-f="description" maxlength="20000">${esc(st.description)}</textarea></label>
 <div class="fb-h">${esc(t("kit.report.shot"))}</div>
-${
-  st.shot
-    ? `<p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
-<div class="fb-shot"${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>
-<div class="fb-tools">${st.noShot ? "" : btn("undo", t("kit.report.undo"))}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("kit.report.masks", { n: st.masks.length }))}</span></div>
-${
-  st.noShot
-    ? ""
-    : `<details class="fb-kbd"${st.kbd ? " open" : ""}><summary>${esc(t("kit.report.kbdMask"))}</summary>
-<div class="fb-tools">${[
-        ["x", "kit.report.mx"],
-        ["y", "kit.report.my"],
-        ["w", "kit.report.mw"],
-        ["h", "kit.report.mh"],
-      ]
-        .map(
-          ([k, l]) =>
-            `<label>${esc(t(l))} <input type="number" data-m="${k}" min="0" max="100" step="1" value="${k === "w" || k === "h" ? 20 : 0}"></label>`,
-        )
-        .join(
-          "",
-        )}${btn("addmask", t("kit.report.addMask"))}${btn("maskall", t("kit.report.maskAll"))}</div>
-<ul class="fb-masks">${st.masks
-        .map(
-          (m, i) =>
-            `<li>${esc(t("kit.report.area", { x: pct(m.x), y: pct(m.y), w: pct(m.w), h: pct(m.h) }))} <button type="button" data-act="rmmask" data-i="${i}">${esc(t("kit.report.rmMask"))}</button></li>`,
-        )
-        .join("")}</ul></details>`
-}`
-    : `<p class="fb-fine" role="status">${esc(t("kit.report.ncap"))}</p>`
-}${err}
-<div class="fb-btns">${btn("next", t("kit.report.next"), true)}${laterBtn(t("kit.report.later"))}${btn("cancel", t("kit.report.cancel"))}</div>`;
+${shotAreaHtml()}${err}
+<div class="fb-btns">${st.backToReview ? btn("review", t("kit.report.backReview"), true) : btn("next", t("kit.report.next"), true)}${laterBtn(t("kit.report.later"))}${btn("cancel", t("kit.report.cancel"))}</div>`;
     } else if (st.step === "include") {
       label = t("kit.report.incH");
       const secs = allSections();
@@ -479,11 +671,7 @@ ${
       }${visPill(repos)}</div>`
     : ""
 }
-<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${
-        shotOn()
-          ? `<div class="fb-h">${esc(t("kit.report.revShot", { n: st.masks.length }))}</div><div class="fb-shot"><img data-shot-review alt="${esc(t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`
-          : ""
-      }
+<pre data-preview>${esc(pv ? `${pv.title}\n\n${pv.body}` : "…")}</pre>${reviewShotHtml()}
 ${sends() ? visNote(repos) : ""}${err}${st.copied ? `<p class="fb-fine" role="status">${esc(t(st.copied === "ok" ? "kit.report.copied" : "kit.report.copyFailed"))}</p>` : ""}
 <div class="fb-btns">${sends() ? btn("send", t("kit.report.send"), true) : btn("copy", t("kit.report.copy"), true)}${laterBtn(t("kit.report.later"))}${btn("back-include", t("kit.report.back"))}</div>`;
     } else if (st.step === "signin") {
@@ -518,11 +706,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         st.sent.filed
           ? `<p>${esc(t("kit.report.filed", { n: st.sent.number }))}${st.sent.url ? ` ${linkBtn(st.sent.url, `#${st.sent.number}`)}` : ""}</p>`
           : `<p>${esc(t(st.sent.added ? "kit.report.addedB" : "kit.report.sentB", { title: st.title }))}</p>`
-      }${
-        st.saved
-          ? `<p data-saved>${esc(t(st.saved.copied ? "kit.report.sentShot" : "kit.report.sentShotSaved"))}</p>`
-          : ""
-      }
+      }${shotOutcomeHtml()}
 <div class="fb-btns">${st.sent.url ? linkBtn(st.sent.url, t("kit.report.openIssue"), true) : ""}${btn("done", t("kit.report.done"), !st.sent.url)}</div>`;
     } else if (st.step === "limit") {
       role = "alertdialog";
@@ -551,6 +735,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     dlg.setAttribute("aria-label", label);
     dlg.dataset.step = st.step;
     dlg.innerHTML = `<div class="fb-b">${h}</div>`;
+    sizeShotBoxes();
     paintShot();
     const focus =
       (focusSel && dlg.querySelector(focusSel)) ||
@@ -568,11 +753,14 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
   }
 
   async function preview() {
+    const shared = loadShare();
     if (!ad.preview) {
+      await shared;
       st.preview = localPreview({ ...form(), diag: st.diag });
       return render();
     }
     const r = await write((h) => ad.preview(form(), h), "report-preview");
+    await shared;
     if (!r) return render();
     if (r.status !== 200) {
       st.error = r.data.error || `${r.status}`;
@@ -605,16 +793,14 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     go("later");
   }
 
-  /** Sent: then the masked screenshot is saved and copied to paste. */
+  /**
+   * Sent. Issue 403: the screenshot went with the report (the product
+   * keeps it); nothing is saved to this computer or copied.
+   */
   function sent(data) {
     st.sent = data || {};
     if (shots && st.draftId) void shots.dropShot(st.draftId);
     go("sent");
-    if (!shotOn()) return;
-    void shots.saveAndCopy(maskedShot()).then((r) => {
-      st.saved = r.saved || r.copied ? r : null;
-      if (current === self && st.step === "sent") render();
-    });
   }
 
   function onAnswer(r) {
@@ -637,7 +823,10 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
       st.flow = null;
       return go("signin");
     }
-    go("failed", r.data.error || `${r.status}`);
+    go(
+      "failed",
+      reportRefusalText(r.data, lang()) || r.data.error || `${r.status}`,
+    );
   }
 
   async function send() {
@@ -648,6 +837,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         ad.send(
           {
             ...form(),
+            ...shotPayload(),
             ...(st.addTo !== null ? { addTo: st.addTo } : {}),
             ...(st.fileNew ? { fileNew: true } : {}),
           },
@@ -670,6 +860,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         ad.githubSend(
           {
             ...form(),
+            ...shotPayload(),
             ...(st.addTo !== null ? { addTo: st.addTo } : {}),
             ...(st.fileNew ? { fileNew: true } : {}),
           },
@@ -680,7 +871,11 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     if (!r) return render();
     st.link = r.data.newIssueUrl || st.link;
     if (r.status !== 200 || !r.data.flow) {
-      if (r.status === 429 || (r.status === 409 && r.data.duplicate))
+      if (
+        r.status === 429 ||
+        (r.status === 409 && r.data.duplicate) ||
+        r.data.code === "words"
+      )
         return onAnswer(r);
       st.flow = null;
       return go("signin", r.data.error || "");
@@ -804,6 +999,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     if (sec) st.sections[sec] = el.checked;
     const f = el.getAttribute?.("data-f");
     if (f === "redact") st.redact = el.checked;
+    if (f === "shareshot") st.shareShot = el.checked;
     if (f === "remember") st.remember = el.checked;
     if (f === "noshot") {
       st.noShot = el.checked;
@@ -811,6 +1007,7 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     }
     if (f === "repo") {
       st.repo = el.value;
+      st.share = null;
       render('[data-f="repo"]');
       void preview();
     }
@@ -881,7 +1078,14 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         st.sections[k] = act === "all";
       return render();
     }
+    if (act === "shotinclude") {
+      // Issue 1499: to the first step, to see the shot and mask it; its
+      // main button then comes straight back to Review.
+      st.backToReview = true;
+      return go("write");
+    }
     if (act === "review") {
+      st.backToReview = false;
       savePrefs(
         st.remember ? { sections: st.sections, redact: st.redact } : null,
       );

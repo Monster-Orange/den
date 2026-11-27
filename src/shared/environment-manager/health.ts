@@ -23,6 +23,7 @@ import * as os from "os";
 import * as path from "path";
 import * as dns from "dns";
 import { spawn } from "child_process";
+import { testResolveLookup } from "../test-resolve.js";
 import {
   HEALTH_CHECK_TIMEOUT_MS,
   HOSTED_HEALTH_CHECK_TIMEOUT_MS,
@@ -188,6 +189,9 @@ function resolveHostViaCares(hostname: string): Promise<string | null> {
 
 /** `localhost` and `*.localhost` are this machine (RFC 6761); else c-ares. */
 async function resolveName(host: string): Promise<string | null> {
+  // Issue 1073: a test install's own name map, when it holds the name.
+  const mapped = testResolveLookup(host);
+  if (mapped) return mapped;
   if (host === "localhost" || host.endsWith(".localhost")) return "127.0.0.1";
   return _resolveHost(host);
 }
@@ -511,7 +515,7 @@ export async function pingHttp(
         // Rewrite only the hostname so the port, path and query are preserved
         // (string-concatenating protocol+port dropped /healthz and emitted a
         // stray trailing colon for default-port URLs like http://shop-api/healthz).
-        parsed.hostname = "localhost";
+        parsed.hostname = "127.0.0.1";
         const fb = await pingOnce(
           parsed.toString(),
           LOCALHOST_FALLBACK_TIMEOUT_MS,

@@ -12,6 +12,11 @@
  *     css: "/kit/dialog.css",      where dialog.css is, for a page that
  *                                  doesn't link it (default: beside
  *                                  another kit stylesheet on the page)
+ *     hold: (button) => release,   issue 1054: hold a pressed button while
+ *                                  its request runs (busy.js's held button:
+ *                                  dots, disabled, aria-busy); release()
+ *                                  gives it back. Default: disabled and
+ *                                  aria-busy only.
  *   })
  *
  *   askConfirm(opts) → Promise<boolean>      OK true; Cancel or Esc false
@@ -26,6 +31,12 @@
  *                     starts on Cancel, the safe answer
  *   opts.value        askText: the field's first text (selected)
  *   opts.label        askText: the field's own name (default: the title)
+ *   opts.onAnswer     askConfirm, issue 1054: (yes) => Promise | undefined,
+ *                     called on a press of OK (true) or Cancel (false). A
+ *                     promise keeps the dialog open with the pressed button
+ *                     held until it settles, then closes; a rejection says
+ *                     its message in the dialog and gives the button back.
+ *                     Esc never calls it.
  *
  * askConfirm and tell are role="alertdialog"; askText is role="dialog".
  * Each is named by its title (aria-labelledby) and described by its
@@ -33,6 +44,17 @@
  * field for askText, else OK) and goes back to what opened it on close
  * (opts.opener, else the focused element or the control just pressed).
  * Enter in askText's field is OK.
+ *
+ * Issues 669, 670: all three are drawn by the kit's one dialog frame,
+ * which a product also uses for its own Yes/No questions and large
+ * dialogs, in a browser or on a server:
+ *
+ *   dialogHtml({ kind: "confirm" | "panel", ... })  the whole <dialog>,
+ *                                     working with no script (pure)
+ *   mountDialog(htmlOrDialog, opts)  the browser half: modal, focus kept
+ *                                     inside, Esc, focus back, Report
+ *
+ * One look (dialog.css): the theme's radius, backdrop and font.
  */
 
 // Focus goes back to what opened a pop-up (here, Report, What's new). The
@@ -89,6 +111,24 @@ export function openerOf(hint) {
   return null;
 }
 
+/**
+ * Issue 793: a page's own focus while a kit pop-up is open (a field that
+ * came in under it). The page behind a modal can't take focus, so the
+ * field is kept here and gets it when the pop-up closes, in place of
+ * what opened the pop-up. With no pop-up open it is focused at once.
+ */
+let wanted = null;
+export function focusWhenFree(el) {
+  if (!el) return;
+  const modal =
+    typeof document !== "undefined" &&
+    [...document.querySelectorAll("dialog.dk-dlg[open]")].find(
+      (d) => d.matches(":modal") && !d.contains(el),
+    );
+  if (modal) wanted = el;
+  else el.focus?.();
+}
+
 /** Focus `el` again (no scroll), when it is still there and focusable. */
 export function focusBack(el) {
   if (!focusable(el)) return false;
@@ -101,9 +141,24 @@ export function focusBack(el) {
 }
 
 export const DIALOG_WORDS = {
-  en: { ok: "OK", cancel: "Cancel" },
-  es: { ok: "Aceptar", cancel: "Cancelar" },
-  ja: { ok: "OK", cancel: "キャンセル" },
+  en: {
+    ok: "OK",
+    cancel: "Cancel",
+    close: "Close",
+    failed: "That didn't work. Try again.",
+  },
+  es: {
+    ok: "Aceptar",
+    cancel: "Cancelar",
+    close: "Cerrar",
+    failed: "No ha funcionado. Inténtalo de nuevo.",
+  },
+  ja: {
+    ok: "OK",
+    cancel: "キャンセル",
+    close: "閉じる",
+    failed: "うまくいきませんでした。もう一度お試しください。",
+  },
 };
 
 const hook = {
@@ -114,7 +169,56 @@ const hook = {
   words: {},
   report: null,
   css: null,
+  hold: null,
 };
+
+/**
+ * Issue 1054: what a held action's failure says in its dialog: the error's
+ * own message, else the kit's "That didn't work. Try again." (never an
+ * empty alert).
+ */
+export function failedLine(err) {
+  const own = typeof err === "string" ? err : err?.message;
+  return typeof own === "string" && own.trim() ? own : dialogWord("failed");
+}
+
+/** Issue 1054: hold a button while its request runs; returns release(). */
+function holdFor(b) {
+  if (!b) return () => {};
+  if (typeof hook.hold === "function") {
+    const r = hook.hold(b);
+    if (typeof r === "function") return r;
+  }
+  // Issue 1434: held, not disabled, so it keeps focus; its clicks stop
+  // at the window (below).
+  const own = b.getAttribute("aria-disabled") !== "true";
+  b.setAttribute("aria-busy", "true");
+  b.setAttribute("aria-disabled", "true");
+  return () => {
+    b.removeAttribute("aria-busy");
+    if (own) b.removeAttribute("aria-disabled");
+  };
+}
+
+/**
+ * Issue 1434: a click on a held button (aria-busy with aria-disabled, as
+ * busy.js holds) stops at the window, before the page's own listeners.
+ */
+globalThis.window?.addEventListener?.(
+  "click",
+  (e) => {
+    for (let n = e.target; n; n = n.parentNode)
+      if (
+        n.getAttribute?.("aria-busy") === "true" &&
+        n.getAttribute("aria-disabled") === "true"
+      ) {
+        e.preventDefault?.();
+        e.stopImmediatePropagation?.();
+        return;
+      }
+  },
+  true,
+);
 
 /** The product's language, words and Report (see the top of this file). */
 export function configureDialog(h) {
@@ -170,27 +274,176 @@ function ensureCss() {
 
 let seq = 0;
 
-/** The dialog's markup, for one kind: confirm, text or tell. */
-export function dialogHtml(kind, opts, ids) {
-  const o = opts ?? {};
-  const okCls = o.danger ? "dk-danger" : "dk-primary";
-  const report = (typeof hook.report === "function" && hook.report()) || "";
-  const title = o.title ?? "";
-  const message = o.message ?? "";
+const NAME = /^[A-Za-z_:][-\w:.]*$/;
+
+/** Extra attributes: true is a bare attribute; false and null are none. */
+function attrsOf(o) {
+  let s = "";
+  for (const [k, v] of Object.entries(o ?? {})) {
+    if (!NAME.test(k) || v === false || v == null) continue;
+    s += v === true ? ` ${k}` : ` ${k}="${esc(v)}"`;
+  }
+  return s;
+}
+
+/**
+ * One action: a link (href), else a button. A submit (the default) closes
+ * a method=dialog form with its value as the answer, with no script. A
+ * plain one (no kind) never validates the form: it is a way out.
+ */
+function actionHtml(a) {
+  // Issue 673: the kit's one button (button.css); dk-btn, dk-primary and
+  // dk-danger stay as the dialog's hooks.
+  const cls =
+    "den-btn dk-btn" +
+    (a.kind === "primary"
+      ? " primary dk-primary"
+      : a.kind === "danger"
+        ? " danger dk-danger"
+        : "") +
+    (a.className ? ` ${a.className}` : "");
+  if (a.href != null)
+    return `<a class="${esc(cls)}" href="${esc(a.href)}"${attrsOf(a.attrs)}>${esc(a.label)}</a>`;
+  const type = a.type === "button" ? "button" : "submit";
+  const v = a.value == null ? "" : String(a.value);
+  return (
+    `<button type="${type}" class="${esc(cls)}"` +
+    (v ? ` value="${esc(v)}" data-dk="${esc(v)}"` : "") +
+    (type === "submit" && !a.kind ? " formnovalidate" : "") +
+    attrsOf(a.attrs) +
+    `>${esc(a.label)}</button>`
+  );
+}
+
+const actionsHtml = (list) => (list ?? []).map(actionHtml).join("");
+
+/** The ids a frame names its parts by: the product's, else from its id. */
+function idsOf(spec) {
+  const id = spec.id || "dk-dlg";
+  return {
+    id,
+    h: spec.ids?.h ?? `${id}-h`,
+    m: spec.ids?.m ?? `${id}-m`,
+    body: spec.ids?.body ?? `${id}-body`,
+    sub: spec.ids?.sub ?? `${id}-sub`,
+  };
+}
+
+/** Inside a confirm: one method=dialog form, its heading, body, footer. */
+function confirmInner(spec, ids) {
   return (
     `<form class="dk-b" method="dialog">` +
-    (title ? `<h2 id="${ids.h}">${esc(title)}</h2>` : "") +
-    (message ? `<p class="dk-msg" id="${ids.m}">${esc(message)}</p>` : "") +
-    (kind === "text"
-      ? `<input class="dk-in" type="text" data-dk="field" autocomplete="off" spellcheck="false" aria-label="${esc(o.label ?? title)}" value="${esc(o.value ?? "")}">`
+    (spec.title
+      ? `<h2 id="${esc(ids.h)}" tabindex="-1">${esc(spec.title)}</h2>`
       : "") +
-    `<div class="dk-ft">${report}` +
-    (kind === "tell"
-      ? ""
-      : `<button type="button" class="dk-btn" data-dk="cancel">${esc(o.cancelLabel ?? dialogWord("cancel"))}</button>`) +
-    `<button type="submit" class="dk-btn ${okCls}" data-dk="ok">${esc(o.okLabel ?? dialogWord("ok"))}</button>` +
-    `</div></form>`
+    (spec.body
+      ? `<div class="dk-msg" id="${esc(ids.m)}">${spec.body}</div>`
+      : "") +
+    (spec.extra ?? "") +
+    `<div class="dk-ft">${spec.report ?? ""}${actionsHtml(spec.actions)}</div>` +
+    `</form>`
   );
+}
+
+/** Inside a large dialog: header (heading, close), body, footer. */
+function panelInner(spec, ids) {
+  const close = spec.closeLabel ?? dialogWord("close");
+  const foot =
+    spec.actions?.length || spec.report
+      ? `<form class="dk-ft" method="dialog">${spec.report ?? ""}${actionsHtml(spec.actions)}</form>`
+      : "";
+  return (
+    `<div class="dk-hd"><h2 id="${esc(ids.h)}" tabindex="-1">${esc(spec.title ?? "")}</h2>` +
+    (spec.subtitle != null
+      ? `<span class="dk-sub" id="${esc(ids.sub)}">${esc(spec.subtitle)}</span>`
+      : "") +
+    `<span class="dk-acts">${actionsHtml(spec.headActions)}` +
+    `<form class="dk-x-f" method="dialog"><button type="submit" class="den-btn dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
+    `</span></div>` +
+    `<div class="dk-body" id="${esc(ids.body)}"${attrsOf(spec.bodyAttrs)}>${spec.body ?? ""}</div>` +
+    (spec.foot ?? "") +
+    foot
+  );
+}
+
+/**
+ * Issues 669, 670: the kit's one dialog frame, for every product. A pure
+ * function, the same in a browser and on a server: the whole <dialog>,
+ * working with no script (its actions submit method=dialog forms, so the
+ * dialog closes with the action's value as its returnValue; Esc closes it
+ * too). mountDialog adds the rest in a browser. See dialog.d.ts.
+ *
+ *   kind "confirm"  a Yes/No question: heading, body, actions in the footer
+ *   kind "panel"    a large dialog: heading (and subtitle), the header's
+ *                   own actions and Close, a body that scrolls, a footer;
+ *                   with sheet: true, a full-screen sheet on a phone
+ *
+ * title and labels are text (escaped); body, extra and foot are HTML the
+ * caller has escaped. Called with a kind string first (kind, opts, ids),
+ * it is the 0.9 form: the inside of askConfirm, askText or tell's dialog.
+ */
+export function dialogHtml(spec, opts, askIds) {
+  if (typeof spec === "string") {
+    const s = askSpec(spec, opts, "dk");
+    s.ids = { h: askIds?.h, m: askIds?.m };
+    s.report = (typeof hook.report === "function" && hook.report()) || "";
+    return confirmInner(s, idsOf(s));
+  }
+  const s = spec ?? {};
+  const kind = s.kind === "panel" ? "panel" : "confirm";
+  const ids = idsOf(s);
+  const role = s.role ?? (kind === "panel" ? "dialog" : "alertdialog");
+  let named = "";
+  if (kind === "panel" || s.title) named = ` aria-labelledby="${esc(ids.h)}"`;
+  else if (s.label) named = ` aria-label="${esc(s.label)}"`;
+  else if (s.body) named = ` aria-labelledby="${esc(ids.m)}"`;
+  const described =
+    kind === "confirm" && s.title && s.body
+      ? ` aria-describedby="${esc(ids.m)}"`
+      : "";
+  return (
+    `<dialog id="${esc(ids.id)}" class="dk-dlg dk-${kind}${kind === "panel" && s.sheet ? " dk-sheet" : ""}${s.className ? ` ${esc(s.className)}` : ""}"` +
+    ` data-dk-kind="${esc(s.dataKind ?? kind)}" role="${esc(role)}"${named}${described}` +
+    attrsOf(s.attrs) +
+    (s.report ? " data-dk-report" : "") +
+    (s.open ? " open" : "") +
+    `>` +
+    (kind === "panel" ? panelInner(s, ids) : confirmInner(s, ids)) +
+    `</dialog>`
+  );
+}
+
+/**
+ * askConfirm, askText and tell's options as a frame (a confirm): Cancel
+ * (not for tell), then OK, as the kit's words; the message as text, line
+ * breaks kept; askText's field after it.
+ */
+export function askSpec(kind, opts, id) {
+  const o = opts ?? {};
+  const actions = [];
+  if (kind !== "tell")
+    actions.push({
+      label: o.cancelLabel ?? dialogWord("cancel"),
+      value: "cancel",
+    });
+  actions.push({
+    label: o.okLabel ?? dialogWord("ok"),
+    value: "ok",
+    kind: o.danger ? "danger" : "primary",
+  });
+  return {
+    kind: "confirm",
+    dataKind: kind,
+    role: kind === "text" ? "dialog" : "alertdialog",
+    id,
+    title: o.title ?? "",
+    body: o.message ? `<p class="dk-text">${esc(o.message)}</p>` : "",
+    extra:
+      kind === "text"
+        ? `<input class="dk-in" type="text" data-dk="field" autocomplete="off" spellcheck="false" aria-label="${esc(o.label ?? o.title ?? "")}" value="${esc(o.value ?? "")}">`
+        : "",
+    actions,
+  };
 }
 
 /** Where focus starts: Cancel for danger, the field for text, else OK. */
@@ -207,63 +460,271 @@ export function answerOf(kind, ok, text) {
   return undefined;
 }
 
-function open(kind, opts = {}) {
-  ensureCss();
-  const n = ++seq;
-  const ids = { h: `dk-h-${n}`, m: `dk-m-${n}` };
-  const opener = openerOf(opts.opener);
-  const d = document.createElement("dialog");
-  d.className = "dk-dlg";
-  d.dataset.dkKind = kind;
-  d.setAttribute("role", kind === "text" ? "dialog" : "alertdialog");
-  d.setAttribute("aria-modal", "true");
-  d.innerHTML = dialogHtml(kind, opts, ids);
-  if (d.querySelector(`#${ids.h}`)) d.setAttribute("aria-labelledby", ids.h);
-  else if (d.querySelector(`#${ids.m}`))
-    d.setAttribute("aria-labelledby", ids.m);
-  if (opts.title && d.querySelector(`#${ids.m}`))
-    d.setAttribute("aria-describedby", ids.m);
-  document.body.append(d);
+/** The product's Report, first in the footer (a footer of its own if none). */
+function addReport(d) {
+  if (d.hasAttribute("data-dk-report")) return;
+  const html = (typeof hook.report === "function" && hook.report()) || "";
+  if (!html) return;
+  d.setAttribute("data-dk-report", "");
+  const foot = [...d.querySelectorAll(".dk-ft")].pop();
+  if (foot) foot.insertAdjacentHTML("afterbegin", html);
+  else d.insertAdjacentHTML("beforeend", `<div class="dk-ft">${html}</div>`);
+}
 
-  return new Promise((resolve) => {
-    let done = false;
-    const field = d.querySelector('[data-dk="field"]');
-    const finish = (ok) => {
-      if (done) return;
-      done = true;
-      const answer = answerOf(kind, ok, field?.value);
-      if (d.open) d.close();
-      d.remove();
-      focusBack(opener);
-      resolve(answer);
-    };
-    // Esc is Cancel (for tell, it closes). Handled on the dialog's own
-    // keydown too: a page that takes Esc first (or a browser that closes
-    // without a cancel event) must never leave it open or unanswered.
-    d.addEventListener("cancel", (e) => {
+const shownIn = (d) =>
+  [...d.querySelectorAll(FOCUSABLE)].filter(
+    (el) =>
+      !el.disabled &&
+      el.tabIndex >= 0 &&
+      !el.closest("[hidden]") &&
+      (el.offsetWidth || el.offsetHeight || el.getClientRects().length),
+  );
+
+/** Where focus starts in a frame (see mountDialog). */
+function startOf(d, sel) {
+  if (sel) return d.querySelector(sel);
+  const auto = d.querySelector("[autofocus]");
+  if (auto) return auto;
+  if (d.classList.contains("dk-panel")) return d.querySelector(".dk-hd h2");
+  const field = d.querySelector('[data-dk="field"]');
+  if (field) return field;
+  if (d.querySelector(".dk-ft .dk-danger"))
+    return d.querySelector(".dk-ft .dk-btn:not(.dk-danger):not(.dk-primary)");
+  return (
+    d.querySelector(".dk-ft .dk-primary") || d.querySelector(".dk-ft .dk-btn")
+  );
+}
+
+/**
+ * The browser half of the frame: it shows a dialog from dialogHtml (its
+ * HTML, or the element) as a modal and adds focus kept inside (Tab and
+ * Shift+Tab go round), Esc as "cancel", Enter in a field as the main
+ * action, focus back to what opened it, and the product's Report first in
+ * the footer (configureDialog's report).
+ *
+ *   mountDialog(htmlOrDialog, {
+ *     opener,      focus goes back here (default: what opened it)
+ *     focus,       a selector to focus first (default: [autofocus]; the
+ *                  heading of a panel; the field; the safe answer next to
+ *                  a danger action; else the main action)
+ *     onClose,     (value, dialog) when it closes: the action's value,
+ *                  "cancel" for Esc, "close" for Close
+ *     remove,      take it off the page once closed (default: true for
+ *                  HTML, false for an element)
+ *     show,        false: mount only; show() later
+ *     onAction,    issue 1054: (value, dialog, button) on a press of an
+ *                  action that closes it. A promise back keeps it open, the
+ *                  button held (configureDialog's hold) and the others
+ *                  off, until it settles: then it closes with that value;
+ *                  a rejection says its message in the dialog (.dk-err,
+ *                  role=alert) and gives the buttons back. Esc does
+ *                  nothing meanwhile.
+ *   }) → { dialog, show(opener?), close(value?), closed }
+ *
+ * `closed` is a promise of the value, renewed on each show().
+ */
+export function mountDialog(target, o = {}) {
+  ensureCss();
+  let d = target;
+  const fromHtml = typeof target === "string";
+  if (fromHtml) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = target.trim();
+    d = tpl.content.firstElementChild;
+    if (d.id) document.getElementById(d.id)?.remove();
+  }
+  if (!d.isConnected) document.body.append(d);
+  d.setAttribute("aria-modal", "true");
+  const remove = o.remove ?? fromHtml;
+  let opener = null;
+  let settle = null;
+  let gone = false;
+  let shown = false;
+  let waiting = false;
+  const handle = { dialog: d, show, close, closed: Promise.resolve("") };
+
+  // Issue 1054: an action whose request runs while the dialog stays open.
+  d.addEventListener("submit", (e) => {
+    if (waiting) {
       e.preventDefault();
-      finish(kind === "tell");
-    });
-    d.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape" || e.isComposing) return;
+      return;
+    }
+    if (typeof o.onAction !== "function") return;
+    const btn = e.submitter ?? null;
+    const value = btn?.value ?? "";
+    const p = o.onAction(value, d, btn);
+    if (!p || typeof p.then !== "function") return;
+    e.preventDefault();
+    waiting = true;
+    const others = [...d.querySelectorAll(".dk-ft button")].filter(
+      (x) => x !== btn && !x.disabled,
+    );
+    others.forEach((x) => (x.disabled = true));
+    const release = holdFor(btn);
+    d.querySelector(".dk-err")?.remove();
+    Promise.resolve(p).then(
+      async () => {
+        await release();
+        waiting = false;
+        close(value);
+      },
+      async (err) => {
+        await release();
+        waiting = false;
+        others.forEach((x) => (x.disabled = false));
+        const line = document.createElement("p");
+        line.className = "dk-err";
+        line.setAttribute("role", "alert");
+        line.textContent = failedLine(err);
+        d.querySelector(".dk-ft")?.before(line);
+        btn?.focus?.();
+      },
+    );
+  });
+
+  function close(value = "cancel") {
+    if (gone) return;
+    if (d.open && typeof d.close === "function") d.close(value);
+    else {
+      d.removeAttribute("open");
+      d.returnValue = value;
+      d.dispatchEvent(new Event("close"));
+    }
+  }
+
+  function show(from) {
+    if (gone) return handle;
+    addReport(d);
+    if (!d.open) {
+      opener = openerOf(from ?? o.opener);
+      d.returnValue = "";
+      handle.closed = new Promise((r) => (settle = r));
+      shown = true;
+      if (typeof d.showModal === "function") d.showModal();
+      else d.setAttribute("open", "");
+      // A modal the page's own style hides would leave the page dead
+      // under nothing to see: it closes at once, and the keyboard stays
+      // where it was.
+      if (getComputedStyle(d).display === "none") {
+        opener = null;
+        close("cancel");
+        return handle;
+      }
+    }
+    const first = startOf(d, o.focus);
+    first?.focus?.();
+    if (first?.matches?.('[data-dk="field"]')) first.select?.();
+    return handle;
+  }
+
+  d.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    if (!waiting) close("cancel");
+  });
+  d.addEventListener("keydown", (e) => {
+    if (e.isComposing) return;
+    if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      finish(kind === "tell");
-    });
-    d.addEventListener("close", () => finish(kind === "tell"));
-    d.querySelector('[data-dk="cancel"]')?.addEventListener("click", () =>
-      finish(false),
-    );
-    d.querySelector("form").addEventListener("submit", (e) => {
-      e.preventDefault();
-      finish(true);
-    });
-    if (typeof d.showModal === "function") d.showModal();
-    else d.setAttribute("open", "");
-    const first = d.querySelector(`[data-dk="${firstFocus(kind, opts)}"]`);
-    first?.focus();
-    if (first === field) field.select?.();
+      if (!waiting) close("cancel");
+      return;
+    }
+    if (e.key === "Tab") {
+      const all = shownIn(d);
+      if (!all.length) return;
+      const at = document.activeElement;
+      const first = all[0];
+      const last = all[all.length - 1];
+      // Anything not a stop (a focused heading, say) counts as outside:
+      // Shift+Tab from it goes round to the last stop, never out.
+      const inside = all.includes(at);
+      if (e.shiftKey && (at === first || !inside)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (at === last || !inside)) {
+        e.preventDefault();
+        first.focus();
+      }
+      return;
+    }
+    // Enter in a field is the main action, never the first button (Cancel).
+    const t = e.target;
+    if (
+      e.key === "Enter" &&
+      t?.matches?.("input:not([type=checkbox]):not([type=radio])")
+    ) {
+      const main = t.form?.querySelector(".dk-primary, .dk-danger");
+      if (main) {
+        e.preventDefault();
+        main.click();
+      }
+    }
   });
+  // Issue 793: what a close does runs once per showing, as soon as the
+  // dialog is closed (its open attribute goes, seen in a microtask), not
+  // only at the close event, which the browser fires a task later: so a
+  // pop-up's state and focus are right the moment it is shut.
+  const finish = () => {
+    if (!shown || d.open) return;
+    shown = false;
+    const value = d.returnValue || "cancel";
+    o.onClose?.(value, d);
+    const s = settle;
+    settle = null;
+    s?.(value);
+    // The page's own field, if one wanted the keyboard meanwhile (issue
+    // 793), else what opened it.
+    const w = wanted;
+    wanted = null;
+    if (!(w && focusBack(w))) focusBack(opener);
+    opener = null;
+    if (remove) {
+      gone = true;
+      watch?.disconnect();
+      d.remove();
+    }
+  };
+  d.addEventListener("close", finish);
+  const watch =
+    typeof MutationObserver === "function"
+      ? new MutationObserver(finish)
+      : null;
+  watch?.observe(d, { attributes: true, attributeFilter: ["open"] });
+  if (o.show !== false) show();
+  return handle;
+}
+
+/**
+ * Issue 864: one pop-up at a time. A pop-up that may give way to the
+ * person's question (What's new) asks to hear of each question here;
+ * `fn(dialog)` runs just before the question shows, with its dialog.
+ * Returns a function that stops it.
+ */
+const asking = new Set();
+export function onAsk(fn) {
+  asking.add(fn);
+  return () => asking.delete(fn);
+}
+
+/** askConfirm, askText and tell, on the frame. */
+function open(kind, opts = {}) {
+  const id = `dk-q-${++seq}`;
+  let text = "";
+  const h = mountDialog(dialogHtml(askSpec(kind, opts, id)), {
+    opener: opts.opener,
+    focus: `[data-dk="${firstFocus(kind, opts)}"]`,
+    onClose: (v, d) => {
+      text = d.querySelector('[data-dk="field"]')?.value ?? "";
+    },
+    onAction:
+      kind === "confirm" && typeof opts.onAnswer === "function"
+        ? (v) => opts.onAnswer(v === "ok")
+        : undefined,
+    show: false,
+  });
+  for (const fn of asking) fn(h.dialog);
+  h.show(opts.opener);
+  return h.closed.then((v) => answerOf(kind, v === "ok", text));
 }
 
 /** In place of confirm(): true on OK; false on Cancel or Esc. */

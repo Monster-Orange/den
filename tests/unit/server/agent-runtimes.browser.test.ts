@@ -21,12 +21,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SHOTS = process.env.DEN_AGENTS_SHOTS;
 let browser: Browser | null = null;
@@ -37,7 +38,7 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -60,7 +61,12 @@ afterAll(async () => {
 
 const skip = () => !browser;
 
-async function page(url: string, width = 1440, height = 900): Promise<Page> {
+async function page(
+  url: string,
+  width = 1440,
+  height = 900,
+  signedIn = false,
+): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width, height },
     reducedMotion: "reduce",
@@ -75,7 +81,9 @@ async function page(url: string, width = 1440, height = 900): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
-  await p.goto(url.startsWith("http") ? url : `${s!.base}${url}`);
+  // Issue 819: an approved browser, landing on `url`.
+  if (signedIn) await signInPage(p, s!.stateDir, s!.base, url);
+  else await p.goto(url.startsWith("http") ? url : `${s!.base}${url}`);
   return p;
 }
 
@@ -97,7 +105,7 @@ function fake(dir: string, name: string, version: string): string {
 describe("Settings › Agents › Runtimes (AG-0.5)", () => {
   it("lists each runtime, installed first, with its version, path and source; Set path refuses what isn't it; a workspace's own path is set and cleared", async () => {
     if (skip()) return;
-    const p = await page(signInUrl(s!.stateDir, s!.base, "/settings#agents"));
+    const p = await page("/settings#agents", 1440, 900, true);
     await p.waitForSelector('.rt[data-runtime="codex"]');
     expect(
       await p.$$eval(".rt", (els) =>
@@ -111,6 +119,7 @@ describe("Settings › Agents › Runtimes (AG-0.5)", () => {
       ["codex", "true"],
       ["gemini", "false"],
       ["grok", "false"],
+      ["antigravity", "false"],
     ]);
     const row = '.rt[data-runtime="codex"]';
     expect(await text(p, `${row} .rt-n`)).toBe(
@@ -200,10 +209,7 @@ describe("Settings › Agents › Runtimes: no collisions in any language", () =
         expect(await s!.settings({ language: lang })).toBe(200);
       try {
         for (const width of [1280, 390]) {
-          const p = await page(
-            signInUrl(s!.stateDir, s!.base, "/settings#agents"),
-            width,
-          );
+          const p = await page("/settings#agents", width, 900, true);
           await p.waitForSelector('.rt[data-runtime="grok"]');
           const hits = await p.$$eval(".rt", (rows) => {
             const out: string[] = [];
@@ -268,6 +274,7 @@ describe("the Start agent dialog (AG-0.5)", () => {
         "Codex CLI · 0.50.0 · Den tools: coming",
         "Gemini CLI — not installed",
         "Grok Build — not installed",
+        "Antigravity CLI — not installed",
         "Generic command — the persona has no argv template",
       ]);
       if (SHOTS)

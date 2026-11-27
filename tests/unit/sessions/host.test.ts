@@ -179,6 +179,69 @@ describe("session host", () => {
     expect(Date.parse((await c.list())[0].bellAt ?? "")).not.toBeNaN();
   });
 
+  it("issue 771: an OSC 7501 status in a session's output (split across chunks) stamps that session's status only; the bytes stream on untouched", async () => {
+    const dir = stateDir();
+    const { made } = await host(dir);
+    const c = await client(dir);
+    const a = await c.start(spec("acme-north:planner"));
+    const b = await c.start(spec("acme-north:coder"));
+    let seen = "";
+    const att = c.attach(a.ref.id, { onData: (d) => (seen += d.toString()) });
+    await att.ready;
+    made[0].emit("x\u001b]7501;sta");
+    await tick();
+    made[0].emit("te=blocked\u001b\\y");
+    await until(() => seen.endsWith("y"));
+    expect(seen).toBe("x\u001b]7501;state=blocked\u001b\\y");
+    const byId = new Map((await c.list()).map((s) => [s.ref.id, s]));
+    expect(byId.get(a.ref.id)?.status).toMatchObject({ state: "blocked" });
+    expect(Date.parse(byId.get(a.ref.id)?.status?.at ?? "")).not.toBeNaN();
+    expect(byId.get(a.ref.id)?.bellAt).toBeUndefined();
+    expect(byId.get(b.ref.id)?.status).toBeUndefined();
+  });
+
+  it("issue 448: a person's input stamps inputAt; a terminal's reply to a query doesn't", async () => {
+    const dir = stateDir();
+    const { made } = await host(dir);
+    const c = await client(dir);
+    const { ref } = await c.start(spec("acme-north:planner"));
+    const att = c.attach(ref.id, { onData: () => undefined });
+    await att.ready;
+    // What xterm answers on its own: a device attributes reply, a cursor
+    // report, focus in and out, a colour query's answer.
+    for (const reply of [
+      "\u001b[?1;2c",
+      "\u001b[12;40R",
+      "\u001b[I",
+      "\u001b[O",
+      "\u001b]11;rgb:0000/0000/0000\u001b\\",
+    ])
+      c.write(ref.id, Buffer.from(reply));
+    const inputAt = async () =>
+      ((await c.list())[0] as { inputAt?: string }).inputAt;
+    await until(() => made[0].writes.length === 5);
+    expect(await inputAt()).toBeUndefined();
+    // A key (an arrow key starts with ESC too).
+    c.write(ref.id, Buffer.from("\u001b[A"));
+    await until(() => made[0].writes.length === 6);
+    const first = (await inputAt()) ?? "";
+    expect(Date.parse(first)).not.toBeNaN();
+    await new Promise((r) => setTimeout(r, 5));
+    c.write(ref.id, Buffer.from("l"));
+    await until(() => made[0].writes.length === 7);
+    expect(Date.parse((await inputAt()) ?? "")).toBeGreaterThan(
+      Date.parse(first),
+    );
+  });
+
+  it("issue 482: the list says each session's folder (the Terminals list)", async () => {
+    const dir = stateDir();
+    await host(dir);
+    const c = await client(dir);
+    await c.start(spec("acme-north:shell"));
+    expect((await c.list())[0]).toMatchObject({ cwd: os.tmpdir() });
+  });
+
   it("passes write, resize and signal to the PTY, and reports the exit", async () => {
     const dir = stateDir();
     const { made } = await host(dir);

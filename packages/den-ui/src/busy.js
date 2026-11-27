@@ -29,6 +29,8 @@
  *
  *   registerActions({ name: {
  *     who: "Hub",                   whose answer it waits for (a name)
+ *     steps: true,                  it names its steps (issue 1054): the
+ *                                   Working pop-up after dotsMs
  *     autoClose: true,              (kept for older callers: every success
  *                                   now closes at once, with the toast)
  *     inline: true,                 its place shows a quick failure itself
@@ -38,7 +40,8 @@
  *
  *   busyAction(name, run, opts) → Promise<data | null>
  *     run(headers)        the request; it must send `headers` (the id).
- *     opts.button         held (disabled, aria-busy) and focused again.
+ *     opts.button         held (aria-disabled, aria-busy); it keeps focus.
+ *     opts.steps          this call names its steps (as steps: true).
  *     opts.vars           words' {placeholders}.
  *     opts.success(data)  the success line, worked out from the answer.
  *     opts.onDone(data), opts.onFail(err)
@@ -64,6 +67,50 @@
  *
  * Its look is busy.css (linked from beside this file).
  *
+ * Issue 699, the held button: every button the kit holds (opts.button,
+ * pending()'s button, a plain POST form's submitter) shows three pulsing
+ * dots in place of its label at once, at the same size, aria-disabled
+ * with aria-busy="true" (issue 1434: so it keeps the keyboard's focus).
+ * The label stays (in .bz-lbl, hidden) and stays the
+ * accessible name. Issue 1054: for one request that is all, with no
+ * Working pop-up: the dots stay until the answer. The Working pop-up is
+ * for an action that names its steps (registerActions' steps: true,
+ * busyAction's opts.steps, or a run that calls progress) and for
+ * reconnect mode; it opens after dotsMs (configureBusy({ dotsMs }),
+ * default DOTS_MS, 3 s), the dots behind it. No answer by NO_ANSWER_MS
+ * opens the no-answer pop-up (Check again). An answer gives the label
+ * back. The button never shows an
+ * error itself: a quick failure gives the label back and the error goes
+ * where it goes today (the caller, or the failure pop-up); after the
+ * pop-up, the pop-up shows it, Try again holds the button again and
+ * Close gives the label back. opts.dots: false holds it the old way.
+ *
+ *   pending(button, (headers) => fetch(url, { method: "POST", headers }),
+ *           opts?) → Promise<answer | null>
+ *     A fetch-driven button. An answer that is not ok (a Response with
+ *     ok false) or no answer at all is the failure pop-up with Try again;
+ *     null after Close, or at once for a button already held. opts are
+ *     busyAction's, plus action (a registered name; default the kit's own
+ *     "send": Sending…, Sent., Not sent.) and who (default: the server).
+ *
+ *   watchForms(root = document) → stop()
+ *     One submit listener for plain POST forms: the submitter is held
+ *     until the next page comes (or the page shows again from the back
+ *     button). A form the page sends itself (its submit handler called
+ *     preventDefault) is left alone.
+ *
+ *   holdDots(button, on = true)
+ *     The dots alone, with no pop-up (issue 698): for a wait that says its
+ *     own words (a stream, a form with its own error line).
+ *
+ *   holdRow(row, on = true)
+ *     A row that waits (issue 1054): the dots at its end, aria-busy, its
+ *     words still shown.
+ *
+ * A button that never waits opts out with a reason, data-instant="<why>":
+ * held without dots, its pop-up at OPEN_MS. An empty reason doesn't count
+ * (instantProblems(html) is the check).
+ *
  * Reconnect mode: the request may get no answer (the product stopped
  * first); that counts as going down, and the pop-up waits for it to come
  * back. busyAction then resolves with the new answer from reconnect.url.
@@ -88,6 +135,8 @@ export const SUCCESS_CLOSE_MS = 1200;
 export const POLL_MS = 1000;
 export const POLL_MAX_MS = 3000;
 export const ASK_MS = 3000;
+/** Issue 699: the working pop-up's wait once a button shows dots. */
+export const DOTS_MS = 3000;
 
 const hook = {
   lang: () =>
@@ -102,6 +151,7 @@ const hook = {
   open: (url) => window.location.assign(url),
   logUrl: null,
   reconnect: null,
+  dotsMs: DOTS_MS,
 };
 const actions = new Map();
 
@@ -134,7 +184,9 @@ function word(key, vars) {
     hook.words?.en?.[key] ??
     BUSY_WORDS.en[key] ??
     key;
-  return fill(s, vars);
+  const out = fill(s, vars);
+  // A sentence that starts with who it waits for starts with a capital.
+  return /^\{who\}/.test(s) ? out.charAt(0).toUpperCase() + out.slice(1) : out;
 }
 
 /** One of the action's own words (working, success, failure, …). */
@@ -253,6 +305,164 @@ function detailsText(err, id, at) {
   return said ? `${bits.join(" · ")}\n${said}` : bits.join(" · ");
 }
 
+/**
+ * Issue 699: the reason a button never waits (data-instant="<why>"), or
+ * null. An empty reason doesn't count.
+ */
+function instantReason(b) {
+  const why = b?.getAttribute?.("data-instant");
+  if (why == null) return null;
+  if (String(why).trim()) return String(why).trim();
+  console.warn("data-instant needs a reason (issue 699)", b);
+  return null;
+}
+
+/** Each data-instant in a page's markup with no reason (the kit's check). */
+export function instantProblems(html) {
+  const out = [];
+  const re =
+    /<[a-zA-Z][^<>]*?\sdata-instant(?![\w-])(\s*=\s*("([^"]*)"|'([^']*)'|([^\s>"']+)))?/g;
+  for (const m of String(html ?? "").matchAll(re)) {
+    const why = m[3] ?? m[4] ?? m[5] ?? "";
+    if (!why.trim()) out.push(m[0].slice(0, 120));
+  }
+  return out;
+}
+
+/** The buttons held with dots now, with what to give back. */
+const held = new Map();
+
+/**
+ * Issue 1434: a held button is aria-disabled with aria-busy, never
+ * disabled: a disabled button that has focus drops it to <body>. A click
+ * on a held button (a mouse click, Enter or Space, a form's implicit
+ * submit) stops here, at the window in the capture phase, before the
+ * page's own click listeners. A capture listener on window that a page
+ * added before busy.js loaded still runs first, and pointerdown,
+ * mousedown and keydown still reach the page (its handlers listen on
+ * click). A host's own early hold and dialog.js's fallback use the same
+ * way and stop the same clicks before the kit has loaded.
+ */
+const isHeld = (n) =>
+  n?.getAttribute?.("aria-busy") === "true" &&
+  n.getAttribute("aria-disabled") === "true";
+/** Every button held now, and those whose aria-disabled is the hold's. */
+const holding = new Set();
+const offByKit = new Set();
+globalThis.window?.addEventListener?.(
+  "click",
+  (e) => {
+    for (let n = e.target; n; n = n.parentNode)
+      if (isHeld(n)) {
+        e.preventDefault?.();
+        e.stopImmediatePropagation?.();
+        return;
+      }
+  },
+  true,
+);
+
+/**
+ * Holds a button (aria-disabled, aria-busy) or lets it go. dots: the label
+ * goes into .bz-lbl (hidden, so the size stays) and three dots go over it;
+ * the accessible name stays the label.
+ */
+function holdButton(b, on, dots) {
+  if (!b) return;
+  if (!on) {
+    b.disabled = false;
+    b.removeAttribute("aria-busy");
+    holding.delete(b);
+    if (offByKit.delete(b)) b.removeAttribute("aria-disabled");
+    const h = held.get(b);
+    if (!h) return;
+    held.delete(b);
+    if (h.dots.parentNode === b) h.dots.remove();
+    // The page may have drawn the button again while it waited: its own
+    // label then stays as it drew it.
+    if (h.lbl.parentNode === b) {
+      const at = h.lbl.nextSibling;
+      while (h.lbl.firstChild) b.insertBefore(h.lbl.firstChild, at);
+      h.lbl.remove();
+    }
+    if (h.name == null) b.removeAttribute("aria-label");
+    return;
+  }
+  // Held already by the host or the dialog before the kit loaded
+  // (aria-busy too): that aria-disabled is the hold's, the kit's to clear.
+  // The page's own aria-disabled (no aria-busy) stays.
+  if (!holding.has(b)) {
+    holding.add(b);
+    if (b.getAttribute("aria-disabled") !== "true" || isHeld(b))
+      offByKit.add(b);
+  }
+  b.setAttribute("aria-busy", "true");
+  b.setAttribute("aria-disabled", "true");
+  if (!dots || held.has(b)) return;
+  ensureCss();
+  const name = b.getAttribute("aria-label");
+  const text = String(b.textContent ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  const lbl = document.createElement("span");
+  lbl.className = "bz-lbl";
+  while (b.firstChild) lbl.append(b.firstChild);
+  const d = document.createElement("span");
+  d.className = "bz-dots";
+  d.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 3; i++) d.append(document.createElement("i"));
+  b.append(lbl, d);
+  if (name == null && text) b.setAttribute("aria-label", text);
+  held.set(b, { lbl, dots: d, name });
+}
+
+/**
+ * Issue 698: the dots alone, for a wait that says its own words and is not
+ * one request through busyAction (a stream's output, a form that shows its
+ * own error): holdDots(button) holds it with dots at once, with no pop-up;
+ * holdDots(button, false) gives the label back. A label the page drew
+ * while it waited stays.
+ */
+export function holdDots(button, on = true) {
+  holdButton(button, on !== false, true);
+}
+
+/**
+ * How many buttons the kit holds with dots now: a number only, never the
+ * buttons, so nothing outside the kit can hold or let go of one. A page
+ * that lets each go on its answer leaves 0.
+ */
+export function heldCount() {
+  return held.size;
+}
+
+/**
+ * Issue 1054: a row that waits for its save (a drag, a move from a menu):
+ * holdRow(row) adds the kit's dots at its end and aria-busy="true", with
+ * its words still shown and nothing disabled; holdRow(row, false) takes
+ * them off. Drawn again meanwhile, the new row has neither.
+ */
+export function holdRow(row, on = true) {
+  if (!row) return;
+  const mine = () =>
+    [...(row.children ?? [])].find(
+      (c) => c.classList?.contains("bz-dots") && c.classList.contains("bz-row"),
+    );
+  if (on === false) {
+    row.removeAttribute("aria-busy");
+    mine()?.remove();
+    return;
+  }
+  ensureCss();
+  row.setAttribute("aria-busy", "true");
+  if (mine()) return;
+  const d = document.createElement("span");
+  d.className = "bz-dots bz-row";
+  d.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < 3; i++) d.append(document.createElement("i"));
+  row.append(d);
+}
+
 export function busyAction(name, run, opts = {}) {
   const a = actions.get(name);
   if (!a) throw new Error(`busyAction: no action named "${name}"`);
@@ -279,12 +489,22 @@ export function busyAction(name, run, opts = {}) {
     fail = rej;
   });
 
-  const hold = (on) => {
-    if (!button) return;
-    button.disabled = on;
-    if (on) button.setAttribute("aria-busy", "true");
-    else button.removeAttribute("aria-busy");
-  };
+  // Issue 699: a held button shows dots (unless it never waits), and the
+  // pop-up then waits dotsMs instead of OPEN_MS.
+  const dots = !!button && opts.dots !== false && !instantReason(button);
+  const openMs = !dots
+    ? OPEN_MS
+    : Number.isFinite(Number(hook.dotsMs)) && hook.dotsMs !== null
+      ? Number(hook.dotsMs)
+      : DOTS_MS;
+  const hold = (on) => holdButton(button, on, dots);
+  // Issue 1054: one request shows its wait on the held button alone; the
+  // Working pop-up is for an action that names its steps (steps: true, or
+  // a run that calls progress) and for reconnect mode. No answer by
+  // NO_ANSWER_MS still opens the no-answer pop-up (Check again), and a
+  // failure still opens the failure pop-up.
+  const quiet = dots && !reconnect && a.steps !== true && opts.steps !== true;
+  let attemptAt = 0;
 
   function ensureDialog() {
     if (d) return d;
@@ -321,7 +541,7 @@ export function busyAction(name, run, opts = {}) {
   const title = (ic, text) =>
     `<h2 id="bz-h" tabindex="-1">${icon(ic)}${esc(text)}</h2>`;
   const btn = (key, primary) =>
-    `<button type="button" class="bz-btn${primary ? " bz-primary" : ""}" data-bz="${key}">${esc(word(key))}</button>`;
+    `<button type="button" class="den-btn bz-btn${primary ? " primary bz-primary" : ""}" data-bz="${key}">${esc(word(key))}</button>`;
 
   /**
    * Report · Close · [Open the log] · the primary, last. `next`: the
@@ -335,7 +555,7 @@ export function busyAction(name, run, opts = {}) {
     (withLog && hook.logUrl ? btn("log") : "") +
     (next
       ? next.href
-        ? `<a class="bz-btn bz-primary" href="${esc(next.href)}">${esc(next.label)}</a>`
+        ? `<a class="den-btn bz-btn primary bz-primary" href="${esc(next.href)}">${esc(next.label)}</a>`
         : ""
       : btn(primary, true)) +
     `</div>`;
@@ -384,6 +604,14 @@ export function busyAction(name, run, opts = {}) {
   function progress(text) {
     if (settled || text == null || text === "") return;
     lines.push(String(text));
+    // Issue 1054: named steps earn the pop-up, once dotsMs has passed.
+    if (quiet && state === "working" && !d?.open) {
+      if (Date.now() - attemptAt >= openMs) {
+        paintWorking(0);
+        tick(attemptAt);
+      }
+      return;
+    }
     if (state !== "working" || !d?.open) return;
     const ol = d.querySelector(".bz-prog");
     if (ol) {
@@ -567,6 +795,9 @@ export function busyAction(name, run, opts = {}) {
     }
     // Reconnect: no answer is the product going down; wait for it.
     if (reconnect && !answeredWithError(err)) return waitBack(Date.now());
+    // Issue 699: the button never shows an error; before the pop-up, its
+    // label comes back and the failure pop-up says it.
+    if (!d?.open) hold(false);
     paintFailure(err);
   }
 
@@ -576,6 +807,7 @@ export function busyAction(name, run, opts = {}) {
     lastErr = null;
     lines = [];
     const startedAt = Date.now();
+    attemptAt = startedAt;
     state = "working";
     hold(true);
     if (d?.open) {
@@ -583,21 +815,36 @@ export function busyAction(name, run, opts = {}) {
       tick(startedAt);
     }
     const opener = setTimeout(() => {
-      if (state === "working" && !settled && !d?.open) {
+      if (
+        state === "working" &&
+        !settled &&
+        !d?.open &&
+        (!quiet || lines.length)
+      ) {
         paintWorking(0);
         tick(startedAt);
       }
-    }, OPEN_MS);
+    }, openMs);
+    const silent = quiet
+      ? setTimeout(() => {
+          if (state === "working" && !settled && !d?.open) {
+            clearInterval(ticker);
+            paintNoAnswer();
+          }
+        }, NO_ANSWER_MS)
+      : 0;
     Promise.resolve()
       .then(() => run({ [hook.idHeader]: id }, progress))
       .then(
         (data) => {
           clearTimeout(opener);
+          clearTimeout(silent);
           clearInterval(ticker);
           return answered(true, data);
         },
         (err) => {
           clearTimeout(opener);
+          clearTimeout(silent);
           clearInterval(ticker);
           lastErr = err;
           return answered(false, null, err);
@@ -668,4 +915,104 @@ export function busyAction(name, run, opts = {}) {
     });
   else attempt();
   return result;
+}
+
+/** The kit's own action for pending(): Sending…, Sent., Not sent. */
+const SEND = "send";
+function sendAction(who) {
+  const w = {};
+  for (const l of Object.keys(BUSY_WORDS))
+    w[l] = {
+      working: BUSY_WORDS[l].send_working,
+      success: BUSY_WORDS[l].send_success,
+      failure: BUSY_WORDS[l].send_failure,
+    };
+  return {
+    // The server, in the page's language, unless the caller names it.
+    get who() {
+      return who || word("server");
+    },
+    words: w,
+  };
+}
+
+const isResponse = (r) =>
+  !!r &&
+  typeof r === "object" &&
+  typeof r.ok === "boolean" &&
+  typeof r.status === "number";
+
+/** Issue 699: a fetch-driven button (see the top of this file). */
+export function pending(button, run, opts = {}) {
+  if (button?.getAttribute?.("aria-busy") === "true")
+    return Promise.resolve(null);
+  const { action, who, ...rest } = opts;
+  let name = action;
+  if (!name) {
+    name = who ? `${SEND}:${who}` : SEND;
+    if (!actions.has(name)) actions.set(name, sendAction(who));
+  }
+  return busyAction(
+    name,
+    async (headers, progress) => {
+      let r;
+      try {
+        r = await run(headers, progress);
+      } catch (e) {
+        // fetch's own failure: no answer at all.
+        throw e instanceof TypeError ? { network: true } : e;
+      }
+      if (isResponse(r) && !r.ok) {
+        let body = null;
+        try {
+          body = await (r.clone ? r.clone() : r).json();
+        } catch {
+          body = null;
+        }
+        throw { status: r.status, body };
+      }
+      return r;
+    },
+    { toastFast: false, ...rest, button },
+  );
+}
+
+/** Issue 699: plain POST forms' submitters (see the top of this file). */
+export function watchForms(root = document) {
+  const mine = new Set();
+  const onSubmit = (e) => {
+    const form = e.target;
+    const b = e.submitter;
+    if (!form || !b || e.defaultPrevented) return;
+    const method = String(
+      b.getAttribute?.("formmethod") ||
+        form.getAttribute?.("method") ||
+        form.method ||
+        "",
+    ).toLowerCase();
+    if (method !== "post") return;
+    const target = String(
+      b.getAttribute?.("formtarget") || form.target || "",
+    ).toLowerCase();
+    if (target && target !== "_self") return;
+    // A second submit while the first waits: stopped.
+    if (b.getAttribute?.("aria-busy") === "true") {
+      e.preventDefault?.();
+      return;
+    }
+    if (instantReason(b)) return;
+    holdButton(b, true, true);
+    mine.add(b);
+  };
+  // Back from the next page (the back-forward cache): the label is back.
+  const onShow = () => {
+    for (const b of mine) holdButton(b, false, true);
+    mine.clear();
+  };
+  root.addEventListener("submit", onSubmit);
+  window.addEventListener("pageshow", onShow);
+  return () => {
+    root.removeEventListener("submit", onSubmit);
+    window.removeEventListener("pageshow", onShow);
+  };
 }

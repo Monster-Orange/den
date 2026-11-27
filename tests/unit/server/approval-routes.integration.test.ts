@@ -3,10 +3,11 @@
  * agent's workspace_create or repo_add waits for the person and runs only
  * on their Allow, from a signed-in browser holding its approval key.
  *
- * What an agent with a shell has, and is refused: an anonymous loopback
- * request, the CLI's bearer, a session cookie with the CSRF token
- * /api/session hands out (what a dev server on another localhost port
- * could capture). No code, cookie, key or token is printed.
+ * What an agent with a shell has, and is refused: a loopback request with
+ * no sign-in (a write needs a sign-in on this machine too, 0.4.71: 401
+ * signin_required), the CLI's bearer, a session cookie with its CSRF token
+ * but no approval key. The ask itself is the MCP's, with the CLI's
+ * bearer. No code, cookie, key or token is printed.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { execFileSync, type ChildProcess } from "child_process";
@@ -15,12 +16,10 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
-import {
-  cliAuthHeaders,
-  readWebSecret,
-} from "../../../src/shared/web-secret.js";
-import { mintClaimCode } from "../../../src/shared/claim-code.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
+import { signedIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { denAuth } from "./helpers/den-auth.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -83,35 +82,18 @@ const json = (r: Reply) => JSON.parse(r.body) as Record<string, unknown>;
 const bearer = () => ({
   authorization: cliAuthHeaders(stateDir).Authorization ?? "",
 });
-const cookieName = () => `den_session_${port}`;
 
-/** A browser signed in with a setup link: its cookie, CSRF token and approval key. */
+/**
+ * A person's browser, signed in (issue 819: first run, then approved by a
+ * signed-in browser): its cookie, CSRF token and approval key.
+ */
 async function browser(): Promise<{
   cookie: string;
   csrf: string;
   key: string;
 }> {
-  const c = mintClaimCode(readWebSecret(stateDir)!);
-  const r = await call("GET", `/auth?claim=${encodeURIComponent(c)}`, {
-    "sec-fetch-site": "none",
-    accept: "text/html",
-  });
-  expect(r.status).toBe(303);
-  const key =
-    /#ak=([A-Za-z0-9_-]{43})$/.exec(String(r.headers.location ?? ""))?.[1] ??
-    "";
-  const line =
-    ([] as string[])
-      .concat(r.headers["set-cookie"] ?? [])
-      .find((x) => x.startsWith(`${cookieName()}=`)) ?? "";
-  const cookie = line.split(";")[0];
-  const s = json(
-    await call("GET", "/api/session", {
-      "sec-fetch-site": "same-origin",
-      cookie,
-    }),
-  );
-  return { cookie, csrf: String(s.csrf ?? ""), key };
+  const s = await signedIn(stateDir, `http://localhost:${port}`);
+  return { cookie: s.cookie, csrf: s.csrf, key: s.approveKey };
 }
 const page = (b: { cookie: string; csrf: string }) => ({
   cookie: b.cookie,
@@ -119,7 +101,10 @@ const page = (b: { cookie: string; csrf: string }) => ({
   "sec-fetch-site": "same-origin",
   "x-den-csrf": b.csrf,
 });
-/** An anonymous loopback caller's CSRF token (what an agent with a shell gets). */
+/**
+ * What /api/session hands a loopback caller with no sign-in: no CSRF
+ * token since 0.4.71 (what an agent with a shell gets).
+ */
 async function loopbackCsrf(): Promise<string> {
   return String(
     json(await call("GET", "/api/session", { "sec-fetch-site": "same-origin" }))
@@ -143,8 +128,9 @@ const pendingIds = async () =>
     }[]
   ).map((x) => x.id);
 
+/** The MCP's ask: the CLI's bearer (a write needs a sign-in or a bearer). */
 const ask = async (action: string, args: unknown, note?: string) =>
-  call("POST", "/api/approvals", await anon(), {
+  call("POST", "/api/approvals", denAuth(stateDir), {
     action,
     args,
     ...(note ? { note } : {}),
@@ -225,8 +211,13 @@ describe("held writes (ON-3)", () => {
     );
     const decide = (h: Record<string, string>) =>
       call("POST", `/api/approvals/${id}/decide`, h, { decision: "allow" });
+    // No sign-in on loopback: a write needs one on this machine too (0.4.71).
+    const unsigned = await decide(await anon());
+    expect([unsigned.status, json(unsigned).code]).toEqual([
+      401,
+      "signin_required",
+    ]);
     const tries = [
-      await decide(await anon()),
       await decide({ ...bearer(), origin: `http://localhost:${port}` }),
       await decide(page(await browser())),
     ];
@@ -303,7 +294,7 @@ describe("held writes (ON-3)", () => {
       400,
       "unknown_action",
     ]);
-    const extra = await call("POST", "/api/approvals", await anon(), {
+    const extra = await call("POST", "/api/approvals", denAuth(stateDir), {
       action: "workspace_create",
       args: { name: "x" },
       summary: "something nice",
@@ -395,5 +386,71 @@ describe("held writes (ON-3)", () => {
     expect(mine.body).not.toContain(String(r.ticket));
     const list = await call("GET", "/api/approvals", await person());
     expect(list.body).not.toContain(String(r.ticket));
+  }, 60_000);
+});
+
+describe("issue 142: a held write counts in the bell", () => {
+  const held = async (id: string) => {
+    const b = json(await call("GET", "/api/notifications", bearer())) as {
+      unread: number;
+      groups: {
+        subjects: {
+          items: { subject: string; kind: string; read: boolean }[];
+        }[];
+      }[];
+    };
+    const items = b.groups
+      .flatMap((g) => g.subjects.flatMap((s) => s.items))
+      .filter((n) => n.subject === `record:held-${id}`);
+    return { unread: b.unread, items };
+  };
+
+  it("one counted decision item while it waits; Deny takes it out", async () => {
+    const id = String(
+      json(await ask("workspace_create", { name: "bellws" })).id,
+    );
+    const w = await held(id);
+    expect(w.items).toHaveLength(1);
+    expect(w.items[0]).toMatchObject({ kind: "decision", read: false });
+    const b = await browser();
+    await call(
+      "POST",
+      `/api/approvals/${id}/decide`,
+      { ...page(b), "x-den-approve-key": b.key },
+      { decision: "deny" },
+    );
+    const after = await held(id);
+    expect(after.items).toEqual([]);
+    expect(after.unread).toBeLessThan(w.unread);
+  }, 60_000);
+
+  it("the person's own ask: withdrawn with the same bearer, its item goes; nobody else may", async () => {
+    const r = await call("POST", "/api/approvals", bearer(), {
+      action: "workspace_create",
+      args: { name: "takeback" },
+      note: "a check's own request",
+    });
+    expect(r.status).toBe(202);
+    const id = String(json(r).id);
+    expect((await held(id)).items).toHaveLength(1);
+    const no = await call(
+      "POST",
+      `/api/approvals/${id}/withdraw`,
+      await anon(),
+      {},
+    );
+    // No sign-in on loopback: a write needs one on this machine too (0.4.71).
+    expect([no.status, json(no).code]).toEqual([401, "signin_required"]);
+    expect(await pendingIds()).toContain(id);
+    const ok = await call(
+      "POST",
+      `/api/approvals/${id}/withdraw`,
+      bearer(),
+      {},
+    );
+    expect([ok.status, json(ok).state]).toEqual([200, "withdrawn"]);
+    expect((await held(id)).items).toEqual([]);
+    expect(await pendingIds()).not.toContain(id);
+    expect(await workspaces()).not.toContain("takeback");
   }, 60_000);
 });

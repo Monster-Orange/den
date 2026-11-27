@@ -73,6 +73,15 @@ const onRealPath = (bin: string): boolean =>
     .split(path.delimiter)
     .some((d) => d && fs.existsSync(path.join(d, bin)));
 
+const MAC_NO_SERVICE_ROW =
+  /^ *survives logout +no \(no service\) +⚠\n *⚠ this install stops its agents at logout: it doesn't run as a service[^\n]*\n/m;
+
+function withoutMacNoServiceRow(doctorOut: string): string {
+  if (process.platform !== "darwin") return doctorOut;
+  expect(doctorOut).toMatch(MAC_NO_SERVICE_ROW);
+  return doctorOut.replace(MAC_NO_SERVICE_ROW, "");
+}
+
 /** One throwaway distribution, its fakes and its env. */
 function fixture(
   label: string,
@@ -82,7 +91,7 @@ function fixture(
   absent: string[] = [],
 ) {
   const tmp = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), `den-nostore-${label}-`)),
+    fs.mkdtempSync(path.join(os.tmpdir(), `nss-${label}-`)),
   );
   const dist = path.join(tmp, "acme");
   writeDistribution(dist, {
@@ -303,7 +312,7 @@ describe.each([
         : /secrets +doppler \(implicit\) +✓ available/, // the recording fake
     );
     expect(d.out).toMatch(/tls +none +✓ available: http only/);
-    expect(d.out).not.toMatch(/⚠|deprecated/);
+    expect(withoutMacNoServiceRow(d.out)).not.toMatch(/⚠|deprecated/);
     // The implicit doppler default is used only when a secret is asked for.
     expect(d.code).toBe(0);
   }, 120_000);
@@ -375,9 +384,13 @@ describe.each([
     }
     const health = await get(port, "/api/health");
     expect(health.code).toBe(200);
-    // What Local Dev asks on load: no github_org, so no GitHub listing.
+    // The repo list runs gh as the person: with no sign-in it is refused,
+    // and nothing is listed.
     const repos = await get(port, "/api/github/repos");
-    expect([repos.code, JSON.parse(repos.out)]).toEqual([200, []]);
+    expect([repos.code, JSON.parse(repos.out).code]).toEqual([
+      401,
+      "signin_required",
+    ]);
     for (const page of ["/", "/services", "/local-dev", "/settings"]) {
       const r = await get(port, page);
       expect([page, r.code]).toEqual([page, 200]);

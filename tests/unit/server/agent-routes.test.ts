@@ -24,6 +24,8 @@ import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
 import { hasSudoPassword } from "../../../src/ui/server/sudo-store.js";
 import { cleanupRigs, rig, settle, type Rig } from "../agents/helpers/rig.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
+import { connectHost } from "../../../src/shared/sessions/client.js";
+import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 
 interface Api {
   r: Rig;
@@ -604,6 +606,7 @@ describe("the runtime catalog's routes (AG-0.5)", () => {
       "codex",
       "gemini",
       "grok",
+      "antigravity",
       "generic",
     ]);
     expect(plain[1]).toMatchObject({ source: "PATH", version: "0.50.0" });
@@ -1270,7 +1273,8 @@ describe("POST …/agents start: the Start dialog's choices (AG-10.1, AG-12, AG-
     const a = await api();
     await start(a, "north", { persona: "planner", instruction: "a\nb" });
     const p = a.r.made[0];
-    p.emit("ready> ");
+    // Issue 664: its input prompt.
+    p.emit("> ");
     await until(() => typed(p).endsWith("\r") && typed(p).length > 2);
     expect(typed(p)).toBe("a\x1b\rb\r");
   });
@@ -1552,5 +1556,61 @@ describe("POST /api/workspaces/<ws>/sessions (Plain session, AG-10.1)", () => {
     expect(
       (await a.call("POST", "/api/workspaces/nowhere/sessions")).status,
     ).toBe(404);
+  });
+
+  it("issue 482: { replaces } (Restart) forgets the exited shell it replaces, never a running one", async () => {
+    const a = await api();
+    a.r.deps.maxSessions = () => 4;
+    a.r.deps.env = { ...a.r.deps.env, SHELL: "/bin/sh" };
+    const old = (await a.call("POST", "/api/workspaces/north/sessions")).json
+      .session as { id: string };
+    const live = (await a.call("POST", "/api/workspaces/north/sessions")).json
+      .session as { id: string };
+    a.r.made[0].exit(0);
+    await settle();
+    const c = await connectHost(sessionPaths(a.r.stateDir).socket);
+    try {
+      const ids = async () => (await c.list()).map((s) => s.ref.id);
+      // A running one is never forgotten.
+      const keep = await a.call("POST", "/api/workspaces/north/sessions", {
+        replaces: live.id,
+      });
+      expect(keep.status).toBe(200);
+      expect(await ids()).toContain(live.id);
+      // The exited one goes, in the same request that starts the new one.
+      const r = await a.call("POST", "/api/workspaces/north/sessions", {
+        cwd: a.r.wsDir("north"),
+        replaces: old.id,
+      });
+      expect(r.status).toBe(200);
+      const now = await ids();
+      expect(now).not.toContain(old.id);
+      expect(now).toContain((r.json.session as { id: string }).id);
+      expect(
+        (
+          await a.call("POST", "/api/workspaces/north/sessions", {
+            replaces: 7,
+          })
+        ).status,
+      ).toBe(400);
+    } finally {
+      c.close();
+    }
+  });
+
+  it("issue 503: no PTY to open is a 503 with code pty_open and the reason, audited", async () => {
+    const a = await api();
+    a.r.deps.env = { ...a.r.deps.env, SHELL: "/bin/sh" };
+    a.r.pty.factory = () => {
+      throw new Error("posix_openpt failed: no PTY left");
+    };
+    const r = await a.call("POST", "/api/workspaces/north/sessions");
+    expect(r.status).toBe(503);
+    expect(r.json).toMatchObject({ ok: false, code: "pty_open" });
+    expect(String(r.json.error)).toMatch(/posix_openpt failed: no PTY left/);
+    expect(recentActions().at(-1)).toMatchObject({
+      verb: "sessions",
+      outcome: "refused",
+    });
   });
 });

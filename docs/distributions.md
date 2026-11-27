@@ -75,8 +75,10 @@ That file is the install-den skill, also in the package at
 Claude skill front matter. `den --help` prints the line. The skill does three
 things only: it installs Den (after checking Node and git), helps the person
 pick its name and folder (default `~/<name>`), then runs `web up` and hands
-over the one-time link from `web claim-link`: "Den's own agent takes it from
-there." It adds no repo and creates no project: that is
+over: on the same computer, the person runs `<cli> web open` in their own
+terminal, which opens Den signed in; from another computer, they connect with
+`ssh -t <host>`, run `<cli> web login`, and open the printed link where they
+are. "Den's own agent takes it from there." It adds no repo and creates no project: that is
 [the server agent](#the-server-agent)'s job. Every command below also stays a
 person's own: `npm i -g @monster-orange/den` → `den create <name>` →
 `<cli> repo add` → `<cli> up` skips both agents. The skill runs the first
@@ -240,12 +242,26 @@ with "If you didn't ask an agent to do this, Deny." under it.
   `<cli> web claim-link` prints a one-time setup link that signs the
   browser in.
 - **Allow runs it once**, from the arguments stored when it was asked,
-  checked again first. Deny, 10 minutes with no answer, or the agent being
-  stopped run nothing. An agent may have 5 requests waiting; a restart drops
-  what waits (the agent asks again).
+  checked again first: an old request whose target changed gets the
+  check's error, and nothing runs. Deny, no answer within the window, or
+  the agent being stopped run nothing. An agent may have 5 requests
+  waiting.
+- **The window** (from 0.4.81): `held_writes.wait_minutes` in
+  `config/local/user.yml` (Settings › Agents, "Requests wait for your
+  Allow"), 24 hours by default, 10 minutes to 7 days. The tool texts and
+  `approval_check` say the window set.
+- **What waits survives a restart** (from 0.4.81): the queue is kept in
+  `held-writes.json` under the state dir (written whole, then renamed;
+  owner-only), and read back at the start. A request that can't come back
+  is `lost`, never silently gone: its action no longer exists, a restart
+  cut it off while it ran (check whether it took effect), or the file was
+  unreadable (it is kept aside as `held-writes.json.corrupt-<time>`, and an
+  id Den no longer knows reads `lost` for a week). The bell says so, the
+  asking agent is told, and the trail has `approval-lost`. Den's own
+  update ask is not kept: the update check asks again.
 - **The agent waits** up to 2 minutes for the answer, then gets the request
   id: `approval_check` says `pending`, `done` (with what the run said),
-  `denied` or `expired`. While a request waits, its agent is "waiting" on
+  `denied`, `expired`, `withdrawn` or `lost`. While a request waits, its agent is "waiting" on
   the Agents page.
 - **Only the person sees what waits.** `GET /api/approvals` needs what
   Allow needs: the session cookie, that session's CSRF token
@@ -261,7 +277,15 @@ with "If you didn't ask an agent to do this, Deny." under it.
   token: its own), `GET /api/approvals/<id>` (the asking agent's own, the
   ticket holder's, or the person's) and
   `POST /api/approvals/<id>/decide` (`{ decision: "allow" | "deny" }`).
-  Every ask and decision is in the activity trail.
+  `POST /api/approvals/<id>/withdraw` (from 0.4.73) takes a request back
+  before anyone decides: only its asker may (the same agent token, or the
+  same person's bearer or session); anyone else gets 403, a decided
+  request 409, an unknown one 404. It reads `withdrawn` after, and nothing
+  runs. Every ask, decision and withdrawal is in the activity trail.
+- **A held write counts in the bell** (from 0.4.73): while it waits, it is
+  one item under Needs you, linked to the asking agent. It goes when the
+  request is allowed, denied, expired or withdrawn. Den's own "update to
+  X" ask has its one item.
 - **The server agent restarts its own Den** (`den_restart_server
 { reason }`, the held action `den_restart`). Den restarts in place on
   the version installed now, as Settings › Restart Den does; agents and
@@ -288,6 +312,60 @@ with "If you didn't ask an agent to do this, Deny." under it.
   project-scoped MCP server refuses `workspace_create` and `repo_add`:
   they change Den beyond its project.
 
+### Personal and strict installs (issue 1391)
+
+An install is **personal** (one person, their own machine: the default)
+or **strict** (a company's install or a shared machine): `install_mode`.
+
+- The distribution's `den.yml` sets the default (unset: personal).
+- The person's `config/local/user.yml` may choose: Settings › Server ›
+  "This install is", or `<cli> config install_mode=strict`.
+- Strict in either file wins, so a person can't loosen a distribution's
+  strict. Settings and the CLI refuse to try.
+- It fails closed: any value but `personal` (a typo, `null`, `true`) is
+  strict, never an error.
+- Doctor says which file set it.
+- For an agent, moving strict to personal widens (the person's Allow, through
+  `setting_change`); personal to strict is routine.
+- On a personal install with the sandbox off, an agent can write
+  `config/local/user.yml` itself. There, "only the person's Allow" (for
+  `install_mode`, `approvals` and `mcp.actions`) guards against an agent's
+  mistakes, not against a hostile agent. For that, use strict, or turn the
+  sandbox on.
+
+- **Personal.** `agents.sandbox` is off unless set, so Docker, sockets
+  and the person's tools are reachable from agents' sessions. Doctor says
+  so once, as information: no "Sandbox is off for N agents" and no bell
+  offer to turn it on. Held writes ask only for real security (the
+  sandbox, the approval policy, credentials, who may sign in, network
+  exposure), money, deletes and acting on others; every other placed one
+  follows the approval policy (by default it runs and tells you). The
+  writes that still ask are marked `personal: "keep"` in
+  `HELD_WRITE_RISK`: `agent_sandbox_set`, `approval_policy`,
+  `project_mcp_add`, `project_mcp_update`, `hub_connect`,
+  `verify_run`, `embed_key_create`, `embed_key_revoke`, `web_url_set`,
+  `test_person_setup`, `report` and `setting_change`'s widening keys. A
+  write touching secrets, deletes or money asks on both. A write no one
+  placed still asks. A write's name counts too (`delete`, `token`,
+  `pay`, …); a placed write leaves its name's area only by declaring it
+  (`notAreas`).
+- **What only narrows, or can be undone (personal).** These run and tell
+  you: `project_mcp_remove`, `den_sandbox_on`, `gate_box_remove`,
+  `hub_link` to the Hub project Connect pairs the project with (any other
+  asks), `den_update` asked by Den's own agent to a stable release at or
+  above the running one (checked again when it runs; a project's agent,
+  a prerelease, a downgrade or `server_agent.self_update: ask` asks),
+  `host_restart` while no agent turn runs (checked again right before it:
+  a turn started since holds it for you, nothing is cut), and
+  `persona_create` and `persona_update` (unless an agent is sandboxed or
+  the sandbox default is on). Each write's own check decides:
+  a check that says the write is the person's always asks, on both modes.
+- **Strict.** Today's behaviour: the sandbox on unless set off, and every
+  held write as the approval policy says.
+- A value set explicitly always wins: `agents.sandbox: on` (or
+  `required`, or one agent's `on`) survives the upgrade to a personal
+  default.
+
 ### The approval policy (0.4.52, issue 160)
 
 The person gets an Allow only for a real decision. Den sorts each
@@ -300,6 +378,9 @@ agent's held write into one of two groups.
   | Held write                                                   | Critical when                                                          |
   | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
   | `project_mode`, `agent_mode`                                 | the mode gets looser (toward auto or all, or clearing it widens)       |
+  | `agent_sandbox_set`                                          | the sandbox goes off (back on only narrows)                            |
+  | `agent_create`, `agent_import`                               | the new agent would start outside the sandbox                          |
+  | `setting_change`                                             | the setting widens what agents can do (`USER_ONLY_WIDENING` and more)  |
   | `persona_create`, `persona_update`                           | always: a persona carries a mode and commands it may run               |
   | `den_update`, `den_restart`                                  | always (`server_agent.self_update: auto` still covers Den's own agent) |
   | `repo_add`                                                   | always: the project's agents get a repo they couldn't reach            |
@@ -379,6 +460,17 @@ service:api/web"`).
   watched by either name, `repo:<owner/name>` or the repo's own name
   (`repo:api`), and a repo pinned to the rail counts too.
 
+- **Agents report issues (issue 565).** The held write `report` (the MCP
+  tool `report`, and `<cli> report` run by an agent) files a report the
+  way the Report button does: the same destinations (Den's own repo and
+  the distribution's `feedback.repo`), each with the same visibility
+  label, the same scrub, the Den version, the page and an optional PNG
+  screenshot. To a public destination, or one whose visibility is not
+  known, it widens what an agent may do: always the person's own Allow,
+  after they read what will be posted. To a private one it follows the
+  policy like any routine write. The activity trail says who filed it
+  and where it went (`report-file`).
+
 - **An agent may still ask.** `ask: true` on any held write (with a
   `note` saying why) waits for the Allow whatever the policy says.
   `POST /api/approvals` takes `{ action, args, note?, ask? }`; `ask`
@@ -396,7 +488,8 @@ service:api/web"`).
   to re-run: `web down` answers `stopped: false` when the server wasn't
   running, and `ok` is true once nothing answers on its port. On a busy
   machine, where `lsof` or `ps` can't say which process holds the port
-  (each lookup gets 5 s, then 20 s; `DEN_LOOKUP_TIMEOUTS_MS` sets them),
+  (each lookup gets 5 s, then 20 s: the Settings `process_lookup.first_seconds`
+  and `retry_seconds`; `DEN_LOOKUP_TIMEOUTS_MS` overrides both),
   `web down` and `web restart` exit 1 saying they couldn't tell, and
   their `--json` answers `ok: false` with `stopped: false` (and `running:
 null` when the server doesn't answer either). Run them again.
@@ -639,6 +732,20 @@ that a container existed, running or not).
 `service`, with both forms at once, or with a key of another type (`cmd`,
 `url`), and says which.
 
+### How often the checks run
+
+An open page checks health every 5 seconds while it is in view, and every
+60 seconds while its tab is hidden. Back in view, it checks at once. A
+hidden page's poll says so, and the server keeps its last answer for the
+slow interval: with no page in view, the checks run at most once a minute.
+Both are Settings (Settings > Server), or in `user.yml`:
+
+```yaml
+health_poll:
+  visible_seconds: 5 # 2 to 300
+  hidden_seconds: 60 # 10 to 3600
+```
+
 ### The Environments page
 
 The Environments page lists every service's row at once, each cell pulsing
@@ -668,6 +775,137 @@ starts and one when it ends. Past 2000 lines it keeps the newest 1000.
 `GET /api/runs/last` (read only) gives `{ repos: { <repo>: { id, pillar,
 env, repos, startedAt, endedAt, exitCode, running } } }`. A run a restart
 cut off has no end and is not shown.
+
+### Verify settings
+
+The org config's `verify:` block holds Verify's settings. Every one is
+optional, and the defaults are permissive.
+
+```yaml
+# config/acme.yml
+verify:
+  # Environments whose answer on the Checks page comes from an outside
+  # runner's results, not from runs Den starts. Den never plans a run on
+  # one.
+  environments: [bed]
+  import:
+    max_bytes: 5000000 # the largest verdict file Den reads
+    max_clauses: 5000 # the most clauses in one file
+    max_text: 2000 # a clause or note longer than this is cut
+  schedule:
+    allow_expiry: 30d # a schedule's standing Allow lasts this long
+    expiry_warning: 3d # the bell warns this long before it ends
+    shared_commands: false # a command (cmd) runs on its own on staging or production
+    production:
+      enabled: false # schedules run on production at all (the org's opt-in)
+      min_interval: 15m # the shortest gap between two production runs
+      hosts: [shop.example.com] # leave out for any host; never a metadata address
+```
+
+`environments` can also be a map, when an environment needs its own
+settings. Each key is an environment. `imported: true` marks one whose
+answer comes from an outside runner:
+
+```yaml
+verify:
+  environments:
+    bed: { imported: true }
+    production:
+      write_allow: ["POST /login"] # writes a read-only run may still send
+```
+
+A bad value is named in the error: the CLI exits 1, and the Checks API
+answers 422.
+
+### Gate results from an outside runner
+
+An outside runner (a test bed that runs each build's live checks,
+`gate/<issue>.mjs`) writes one verdict file per build tag. Den keeps that
+file as one Verify run on an imported environment:
+
+```sh
+acme verify import verdict.json --env bed --project shop
+acme verify remove v1.2.3-dev.4 --project shop
+```
+
+- The run's id is the tag. Each gate file becomes one check,
+  `gate/<issue>`, holding its clauses in the runner's order. Importing the
+  same tag again replaces it.
+- A clause is passed, failed, error, "needs you" (not run, because it is a
+  person's act: its note ends `skip: person`) or "couldn't run" (not run,
+  because the bed lacks something: any other skip).
+- The file is untrusted input. Den checks its shape and the limits above,
+  drops evidence paths, and shows every text as plain text.
+- An agent can't import or remove: the CLI refuses it.
+
+The Checks page (`/verify`) shows the environment's newest import: the tag,
+its commit, when it ran, and how many clauses passed, failed, need you or
+couldn't run. Under that are the failed clauses first, then couldn't run,
+then needs you, then one row for each check. A row opens its clauses
+(`?why=bed`): the result, the clause, the runner's note and the time.
+Before any import the environment says it hasn't been checked yet, and an
+import where nothing ran is never a pass.
+
+### Schedules: checks that run on their own
+
+A module in a repo's `verify:` block can carry a `schedule:`. Den runs it at
+those times, with no one there:
+
+```yaml
+# .acme.yml of shop
+verify:
+  modules:
+    web/home-speed:
+      kind: performance
+      environments: [staging]
+      schedule:
+        { cron: "0 2 * * *", window: "01:00-05:00", name: Nightly speed }
+```
+
+- `cron` is five fields, in this Den's time zone. `window` is `HH:MM-HH:MM`,
+  `night` (22:00 to 06:00) or `any`. A run that can't start before its
+  window ends is skipped, and the skip is named. `env` picks the
+  environment when the module has more than one.
+- Modules with the same environment, cron, window and name are one
+  schedule. Heavy runs go one at a time. After Den was down, a schedule
+  catches up once, not once for every time it missed.
+- A schedule on `local`, or one whose modules only read the code and run
+  no command, runs without an Allow.
+- On staging and production a scheduled command (`cmd`) runs only when
+  `verify.schedule.shared_commands` is true. It's off by default. Even when
+  it's on, Den runs only a command it can follow: one or more steps joined
+  by `&&`, each a script in the repo (`./scripts/speed.sh --quick`), or an
+  interpreter and a script (`bash scripts/speed.sh`), every file there. A
+  runner such as `make` or `npm`, shell syntax, or a file Den can't find:
+  the schedule can't be allowed, and its row says why.
+- Such a command runs from the commit the Allow named, never the working
+  tree. Den copies that commit's files (`git archive`) into its state
+  folder and runs there, so a later edit can't reach the run. The files
+  the command names must be committed when a person allows it. Untracked
+  files (installed packages, a local `.env`) aren't in the copy.
+- A schedule on staging or production runs only under a standing Allow. A
+  person gives it once, on the Checks page's Schedules screen
+  (`/verify?schedules=1`). It covers every run of that plan. It lapses when
+  the plan changes (a module, its command or the scripts it names, what it
+  writes, its health URLs, the environment's method rule, the times or the
+  window). It ends after `verify.schedule.allow_expiry`. An agent
+  can't give or use one: the routes refuse an agent's token. A person can take an
+  Allow back with **Take back Allow** on its row. The schedule then waits
+  for a new one.
+- Production schedules are off until `verify.schedule.production.enabled`
+  is true. Then a schedule may run there no more often than
+  `min_interval`, and only to the hosts in `hosts` when that list is set.
+  A link-local or cloud metadata address is always refused. A schedule
+  outside these limits can't be allowed, and its row says why.
+- On production a scheduled run is read-only. It sends only GET, HEAD and
+  OPTIONS, plus the `write_allow` pairs for that environment. Any other
+  request is blocked before it leaves, and the run's record names it.
+  Only built-in smoke and built-in code scans run there: never a command.
+- Each result goes to the bell, a failure as an alert. The bell warns once,
+  `verify.schedule.expiry_warning` before an Allow ends.
+
+Schedules come from the repo. The Schedules screen shows them and allows
+them. To add, change or remove one, change the repo.
 
 ## Placement
 
@@ -1059,11 +1297,38 @@ later plugins.
   sends it on every request to Den's web route. Den believes what the edge
   says about a client only with it: without it, a request on the edge
   hostname signs in, this machine's included. An edge set up before 0.4.48
-  gets it at Den's next start (only `dynamic/edge.yml` is rewritten;
+  gets it at Den's next start (only Den's dynamic file is rewritten;
   Traefik reloads it, nothing restarts). `edge up --rotate-proof` makes a
   new one, and the old one stops working at once. Doctor's "Edge proof"
   line (`doctor --json`: check `edge_proof`) says whether the edge carries
-  it; the secret itself is never printed or logged.
+  it; the secret itself is never printed or logged. A proof from an older
+  version proves nothing, even when Den can't replace it (a read-only
+  state dir): doctor says so. The middleware that adds it has a name made
+  from the proof, so only Den's own route can use it: a Docker-label
+  router can't, and `edge.include` files and `edge.mounts` into the
+  dynamic folder that would are refused.
+- **Den's dynamic file is read first.** Traefik reads the dynamic folder
+  in name order and keeps the first definition of a name, so Den writes
+  its routes to `dynamic/000-den.yml` (an older `dynamic/edge.yml` is
+  moved there at the next start or edge up). Edge up refuses an
+  `edge.include` file that would sort before it, or that defines a
+  router, service, middleware or servers transport named like one Den
+  renders (`route-<name>`, `to-https`, `den-upstream`, anything starting
+  `den-`), naming the file and the key.
+- **An edge with Traefik's API on is recreated at Den's start.** If the
+  running edge's command turns the API on (one started before Den
+  refused it in `edge.args`), Den stops it before it writes any proof,
+  then recreates it without the API and with a new proof. If the stop or
+  the recreate fails, Den believes nothing through the edge (everyone
+  signs in) until `edge up` succeeds, and doctor's "Edge proof" line says
+  why.
+- **Den knows its edge by its container.** It believes the edge
+  hostname only from loopback or the edge container's own addresses: the
+  running container named `<org>-edge` that also has this state dir's
+  `den.edge.root` label and the `den.edge.org` label. It reads them again
+  every `edge.address_recheck_seconds` (default 60, 1 to 300), on a
+  request from any other address, and after edge up; with nothing read
+  for twice that, loopback only.
 - **A recreated edge keeps its routes.** After edge up creates, recreates
   or starts the edge, it rejoins the routed networks of every running stack
   whose routes file (`dynamic/stack-<project>.yml`) is in its state dir,
@@ -1255,8 +1520,11 @@ hub:
   than the watcher's first run, and comments Hub already delivered, are
   passed over. Hub has no ack for inbox items, so none is sent. While
   Hub doesn't answer the wait doubles, up to
-  `hub.inbox_backoff_max_seconds` (default 600). `hub.inbox_watch: false`
-  turns it off.
+  `hub.inbox_backoff_max_seconds` (default 600), plus up to a quarter
+  more by chance. The whole install reads at most
+  `hub.inbox_reads_per_second` (default 2), and each agent at most once
+  per poll, counted from when its last read ended. An agent's Stop hook
+  reuses Hub's answer for 30 s. `hub.inbox_watch: false` turns it off.
 - Hub's tool changes reach a resumed agent (0.4.52, issue 193). An agent
   resumed on the same conversation keeps the tool list its client read
   when that conversation began, so it doesn't know a parameter Hub added
@@ -1642,6 +1910,19 @@ and the guide to making your own
   text in `accent-text`. Two colors are optional in each mode: `info`
   (neutral notes, text at 4.5:1) and `violet` (cross-group edges, 3:1),
   checked when a theme sets them; unset, the UI kit's defaults hold.
+- `shape` (optional): `radius`, `radius-button` and `density`, and two
+  keys for how the kit draws edges and buttons:
+  - `edge`: `solid` (the default) or `dashed`. Every kit border uses it.
+    Added in 0.4.87.
+  - `buttons`: `filled` (the default) or `outline`. With `outline`, the
+    primary and danger buttons have no fill: a `border-strong` edge and
+    `text` words, danger in `bad`. Added in 0.4.87.
+
+  A theme that sets neither draws as before. The built-in `sketch` theme
+  (greys only, dashed, outline, one face) ships in the UI kit as
+  `themes/sketch.css`, so a page with the kit and no Den server can link
+  it after `tokens.css`.
+
 - The mark is one image or text: `svg` (with `svg_dark`), `png` (with
   `png_dark`) or `webp` (with `webp_dark`), or `text` (up to 3 characters).
   A mark that gives two image kinds fails validate, naming both. Use a
@@ -1987,6 +2268,32 @@ namespace, set `stack_namespace`.
 `stack_namespace` in the blueprint needs Den 0.3.0-dev.36 or later: an
 older Den rejects the unknown key.
 
+### A project Den didn't start
+
+A Compose project's name is only a name. A repo's manifest can render to
+one that something else runs: another tool's, another install's, or a
+service started by hand from its own checkout. Den acts only on its own:
+
+- Every container of a stack Den starts carries the label
+  `den.stack.owner`, a mark for this install, the stack and
+  its checkout. Den adds it in its override; the project's own labels
+  stay.
+- `stack up`, `stack down` and `stack restart` (with `--service` too),
+  and so a service's Start, Stop and Restart in the page and in ⌘K, are
+  refused when the project holds a container without this stack's mark.
+  The message names the project and the containers, and nothing runs.
+  Fix it with a `compose.name` of the stack's own in the repo's `.den.yml`,
+  or stop the other project yourself.
+- A container Den started before the label (0.4.34 and older) counts as
+  its own when Compose's record of its files names this stack's override
+  and compose file. It gets the label at its next `up`.
+- When docker can't be asked, Den goes on: Compose itself then fails.
+- `acme doctor` warns (`--json`: check `stacks:projects`) on a project
+  name two stacks render to (stack `a-b` in namespace `c` and stack `a`
+  in `b-c` are both `a-b-c`), and on a project already running
+  containers Den didn't start. Projects sharing a namespace on one
+  checkout are one stack, not a clash.
+
 ## Releases
 
 The Release page dispatches each repo's CD workflow on GitHub. A repo's
@@ -2131,15 +2438,60 @@ outside a service manager.
 
 ## Signing in
 
-On localhost nothing asks you to sign in: every page, the agents and the
-terminal work as they are, and the admin password (R8) is the only prompt,
-asked only when a command Den runs needs sudo. Through the edge, a browser
-the edge shows is on this machine asks for nothing either. Signing in is
-for everything else: the edge for a client it can't place here (0.4.5), a
-LAN address, or a bind that isn't loopback (`DEN_BIND_HOST`). From another
+Every browser signs in once, on this machine too (0.4.71), and stays
+signed in. On this machine `web up` and `web open` open a one-time sign-in
+link, so you do nothing more. A browser there that isn't signed in (a
+bookmark, a tab from before) can look at every page but change nothing:
+each page says so in one line, with a Sign in button. Through the edge, a
+browser the edge shows is on this machine is treated the same way. The
+admin password (R8) is no sign-in: it is asked only when a command Den
+runs needs sudo. Beyond this machine (the edge for a client it can't place
+here (0.4.5), a LAN address, or a bind that isn't loopback,
+`DEN_BIND_HOST`) every page needs a sign-in, reads included. From another
 device, sign in with GitHub as the Den's owner, approve the computer with
 the code its page shows, or open a one-time link (below, and
 [Signing in with GitHub](#signing-in-with-github)).
+
+**The sign-in lives on Den's own address (0.4.72).** Browsers share a
+host's cookies across its ports: a cookie set on `localhost` reaches every
+other app you open on `localhost`, a dev server in a container among them.
+So once this install's https address (`web.url`, served by the edge) works,
+the session cookie is set only there, and `localhost`, `127.0.0.1` and
+`[::1]` get none:
+
+- `web up` and `web open` open the https address. `/auth`, `/signin` and
+  `/attest` on any other name (a loopback name, a LAN name, or the
+  address's name on Den's own port) answer with a plain redirect to the
+  same path there, and the sign-in APIs answer `signin_elsewhere`. A
+  signed-out page on another name says where Den signs in, with a link, and
+  its `web login` line names the address. Devices on the mesh reach the
+  address itself, so they are never sent away.
+- Once the address is proven, a session counts only if it was signed in
+  over that https address. Every other one (a loopback name, or plain http
+  on any name) ends at the proof and counts on no host after. Sign-out,
+  with that session's own page, ends the session its cookie names, even
+  one that no longer counts. Plain reads on loopback stay open, and the CLI's token
+  (`web token --print`), the MCP and agents' tokens work on loopback as
+  before.
+- **This is my computer** (`/attest`) on a loopback name goes to the
+  address. There, a signed-in browser the edge places on this machine gets
+  its code at once; one it can't place goes through `localhost` once, with
+  a link that works once for 2 minutes. A browser not signed in gets the
+  sign-in page there.
+- "Proven" means Den's own check of the address found this Den there (the
+  same check `doctor` and `web up` make, every
+  `web.address_check_cache_seconds`), or the edge brought an https request
+  for it with its proof. A check that can't tell (a timeout, no DNS answer)
+  keeps it proven for `web.address_unknown_keep_seconds` after the last
+  answer as this Den (300 unless set; 0 to 3600); past that it counts as a
+  failure. A failure (something else, or nothing, answers),
+  `web.address_check_drop_after` times in a row (2 unless set; 1 to 100),
+  moves sign-in back to the address the browser uses. `doctor` says when
+  the address last answered as this Den. Before it is proven,
+  and on an install with no https address (the edge off, its port taken, a
+  fresh install), sign-in stays where the browser is, so nothing locks you
+  out. `doctor` then warns: other apps you open on that address could see
+  the sign-in, and it says how to set up the https address.
 
 There is no password. Reading `web.secret` (32 random bytes, mode 0600 in
 the state dir, made at the first `web up`) proves you are this computer's
@@ -2183,10 +2535,14 @@ user, and the CLI does that for you:
   its bearer and never logs the code. `--no-wait` prints the link alone and
   returns, as before (no code); with no server running `web login` does
   that too, and says so.
-- **The cookie** (`den_session_<port>`) is HttpOnly, SameSite=Lax (a
+- **The cookie** is host-only (no Domain), HttpOnly, SameSite=Lax (a
   person's click on a link from another site lands signed in; that site's
-  own requests carry no cookie) and Path=/, and Secure when the request
-  came over HTTPS through the edge. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
+  own requests carry no cookie) and Path=/. Over HTTPS through the edge it
+  is `__Host-den_session_<port>` and Secure, so the browser sends it to
+  that address only, over https only. Over https only that name counts (a
+  browser that signed in there before 0.4.72 signs in once more). Over
+  plain http it is `den_session_<port>`. The edge's `X-Forwarded-Proto`
+  counts only with the edge's proof. The session lives server-side (`web-sessions.json`, 0600, in the state dir)
   and never expires: it ends at sign-out, `web logout`, or `web logout
 --all`. The cookie asks the browser to keep it for 400 days, the most a
   browser allows. Each signed-in page load sends it again (the same value),
@@ -2260,8 +2616,9 @@ user, and the CLI does that for you:
   device".
 - **The edge counts as local only when it shows the client is.** A
   request for the edge hostname from the edge (an edge peer, below) is
-  treated as loopback (no sign-in on any route, the agents and the
-  terminal included) when the client the edge reports is this machine.
+  treated as loopback (reads need no sign-in; a change, an agent or a
+  terminal does, as on localhost) when the client the edge reports is
+  this machine.
   Host, Origin, CSRF and the agent-token rules still apply. Who the client
   is comes from the right-most `X-Forwarded-For` entry, the one the edge
   itself appended (anything left of it came from the client, and is never
@@ -2288,8 +2645,21 @@ user, and the CLI does that for you:
   loopback and the Docker ranges (`127.0.0.1/32`, `::1/128`,
   `172.16.0.0/12`, `192.168.65.0/24`), never `forwardedHeaders.insecure`,
   so a client can't hand the edge an `X-Forwarded-For` of its own. An
-  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` is
-  dropped, and `edge up` says so.
+  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` (one
+  dash or two) is dropped, and `edge up` says so.
+- **`edge.args` is an allow-list.** It may set the access log (not its
+  `filePath` or `fields.headers`), `log.level` (INFO or above),
+  `log.format`, `log.noColor`, `core.defaultRuleSyntax`, `global.*`
+  telemetry, the web and websecure entrypoints' transport timeouts,
+  `serversTransport` timeouts and `providers.providersThrottleDuration`.
+  Anything else (the API, a static config file, providers, entrypoints,
+  tracing, metrics, a bare value) is refused, with a line naming the
+  key, in any spelling: one dash or two, `=` or a space. Den sets the rest
+  of the edge's static config itself. The entrypoints' `readTimeout` and
+  `idleTimeout` must be above 0, and `providersThrottleDuration` at most
+  5s. A refused entry fails the config read, so the edge page, doctor,
+  stacks and the server's edge checks all stop on it until it is removed;
+  the line says which entry.
 - **A TCP passthrough in front of the edge** (a gateway that publishes
   `:443` and passes TLS through) hides the client: the edge sees the
   gateway's address. Have the gateway send the PROXY protocol, and list it
@@ -2585,6 +2955,21 @@ set keeps its mode, because switching needs sudo; its web server offers it
 once in the bell ("Keep agents running after logout: Apply"), Settings
 shows the offer, and `doctor` names it. An explicit off stays off.
 
+`doctor`'s **survives logout** row answers it in one word: `yes`, or `no`
+with why (no service, login mode, turned off, the job not loaded, or a
+host started in your login) and the fix in words. A login install says
+"this install stops its agents at logout (login mode)" and points to
+Apply.
+
+**Back from a logout.** Under `always` the web server runs through a
+logout, so it watches who owns the console (`/dev/console`: you while
+logged in, root at the login window) every `ui.console_check_seconds`
+(user.yml, 30). When you come back after longer than
+`ui.restart_wait_seconds` (90), the bell says "While you were logged out
+(N min), these agents ran: <names>", linked to the Agents page. Agents
+that stopped meanwhile get a second note, "While you were logged out (N
+min), these agents stopped: <names>", also when nothing else ran.
+
 **Agents' sign-in under `always`.** A LaunchDaemon started after a logout
 isn't assumed to reach the login keychain, and the CLI's interactive
 sign-in expires on its own. So agents started under `always` sign in with
@@ -2700,6 +3085,19 @@ its label. `logs` may start with `~/`; a relative path is under the
 distribution root. A label other than letters, digits, `.`, `-` and `_`, a
 `logs` that is not a path, or any other key under `web.service` is an error.
 `print` works on any OS; the rest are macOS only.
+
+A service starts the web server with `--silent`, and so does `web up` by
+default, so `web.log` holds no request lines. Its lifecycle, warning and error
+lines still go to `web.log`: on the server's output when that is a file (as
+`web up` and a service start it), or added to `logs/<cli>/web.log` in Den's
+state folder when the output is a terminal or a pipe, never twice. While it
+runs silent, the server's warning lines (Hub
+deliveries held or typed, among others) also go to `logs/server.log` in Den's
+state folder, so they are still there after a restart. `server_log.max_mb` in
+`user.yml` (default 20, 1 to 1024; Settings › Server) caps the file: at that
+size it moves to `server.log.1`, replacing the one there, and starts again.
+The lines are the server's own log lines, which carry no tokens. Doctor names
+the file and its size (`server_log`).
 
 `web.keep_alive_seconds` (default 120, 1 to 3600) is how long the web
 server keeps an idle connection open. It sits above the page's own poll and
@@ -2836,7 +3234,7 @@ to one project for one agent:
 (agent:<id>; no grants); "<other>" is another project`; with grants,
   `grants: <a>, <b>`) before anything reaches the web server. The refusal
   says how to get more: a person adds `<other>` to `agents.<id>.grants` in
-  the org config and restarts the agent; an agent can't grant itself one. A
+  `config/local/user.yml` and restarts the agent; an agent can't grant itself one. A
   refused call is recorded in the activity trail, read tools included.
 - **Says so.** Every scoped answer (`status`, `services`, `applications`,
   `graph`, `stacks`, `workspaces`) carries a `scope` block: the project
@@ -2870,7 +3268,7 @@ to one project for one agent:
 agent:<id> <client> <version> (project <ws>, mcp pid <pid>, session
 <id>)` for every exec, run and sync.
 - **Granted.** `--grant <other>` (repeatable) also serves `<other>`, but only
-  when the org config's `agents.<id>.grants` lists it; otherwise the server
+  when `agents.<id>.grants` in `config/local/user.yml` lists it; otherwise the server
   exits 2 (an agent can't grant itself one). A call naming a granted
   project is reported to the web server before it runs, and its activity
   entry names both (`workspace` and `targetWorkspace`; the log line reads
@@ -2917,13 +3315,21 @@ refusal, a failed action, the web server down).
 
 ### Config
 
-Without an `mcp:` block in the org config (`config/<name>.yml`) only the read
-tools are registered. Actions are opt-in, by name:
+Without `mcp.actions` in `config/local/user.yml`, only the read tools are
+registered. Actions widen what agents may do, so they are opt-in, by name,
+in that file only (an agent's sandbox can't write it):
 
 ```yaml
+# config/local/user.yml
 mcp:
   actions:
     [service_up, service_down, service_restart, workspace_sync, run_tests]
+```
+
+The rest of the `mcp:` block stays in the org config (`config/<name>.yml`):
+
+```yaml
+mcp:
   run_tests:
     envs: [local] # the default; production is refused even if listed
   logs:
@@ -2935,35 +3341,45 @@ An unknown action or environment name is an error, so a typo never turns a
 guard off; so is an `approvals` that isn't `true` or `false`. See
 [Onboarding writes, held for the person](#onboarding-writes-held-for-the-person).
 
+Migrating (issue 1072): Den no longer reads `mcp.actions` or
+`agents.<id>.grants` from the org config. `<cli> agents doctor` names each
+one still there ("Settings read from config/local only"). Move them to
+`config/local/user.yml`. A later release refuses them in the org config.
+
 ### Tools
 
 Read tools (always registered):
 
-| Tool                 | Web API                                    | What                                                                                                                                                                                                                                                                           |
-| -------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `status`             | `/api/health`                              | Service health: `counts`, then each service's `state` (`up`, `down`, `redirect`, `pending`, `unknown`, `not-checked`) and, without a plain verdict, `why`; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known |
-| `services`           | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                                                                                                                     |
-| `applications`       | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                                                                                                            |
-| `graph`              | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active project's; with `workspace`, that one's and its startup order; scoped, the project's own)                                                                                                                        |
-| `workspaces`         | `/api/workspaces`                          | Projects, active and focused                                                                                                                                                                                                                                                   |
-| `environments`       | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                                                                                                             |
-| `logs_search`        | `/api/logs/search`                         | Search services' full log history                                                                                                                                                                                                                                              |
-| `logs_tail`          | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                                                                                                                         |
-| `tests_available`    | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                                                                                                                                                |
-| `security_latest`    | `/api/security/latest`                     | The newest security scan per mode                                                                                                                                                                                                                                              |
-| `release_status`     | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                                                                                                                                                            |
-| `manifest_validate`  | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                                                                                                                                                         |
-| `stacks`             | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                              |
-| `ask_human`          | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                      |
-| `notifications_list` | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                              |
-| `gate_slot_status`   | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                |
-| `gate_slot_request`  | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                       |
-| `gate_slot_release`  | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                    |
-| `edge_status`        | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                       |
-| `org_summary`        | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                              |
-| `onboard_status`     | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                 |
-| `repos_detect`       | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                     |
-| `manifest_draft`     | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when Den can't tell how it starts (call again with `run`, or `no_run: true` for "it runs nothing")                                                     |
+| Tool                  | Web API                                    | What                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`              | `/api/health`                              | Service health: `counts`, then each service's `state` (`up`, `down`, `redirect`, `pending`, `unknown`, `not-checked`) and, without a plain verdict, `why`; `url` (HTTP check) or `check` (shell, or `container <project>/<service>`); `ok` true up, false down, null not known                                                                                                                                |
+| `services`            | `/api/services`                            | Services, their mode (managed or dev-managed) and commands                                                                                                                                                                                                                                                                                                                                                    |
+| `applications`        | `/api/applications`                        | Org > Application > Repo > Services                                                                                                                                                                                                                                                                                                                                                                           |
+| `graph`               | `/api/graph`                               | The derived dependency graph (`map: "org-wide"`, every active project's; with `workspace`, that one's and its startup order; scoped, the project's own)                                                                                                                                                                                                                                                       |
+| `workspaces`          | `/api/workspaces`                          | Projects, active and focused                                                                                                                                                                                                                                                                                                                                                                                  |
+| `environments`        | `/api/environments`                        | The enabled environment names (never their values)                                                                                                                                                                                                                                                                                                                                                            |
+| `logs_search`         | `/api/logs/search`                         | Search services' full log history                                                                                                                                                                                                                                                                                                                                                                             |
+| `logs_tail`           | `/api/service/taillog`                     | The last lines of a service's log (bounded, no follow)                                                                                                                                                                                                                                                                                                                                                        |
+| `tests_available`     | `/api/modules`, `/api/test-sources`        | A pillar's modules and the repos they come from                                                                                                                                                                                                                                                                                                                                                               |
+| `security_latest`     | `/api/security/latest`                     | The newest security scan per mode                                                                                                                                                                                                                                                                                                                                                                             |
+| `release_status`      | `/api/release/runs`, `/api/release/status` | Recent CD runs, and an env's deployed-version table                                                                                                                                                                                                                                                                                                                                                           |
+| `manifest_validate`   | `/api/manifest/validate`                   | Validate a manifest by path or content                                                                                                                                                                                                                                                                                                                                                                        |
+| `stacks`              | `/api/stacks`                              | What `stack ls/ps/health` show: project, routes, health; an empty list says `why`                                                                                                                                                                                                                                                                                                                             |
+| `ask_human`           | `/api/agents/self/attention`               | Ask the person a question (NT-1): marks the agent waiting and puts the question in the bell; at most 300 characters, `notifications.asks_per_hour` (default 30) per agent                                                                                                                                                                                                                                     |
+| `notifications_list`  | `/api/notifications`                       | What is in the person's bell: `unread`, `waiting`, `groups`, `mutes` (reads only)                                                                                                                                                                                                                                                                                                                             |
+| `app_feed_read`       | `/api/agents/self/app-feeds`               | Issue 459: the agent's own app feeds and their unread events (only its own project's feeds that name it; capped by `embed.feed_read_max_kb`). Den types a pointer line, never the event's text                                                                                                                                                                                                                |
+| `gate_slot_status`    | the machine's slot store                   | Who holds this machine's heavy-test slots and who waits, across every repo and install (issue 144); see [Gate slots](#gate-slots-heavy-test-runs-taken-in-turn)                                                                                                                                                                                                                                               |
+| `gate_slot_request`   | the machine's slot store                   | Ask for a slot (`kind`, `estimate_minutes`, `label`), or ask again by `id` to see where you stand; a waiter gets `expectedStart` and `heldBy` (who holds, until when). Held by the MCP server until released or it exits                                                                                                                                                                                      |
+| `gate_slot_release`   | the machine's slot store                   | Give back your own slot; ending anyone else's is a person's                                                                                                                                                                                                                                                                                                                                                   |
+| `gate_slot_yield`     | the machine's slot store                   | Your waiting slot (`id`) lets another waiting slot (`to`) go just ahead of it, and keeps its place otherwise (issue 795); your own only, never a holder                                                                                                                                                                                                                                                       |
+| `github_watch`        | `/api/agents/self/github-watches`          | Watch a pull request's checks (`repo`, `pr`) or a workflow run (`repo`, `run`) in your project's repo, instead of `gh pr checks --watch` or `gh run watch`. Answers at once with a watch `id` and its state; Den tells you once, in your session, when they finish: counts passed, failed and skipped, and each failure's name and URL. One shared watcher for the install: see [GitHub watch](#github-watch) |
+| `github_watch_list`   | `/api/agents/self/github-watches`          | Your watches (state, note, counts, failures) and the watcher's `status`: GitHub calls left, the reset, the interval                                                                                                                                                                                                                                                                                           |
+| `github_watch_cancel` | `/api/agents/self/github-watches/cancel`   | Stop one of your own watches (`id`)                                                                                                                                                                                                                                                                                                                                                                           |
+| `edge_status`         | `/api/edge`                                | The edge: up or down, its routes and cert names; `https` (TLS strategy, who supplies the cert, whether HTTPS is serving)                                                                                                                                                                                                                                                                                      |
+| `org_summary`         | several (read only)                        | Every project and repo with status counts, the graph, the edge and the environments; scoped, `yours` adds your project's services                                                                                                                                                                                                                                                                             |
+| `onboard_status`      | `/api/onboard/status`                      | What's set up and the one next step: `checks` (`ok`, `warn`, `todo`) and `next` (`step`, `command`); see [Onboarding reads](#onboarding-reads)                                                                                                                                                                                                                                                                |
+| `repos_detect`        | `/api/onboard/repos`                       | The git repos in `path` (one or two levels down), how each runs, and suggested `workspaces`; never writes or follows a symlink; refused on a scoped server                                                                                                                                                                                                                                                    |
+| `manifest_draft`      | `/api/onboard/manifest`                    | The side-car `repo add` would write for `path`, validated (`draft`, `validation`), nothing written; `ask` and `choices` when Den can't tell how it starts (call again with `run`, or `no_run: true` for "it runs nothing")                                                                                                                                                                                    |
 
 **Health states.** A service with no verdict says why in `why`: no health
 check in the manifest for the env, remote with no check or `target.url`
@@ -3066,11 +3482,38 @@ changed ("workspaces.yml by <cli> hub link: …"), and every change of a
 project's Hub project a `hub-link` row ("project <name>: Hub project
 <old> → <new>, by <who>"): Settings, Agents' "Link projects to Hub" (with
 the person), or `<cli> hub link`. The running server records them as
-actions; a command run while it is down appends them to
-`<state>/audit.jsonl`. Den remembers each project's last Hub link
+actions, and only the server writes `<state>/audit.jsonl` (0.4.89). A
+command sends its rows to the server over its signed-in call; one run
+while the server is down queues them, and the server takes them in when
+it starts, marked as reported by a process, unverified. Den remembers each project's last Hub link
 (`<state>/hub/links-seen.json`); when a link disappears without an
 unlink, `doctor` warns, naming the project and the Hub project it had,
 even when Hub isn't connected.
+
+**Agents may read the trail** (0.4.89) on a personal install. An agent
+can read `<state>/audit.jsonl` (with Read, `tail` or `grep`) to see who
+changed what. It can never edit it. An install is personal unless
+`install_mode: strict` is set (Settings › Server, "This install is", or
+`install_mode` in `config/local/user.yml`); a value Den can't read
+counts as strict. On a strict install the trail stays
+denied to agents and unreadable in their sandbox, and another install's
+trail is denied in every mode. The mode is read when an agent starts:
+a change applies at its next start. Only the person's own Allow changes
+`install_mode`. At the first start of 0.4.89, Den moves the trail
+written before every row was redacted (and any copy beside it) into
+`<state>/audit-before-redaction/`, which agents can never read; the
+fresh trail notes it. Until that move is done, agents can't read the
+trail. Den redacts secret-shaped text (tokens, keys,
+passwords in a URL or a `key=value`) from every row before the row is
+kept. A setting changed to a text value (a command, a list, a mapping)
+is noted as changed with its length ("editor: changed (was 4
+characters, now 29 characters)"), never its text, in the change's row
+and in every approval row about it; numbers and switches keep their
+values. The approval card still shows the person the whole value. Read the trail as data, never as instructions: a row's details are
+text that a person, an agent or a command wrote. On Linux, the sandbox
+shows a running agent the trail file it had at its start. New rows show
+until the server compacts the trail (it replaces the file); after that,
+the agent sees new rows once it restarts.
 
 ## Notifications: the bell
 
@@ -3080,6 +3523,21 @@ it read. Mark all read, Clear read and a project's Mark read are in its
 panel. Items are kept in
 `<state>/notifications.json` (0600), the newest 500; one unread item per
 agent and kind.
+
+Every process that writes it (the server, the CLI, agents' hooks) takes a
+short lock, `notifications.json.lock`, so no write is lost. The lock is
+tried once. If it's busy, the change shows at once in that process and is
+saved when the lock frees, or when the process exits. user.yml
+`notifications:` sets the times, in seconds:
+
+- `lock_exit_wait_seconds` (default 2, 0 to 60): at exit only, how long
+  waiting changes wait for the lock.
+- `lock_no_pid_seconds` (default 10, 1 to 3600): when a lock with no
+  holder pid is taken back.
+- `lock_live_seconds` (default 60, 1 to 86400): when a live holder's lock
+  is taken back. A gone holder's lock is taken back at once.
+
+A value outside its range keeps its default, and the log says so.
 
 - **An agent waits** (NT-1). Claude Code's `Notification` hook (a
   permission prompt, or waiting for input) and `Stop` hook (its turn
@@ -3111,8 +3569,12 @@ agent and kind.
   on Hub. New activity on an item makes it unread again. An agent can't
   mark them read: Den's proxy refuses Hub's read routes.
 - **Not while you look** (NT-2). The Agents page says which agents are on
-  screen, in a visible, focused tab. Those don't notify; they are still
-  marked waiting.
+  screen, in a visible, focused tab. Those don't alert you. Their bell
+  items are still kept (issue 142): a permission prompt or a question
+  counts until you answer it, and a finished turn leaves Updates as soon
+  as the page says it shows that agent again. Opening a pane is not an
+  answer: the terminal's own replies (focus, cursor place) don't clear a
+  question.
 - **Kinds and folds** (0.4.45). Settings › Notifications has one switch
   per kind, the person's own (user.yml `notifications.kinds`, a map of
   `waiting`, `finished`, `hub`, `pr`, `release`, `pick` and `shared` to
@@ -3194,7 +3656,7 @@ and logs to `<stateDir>/logs/<cli>/sessions-host.log`. The state dir is
 the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
 
 ```
-<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] -- <argv…>
+<cli> sessions start --workspace <ws> --name <n> [--cwd <dir>] [--keep-env NAME…] [--json] -- <argv…>
 <cli> sessions list [-w <ws>] [--json]
 <cli> sessions attach <name|id>          # ctrl-] detaches; the session keeps running
 <cli> sessions kill <name|id> [--signal INT|TERM|HUP|KILL] [--grace <s>]
@@ -3261,6 +3723,85 @@ the profile's `state_dir` (`~/.<name>`), or `<PREFIX>_HOME`.
     max_concurrent: 4
   ```
 
+- Issue 1373: a person sets the agents' cap for this machine in
+  Settings › Agents › Agents at once, or with
+  `<cli> config agents.max_concurrent=14`. Both write
+  `config/local/user.yml`, and user.yml's value wins over the
+  distribution's, key by key: the cap the terminal host enforces, `<cli>
+agents` and `sessions`, the count the Agents page shows, and Doctor.
+  `<cli> config agents.max_concurrent` prints the value in force. The
+  agents' other limits and waits follow the same rule when set in
+  user.yml by hand: `token_peer_wait_ms`, `turn_read_max_mb`,
+  `restart_wait_minutes`, `rotation_wait_minutes`,
+  `unasked_exit_window_minutes`, `lock_wait_minutes` and
+  `exited_shell_minutes`. A key that widens what an agent may do (such as
+  `token_binding`, `files`, `issue_writes` or `api_only_engines`) is not
+  taken from user.yml's `agents:` block this way. When both files set a
+  limit to different values, Doctor notes it: "agents.max_concurrent:
+  user.yml's 14 wins over the distribution's 8". An agent can't save the
+  setting itself; it proposes the change, and the person allows it.
+
+- Issue 503: each terminal holds one PTY, and a machine has a fixed
+  number of them (macOS: `kern.tty.ptmx_max`, 511 by default). An exited
+  session gives its PTY back `sessions.pty_close_seconds` after its
+  process ends (default 0: at once); it stays listed as exited and its
+  scrollback still replays. A start the machine can't give a PTY to is
+  refused with the reason, which the terminal host logs and the Agents
+  page shows. `<cli> doctor` shows how many PTYs the terminal host holds
+  and how many the machine uses of its limit, and fails above
+  `sessions.pty_warn_above` (default 400) or at
+  `sessions.pty_machine_warn_percent` of the limit (default 90).
+
+  ```yaml
+  sessions:
+    pty_close_seconds: 0
+    pty_warn_above: 400
+    pty_machine_warn_percent: 90
+  ```
+
+- Issue 563: the terminal host is a process of its own, so a web
+  restart (and a self-update's) leaves it running the version it
+  started on. When the web server starts, it asks the host which code it
+  runs (a hash of its own files: `src/shared/sessions/host.ts` and what
+  it imports) and which native terminal module it loaded. A host whose
+  code differs from the installed one, holding a module that is no
+  longer the installed one (npm deletes the old one's folder at an
+  update, and new terminals then fail with `posix_spawnp failed`), or
+  too old to say, is restarted the way `<cli> sessions host --stop`
+  does. Issue 597: another Den version alone is no reason: when the code
+  and the module are the same, the host is told the new version and
+  kept, with its agents, and the audit says "host kept: code
+  unchanged". Agents mid-turn are waited for, up to
+  `sessions.host_restart_wait_seconds` (default 900); then it restarts
+  anyway. The agents that were running resume; open terminals end. An
+  agent the restart cut mid-turn gets one line as its next input, "Den
+  restarted while you were working; check your last step and carry on."
+  (`sessions.host_restart_note`, default true). The bell names the
+  agents resumed and the ones cut; the audit row has the counts first
+  and every agent in its `agents` field. `<cli> doctor`'s Host row says
+  "current", or "restart needed: host code changed" / "terminal module
+  changed" with the restart command.
+
+  Issue 631: every agent running before the restart is in the audit
+  row's resumed, failed or cut list. The list is taken once more right
+  before the stop, and every agent whose terminal the host still ran
+  then is added, so an agent between the stop and the start of its
+  relaunch from a handoff isn't missed. No relaunch from a handoff starts
+  while the restart runs. An agent that relaunched from its handoff
+  resumes in its new conversation. Den looks again
+  `sessions.host_restart_check_seconds` (default 30; 0: no look) after
+  the resumes: an agent that ended since counts as failed, with its state
+  and last line. Each failed agent shows as interrupted, with Resume, and
+  its row says it didn't come back after a restart, and why. The bell has
+  a "needs you" item for it.
+
+  ```yaml
+  sessions:
+    host_restart_wait_seconds: 900
+    host_restart_note: true
+    host_restart_check_seconds: 30
+  ```
+
 - A PTY needs a native module, `@lydell/node-pty`, which Den lists as an
   optional dependency (prebuilt binaries for macOS, Linux and Windows,
   nothing downloaded at install). Without it (`npm install
@@ -3314,7 +3855,10 @@ project may take that name.
   stays behind that.
 - **It updates Den** (0.4.44, `den_update { version, reason }`, the held
   action `den_update`). Held for the person like `den_restart`, under
-  the same `server_agent.self_update`. Allowed, Den saves the version it
+  the same `server_agent.self_update`. A project's agent may ask too
+  (0.4.83): its ask is always held for a person's Allow in the browser,
+  whatever `server_agent.self_update` or the approval policy says, and
+  the answer tells it so; no agent Allows it. Allowed, Den saves the version it
   runs now, installs `<version>` exactly from npm in the distribution
   (`npm install --save-exact`), runs `doctor --json`, and restarts.
   `version` is `latest` or an exact version such as `0.4.44` (default
@@ -3419,6 +3963,42 @@ folder, project? }`, the held action `agent_folder`): a repo of the
   your Allow", linked to that agent. After
   `server_agent.update_wait_checks` passes in a row (default 2) it counts
   as needing you. The update never goes past a pending Allow.
+- **A security release doesn't wait on an open question** (issue 562). A
+  release whose package.json has `"den": {"security": true}` is a
+  security release. Den reads the mark only from npm's version data for
+  that version (`npm view <package>@<version> den`), never from a tag
+  name or the changelog; no mark, or npm can't say, is an ordinary
+  release. With `self_update: auto`, a security release updates while
+  the server agent waits on its person's question or permission prompt.
+  That conversation resumes after the restart, as on any restart. It
+  still never goes past a pending Allow, and never restarts while a turn
+  is working. The bell then says "Den updated for a security fix while
+  the server agent was waiting on you; its question is still open".
+  `server_agent.security_update_skips_questions` (org config, default
+  `true`): `false` makes a security release wait like any other.
+- **A security release doesn't wait for a busy agent** (issue 603). With
+  `self_update: auto`, a security release also installs while the server
+  agent is in the middle of a turn, at the first check that finds it.
+  The restart that follows still waits for the turn to end (below, up to
+  `server_agent.update_restart_wait_seconds`). That restart is the web
+  server's: the server agent's turn runs in the terminal host, which
+  keeps running unless its own code changed. A pending Allow still holds
+  the update. The log and the audit say it went ahead while the agent
+  was busy. `server_agent.security_update_skips_busy` (org config,
+  default `true`): `false` makes a security release wait for the turn
+  before it installs. Other releases wait for the turn as before.
+- **The restart looks again after the install** (issue 562). The install
+  takes a while, and a turn may start meanwhile (the person answers the
+  question). Once an auto update is installed and its doctor has run,
+  Den reads the wait again before it restarts: a security release goes
+  past the server agent's question or prompt, any other release doesn't.
+  A working turn or a pending Allow holds the restart, read again every
+  few seconds, for at most `server_agent.update_restart_wait_seconds`
+  (org config, default 900). Then Den restarts anyway, since the new
+  version is installed and the old one is still running. The log says
+  why, and the bell says "Den restarted to finish an update while the
+  server agent was working". An update the person or an agent asked for
+  restarts as before.
 - **Den commits and pushes the new pin itself** (#176). Once an update
   is verified (the watch saw the new version answer, `state: good`) and
   this Den runs it, the lead install's update check commits the pin and
@@ -3745,6 +4325,36 @@ as…" line as Bring in.
     restart_wait_minutes: 120 # minutes, above 0
   ```
 
+  Session rotation waits for an agent's background work too (issue
+  914). Once a rotation is due and the agent's turn is over, Den still
+  waits while a helper it started (a background subagent, a workflow's
+  agent) or a job it left running (a gate run) is running, and rotates
+  right after they finish. The wait is at most
+  `agents.rotation_wait_minutes` (default 240). Then the rotation goes
+  ahead: Den asks for a handoff that lists each item still running (its
+  ID, what it was doing, its branch, and for a helper its own handoff
+  file, `handoffs/helper-<id>.md` in the agent's files folder). The
+  handoff check refuses one that leaves an item out, and the new
+  session's first prompt tells it to start each one again.
+
+  ```yaml
+  agents:
+    rotation_wait_minutes: 240 # minutes, above 0
+  ```
+
+  A session that ends without Den asking (issue 926): no stop, restart
+  or relaunch from Den or a person, such as a signal from outside Den or
+  a crash. Den's sweep writes one audit row with the exit code. Exit 0
+  (the agent or person quit it) is left down. Otherwise the bell says so
+  and Den brings the agent back, at most once per window: it resumes it, or relaunches it
+  from its handoff when its rotation is ready and on_due is auto. A
+  second such exit within `agents.unasked_exit_window_minutes` (default 10) is told in the bell and left down; 0 never brings one back.
+
+  ```yaml
+  agents:
+    unasked_exit_window_minutes: 10 # minutes; 0: record and tell only
+  ```
+
   One change to an agent at a time, across processes too (issue 218): a
   stop, resume or restart from the CLI waits while the web server
   changes the same agent, and the other way round. Each change holds a
@@ -4033,10 +4643,10 @@ agent of the projects in view, and their terminals in the browser.
   one's to change it.
 - Terminals need the optional PTY module (`<cli> doctor`); without it the
   page lists what there is and says so.
-- **Who can open one.** The terminal is shell-grade: on localhost the
-  page's own Origin and CSRF token, beyond loopback a signed-in browser
-  (the list says "Sign in to open terminals" otherwise), and an agent's
-  token only its own session's. Each attach and detach is in the server
+- **Who can open one.** The terminal is shell-grade: a signed-in browser,
+  on localhost too (0.4.71), with the page's own Origin and CSRF token
+  (the list says "Sign in to open terminals" otherwise); the person's
+  token from the CLI; and an agent's token only its own session's. Each attach and detach is in the server
   log's activity, with its actor.
 
 The routes: `GET /api/sessions` (`{ sessions, projects, host, backend,
@@ -4130,6 +4740,10 @@ agents:
     active_minutes: 10 # no activity this long, not known done: idle
     row_max: 4 # deprecated (0.4.45): ignored
     read_max_mb: 64 # the most of an agent's transcript read for them
+    facts_cache_mb: 256 # what Den keeps of all agents' transcripts between reads
+    refresh_seconds: 5 # how old a helper row in the agents list may be
+    list_wait_seconds: 0.25 # how long a list waits for rows not read yet
+    reader_rest_ms: 2 # the pause between agents while rows are read
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
@@ -4138,6 +4752,10 @@ agents:
 | `active_minutes`        | minutes, above 0 to 100000 | 10      |
 | `row_max`               | deprecated, ignored        | 4       |
 | `read_max_mb`           | MB, above 0 to 4096        | 64      |
+| `facts_cache_mb`        | MB, above 0 to 4096        | 256     |
+| `refresh_seconds`       | seconds, 0 to 3600         | 5       |
+| `list_wait_seconds`     | seconds, 0 to 60           | 0.25    |
+| `reader_rest_ms`        | milliseconds, 0 to 1000    | 2       |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
 
 `read_max_mb` (0.4.36): a helper's state comes partly from its agent's own
@@ -4145,6 +4763,33 @@ transcript (its notification, its result). Den reads only that much of the
 transcript's end, then only what is added, so a transcript of gigabytes
 costs what a 64 MB one does. A helper whose notification is further back
 gets its state from its own files.
+
+`facts_cache_mb` (0.4.90): what Den keeps from every agent's transcript
+between reads, so that each look at the agents list reads only what was
+added since the last. When it's full, the agent looked at least recently
+is dropped first. Before 0.4.90 Den kept 64 agents' facts. With more
+agents than that, each look at the list read every transcript again, and
+Den's pages and tools stalled for seconds. The facts are small, about 0.1
+MB for a busy agent, so the default holds thousands of agents.
+
+`refresh_seconds` (0.4.90): the agents list and the helpers count share
+one set of helper rows. A row is read again in the background once it is
+older than this, and the list shows the last one meanwhile, so a list
+never waits on transcripts. A new agent, or one whose state changed
+(started, stopped, cleared), is read in the background too. At 0, every
+list reads its rows, as before 0.4.90.
+
+`list_wait_seconds` (0.4.92): how long a list waits for rows not read yet
+(after a restart, or a wave of new agents) before it answers with what it
+has. A row not read yet carries `helpersPending: true` and shows
+"Counting helpers…"; the list carries `helpersPending: true` too, and the
+page looks again within a second until every row is in. Before 0.4.92 the
+list waited for every row: with 140 unread agents, about 7 seconds.
+
+`reader_rest_ms` (0.4.92): the pause between agents while rows are read
+in the background, so Den's other requests get through while it reads.
+At 0 it only yields, and a request with many steps waits one agent's read
+per step, as before 0.4.92.
 
 `row_max` no longer does anything (0.4.45): how many helpers show under
 an agent is each person's `agents.helpers_shown` (above).
@@ -4391,7 +5036,28 @@ conversation, in the new mode.
 agents:
   default_mode: auto # ask, edits, auto or all; unset: each persona's
   mode_check_seconds: 30 # how often Den looks for a changed mode
+  trust_check_seconds: 5 # how often Den looks for a folder-trust question
 ```
+
+**The folder-trust question.** Claude Code asks once per folder whether
+to trust it. While an agent's start waits on that question, its row, its
+pane and the bell say "Waiting: trust this folder?". The answer is the
+person's: Den never types it. After a No, the agent ends, and its row and
+the bell say "Didn't start: this folder isn't trusted. Resume and choose
+Yes." A relaunch from a handoff keeps the folder the agent ran in, so a
+folder it was trusted in is never asked about again.
+
+**A conversation that was never written.** Resume asks the runtime
+whether the conversation exists (its transcript). One that was never
+written (its start ended at the trust question, say) starts fresh under
+the same id, never `--resume`. If the agent has a handoff on file
+(handoff.md, or the newest kept one that passes the check), that handoff
+is the new conversation's first prompt. If the runtime refuses the id
+both ways, a new conversation starts. A relaunch that ends before its
+conversation exists is undone: handoff.md comes back and the rotation is
+due again. `agents relaunch <id> --from-handoff [<file>]` (and Relaunch
+from its last handoff in a stopped agent's ⋯ menu) relaunches from the
+newest handoff when no rotation is due.
 
 **Back after the machine restarts.** Every agent that was running comes
 back on its own conversation, project and mode, not only standing
@@ -4446,7 +5112,7 @@ An agent's environment starts empty and gets, in order:
 2. the variables its runtime names (`envPassthrough`; den-claude:
    `CLAUDE_CONFIG_DIR`);
 3. the runtime's launch env;
-4. the distribution's: `GIT_CONFIG_*` when `agents.git.signing_key` is set
+4. the distribution's: `GIT_CONFIG_*` when agents sign commits
    ([Agents' commit signing](#agents-commit-signing));
 5. `DEN_AGENT=agent:<id>` and `DEN_ACTOR_TOKEN_FILE` (below).
 
@@ -4471,19 +5137,49 @@ adds a note to run `<cli> doctor --probe`.
 
 ### Agents' commit signing
 
-Agents Den starts can sign their git commits with an SSH key of their own.
-A key is per machine, so it usually goes in `config/local/user.yml`; the
-org config can set one too, and user.yml's wins:
+Agents Den starts sign their git commits with an SSH key of their own,
+never with yours. The agent sandbox keeps your GPG agent out of their reach,
+so a commit your git would sign with GPG can't be signed by an agent.
+
+Which key, at each agent start:
+
+| `agents.git`          | Your git signs commits | The agent signs with              |
+| --------------------- | ---------------------- | --------------------------------- |
+| `signing: off`        | either                 | nothing (git as it is)            |
+| `signing_key: <path>` | either                 | that key                          |
+| unset                 | yes                    | the install's own key (made once) |
+| unset                 | no                     | nothing: nothing changes          |
+
+"Your git signs commits" is `commit.gpgsign` as your git sees it in the
+agent's folder: the repo's own config, then your `~/.gitconfig`.
+
+The install's own key is an ed25519 key with no passphrase in
+`<state>/agent-signing/key/` (`id_ed25519`, its `.pub` and an
+`allowed_signers` file). Den makes it at the first agent start that needs
+it, once, even when two starts race. Every agent of the install can read
+it in its sandbox; none can change, move or replace it (Den's state is
+read-only to them). The start line that made it prints the `gh` line below.
+
+A key of your own is per machine, so it usually goes in
+`config/local/user.yml`; the org config can set one too, and user.yml's
+wins. Agents read that key and its `.pub` in their sandbox as single
+files, never their folder. Keep it outside Den's state folder, or inside it
+only under `<state>/agent-signing/`: anywhere else in the state folder, and
+in an edge's key folders or another install's state folder, agents can't
+read it, and `<cli> doctor` says so.
 
 ```yaml
 agents:
   git:
+    signing: on # or off: agents' commits are left as git makes them
     signing_key: ~/.ssh/den_agents # absolute, or ~/; no passphrase
 ```
 
 Each agent gets it as git's own `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
 `GIT_CONFIG_VALUE_n` in its environment: `gpg.format ssh`,
-`user.signingkey <the key>`, `commit.gpgsign true`. These sit above every
+`user.signingkey <the key>`, `commit.gpgsign true`, and for the install's
+own key `gpg.ssh.allowedSignersFile` (so `git log --show-signature`
+verifies). These sit above every
 config file and write none, so your `~/.gitconfig` (and your own GPG or SSH
 signing) is never changed, and nothing you run yourself signs with the
 agents' key. An agent can't type a passphrase, so make the key without one:
@@ -4505,6 +5201,21 @@ gh ssh-key add ~/.ssh/den_agents.pub --type signing --title "Den agents"
 (`gh auth refresh -s admin:ssh_signing_key`). An agent called `git` (an
 `agents.git` block with only `grants`) is still an agent.
 
+The key in force is `agents.git.signing_key`, else the install's own key
+once an agent start has made it. Den's own pin commits sign with the same
+key. With no key in force, agents' commits and Den's pin commits are
+unsigned, and `<cli> doctor` says so as information: "not signed: no
+agents' signing key", with the fix (issue 730). With `agents.git.signing:
+off` it says "not signed: agents.git.signing is off".
+
+After a self-update, Den commits the new pin itself. With no key in force, it
+first reads the branch's rules on GitHub through `gh` (a ruleset's
+`required_signatures` rule, or classic branch protection where `gh` can
+read it). When the branch requires signed commits, Den doesn't push to it:
+it opens a pull request for the pin instead, since GitHub signs its own
+merge, and the bell says why. When `gh` can't read the rules, Den pushes as
+before.
+
 ### An agent's token
 
 `agents start` (the CLI or the Projects page) mints a random `den_at_…`
@@ -4518,6 +5229,177 @@ working. The `<cli>` and the MCP server Den starts for the agent send it, so
 the server audits their calls as the agent, from the token, never from a
 header (agent headers without the token are recorded as an unverified
 claim).
+
+**Den's state is read-only to an agent's session** (issue 936). An agent
+runs as you, so each agent's session starts inside the OS sandbox:
+`sandbox-exec` on macOS, `bwrap` (bubblewrap) on Linux. Inside it:
+
+- Den's state folder and the install's `config/local` (where `user.yml`
+  is) can't be written. The agent can't change its own record, its mode or
+  the settings. Den's server does the writing an agent asks for: its MCP
+  server is a client of the server.
+- The gate store's settings (the machine's gate settings and test boxes)
+  can't be written. Its slot queue can, so `gate run` and the MCP slot
+  tools work as before.
+- The agent's own token can be read. Den's other files are read only
+  where the agent's tools need them.
+- On macOS, unix sockets can't be reached, except the system's own and
+  the agents' message sockets (and the SSH agent's, when the session has
+  one). On Linux, the sockets in your tmux and runtime folders
+  (`XDG_RUNTIME_DIR`) and the container engines' sockets are hidden;
+  sockets elsewhere can still be reached. On both, the terminal host's
+  socket can't be reached. A session started there
+  would run outside the sandbox. So `<cli> agents list`, `start` and
+  `stop` don't work from an agent's shell. An agent starts another with
+  the `agent_create` tool.
+- Programs that run as root (setuid: `ps`, `top`, `sudo`) can't start, and
+  Docker's socket, like every outside daemon's, is refused. `sudo` is
+  refused inside a session on purpose: an agent never runs as root. Agents
+  use `pgrep`/`pkill` and Den's status tools. Docker is full control of the
+  machine: whether an agent whose work needs it runs with its own sandbox
+  off (`agents.<id>.sandbox: off`, which lifts every other limit too) is
+  your call alone. Never add Docker's socket to `agents.sandbox_sockets`:
+  that hands it to every agent.
+- The agent's own folder (`<state>/agent-files/<id>`) stays writable:
+  `handoff.md`, its notes, the hooks' counts. The launch files Den writes
+  there (its Claude settings, its MCP config) don't.
+
+The start line and `<cli> agents doctor` name every agent that runs
+outside the sandbox, and why: no `bwrap` on this Linux machine, an agent
+from before the sandbox, or the setting below. A write the sandbox
+refuses shows the agent a plain reason and what to use instead (a Den
+hook after each tool, for personas with Den's hooks on), never only a
+permission error.
+
+The sandbox is on for every agent started new. An agent that existed
+before your Den had the sandbox keeps starting as before until you turn
+it on: Den asks once, as a held write in the bell (Turn on), and
+`<cli> agents doctor` warns "Sandbox is off for N agents". Turn on sets
+`agents.sandbox: on` in `config/local/user.yml`; each of those agents goes
+into the sandbox at its next start, and one you set to `off` stays off.
+
+The sandbox is on by default. To turn it off, for every agent or for one,
+set it in `config/local/user.yml` (agents can't write that file). Den
+refuses this setting in the distribution's config, since agents may edit
+that file:
+
+```yaml
+agents:
+  sandbox: on # or off, or required
+  sandbox_sockets: [/var/run/some-tool] # more socket folders it may reach
+  some-agent:
+    sandbox: off # this agent's sessions start outside it
+```
+
+An agent can ask for this instead, with the held write
+`agent_sandbox_set { agent, on, reason }` (issue 1328). Turning one
+agent's sandbox off always waits for your own Allow; the Review names the
+agent, the change and the reason, and says so when an agent asks for
+itself. Back on runs as the approval policy says. Den writes only
+`agents.<id>.sandbox` (comments and every other key stay), notes when,
+why and who asked, and restarts a running agent after its turn on the same
+conversation. `<cli> agents doctor` lists every agent whose sandbox is off,
+with when and why.
+
+The setting follows the agent's lifecycle. Removing an agent drops its
+`agents.<id>.sandbox` and its note (an agent brought back with Undo starts
+in the sandbox). Adding an agent (`agent_create` or `agent_import`) whose id
+has its sandbox off, or while `agents.sandbox` is off for the machine, waits
+for your own Allow too, and the Review says why.
+
+### Changing a setting for the person: `setting_change` (issue 1371)
+
+An agent can't write `config/local/user.yml` (its sandbox closes the file),
+so it asks for a setting instead of handing you a YAML edit. The held write
+`setting_change { key, value, reason }` (or `<cli> config propose
+<key>=<value> --reason "<why>"`) names one setting by its dotted name, as
+`<cli> config` and Settings know it (`sessions.max_concurrent`,
+`agents.max_concurrent`, `web.agent_view`, `held_writes.wait_minutes`, and
+the rest). `value: null` puts Den's default back.
+
+- Den checks the key and the value with the same checks Settings and
+  `config` use, and den-config's own readers, before anything is held. An
+  unknown key (a typo names the key it is closest to), or a value they
+  refuse, comes back at once with why.
+- The Review shows the key, its value now, the new one and the reason.
+- A setting that widens what agents can do is marked so, and only your own
+  Allow runs it: every key in `USER_ONLY_WIDENING` (`src/shared/den-config.ts`:
+  an agent's grants and sandbox, `agents.sandbox_sockets`, `mcp.actions`,
+  `web.edge_unattested`, `web.allow_plain_http_remote`, the 1Password token
+  source), the approval policy itself (`approvals.*`), and the programs and
+  runtimes Den runs (`editor`, `terminal`, `agents.runtimes.*`) on a strict
+  install. One agent's sandbox stays `agent_sandbox_set`'s.
+- Every setting Settings keeps as the person's can be asked for (issue
+  1391): `agents.default_mode`, `server_agent.self_update`,
+  `hub.allow_tools`, `hub.delivery_loop`, `hub.url` (a new address drops
+  the old token, as Settings does), `alerts.desktop`, `alerts.phone`,
+  `alerts.quiet.from`/`to`, `editor_open`, each `embed.*` setting,
+  `web.machine_name` and the rail's `shell.dock`, `shell.collapsed` and
+  `shell.pins`, each checked as Settings checks it. `editor`, `terminal`
+  and `editor_overrides.<language>` take only an editor or terminal Den
+  knows; `agents.runtimes.<id>.bin` an absolute path to a program.
+- `secrets.*` takes references only: `env:NAME`, `file:/path`,
+  `keychain:service` or `op://vault/item/field` for the 1Password token,
+  `{ vault, item, field }` for a ref, an env var's NAME for a key. A raw
+  secret is refused, without being shown, with "did you mean a
+  reference?".
+- It fails closed: a setting is routine only when `NARROW_SETTINGS`
+  (`src/ui/cli/setting-change.ts`) names it, a timeout, interval, cap or
+  retention that changes how fast or how much Den does. Every other one
+  widens, among them the limits that guard sign-in (`web.approve_*`,
+  `web.pair_requests_per_minute`), agents' views of your pages
+  (`web.agent_view*`), `web.bridge_listen`, `agents.issue_writes*`, what
+  keeps running (`agents.keep_running_after_logout`,
+  `services.restore_on_boot`) and `held_writes.wait_minutes`. A test places
+  every key `setting_change` takes on one list or the other.
+- The card shows the new value whole, never cut. A value too long to read
+  there (over 2000 characters) or text with control characters is refused.
+- **Per category (issue 1371 Part 2).** Each key has a category: limits
+  and performance, look and layout (low), integrations (editors,
+  terminals, runtimes, Hub, GitHub: medium), network and access (`web.*`,
+  `embed.*`, `hub.url`: high), and agent powers (the sandbox, grants,
+  approvals, `mcp.*`, secrets: high, and always widening; `install_mode`
+  widens unless the new value is `strict`).
+  Settings › Agents › "Agents changing settings" holds one choice per
+  category (`approvals.settings` in `user.yml`): change without asking
+  (tell me), ask me, or never. Agent powers offer only ask or never. With
+  none set, limits and look change without asking; network and agent
+  powers ask; integrations ask on a strict install and change without
+  asking on a personal one. Never refuses the ask and names the row. A
+  widening key always waits for your own Allow, whatever the choice. A
+  change made without asking still writes its audit line, and your updates
+  say so.
+- On Allow, Den checks again, keeps a copy of the file (the state folder's
+  `settings-backups/`, the newest 20), writes only that key (comments, order
+  and every other key stay) and adds an audit line naming the key, the old
+  and new values and who asked. A setting Den reads when it starts says so,
+  and the agent then asks for `den_restart_server`.
+  The backups are copies of the whole file, mode 600 in the state folder:
+  a value you later take out of `user.yml` stays in them until they roll
+  over (the newest 20 are kept).
+
+`agents.max_concurrent` is one of the agent limits set per machine in
+`user.yml` (issue 1373, above), so `setting_change` can ask for it too.
+
+With `required`, an agent whose sandbox can't apply on this machine
+doesn't start: the start says why. On Linux, Den runs `bwrap` once to
+check it works here, not only that it is installed.
+
+This first slice covers Den's state. It doesn't limit what a session can
+reach over the network on this machine, or files outside Den's state that
+you can write. Agents' messages to each other's sessions stay open inside
+it, so an agent can ask another session, which may run outside a sandbox,
+to act for it. Later slices do, when an agent runs as its own OS user.
+
+Migrating: nothing to do. Agents you start after the update run in the
+sandbox; your existing agents keep running as before until you Allow
+Turn on (or set `agents.sandbox: on`). On Linux, install `bubblewrap`
+(`bwrap`) first; without it agents start outside the sandbox and doctor
+says so, unless you set `agents.sandbox: required`.
+
+On macOS a program inside the sandbox can't start a sandbox of its own,
+so Claude Code's own Bash sandbox setting doesn't work in an agent's
+session. Den's sandbox covers that session.
 
 **The token counts only from the agent's own processes.** For each
 connection, Den finds the process on the other end (macOS: `lsof`;
@@ -4539,6 +5421,40 @@ process Den couldn't place. The audit row names both pids: the caller's
 ```yaml
 agents:
   token_peer_wait_ms: 30000 # ms, 0 to 600000
+```
+
+Den finds an agent's caller with the same lookups, so their limits
+(Settings › Server, `config process_lookup.*`) count here too:
+
+```yaml
+process_lookup:
+  first_seconds: 5 # the first try, 0.5 to 600
+  retry_seconds: 20 # the try after it ran out of time, 1 to 600
+```
+
+An attention mark Den never took (no answer, or a refusal) is written to
+the agent's own files folder (`agent-hooks-lost.jsonl`), and `doctor`
+shows a warning per agent with marks lost in the last day: how many, and
+the last reason.
+
+When Den can't place a caller, the audit row says why: the lookup timed
+out, failed, found no matching connection or more than one, or was
+still running when the wait ended. A caller that had already closed its
+connection is refused all the same, but nothing is there to answer, so
+its row says "the caller had gone" (reason `token_caller_gone`) and it
+isn't counted as a refused agent.
+
+An agent's hooks (its attention mark for the bell, the Hub inbox check)
+stay connected long enough for a busy machine to place them, and try
+again when a call fails or is turned away. These are Settings
+(Settings › Agents, or `config agent_hooks.*`, in user.yml), read when
+an agent starts:
+
+```yaml
+agent_hooks:
+  timeout_seconds: 20 # each try's wait, 1 to 600
+  retries: 2 # tries after the first, 0 to 10
+  backoff_seconds: 1 # the first pause, doubling, 0 to 60
 ```
 
 An agent's token reaches only its own session's routes, and never a
@@ -4590,7 +5506,8 @@ role: planner # a role (see Roles); a sentence here is the description
 category: engineering # see Categories; default: the role's
 description: Writes stories and their acceptance criteria. # one line
 model: some-model # optional; `inherit` means none
-version: latest # or a pinned version of the model
+model_version: latest # or a pinned version of the model (`version:` is still read; New persona and Edit write both, the same, for older Dens; doctor notes `version:` alone, or the two differing)
+persona_version: v3 # optional: a readable name for this version of the persona
 subagent_model: haiku # its subagents' model, over agents.subagents.model; `inherit`: the runtime decides
 allowed_commands: [npm test] # extra plain prefixes allowed without asking
 tools: Read, Grep # hints for the runtime; Den restricts nothing with them
@@ -4605,6 +5522,21 @@ argv: ["some-cli", "--model", "{model}", "--mcp-config", "{mcp_config}"]
 
 You are the planner. …
 ```
+
+**Editing a persona** (the Personas page's Edit, or a held
+`persona_update`) rewrites only the fields the form has: name, role,
+category, description, runtime, model and its version, mode, allowed
+commands and the instructions. Every other key in the file (`subagent_model`,
+`persona_version`, `tools`, `context`, `den_hooks` …) is kept as it was
+(issue 978).
+`persona_update` also takes `subagentModel`, written as `subagent_model`
+(issue 110: the Coach's Apply proposes it).
+
+**A persona's version** (issue 137) is the sha256 of its file, so any edit
+makes a new one; `persona_version` gives it a readable name. An agent
+records the version it started with, and while its persona's file differs,
+the agent's row says so (`personaNewer` in `/api/agents`: the new version's
+name, else its hash's first 7 characters).
 
 Den ships a default pack: `planner` and `orchestrator` (standing), `fe-dev`,
 `be-dev` and `devops` (role `sde`), `reviewer`, `tester` and `ux-designer`
@@ -4698,13 +5630,16 @@ prompt gets them). They say:
 - ask each decision as a numbered yes/no question;
 - no caveat sections, and nothing the person doesn't need in order to act;
 - read a slice of a log, or hand it to a subagent; don't poll with `sleep`;
+- don't watch GitHub with `gh pr checks --watch` or `gh run watch`: call
+  Den's `github_watch` tool, and Den tells the agent once when the checks
+  finish (one shared watcher for the install, under one API budget);
 - end a hand-back with the template below.
 
 **Hooks** (`hooks.json`, a Claude Code settings fragment) go in the agent's
 own settings file, `--settings <stateDir>/agent-files/<id>/settings.json`.
 Den never writes your `~/.claude`; your own hooks still run.
 
-- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no imports)
+- `PreToolUse` on `Bash|Read` (`pretooluse.mjs`, plain Node, no packages)
   blocks, with a reason Claude sees (exit 2):
   - reading all of a log or a large file into the conversation: a `Read`
     with no `limit`, or `cat`, `less`, or `tail` from a line (`tail +1`,
@@ -4719,8 +5654,30 @@ Den never writes your `~/.claude`; your own hooks still run.
     wait primitive. Recent Claude Code versions have their own sleep guard,
     which answers first (and also stops `sleep … &`). The sleep is blocked
     either way; Den's hook covers runtimes and versions without that guard.
-  - Nothing else. Quoted text, heredoc bodies and other tools always pass,
-    and a hook that can't read its input lets the call through.
+  - a `gh` write to a public repo whose title or body holds a listed name
+    (issue 1127): `gh pr create|edit|comment|review|merge|close|reopen`,
+    `gh issue create|edit|comment|close|reopen`, and `gh api` writes to
+    issues, pulls, comments or GraphQL mutations. The text comes from
+    `--title`, `--subject`, `--body`, `--comment`, `--body-file` (a file,
+    or `-` from a heredoc or a pipe), `-f`/`-F` `title=`/`body=` (and
+    `body=@file`) and `--input`. The list is the
+    org-name gate's (`DEN_ORG_NAMES`, `DEN_ORG_NAMES_FILE` or
+    `~/.config/den-dev/org-names.txt`); with none, nothing is checked.
+    GitHub is asked a repo's visibility only on a hit, and the answer is
+    kept 10 minutes (`--visibility-minutes`) in
+    `~/.cache/den/repo-visibility.json`. Private and internal repos pass;
+    a repo whose visibility can't be found is checked. The reason quotes
+    the agent's own phrase and offers neutral words ("the person", "the
+    project", "the company", "an internal host"), never the list. This
+    check runs with `--no-guardrails` too. A list that can't be read (a
+    missing `DEN_ORG_NAMES_FILE`, a line that isn't a valid regex) holds
+    `gh` writes with a message saying so, and the hook's other blocks
+    still run. Each list line is matched as written, so give a common
+    word its own `\b` (`\bacme\b`) to keep it from matching inside
+    other words.
+  - Nothing else. Quoted text, heredoc bodies and other tools always pass
+    (other than the `gh` writes above), and a hook that can't read its
+    input lets the call through.
 - `Stop` (`stop-hook.ts`) checks a turn's last message, which is what the
   person reads. With a `Hand-back` heading it gets the whole hand-back
   check; any other message gets the plain-writing part only (every ID
@@ -5120,43 +6077,89 @@ first match wins:
          bin: /Users/me/.local/bin/claude
    ```
 
-3. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
-   start, in the background, under a 3-second timeout. On a timeout or
-   any failure it is left out.
-4. **The server's own PATH.**
-5. **The runtime's install directories** (its catalog entry's; for
+3. **Your interactive shell's PATH**, the first choice: the CLI your
+   terminal runs. `$SHELL -ilc` is asked once, before the first search
+   (stdin closed, the answer kept), so a PATH set in an interactive
+   startup file such as `~/.zshrc` counts. Its source is
+   `interactive-shell`. Until it answers, or when it fails, the next
+   three decide.
+4. **Your login shell's PATH**: the web server asks `$SHELL -lc` once at
+   start, in the background. On a timeout or any failure it is left out.
+
+   Both asks wait at most **Settings › Agents › Shell PATH wait**
+   (`agents.shell_path_timeout_seconds` in user.yml: 10 when unset, 1 to
+   120), so a slow startup file is still read:
+
+   ```yaml
+   # config/local/user.yml
+   agents:
+     shell_path_timeout_seconds: 10
+   ```
+
+5. **The server's own PATH.**
+6. **The runtime's install directories** (its catalog entry's; for
    den-claude: `~/.local/bin`, `~/.claude/local`, `/opt/homebrew/bin`,
    `/usr/local/bin` and npm's global bin, `$npm_config_prefix/bin` and
    node's own directory). Den never runs npm to find it.
-6. **Your interactive shell's PATH**, only while a catalog runtime is
-   still not found: `$SHELL -ilc` once (stdin closed, 3-second timeout,
-   the answer kept), for a PATH set only in an interactive startup file
-   such as `~/.zshrc`. Its source is `interactive-shell`.
+
+When more than one copy is found, the first is used and the others are
+listed with the version their install says (a Homebrew keg's directory,
+npm's `package.json`). Den never runs a copy it didn't choose: only the
+copy in use gets its version command. On macOS a copy carrying the
+`com.apple.quarantine` attribute is never run either, so a scan never
+makes macOS warn; it shows "quarantined, not run" instead. The attribute
+is read with `xattr`, never by running the file.
+
+Starting an agent on a quarantined copy stops before anything runs
+(issue 479): start, resume, restart, move, persona change and relaunch
+are refused with `runtime_quarantined` (409), and an agent already
+running is never stopped for a restart that couldn't start it again.
+The refusal names the path and the choices: another copy found that
+isn't quarantined (set `agents.runtimes.<id>.bin` to it), or clear this
+one yourself (run it once from a terminal and allow it when macOS asks).
+The Start dialog says so before Start, with the path as selectable
+text and **Copy path** (the page may be a browser on another machine,
+so nothing opens a folder on the Den machine), **Open a terminal
+there** (Den's own terminal, in this browser: a shell in the project
+shown, started in the copy's folder, through
+`POST /api/workspaces/<ws>/sessions` with `{ "cwd": "<folder>" }`; a
+person only), **Use this** for each
+such copy, and **Check again**. A refused resume from an agent's row
+offers **Open Settings › Runtimes**, which opens
+`/settings?runtime=<id>#agents.runtimes` at that runtime's row (with
+`&project=<ws>` when a project's setting chose the copy). An agent
+starting another (the CLI, or MCP) gets the same refusal as its error;
+nothing retries it. Den never removes the attribute itself.
 
 Paths are this machine's only: Den reads them from `config/local` files,
 never from the distribution's config. **Settings › Agents › Runtimes**
-shows each runtime's status, version, the path in use and its source.
+shows each runtime's status, version, the path in use and its source,
+then **Also found:** the other copies, each with **Use this**, which pins
+it (`agents.runtimes.<id>.bin`, at the scope shown).
 **Set path…** runs the runtime's version command and refuses a path that
 isn't that runtime (its output, npm package or install location must name
-it); **Clear** removes it. The **Paths for** selector switches between
+it), or a quarantined file (not run); **Clear** removes it. The **Paths for** selector switches between
 every project (`user.yml`) and one project (`workspaces.yml`). Only a
 person sets a path, never an agent (`POST /api/agents/runtimes/<id>/path`,
 audited).
 
 Sessions and agents Den starts get the same directories on their PATH
 (and a configured CLI's own directory), so the runtime's own tools are
-found too. Two engine variables override the search for tests and
+found too. Engine variables override the search for tests and
 diagnosis: `DEN_LOGIN_SHELL` (the shell to ask instead of `$SHELL`; `off`
 for none) and `DEN_RUNTIME_DIRS` (a PATH-style list that replaces every
-runtime's install directories; empty for none).
+runtime's install directories; empty for none). `DEN_QUARANTINE_CHECK=off`
+reads no file as quarantined.
 
 **`<cli> agents doctor`** prints, for each runtime (installed first), its
 status, the CLI it runs and where that came from (the project's or the
 user.yml `agents.runtimes` setting, the login shell's PATH, PATH, an
 install directory, or the interactive shell's PATH), its version (`claude
---version`, run once under a timeout), the directories it searched (names
-only, never an environment value), and the fix when it's missing. It
-resolves the login shell's PATH first, as the web server does. It exits 1
+--version`, run once under a timeout, on the copy in use only; "quarantined,
+not run" for a quarantined one), each other copy found with its version
+(`also`), the directories it searched (names only, never an environment
+value), and the fix when it's missing. It resolves the login shell's PATH
+first, as the web server does. It exits 1
 when the default runtime is unavailable; `-w <ws>` uses that project's
 paths; `--json` prints what the Start dialog gets. A search list the same
 as the one above it prints once.
@@ -5329,6 +6332,90 @@ Den reads Claude Code's transcripts (`$CLAUDE_CONFIG_DIR/projects`, else
 the `usage` kind (server tier). A runtime with no reader shows "no usage
 source reads <runtime>".
 
+## GitHub watch
+
+Agents on one machine usually share one GitHub account, and its API limit
+(5000 calls an hour). When each agent runs `gh pr checks --watch` or
+`gh run watch`, they spend it together, and every project waits for the
+reset. Den runs one GitHub watcher for the install instead, in its web
+server.
+
+An agent calls `github_watch` with `repo` (one of its project's repos) and
+`pr` or `run`. Den answers at once with a watch id and where it stands. When
+the checks or the run finish, Den types one message into the agent's
+session, at its prompt (the same path as relayed messages and gate-slot
+notices): how many checks passed, failed and skipped, and each failure's
+name and URL. `github_watch_list` and `github_watch_cancel` show and stop
+the agent's own watches. A pull request is watched at the head it has when
+asked: after a new push, the agent watches again.
+
+What counts:
+
+- Only the newest run of each check on the head, as the pull request's own
+  check list shows. A re-run, a label added or an edited description starts
+  a new run of a workflow; the older run's checks, cancelled or failed, are
+  superseded and not counted. Two workflows' jobs of one name are different
+  checks, and both count: Den reads which workflow each belongs to from the
+  head's runs first. Checks of another app are never merged.
+- A cancelled check or job isn't a failure, nor a pass: it is counted as
+  cancelled ("2 passed, 0 failed, 0 skipped, 1 cancelled") and listed as
+  "Cancelled, not passed". When a pull request's checks end with some
+  cancelled, Den first looks at the pull request: a push that moved its head
+  ends the watch as replaced, with no failures listed; on the same head, the
+  result is told.
+
+How the watcher paces itself:
+
+- One loop for the install. Each round, it asks GitHub at most once per
+  repo, however many watches the repo has: one head watched, that head's
+  check runs; several, the repo's recent workflow runs in one list, then the
+  check runs of a head whose runs finished.
+- The interval starts at `github.watch_interval_seconds` (60) and doubles
+  while nothing changes, up to `github.watch_max_interval_seconds` (300). A
+  change, or a new watch, starts it again.
+- Every answer's `X-RateLimit-Remaining` and `X-RateLimit-Reset` are read
+  (`gh api -i`, as the person running Den). Under
+  `github.api_budget_floor` (500) calls left, Den asks GitHub nothing until
+  the reset, says so in each watch's note, and refuses new watches with the
+  reset time.
+- `Retry-After` is honoured, and a 403 or 429 secondary limit waits a minute
+  at least.
+- `github.watches_max` (50) watches at once, for every agent together, at
+  least. The calls left over the floor until GitHub's reset raise it (one
+  look per watch per interval, the most a watch costs), up to 1000. Past
+  it, a new watch is queued ("queued, N ahead") and starts when one ends.
+- A queued watch takes its pull request's head when it starts, not when it
+  was asked: a push in between is the head it watches.
+- A pull request's watch asks about the pull request again every 10
+  minutes at most often. When it merges or closes, or a newer push replaces
+  its head ("replaced by <sha>"), the watch ends and its agent is told once.
+  Den asks about one pull request a round per repo, never two rounds
+  running, so with N watched pull requests in one repo each is asked about
+  once every 2N rounds at most often: at a 300-second interval a merged pull
+  request's watch can hold its slot for hours.
+- A watch with no progress for `github.watch_stale_minutes` (60) ends, and
+  its agent is told why. Its slot is freed. A check (or workflow run) still
+  queued or in progress counts as progress, up to a backstop: nothing
+  changed for 4 times the bound. Time while every check waits for a
+  runner counts toward neither. The bound is never shorter than twice the
+  interval in force, so a watch doesn't go stale only because Den didn't
+  look. The note says which bound fired.
+- A run's watch reads the run and its own jobs (the latest attempt, every
+  page), never the check runs on its head commit. A re-run within the hour
+  after it was told reopens the watch, and Den tells the new attempt's
+  result. Den looks for one at most every `github.rerun_look_minutes` (5).
+  A reopened watch takes no new slot from the cap. A pull request's watch
+  reads its head's check runs past the first page of 100.
+- Any watch open longer than `github.watch_max_open_hours` (24) ends,
+  whatever its checks say, and its agent is told why. This catches a check
+  that never reports.
+
+These seven are Settings › Server rows, a person's only
+(`<cli> config github.watch_interval_seconds=60`). `<cli> doctor` and
+`<cli> github status` show one line: the calls left, the reset time, the
+open and queued watches, the oldest open watch's age, the cap now and the
+current interval.
+
 ## Gate slots: heavy test runs taken in turn
 
 One machine often runs gates for several repos and installs at once: a
@@ -5343,9 +6430,25 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 <cli> gate settings --cpu-slots 3
 ```
 
-- A `browser` run holds the machine alone. `cpu` runs share it, up to
-  `cpu_slots` (default 2), never beside a browser run. First come, first
-  served: a waiting browser run stops new cpu grants, so it can't starve.
+- `cpu` runs share the machine, up to `cpu_slots` (default 2). Browser and
+  cpu runs wait in separate lines, first come within each. Up to
+  `cpu_slots_beside_browser` (default 2) cpu runs run beside the
+  `browser` runs here; at 0 a browser run holds the machine alone. A
+  release-priority browser run allows `cpu_slots_beside_release_browser`
+  (default 0) beside it instead.
+  `local_browser_slots` (default 1) browser runs may hold the machine at
+  once, each in its own container. A browser run waiting
+  for cpu runs to drop to that number stops new cpu grants past it, so it
+  can't starve.
+- While the machine's 5-minute load average is at or above
+  `cpu_hold_load` and a release-priority browser run holds a browser slot
+  (here or on a test box), cpu asks wait (issue 1009). The default is the
+  machine's cores × 4 / 3 (24 on 18 cores); 0 turns it off. Holders are
+  never stopped, and a release-priority cpu ask goes through (a release
+  run's own next step never waits on it). A plain cpu ask is granted on the next pass once either
+  condition stops. Its line in `gate status` and on the Gate panel says
+  why: "waiting: load 38 ≥ 24 while a release run holds the browser
+  slot". Set it with `gate settings --cpu-hold-load N`, or in Settings.
 - Nothing is pre-empted. A later run only waits, and says each minute who
   holds the slot and when it should end. A live holder keeps its slot
   however long it runs.
@@ -5357,11 +6460,29 @@ other down and make timing tests fail. `<cli> gate` takes them in turn.
 - A slot whose processes are gone is taken back at once (on the next
   read): the wrapper and the command it started both count, so a wrapper
   killed with SIGKILL leaves the slot to its command until that ends.
+- A run's estimate is measured when it gives none (issue 999): the median
+  of its label's last 10 finished runs (3 or more), else of the asker's
+  last 10 runs of that kind, else 10 minutes. A given estimate over twice
+  that median is kept but flagged ("estimate 150 min; this usually takes
+  74" in `gate status` and on the Gate panel), and the queue's wait times
+  use the median. So do "past its estimate" and the bell's overrun line
+  (`overrun_bell_multiple`): a padded estimate can't keep a slot out of
+  sight. Only an MCP slot's lease still goes by the given estimate.
+  `gate status --json` gives each slot's `estimate` (given
+  or measured) and `expected` (what the queue uses), each with `from`:
+  `given`, `label`, `actor` or `default`.
 - Past its estimate plus `overrun_margin_minutes` (default 15) a run is
   flagged once (in `gate status`, on the Agents page, to `gate run`'s
   output, and in the slot log), never stopped.
-- A person ends a slot early on the Agents page (the gate chip) or with
-  `gate end`; the run is not stopped. An agent can't: the web route
+- Held past `overrun_bell_multiple` times its estimate (default 2; `gate
+settings --overrun-bell-multiple`, or Settings), a slot is one line in
+  the bell's Needs you: who holds it, what it runs, since when and its
+  estimate, with End for the person. When an agent holds it, Den types one
+  line at that agent's prompt, once per slot, to release it with
+  `gate_slot_release` or let its command finish. The line leaves the bell
+  as soon as the slot ends, however it ends (issue 993).
+- A person ends a slot early on the Agents page (the gate chip), from the
+  bell, or with `gate end`; the run is not stopped. An agent can't: the web route
   refuses an agent's token, `gate end` refuses in an agent's terminal, and
   the MCP tools give back only the agent's own slot.
 - The slots are the machine user's, shared by every install and repo, and
@@ -5373,6 +6494,100 @@ Support/den/gate-slots` on macOS, else `$XDG_STATE_HOME/den/gate-slots`
   grant carries the minutes waited, a wait the slots it waits behind, so
   Coach can count time lost to waiting. Ending a slot from a page also
   writes this install's audit, pointing to the slot log.
+
+## Secrets held out of agents
+
+Den holds secret-looking environment variables out of agent sessions
+(issue 974). It works in two layers:
+
+- **The session's own environment.** Every runtime gets this layer. A
+  variable whose name matches the list is left out of what the session
+  starts with.
+- **Each shell command.** A person's shell profile can set a token again
+  (zsh reads `~/.zshenv` for every shell). For den-claude agents, Den
+  writes `env-hold.sh` in the agent's files folder at every start. Claude
+  Code runs it before each Bash command, after the profile. It unsets every
+  matching variable, exported or not. Other runtimes get the first layer
+  only; `den doctor` says which runtimes get both.
+
+**Which installs hold them back.** A personal install (the default,
+issue 1391: one person's own machine) holds nothing back until
+`agents.env_hold` is set in `user.yml`; `den doctor` says it is off there.
+A strict install (`install_mode: strict`, in the distribution's `den.yml`
+or the person's `user.yml`) holds the default list back. The guard below
+is on in both.
+
+The match ignores case, and a name may end in `_` and a digit
+(`*_KEY` matches `AWS_KEY_2`). The default list is `*_TOKEN`, `*_SECRET`,
+`*_KEY`, `*_PASSWORD` and `OP_SESSION_*`. Den keeps only the exact names it
+set for that launch (its actor token file, its install location, and the
+signing settings it gave git). A `DEN_` prefix is no exemption. A person's
+credential (`DEN_PERSON_TOKEN`, `DEN_TEST_PERSON`, or a value holding a
+person token) is always unset, even when an allow-list names it.
+
+The settings live in `config/local`, which agents can't edit:
+
+```yaml
+# config/local/user.yml
+agents:
+  env_hold: ["*_TOKEN", "*_SECRET", "*_KEY", "*_PASSWORD", "OP_SESSION_*"]
+  env_allow: [OP_SERVICE_ACCOUNT_TOKEN] # every agent keeps these
+  env_allow_agents: # one agent keeps these
+    release-bot: [NPM_TOKEN]
+  env_guard: true # mask secret-looking values in env, printenv, set and the like
+  env_hold_existing: false # true: agents from before the hold get it too
+
+# config/local/workspaces.yml
+north:
+  agents:
+    env_allow: [NORTH_DEPLOY_KEY] # this project's agents keep these
+```
+
+The three allow levels add up. `env_hold: []` holds nothing back on any
+install, and `den doctor` says so. These keys in a distribution's `den.yml` are refused,
+with a message naming `user.yml`.
+
+**The guard.** These commands run, and show the values of secret-looking
+names masked, as `NAME=•••• (held)`: `env`, `printenv`, `printenv NAME`,
+`set`, `export -p`, `declare -x` and `-p`, `typeset -x` and `-p`, and the
+same through `builtin`, `command`, `\env` or `/usr/bin/env`, anywhere in a
+pipeline or list. A PreToolUse hook rewrites the printing part into
+`{ <it>; } | <Den's masker>`, ahead of any pipe or redirect, so a later
+stage or a file (`env > f`) gets the masked text too. The masked names are
+the hold's list (`agents.env_hold`, else the default, on a personal
+install too) and a person's credentials, by name or by value. A mask keeps
+no part of a value: no prefix, suffix or length.
+
+The guard stops a secret being printed into a transcript by accident. It
+is not a boundary: an interpreter, `ps eww`, `$VAR` or `eval` still read a
+value, and the masking covers only the commands listed. The hold is the
+real control, on a strict install: a held name isn't in the session at
+all. `env_guard: false` turns the guard off.
+
+The script reads the shell's own variable list (zsh's parameters, bash's
+`compgen -v`, and `set` in a plain sh such as dash), so it finds a
+variable the profile set without exporting it.
+
+**Limits.**
+
+- A Claude Code SessionStart hook that writes its own env file runs after
+  `env-hold.sh`, so a variable such a hook exports is not held back.
+- Den keeps its own `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n` and
+  `GIT_CONFIG_VALUE_n` by name. A profile that sets `GIT_CONFIG_COUNT`
+  higher than Den's has its extra keys held back, and git then stops on the
+  missing key. Remove that from the profile, or give git those settings in
+  a config file.
+
+**Rollout.** Agents started after the update have the hold. An agent from
+before keeps its environment until a person turns it on. Den asks once in
+the bell with two held writes, each run only by the person's own Allow:
+
+- **Keep these** adds the named variables to `agents.env_allow` and turns
+  the hold on. A person's credential is never offered.
+- **Remove** sets `agents.env_hold_existing: true`.
+
+Each agent changes at its next start. Until then, `den doctor` lists each
+agent from before the hold with the names it still gets.
 
 ## Pinning and upgrading
 

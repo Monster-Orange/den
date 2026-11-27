@@ -28,6 +28,8 @@ import * as path from "path";
 import * as yaml from "yaml";
 import type { Browser, Page } from "playwright";
 import { spawnServer, stopServer } from "../../child-servers.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = process.cwd();
 const PORT = 23876 + Math.floor(Math.random() * 1000);
@@ -65,10 +67,21 @@ function snapshot(): Record<string, string> {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) walk(abs);
-      else if (e.isFile())
+      else if (e.isFile()) {
+        // The running server writes its own state atomically (a .tmp file
+        // renamed into place), so a file listed here can be gone a moment
+        // later: it was never there to compare.
+        let body: Buffer;
+        try {
+          body = fs.readFileSync(abs);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw err;
+        }
         out[path.relative(tmp, abs)] = createHash("sha256")
-          .update(fs.readFileSync(abs))
+          .update(body)
           .digest("hex");
+      }
     }
   };
   walk(tmp);
@@ -92,7 +105,7 @@ const changedSince = (before: Record<string, string>) => {
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -194,10 +207,15 @@ afterAll(async () => {
 /** A page on /settings that records every POST it sends. */
 async function open(
   url = "/settings",
+  /** Runs once the browser is signed in, before the page loads. */
+  signedIn?: () => void,
 ): Promise<{ p: Page; posts: { url: string; body: unknown }[] }> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  // The person's browser, signed in as `web up` does (0.4.71).
+  await signIn(ctx, path.join(tmp, "home", ".den"), BASE);
+  signedIn?.();
   const p = await ctx.newPage();
   const posts: { url: string; body: unknown }[] = [];
   p.on("request", (r) => {
@@ -252,8 +270,13 @@ describe("the Settings page writes only what you change (R21)", () => {
     // state included), and changedSince leaves Den's state aside. The
     // 500 ms sleep here predates that filter. A late start-up write to a
     // config file would show as a change, never be hidden.
-    const before = snapshot();
-    const { p, posts } = await open();
+    // Taken once the browser is signed in: the sign-in's own audit rows
+    // (the grant, the request, its approval) are this test's setup, not
+    // what loading the page writes.
+    let before: Record<string, string> = {};
+    const { p, posts } = await open("/settings", () => {
+      before = snapshot();
+    });
 
     // The page header, the labelled search, the category nav.
     expect(await p.textContent(".ph h1")).toBe("Settings");
@@ -289,9 +312,13 @@ describe("the Settings page writes only what you change (R21)", () => {
     expect(await p.getAttribute("#set-count", "aria-live")).toBe("polite");
     await q.fill("terminal");
     // 0.4.46: Agents › the terminals' three reconnect limits match too,
-    // and (den#156) the Agents list's wait for the terminal host.
-    expect(await sectionIds(p)).toEqual(["editor", "agents", "cli"]);
-    expect(await p.textContent("#set-count")).toBe("6 settings match");
+    // and (den#156) the Agents list's wait for the terminal host. Issue
+    // 532: Server › the five terminal limits. Issue 1311: Agents › the
+    // draft hold (an agent's terminal). Issue 1373: Agents › Agents at
+    // once (plain terminals never count against it). Issue 1371 Part 2:
+    // Agents › Agents changing settings: Integrations (editors, terminals).
+    expect(await sectionIds(p)).toEqual(["editor", "agents", "server", "cli"]);
+    expect(await p.textContent("#set-count")).toBe("16 settings match");
     expect(new URL(p.url()).searchParams.get("q")).toBe("terminal");
     expect(
       await p.$$eval("#cat-editor .set-row", (r) =>
@@ -555,6 +582,8 @@ describe("the Settings page's rows (R21)", () => {
       const ctx = await browser.newContext({
         viewport: { width: 1440, height: 900 },
       });
+      // Signed in, as `web up` does (0.4.71).
+      await signIn(ctx, path.join(tmp, "home", ".den"), BASE);
       const p = await ctx.newPage();
       await p.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
       await p.goto(BASE + "/local-dev");
@@ -848,6 +877,8 @@ describe("one h1 per page (the brand is not a heading)", () => {
       const ctx = await browser.newContext({
         viewport: { width: 1440, height: 900 },
       });
+      // Signed in, as `web up` does (0.4.71).
+      await signIn(ctx, path.join(tmp, "home", ".den"), BASE);
       const p = await ctx.newPage();
       await p.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
       await p.goto(BASE + url);

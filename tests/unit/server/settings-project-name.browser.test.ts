@@ -12,12 +12,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -28,11 +29,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -93,7 +90,7 @@ async function page(
   });
   for (const [glob, h] of Object.entries(extra))
     await p.route(glob, (r) => h(r) as Promise<void>);
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings?ws=north#workspace"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings?ws=north#workspace");
   await p.waitForSelector(`${ROW} [data-pname]`);
   return p;
 }

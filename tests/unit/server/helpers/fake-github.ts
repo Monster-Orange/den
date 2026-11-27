@@ -8,6 +8,7 @@
  *                                   approves (as an account), denies, or
  *                                   expires the code; then a token, once
  *   GET  /user                      the approving account's id and login
+ *   GET  /users/<login>             a public profile (`profiles`), no token
  *
  * It records every request's form fields, so a test can check that no
  * client secret and no scope (offline_access least of all) was ever sent.
@@ -64,6 +65,8 @@ export interface FakeGithub {
   orgs: Record<string, Record<string, "public" | "private">>;
   /** The token may read its own org membership (default true). */
   membershipReadable: boolean;
+  /** Public profiles by login (`GET /users/<login>`, no token); else 404. */
+  profiles: Record<string, FakeAccount>;
   close(): Promise<void>;
 }
 
@@ -76,6 +79,7 @@ export async function startFakeGithub(
   const refreshTokens: string[] = [];
   const state = { expiring: false, readable: true };
   const orgs: FakeGithub["orgs"] = {};
+  const profiles: FakeGithub["profiles"] = {};
   const find = (userCode: string) => {
     const c = codes.find((x) => x.userCode === userCode);
     if (!c) throw new Error("no such user code");
@@ -166,6 +170,17 @@ export async function startFakeGithub(
           type: "User",
         });
       }
+      const prof = /^\/users\/([^/?]+)$/.exec(req.url ?? "");
+      if (req.method === "GET" && prof) {
+        const a = profiles[decodeURIComponent(prof[1]).toLowerCase()];
+        if (!a) return send(404, { message: "Not Found" });
+        return send(200, {
+          id: a.id,
+          login: a.login,
+          name: a.name ?? null,
+          type: "User",
+        });
+      }
       const mine = /^\/user\/memberships\/orgs\/([^/]+)$/.exec(req.url ?? "");
       const pub = /^\/orgs\/([^/]+)\/members\/([^/]+)$/.exec(req.url ?? "");
       if (req.method === "GET" && (mine || pub)) {
@@ -215,6 +230,7 @@ export async function startFakeGithub(
     },
     refreshTokens,
     orgs,
+    profiles,
     get membershipReadable() {
       return state.readable;
     },

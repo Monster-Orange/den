@@ -17,12 +17,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -33,7 +34,7 @@ const STOPPED_AT = "2026-11-06T10:00:00.000Z";
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -85,7 +86,7 @@ async function open(ws: string): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}`));
+  await signInPage(p, s!.stateDir, s!.base, `/agents?ws=${ws}`);
   await p.waitForSelector("#agl:not([aria-busy]) .agnote, #agl .none", {
     timeout: 20_000,
   });
@@ -94,16 +95,14 @@ async function open(ws: string): Promise<Page> {
 
 const note = (p: Page) => p.locator('#agl .agnote[data-note="inactive"]');
 const listed = (p: Page) =>
-  p
-    .locator("#agl .agst, #agl .agr")
-    .evaluateAll((els) =>
-      els
-        .filter((e) => e.matches(".agst") || !e.closest(".agst"))
-        .map(
-          (e) =>
-            `${((e.closest(".agst") ?? e.closest(".wsg")) as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
-        ),
-    );
+  p.locator("#agl div[data-state][data-ws], #agl button[data-id][data-kind]").evaluateAll((els) =>
+    els
+      .filter((e) => e.matches("div[data-state][data-ws]") || !e.closest("div[data-state][data-ws]"))
+      .map(
+        (e) =>
+          `${((e.closest("div[data-state][data-ws]") ?? e.closest("[data-ws]")) as HTMLElement | null)?.dataset.ws}/${(e as HTMLElement).dataset.agent ?? (e as HTMLElement).dataset.id}`,
+      ),
+  );
 
 describe("?ws= for a workspace that isn't active", () => {
   it("says so in one line, lists only that workspace, and Clear stopped sends exactly it", async () => {

@@ -4,14 +4,34 @@
  */
 import { prepareAccessRaw } from "./access-sweep.js";
 import * as fs from "fs";
-import * as net from "net";
 import * as path from "path";
+import * as yaml from "yaml";
 import { writeFileAtomic } from "../atomic-write.js";
 import { must, sh } from "./exec.js";
 import { readWebPort } from "./config.js";
-import { ensureEdgeProof, readEdgeProof, rotateEdgeProof } from "./proof.js";
+import { probeIdentity } from "../den-identity.js";
+import { getStateDir } from "../paths.js";
+import { portInUse as portInUseAnywhere } from "../port-pick.js";
+import { product } from "../product.js";
+import { denWebBase } from "../web/web-dial.js";
 import {
+  addressCheckSettings,
+  cliLanguage,
+  localIdentityKey,
+  serverName,
+} from "./address-check.js";
+import { addressWord } from "./address-words.js";
+import { portOwner, type PortOwner } from "./port-owner.js";
+import {
+  ensureEdgeProof,
+  readEdgeProof,
+  releaseEdgeTrust,
+  rotateEdgeProof,
+} from "./proof.js";
+import {
+  commandServesApi,
   droppedEdgeArgs,
+  EDGE_PROOF_MIDDLEWARE_PREFIX,
   EDGE_ROOT_LABEL,
   edgeCommand,
   accessLogNoTraceNotice,
@@ -19,6 +39,7 @@ import {
   edgeNames,
   renderEdgeCompose,
   renderEdgeDynamic,
+  webRouteHosts,
 } from "./render.js";
 import {
   assertCaUsable,
@@ -50,35 +71,162 @@ function write(file: string, content: string): void {
 }
 
 /**
- * H1: the generated edge.yml carries the edge's proof: 0600, and replaced
  * whole (a rename), so Traefik's watch never reads half of it.
  */
 function writeSecret(file: string, content: string): void {
   writeFileAtomic(file, content, { mode: 0o600 });
 }
 
-/**
- * H1 (0.4.48): at Den's start, an edge set up here whose edge.yml lacks the
- * current proof (set up before 0.4.48, or rotated) gets it: the file only,
- * which Traefik reloads by itself; nothing restarts. No edge.yml here: no
- * edge to sync (and no proof is made).
- */
+export const EDGE_DYNAMIC_FILE = "000-den.yml";
+
+export const LEGACY_DYNAMIC_FILE = "edge.yml";
+
+export const edgeDynamicFile = (stateDir: string): string =>
+  path.join(stateDir, "dynamic", EDGE_DYNAMIC_FILE);
+
+export function readEdgeDynamic(stateDir: string): string | null {
+  for (const f of [EDGE_DYNAMIC_FILE, LEGACY_DYNAMIC_FILE])
+    try {
+      return fs.readFileSync(path.join(stateDir, "dynamic", f), "utf8");
+    } catch {
+      /* the next name */
+    }
+  return null;
+}
+
+function writeEdgeDynamic(stateDir: string, text: string): void {
+  writeSecret(edgeDynamicFile(stateDir), text);
+  fs.rmSync(path.join(stateDir, "dynamic", LEGACY_DYNAMIC_FILE), {
+    force: true,
+  });
+}
+
 export function syncEdgeProof(
   cfg: EdgeConfig,
   ports: ReadonlySet<number>,
-): "written" | "current" | "no-edge" {
-  const file = path.join(cfg.stateDir, "dynamic", GENERATED);
-  let now: string;
-  try {
-    now = fs.readFileSync(file, "utf8");
-  } catch {
-    return "no-edge";
-  }
+): "written" | "rotated" | "current" | "no-edge" {
+  if (readEdgeDynamic(cfg.stateDir) === null) return "no-edge";
   const have = readEdgeProof(cfg.stateDir);
-  if (have && now.includes(have)) return "current";
   const proof = ensureEdgeProof(cfg.stateDir);
-  writeSecret(file, renderEdgeDynamic(cfg, { proof, ports }));
-  return "written";
+  const want = renderEdgeDynamic(cfg, { proof, ports });
+  let now: string | null = null;
+  try {
+    now = fs.readFileSync(edgeDynamicFile(cfg.stateDir), "utf8");
+  } catch {
+    /* not under its own name yet */
+  }
+  if (have === proof && now === want) return "current";
+  writeEdgeDynamic(cfg.stateDir, want);
+  return have && proof !== have ? "rotated" : "written";
+}
+
+/**
+ * Issue 728: the marker that the edge's proof was rotated once after agents
+ * lost read access to the edge's state folder. In that folder, so installs
+ * sharing one edge rotate it once. No secret in it.
+ */
+const ROTATED = "proof-rotated.json";
+
+/** When the once-only rotation ran, or null if it hasn't. */
+export function edgeProofRotation(cfg: Pick<EdgeConfig, "stateDir">): {
+  rotatedAt: string | null;
+} {
+  try {
+    const v = JSON.parse(
+      fs.readFileSync(path.join(cfg.stateDir, ROTATED), "utf8"),
+    ) as { at?: unknown };
+    return { rotatedAt: typeof v.at === "string" ? v.at : null };
+  } catch {
+    return { rotatedAt: null };
+  }
+}
+
+/**
+ * itself: nothing restarts and sessions are kept (until Traefik reloads,
+ * a few seconds, edge requests aren't proved, so a page loaded then asks to
+ * sign in). No proof yet (an edge never started here): nothing is
+ * written, not even the marker; a proof made later is made after agents
+ * lost read access, and one that turns up unmarked is rotated once.
+ * last: a crash between them fails closed (edge requests stop proving, so
+ * people sign in), the next start's syncEdgeProof puts the current proof in
+ * check re-reads the proof file when it changes: no restart.
+ */
+export function rotateEdgeProofOnce(
+  cfg: EdgeConfig,
+  ports: ReadonlySet<number>,
+  now: Date = new Date(),
+): "rotated" | "done" | "no-edge" {
+  if (edgeProofRotation(cfg).rotatedAt) return "done";
+  if (readEdgeProof(cfg.stateDir) === null) return "no-edge";
+  const proof = rotateEdgeProof(cfg.stateDir);
+  if (readEdgeDynamic(cfg.stateDir) !== null)
+    writeEdgeDynamic(cfg.stateDir, renderEdgeDynamic(cfg, { proof, ports }));
+  markEdgeProofRotated(cfg, now);
+  return "rotated";
+}
+
+export function markEdgeProofRotated(
+  cfg: Pick<EdgeConfig, "stateDir">,
+  now: Date = new Date(),
+): void {
+  writeFileAtomic(
+    path.join(cfg.stateDir, ROTATED),
+    JSON.stringify({ at: now.toISOString(), rotated: true }) + "\n",
+    { mode: 0o600 },
+  );
+}
+
+/**
+ * Issue 728: the rotation as Den's start runs it. No edge config here is
+ * quiet ("no-config"); a config whose rotation throws (a write refused,
+ * say) is warned with the reason, never swallowed ("failed"), and the next
+ * start tries again (no marker was written).
+ */
+export function rotateEdgeProofAtStart(o: {
+  readConfig: () => EdgeConfig;
+  ports: ReadonlySet<number>;
+  now?: Date;
+  rotate?: typeof rotateEdgeProofOnce;
+  onRotated: () => void;
+  warn: (message: string) => void;
+}): "rotated" | "done" | "no-edge" | "no-config" | "failed" {
+  let cfg: EdgeConfig;
+  try {
+    cfg = o.readConfig();
+  } catch {
+    return "no-config";
+  }
+  try {
+    const r = (o.rotate ?? rotateEdgeProofOnce)(cfg, o.ports, o.now);
+    if (r === "rotated") o.onRotated();
+    return r;
+  } catch (e) {
+    o.warn(
+      `the edge's proof was not rotated (the next start tries again): ${(e as Error).message}`,
+    );
+    return "failed";
+  }
+}
+
+/**
+ * Issue 728: the stacks (their Compose project folders) holding generated
+ * secrets in the edge's state folder, which agents could read before. Only
+ * names: never a value. They're never regenerated here (that would lock a
+ * stack out of its data); doctor names each for its project's agent.
+ */
+export function stacksWithGeneratedSecrets(
+  cfg: Pick<EdgeConfig, "stateDir">,
+): string[] {
+  const root = path.join(cfg.stateDir, "stacks");
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  return names
+    .filter((n) => fs.existsSync(path.join(root, n, "generated.env")))
+    .sort();
 }
 
 function ensureNetwork(name: string): void {
@@ -91,15 +239,13 @@ export function containerState(name: string): string {
   return r.code === 0 ? r.out : "absent";
 }
 
-/** True when something on 127.0.0.1 accepts connections on `port`. */
-export function portInUse(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const s = net.connect({ host: "127.0.0.1", port });
-    s.once("connect", () => (s.destroy(), resolve(true)));
-    s.once("error", () => resolve(false));
-    s.setTimeout(500, () => (s.destroy(), resolve(false)));
-  });
-}
+/**
+ * Whether something holds `port` here, in any address family (issue 455:
+ * port-pick.ts's one check; the edge's own 127.0.0.1-only copy missed an
+ * IPv6-only or one-interface listener).
+ */
+export const portInUse = (port: number): Promise<boolean> =>
+  portInUseAnywhere(port);
 
 // ── Certificates (the edge.tls strategy, see tls.ts) ────────────────────────
 
@@ -124,15 +270,17 @@ export function untrustCa(cfg: EdgeConfig): number {
 
 // ── Included dynamic config ─────────────────────────────────────────────────
 
-const GENERATED = "edge.yml";
-
 /** The dynamic-config files in `dir` to copy in (top level, YAML only). */
 export function includeFiles(dir: string | null): string[] {
   if (!dir) return [];
   return fs
     .readdirSync(dir, { withFileTypes: true })
     .filter(
-      (e) => e.isFile() && /\.ya?ml$/.test(e.name) && e.name !== GENERATED,
+      (e) =>
+        e.isFile() &&
+        /\.ya?ml$/.test(e.name) &&
+        e.name !== EDGE_DYNAMIC_FILE &&
+        e.name !== LEGACY_DYNAMIC_FILE,
     )
     .map((e) => e.name)
     .sort();
@@ -150,7 +298,7 @@ export const isStackRoutes = (f: string): boolean =>
 
 /** Files other writers own in the dynamic directory: never copied over or pruned. */
 export const isOwnedElsewhere = (f: string): boolean =>
-  f === GENERATED || isStackRoutes(f);
+  f === EDGE_DYNAMIC_FILE || f === LEGACY_DYNAMIC_FILE || isStackRoutes(f);
 
 function readLedger(stateDir: string): string[] {
   try {
@@ -163,6 +311,56 @@ function readLedger(stateDir: string): string[] {
   }
 }
 
+const NAMED_SECTIONS = [
+  "routers",
+  "services",
+  "middlewares",
+  "serversTransports",
+] as const;
+
+function denDynamicNames(cfg: EdgeConfig): Set<string> {
+  const doc = yaml.parse(renderEdgeDynamic(cfg)) as {
+    http?: Record<string, Record<string, unknown> | undefined>;
+  };
+  const out = new Set<string>();
+  for (const sec of NAMED_SECTIONS)
+    for (const n of Object.keys(doc.http?.[sec] ?? {})) out.add(`${sec}.${n}`);
+  return out;
+}
+
+function assertIncludeAllowed(
+  dir: string,
+  f: string,
+  reserved: ReadonlySet<string>,
+): void {
+  if (f < EDGE_DYNAMIC_FILE)
+    throw new Error(
+      `edge.include: ${f} sorts before ${EDGE_DYNAMIC_FILE}, Den's own dynamic file, so Traefik would read it first and its names would win over Den's. Rename it (e.g. so it starts with a letter).`,
+    );
+  const text = fs.readFileSync(path.join(dir, f), "utf8");
+  if (text.toLowerCase().includes(EDGE_PROOF_MIDDLEWARE_PREFIX))
+    throw new Error(
+      `edge.include: ${f} names ${EDGE_PROOF_MIDDLEWARE_PREFIX}, the middleware that adds the edge's proof; only Den's own route carries it. Remove it from the file.`,
+    );
+  let doc: unknown;
+  try {
+    doc = yaml.parse(text);
+  } catch {
+    return;
+  }
+  const http = (doc as { http?: unknown } | null)?.http;
+  if (!http || typeof http !== "object") return;
+  for (const sec of NAMED_SECTIONS) {
+    const names = (http as Record<string, unknown>)[sec];
+    if (!names || typeof names !== "object") continue;
+    for (const n of Object.keys(names))
+      if (reserved.has(`${sec}.${n}`) || /^den-/i.test(n))
+        throw new Error(
+          `edge.include: ${f} defines http.${sec}.${n}, a name Den's own config uses; Den's definition must be the only one. Rename it.`,
+        );
+  }
+}
+
 /**
  * Copy the included files beside the generated one, then drop copies whose
  * source is gone. Only files a previous sync copied in (its ledger) are ever
@@ -172,8 +370,10 @@ function readLedger(stateDir: string): string[] {
  */
 export function syncIncluded(cfg: EdgeConfig): string[] {
   const dyn = path.join(cfg.stateDir, "dynamic");
-  fs.mkdirSync(dyn, { recursive: true });
   const files = includeFiles(cfg.include).filter((f) => !isOwnedElsewhere(f));
+  const reserved = denDynamicNames(cfg);
+  for (const f of files) assertIncludeAllowed(cfg.include!, f, reserved);
+  fs.mkdirSync(dyn, { recursive: true });
   for (const f of files)
     fs.copyFileSync(path.join(cfg.include!, f), path.join(dyn, f));
   for (const f of readLedger(cfg.stateDir))
@@ -320,6 +520,98 @@ export function edgeUpNotices(
   return out;
 }
 
+/** What edgeUp's port check needs; each part has a default (tests swap them). */
+export interface EdgePortCheck {
+  /** The identity key (identityKey(web.secret)); null: nothing proves. */
+  key?: Buffer | null;
+  /** Den's web port here. */
+  webPort?: number;
+  probe?: typeof probeIdentity;
+  owner?: (port: number) => PortOwner | null;
+  inUse?: (port: number) => Promise<boolean>;
+  state?: (container: string) => string;
+  log?: (line: string) => void;
+}
+
+function heldText(port: number, o: PortOwner | null, title: string): string {
+  const lang = cliLanguage();
+  return o
+    ? addressWord(lang, "edgeHeld", {
+        port,
+        owner: o.owner,
+        kind: addressWord(
+          lang,
+          o.kind === "container" ? "kind.container" : "kind.process",
+        ),
+        name: o.name,
+        title,
+      })
+    : addressWord(lang, "edgeHeldUnknown", { port, title });
+}
+
+/**
+ * Issue 455: the edge's host ports, on every `up`. The edge down: each
+ * port must be free in every address family (port-pick.ts), and what
+ * holds one is named. The edge running: its http port must answer as
+ * this Den through Den's own route (the identity probe); when something
+ * else answers, and it isn't this edge's container, `up` stops and says
+ * what answered. With Den's web server not answering, nothing can be
+ * proven: that is said, and `up` goes on.
+ */
+export async function assertEdgePorts(
+  cfg: EdgeConfig,
+  c: EdgePortCheck = {},
+): Promise<void> {
+  if (!cfg.ports) return;
+  const n = edgeNames(cfg.org);
+  const title = product().title;
+  const owner = c.owner ?? portOwner;
+  const inUse = c.inUse ?? portInUse;
+  const running = (c.state ?? containerState)(n.container) === "running";
+  if (!running) {
+    for (const p of [cfg.ports.http, cfg.ports.https])
+      if (await inUse(p))
+        throw new Error(
+          `${heldText(p, owner(p), title)} ` +
+            `port ${p} is already in use. Free it, pick other ports ` +
+            `(edge.http_port / edge.https_port in config/local/user.yml), or ` +
+            `set edge.publish: false if another proxy forwards to ${n.container}.`,
+        );
+    return;
+  }
+  const webPort = c.webPort ?? readWebPort();
+  const key = c.key === undefined ? localIdentityKey(getStateDir()) : c.key;
+  const host = webRouteHosts(cfg, new Set([webPort]))[0]?.host;
+  if (!key || !host) return;
+  const probe = c.probe ?? probeIdentity;
+  const s = addressCheckSettings();
+  const opts = { key, timeoutMs: s.timeoutMs, retries: s.retries };
+  const lang = cliLanguage();
+  const own = await probe(denWebBase(webPort), opts);
+  if (!own.ok) {
+    (c.log ?? ((l: string) => console.log(l)))(
+      addressWord(lang, "doctor.unchecked", { title }),
+    );
+    return;
+  }
+  const p = cfg.ports.http;
+  const via = await probe(`http://${host}${p === 80 ? "" : `:${p}`}`, opts);
+  if (via.ok || !via.other) return;
+  const o = owner(p);
+  // This edge's own container answering (its route not written yet): up
+  // writes it.
+  if (o?.kind === "container" && o.name === n.container) return;
+  throw new Error(
+    addressWord(lang, "edgeNotDen", {
+      port: p,
+      title,
+      what: o
+        ? `${o.owner} (${addressWord(lang, o.kind === "container" ? "kind.container" : "kind.process")} ${o.name})`
+        : (serverName(via.other.server) ?? `HTTP ${via.other.status}`),
+    }),
+  );
+}
+
 export async function edgeUp(
   cfg: EdgeConfig,
   opts: {
@@ -327,21 +619,16 @@ export async function edgeUp(
     log?: (line: string) => void;
     /** H1: a new edge proof; the old one stops working at once. */
     rotateProof?: boolean;
+    /** Issue 455: the port check's parts (tests). */
+    check?: EdgePortCheck;
   } = {},
 ) {
   // Before anything is written or started: an edge of this name that
   // another state dir owns is never replaced.
   assertEdgeOwnedHere(cfg, opts);
   const n = edgeNames(cfg.org);
-  if (cfg.ports && containerState(n.container) !== "running") {
-    for (const p of [cfg.ports.http, cfg.ports.https])
-      if (await portInUse(p))
-        throw new Error(
-          `port ${p} is already in use. Free it, pick other ports ` +
-            `(edge.http_port / edge.https_port in config/local/user.yml), or ` +
-            `set edge.publish: false if another proxy forwards to ${n.container}.`,
-        );
-  }
+  // Issue 455: on every up, not only when the edge is down.
+  if (cfg.ports) await assertEdgePorts(cfg, opts.check);
   assertCaUsable(cfg);
   warnImplicitTlsOnce(cfg);
   ensureNetwork(n.network);
@@ -360,12 +647,17 @@ export async function edgeUp(
   const included = syncIncluded(cfg);
   // #63: Den makes the raw access file (0600) so Traefik never does.
   if (cfg.accessLog?.enabled) prepareAccessRaw(cfg.stateDir);
+  const running = inspectEdge(n.container);
+  const servedApi =
+    !!running?.running && commandServesApi(running.spec.command);
+  if (servedApi) must("docker", ["stop", n.container]);
   // H1: the proof Den's own route carries (made once, or a new one).
-  const proof = opts.rotateProof
-    ? rotateEdgeProof(cfg.stateDir)
-    : ensureEdgeProof(cfg.stateDir);
-  writeSecret(
-    path.join(cfg.stateDir, "dynamic", GENERATED),
+  const proof =
+    opts.rotateProof || servedApi
+      ? rotateEdgeProof(cfg.stateDir)
+      : ensureEdgeProof(cfg.stateDir);
+  writeEdgeDynamic(
+    cfg.stateDir,
     renderEdgeDynamic(cfg, { proof, ports: new Set([readWebPort()]) }),
   );
   const compose = path.join(cfg.stateDir, "compose.yml");
@@ -375,7 +667,7 @@ export async function edgeUp(
   // (image, ports, command flags, mounts, networks), said before compose
   // recreates it, and what happened after.
   const root = realOrSelf(cfg.stateDir);
-  const before = inspectEdge(n.container);
+  const before = servedApi ? inspectEdge(n.container) : running;
   const changes = before
     ? edgeSpecChanges(
         before.spec,
@@ -399,6 +691,7 @@ export async function edgeUp(
     { began, ended: Date.now() },
   );
   log(edgeUpLine(outcome));
+  releaseEdgeTrust(cfg.stateDir);
   return { certs, included, outcome };
 }
 

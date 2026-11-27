@@ -32,8 +32,12 @@ import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
 import { denAuth } from "./helpers/den-auth.js";
+import { signIn } from "./helpers/signed-in.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { pageImport } from "./helpers/page-import.js";
+import { launchBrowser } from "../helpers/browser.js";
+import { writeHostRefreshState } from "../../../src/shared/sessions/host-refresh-state.js";
+import { writeCheckState } from "../../../src/shared/update-check-state.js";
 
 const ENGINE = process.cwd();
 let PORT = 0;
@@ -81,8 +85,21 @@ function request(
 }
 
 /**
+ * Issue 748: the server's own state, which it writes on a timer, whatever a
+ * settings change does: the host refresh (host-refresh-state.ts) and the
+ * update check (update-check-state.ts). Paths are relative to tmp.
+ */
+const SERVER_TIMER_FILES = new Set([
+  path.join("home", ".den", "host-refresh.json"),
+  path.join("home", ".den", "server-agent", "update", "check.json"),
+]);
+
+/**
  * Every file of Den's (the distribution, and Den's state home DEN_HOME)
- * → sha256. Not the rest of the throwaway HOME: other tools' state.
+ * → sha256. Not the rest of the throwaway HOME: other tools' state. Not
+ * the server's timer writes (SERVER_TIMER_FILES), and not a lock folder
+ * (`<name>.lock/`): another part of Den takes and drops one while it
+ * writes its own file, so one can appear or vanish during any request.
  */
 function snapshot(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -90,8 +107,9 @@ function snapshot(): Record<string, string> {
     if (!fs.existsSync(dir)) return;
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const abs = path.join(dir, e.name);
-      if (e.isDirectory()) walk(abs);
-      else if (e.isFile())
+      if (e.isDirectory()) {
+        if (!e.name.endsWith(".lock")) walk(abs);
+      } else if (e.isFile() && !SERVER_TIMER_FILES.has(path.relative(tmp, abs)))
         out[path.relative(tmp, abs)] = createHash("sha256")
           .update(fs.readFileSync(abs))
           .digest("hex");
@@ -182,7 +200,21 @@ beforeAll(async () => {
   );
   server = started.server;
   PORT = started.port;
-}, 60_000);
+  const refresh = path.join(tmp, "home", ".den", "host-refresh.json");
+  const until = Date.now() + 30_000;
+  while (Date.now() < until) {
+    try {
+      if (
+        (JSON.parse(fs.readFileSync(refresh, "utf-8")) as { endedAt?: string })
+          .endedAt
+      )
+        break;
+    } catch {
+      /* not written yet */
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}, 90_000);
 
 afterAll(async () => {
   await stopServer(server ?? undefined);
@@ -307,6 +339,27 @@ describe("switching theme or mode (criterion 5)", () => {
     await request("POST", "/api/settings", { appearance: { theme: null } });
   });
 
+  // Issue 748: the server writes its own state on a timer (the host
+  // refresh, the update check). Such a write landing between two snapshots
+  // is not a settings change.
+  it("a timer write of the server's own state between snapshots isn't a change", async () => {
+    const before = snapshot();
+    const stateDir = path.join(tmp, "home", ".den");
+    writeHostRefreshState(stateDir, {
+      state: "waiting",
+      startedAt: new Date().toISOString(),
+      waitSeconds: 30,
+      pid: process.pid,
+      by: "start",
+    });
+    writeCheckState(stateDir, { everyMinutes: 60, next: null });
+    const r = await request("POST", "/api/settings", {
+      appearance: { theme: "nope" },
+    });
+    expect(r.status).toBe(400);
+    expect(snapshot()).toEqual(before);
+  });
+
   it("refuses a theme that is not installed, writing nothing", async () => {
     const before = snapshot();
     const r = await request("POST", "/api/settings", {
@@ -397,13 +450,22 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
     const before = snapshot();
 
     for (const shell of [
-      { pins: ["shop"] },
-      { pins: ["shop", "billing/api"] },
+      // Issue 402: a pin is { item, project } (null: none).
+      { pins: [{ item: "shop", project: null }] },
+      {
+        pins: [
+          { item: "shop", project: null },
+          { item: "billing/api", project: null },
+        ],
+      },
       { collapsed: true },
-      { pins: ["billing/api"], collapsed: false },
+      { pins: [{ item: "billing/api", project: null }], collapsed: false },
       // Navigation (R21): hide a page, reorder pages.
       { hidden: ["tests", "release"] },
       { order: ["logs", "services", "local-dev"] },
+      // Issue 168: a project's colour, the person's own.
+      { projectColours: { shop: "teal", ledger: "gold" } },
+      { projectColours: { ledger: null } },
       { hidden: ["tests"] },
     ]) {
       const r = await request("POST", "/api/settings", { shell });
@@ -413,7 +475,7 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       shell: unknown;
     };
     expect(got.shell).toEqual({
-      pins: ["billing/api"],
+      pins: [{ item: "billing/api", project: null }],
       collapsed: false,
       hidden: ["tests"],
       order: ["logs", "services", "local-dev"],
@@ -422,12 +484,22 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       dockHeight: 0,
       // Manage projects' order (0.4.45): none set, unwritten.
       projectOrder: [],
+      // Folded rail sections (issue 1444): none, unwritten.
+      folded: [],
+      // Project colours (issue 168): the one chosen; null is Automatic.
+      projectColours: { shop: "teal" },
     });
+    // The picker and every page read them with the projects.
+    const ws = JSON.parse((await request("GET", "/api/workspaces")).body) as {
+      projectColours?: unknown;
+    };
+    expect(ws.projectColours).toEqual({ shop: "teal" });
     // A bad pin or page id is refused and writes nothing.
     for (const shell of [
       { pins: ["../etc"] },
       { hidden: ["../etc"] },
       { order: "logs" },
+      { projectColours: { shop: "red" } },
     ]) {
       const bad = await request("POST", "/api/settings", { shell });
       expect([shell, bad.status]).toEqual([shell, 400]);
@@ -443,9 +515,10 @@ describe("pinning, collapsing, hiding and reordering the rail (R14, R21)", () =>
       fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
     ) as Record<string, unknown>;
     expect(shell).toEqual({
-      pins: ["billing/api"],
+      pins: [{ item: "billing/api" }],
       hidden: ["tests"],
       order: ["logs", "services", "local-dev"],
+      projectColours: { shop: "teal" },
     });
     expect(rest).toEqual(userBefore);
 
@@ -471,7 +544,7 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
     let browser: import("playwright").Browser;
     try {
       const { chromium } = await import("playwright");
-      browser = await chromium.launch();
+      browser = await launchBrowser(chromium);
     } catch (err) {
       if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
       throw err;
@@ -489,7 +562,6 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
         fs.readFileSync(path.join(tmp, USER_YML), "utf-8"),
       ) as Record<string, unknown>;
       await new Promise((r) => setTimeout(r, 500));
-      const before = snapshot();
 
       const latest = (
         JSON.parse((await request("GET", "/api/changelog")).body) as {
@@ -506,6 +578,14 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
           /* none */
         }
       }, latest ?? "");
+      // The person's browser, signed in as `web up` does (0.4.71). Before
+      // the snapshot: signing in records the session in DEN_HOME.
+      await signIn(
+        ctx,
+        path.join(tmp, "home", ".den"),
+        `http://localhost:${PORT}`,
+      );
+      const before = snapshot();
       const p = await ctx.newPage();
       const reqs: string[] = [];
       p.on("request", (r) =>
@@ -557,11 +637,15 @@ describe("the top bar's overlays (0.3.0-dev.20: R6, R8, R10, R15, R17)", () => {
         'POST /api/settings {"appearance":{"mode":"light"}}',
         'POST /api/settings {"appearance":{"theme":"paper"}}',
       ]);
+      // Issue 455: the address banner's read (GET /api/edge/address) is the
+      // page load's, and only reads.
       expect(
-        reqs.filter((r) =>
-          /\/api\/(service\/(exec|start|stop|restart)|workspace\/|workspaces\/|edge\/|web\/restart|run\b|release\/)/.test(
-            r,
-          ),
+        reqs.filter(
+          (r) =>
+            r !== "GET /api/edge/address" &&
+            /\/api\/(service\/(exec|start|stop|restart)|workspace\/|workspaces\/|edge\/|web\/restart|run\b|release\/)/.test(
+              r,
+            ),
         ),
       ).toEqual([]);
 

@@ -46,6 +46,7 @@
  * Start dialog and `agents doctor` ask `claude --version` once as well.
  */
 import {
+  helpersDir,
   readClaudeHelperTranscript,
   readClaudeHelpers,
 } from "./claude-helpers.js";
@@ -57,19 +58,37 @@ import * as fs from "fs";
 import * as path from "path";
 import { MCP_ACTIONS, configuredRuntimeBin } from "../den-config.js";
 import { rolePrompt } from "./personas.js";
+import { LOST_FILE } from "./guardrails/lost-marks.js";
+import {
+  HOOK_CALL_DEFAULT,
+  hookCallBudgetSeconds,
+} from "./guardrails/hook-call.js";
 import { HUB_PROMPT_LINE } from "../hub.js";
 import {
   apiOnlyHooks,
   attentionHooks,
+  subagentHooks,
+  widenHookTimeouts,
   GUARDRAILS_DIR,
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  envGuardHooks,
+  withEnvMask,
+  withoutEnvGuard,
+  sandboxRefusalHooks,
+  type GateRouteArgs,
 } from "./guardrails.js";
+import { ENV_HOLD_FILE, envHoldScript } from "./env-hold.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
+import { statSettled } from "../stat-settled.js";
+import { distributionBin, shellQuote } from "../cli-command.js";
+import { getDistRoot, getEngineRoot } from "../paths.js";
+import { gateDir } from "../gates/store.js";
+import { AUDIT_FILE, AUDIT_SET_ASIDE_DIR } from "../audit-file.js";
 import {
   LaunchError,
   mcpConfigJson,
@@ -85,7 +104,11 @@ import {
 import { PERMISSION_INTENTS, type PermissionIntent } from "./permissions.js";
 import { builtinEntry } from "./catalog.js";
 import { catalogFind } from "./catalog-runtime.js";
-import { locateRuntime, type RuntimeFind } from "./runtime-search.js";
+import {
+  isQuarantined,
+  locateRuntime,
+  type RuntimeFind,
+} from "./runtime-search.js";
 import { claudeProjectsDir } from "../usage/paths.js";
 import {
   cleanName,
@@ -102,6 +125,7 @@ import {
   TURN_READ_MAX_BYTES,
 } from "./conversations.js";
 import { claudeOpenPid, claudeOpenPids } from "./open-check.js";
+import { REPO_SECRETS_FILE } from "../credential-paths.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -257,22 +281,28 @@ function permissionMode(input: LaunchInput): string {
  * den#48: the modes `--permission-mode` takes, as `<bin> --help` lists
  * them ("(choices: "acceptEdits", "auto", …)"); null when they can't be
  * read (no such line, a failed or slow run). Kept per binary (its real
- * path, size and time), so an update is asked again.
+ * path, inode, size, mtime and ctime), so an update is asked again: an
+ * install can stamp every file with one fixed mtime, and a
+ * binary changed within a clock tick of the ask is asked again.
  */
 export function permissionModesOf(
   bin: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string[] | null {
+  // Issue 456: a quarantined file is never run (macOS would warn).
+  if (isQuarantined(bin)) return null;
   let key: string;
+  let st: fs.Stats;
   try {
     const real = fs.realpathSync(bin);
-    const st = fs.statSync(real);
-    key = `${real}\0${st.size}\0${st.mtimeMs}`;
+    st = fs.statSync(real);
+    key = `${real}\0${st.ino}\0${st.size}\0${st.mtimeMs}\0${st.ctimeMs}`;
   } catch {
     return null;
   }
   const hit = helpModes.get(key);
-  if (hit !== undefined) return hit;
+  if (hit && statSettled(st, hit.readAt)) return hit.modes;
+  const readAt = Date.now();
   let modes: string[] | null = null;
   try {
     const r = spawnSync(bin, ["--help"], {
@@ -286,12 +316,12 @@ export function permissionModesOf(
   } catch {
     modes = null;
   }
-  helpModes.set(key, modes);
+  helpModes.set(key, { modes, readAt });
   return modes;
 }
 
 const HELP_TIMEOUT_MS = 10_000;
-const helpModes = new Map<string, string[] | null>();
+const helpModes = new Map<string, { modes: string[] | null; readAt: number }>();
 
 /** Forget the modes asked (tests). */
 export function clearPermissionModesCache(): void {
@@ -380,6 +410,8 @@ function detect(
     ...(version ? { version } : {}),
     path: found.path,
     ...(found.source ? { source: found.source } : {}),
+    ...(found.quarantined ? { quarantined: true as const } : {}),
+    ...(found.others ? { others: found.others } : {}),
     searched: found.searched,
   };
 }
@@ -405,30 +437,57 @@ function detect(
  *   `${HOME}/…`, and, when the path has a space, with each space
  *   backslash-escaped.
  */
-export function stateDirDenyRules(stateDir: string, home?: string): string[] {
+export function stateDirDenyRules(
+  stateDir: string,
+  home?: string,
+  /**
+   * Issue 1391: the install's own trail on a personal install: readable
+   * (Edit stays denied). Unset is denied, as for another install's.
+   */
+  o: { trailReadable?: boolean } = {},
+): string[] {
   const abs = path.resolve(stateDir);
   const secret = path.join(abs, "web.secret");
   const sessions = path.join(abs, "sessions");
-  const spellings = (p: string): string[] => {
-    const out = [p];
-    if (home) {
-      const h = path.resolve(home);
-      if (p.startsWith(h + path.sep)) {
-        const rel = p.slice(h.length + 1);
-        out.push(`~/${rel}`, `$HOME/${rel}`, "${HOME}/" + rel);
-      }
-    }
-    for (const x of [...out])
-      if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
-    return [...new Set(out)];
-  };
+  const spellings = (p: string) => shellSpellings(p, home);
+  // Issue 810: the fixture person's key, as the web secret.
+  const fixtureKey = path.join(abs, "fixture-person.key");
+  // Issue 1299 review: the sessions lock; a live pid written there would
+  // hold every sign-in for its wait, then refuse it.
+  const sessionsLock = path.join(abs, "web-sessions.lock");
+  // Issue 728: the activity trail. Since issue 1369 only the server
+  // writes it (the CLI sends its entries), so an agent never edits it.
+  // Issue 1391: on a personal install it may read it, to debug who
+  // changed what; on a strict one, and another install's, it may not.
+  const trailRead = o.trailReadable === true;
+  const trail = path.join(abs, AUDIT_FILE);
+  // Issue 728: the state dir's other credential files and folders.
+  const files = STATE_CREDENTIAL_FILES.map((f) => path.join(abs, f));
+  const dirs = STATE_CREDENTIAL_DIRS.map((d) => path.join(abs, d));
   const targets = [
     ...spellings(secret).map((p) => `${p}*`),
     ...spellings(sessions).map((p) => `${p}/*`),
+    ...spellings(fixtureKey).map((p) => `${p}*`),
+    ...spellings(sessionsLock).map((p) => `${p}*`),
+    ...(trailRead ? [] : spellings(trail).map((p) => `${p}*`)),
+    ...files.flatMap((f) => spellings(f).map((p) => `${p}*`)),
+    ...dirs.flatMap((d) => spellings(d).map((p) => `${p}/*`)),
   ];
   return [
     `Read(/${secret})`,
     `Read(/${sessions}/**)`,
+    `Read(/${fixtureKey})`,
+    `Edit(/${fixtureKey})`,
+    `Read(/${sessionsLock})`,
+    // Edit(path) covers writes too (issue 660: no Write(path) rules).
+    `Edit(/${sessionsLock})`,
+    ...(trailRead ? [] : [`Read(/${trail})`]),
+    `Edit(/${trail})`,
+    ...files.map((f) => `Read(/${f})`),
+    // Issue 1299: copies beside each (a damaged file moved aside, a
+    // write's temporary file) hold the same records.
+    ...files.map((f) => `Read(/${f}*)`),
+    ...dirs.map((d) => `Read(/${d}/**)`),
     // Any command naming the path, whatever the program.
     ...targets.map((t) => `Bash(*${t})`),
     // The common readers by name too, should a version match a leading
@@ -437,18 +496,224 @@ export function stateDirDenyRules(stateDir: string, home?: string): string[] {
     ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
     `Bash(cat ${secret}:*)`,
     `Bash(cat ${sessions}/:*)`,
+    ...SIGN_IN_DENY_RULES,
   ];
 }
 
 /**
- * Review M4 (0.4.46): Edit and Write denied under the person's own config
- * folder (config/local: user.yml holds self_update and the person's
- * settings). The team file beside it stays editable. A cooperating
- * agent's boundary only; the server's token rules are the real one.
+ * Issue 728: the state dir's files that hold a secret or a credential's
+ * record, besides web.secret, sessions/ and fixture-person.key: the agent
+ * token hashes, the push key and subscriptions, the browser sessions, the
+ * test-install seal, and the embed key and runner token hashes. Relative
+ * to the state dir.
  */
-export function personConfigDenyRules(dir: string): string[] {
+export const STATE_CREDENTIAL_FILES: readonly string[] = [
+  "actor-tokens.json",
+  "push-vapid.json",
+  "push-subscriptions.json",
+  "web-sessions.json",
+  "test-install.created",
+  "embed/server-keys.json",
+  "gate/runner-tokens.json",
+];
+
+/**
+ * Issue 728: the state dir's folders that hold credentials: each agent's
+ * token file (an agent's own reaches its MCP server and the CLI through
+ * DEN_ACTOR_TOKEN_FILE, never through these tools), and Hub's token with
+ * the old ones kept for a retried revoke. agent-files/ (an agent's MCP
+ * config and settings, no secret) stays readable.
+ */
+export const STATE_CREDENTIAL_DIRS: readonly string[] = [
+  "actor-token",
+  "hub",
+  // Issue 1391: the trail written before redaction, set aside.
+  AUDIT_SET_ASIDE_DIR,
+];
+
+/**
+ * Issue 728: whether `rules`' Read rules cover an absolute file: as Claude
+ * Code reads them, `Read(/<abs>)` one file, `Read(/<abs>/**)` everything
+ * under it, a `*` in the path one segment's run of characters. For
+ * doctor's list of 0600 files no rule covers.
+ */
+export function readRulesCover(
+  rules: readonly string[],
+  file: string,
+): boolean {
+  return rules
+    .filter((r) => r.startsWith("Read(/") && r.endsWith(")"))
+    .map((r) => r.slice("Read(/".length, -1))
+    .some((g) => {
+      const under = g.endsWith("/**");
+      const re = new RegExp(
+        "^" +
+          (under ? g.slice(0, -3) : g)
+            .split("*")
+            .map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+            .join("[^/]*") +
+          (under ? "/.+" : "") +
+          "$",
+      );
+      return re.test(file);
+    });
+}
+
+/**
+ * Issue 728: a path as given (resolved) and by its real path, when a
+ * symlink makes them differ, so a deny rule binds both spellings.
+ */
+export function bothSpellings(p: string): string[] {
+  const given = path.resolve(p);
+  let real = given;
+  try {
+    real = fs.realpathSync(given);
+  } catch {
+    /* not there yet: its given spelling only */
+  }
+  return real === given ? [given] : [given, real];
+}
+
+/**
+ * Issue 728: rules denying an agent's Read, Edit and Bash tools the files in
+ * `dirs` (absolute), web.secret's rule shape: a Read rule, any command
+ * naming the path in each shell spelling, and the readers by name. For the
+ * edge's key folders (edgeKeyDirs), wherever the edge config puts them.
+ */
+export function credentialDirRules(
+  dirs: readonly string[],
+  home?: string,
+): string[] {
+  const abs = dirs.map((d) => path.resolve(d));
+  const targets = abs.flatMap((d) =>
+    shellSpellings(d, home).map((p) => `${p}/*`),
+  );
+  return [
+    ...abs.map((d) => `Read(/${d}/**)`),
+    ...abs.map((d) => `Edit(/${d}/**)`),
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+  ];
+}
+
+/**
+ * Deny an agent's Read, Edit and Bash tools each repo's stack secrets file
+ * (and the copies a write leaves beside it) and the cached sign-ins folders.
+ */
+export function repoSecretDenyRules(
+  repoDirs: readonly string[],
+  authDirs: readonly string[],
+  home?: string,
+): string[] {
+  const files = [...new Set(repoDirs.map((d) => path.resolve(d)))].map((d) =>
+    path.join(d, REPO_SECRETS_FILE),
+  );
+  const targets = files.flatMap((f) =>
+    shellSpellings(f, home).map((p) => `${p}*`),
+  );
+  return [
+    `Read(**/${REPO_SECRETS_FILE}*)`,
+    `Edit(**/${REPO_SECRETS_FILE}*)`,
+    `Bash(*${REPO_SECRETS_FILE}*)`,
+    ...files.map((f) => `Read(/${f}*)`),
+    ...files.map((f) => `Edit(/${f}*)`),
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+    ...(authDirs.length ? credentialDirRules(authDirs, home) : []),
+  ];
+}
+
+/**
+ * Issue 816 review: the folder where test installs announce themselves.
+ * Reading it would show an agent the state folder (and so the web.secret)
+ * of a test install announced after the agent started, which its launch
+ * rules don't name. Binds a cooperating agent, as stateDirDenyRules does.
+ */
+export function announceDirDenyRules(dir: string, home?: string): string[] {
   const abs = path.resolve(dir);
-  return [`Edit(/${abs}/**)`, `Write(/${abs}/**)`];
+  const targets = shellSpellings(abs, home).map((p) => `${p}*`);
+  return [
+    `Read(/${abs}/**)`,
+    `Edit(/${abs}/**)`,
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+  ];
+}
+
+/**
+ * A path as a shell may write it from `home`: as is, `~/…`, `$HOME/…`,
+ * `${HOME}/…`, and with each space backslash-escaped.
+ */
+function shellSpellings(p: string, home?: string): string[] {
+  const out = [p];
+  if (home) {
+    const h = path.resolve(home);
+    if (p.startsWith(h + path.sep)) {
+      const rel = p.slice(h.length + 1);
+      out.push(`~/${rel}`, `$HOME/${rel}`, "${HOME}/" + rel);
+    }
+  }
+  for (const x of [...out])
+    if (x.includes(" ")) out.push(x.replace(/ /g, "\\ "));
+  return [...new Set(out)];
+}
+
+/**
+ * Sign-in: the commands that print a person's sign-in link, claim link or
+ * token, whatever the CLI's name or path: an agent's Bash tool doesn't run
+ * them. The CLI and the server also check where they run (person-here.ts).
+ */
+export const SIGN_IN_DENY_RULES: readonly string[] = [
+  "Bash(*web login*)",
+  "Bash(*web claim-link*)",
+  "Bash(*web token*)",
+];
+
+/**
+ * Review M4 (0.4.46): edits denied under the person's own config folder
+ * (config/local: user.yml holds self_update and the person's settings).
+ * The team file beside it stays editable. A cooperating agent's boundary
+ * only; the server's token rules are the real one. Issue 660: Claude Code
+ * covers file writes under Edit(path) rules and warns that a Write(path)
+ * rule never matches, so Den writes the Edit rule only.
+ */
+export function personConfigDenyRules(
+  dir: string,
+  distConfigFile?: string,
+  home?: string,
+): string[] {
+  const abs = path.resolve(dir);
+  // Issue 810: the distribution config holds the test-install mark, which
+  // only a person sets by hand: denied to Edit, and to any shell command
+  // naming it (the state-dir rules' shape).
+  const dist = distConfigFile ? path.resolve(distConfigFile) : null;
+  return [
+    `Edit(/${abs}/**)`,
+    ...(dist
+      ? [
+          `Edit(/${dist})`,
+          ...shellSpellings(dist, home).map((t) => `Bash(*${t}*)`),
+        ]
+      : []),
+  ];
+}
+
+/**
+ * Issue 362: the files Den launches an agent with (its settings file:
+ * hooks, deny and allow rules; its MCP config) are denied to its edits,
+ * and to any shell command naming them. Its files folder stays writable
+ * otherwise (its handoff goes there). A cooperating agent's boundary
+ * only, as the state-dir rules are.
+ */
+export function ownFilesDenyRules(
+  files: readonly string[],
+  home?: string,
+): string[] {
+  const abs = files.map((f) => path.resolve(f));
+  return [
+    ...abs.map((f) => `Edit(/${f})`),
+    ...abs.flatMap((f) => shellSpellings(f, home).map((t) => `Bash(*${t}*)`)),
+  ];
 }
 
 /** The readers named in the Bash deny rules (stateDirDenyRules). */
@@ -533,6 +798,18 @@ export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
 }
 
 /** The flags every run shares: Den's MCP only, the model, the role prompt. */
+export function skillPacksPrompt(packs: LaunchInput["skillPacks"]): string {
+  if (!packs?.length) return "";
+  const lines = packs.map(
+    (p) =>
+      `The ${p.name} skills are loaded as the plugin ${p.name}. Before you use one, read ${p.dir}/docs/harness/claude-code.md once.`,
+  );
+  lines.push(
+    "Den's rules win over a skill's: watch checks with github_watch, never merge or force-push, and hand a green PR to whoever merges.",
+  );
+  return `\n\n${lines.join("\n")}`;
+}
+
 function common(input: LaunchInput): {
   argv: string[];
   files: Record<string, string>;
@@ -542,7 +819,13 @@ function common(input: LaunchInput): {
   const mode = permissionMode(input);
   // D41: the Stop hook asks Hub for comments waiting on this agent.
   const inboxBase = input.mcp.hub?.inboxBase;
-  const inbox = inboxBase ? { base: inboxBase } : undefined;
+  // Issue 609: its call to Den waits and retries as the attention hook's.
+  const call = input.attention?.call;
+  const inbox = inboxBase
+    ? { base: inboxBase, ...(call ? { call } : {}) }
+    : undefined;
+  // Issue 1264: the hook routes heavy runs through the gate (guardrails on).
+  const gate = input.persona.guardrails?.hooks ? gateRouteArgs() : undefined;
   // den#4: the rotation hooks count this agent's compactions in its files dir.
   const baseHooks = input.persona.guardrails?.hooks
     ? guardrailHooks(
@@ -561,6 +844,7 @@ function common(input: LaunchInput): {
           !isServerScope(input.workspace.name),
           input.apiOnly,
           inbox,
+          gate,
         ),
         !!input.apiOnly,
       )
@@ -572,11 +856,43 @@ function common(input: LaunchInput): {
           inbox && { ...inbox, files: input.filesDir },
         )
       : null;
+  const envGuard = input.envHold?.guard;
+  const guarded =
+    envGuard === true && !baseHooks?.PreToolUse
+      ? mergeHooks(baseHooks, envGuardHooks(GUARDRAILS_DIR, process.execPath))
+      : baseHooks;
+  if (envGuard === false && guarded) withoutEnvGuard(guarded);
+  else if (guarded && input.envHold?.mask?.length)
+    withEnvMask(guarded, input.envHold.mask);
   // NT-1: every agent tells Den when it waits for its person.
+  if (inbox && guarded)
+    widenHookTimeouts(
+      guarded,
+      "Stop",
+      hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
+    );
   const hooks = mergeHooks(
-    baseHooks,
-    input.attention ? attentionHooks(input.attention.base) : null,
+    // Issue 936: a refused write in the sandbox says why, with Den's hooks
+    // (a persona with den_hooks: false gets none of them).
+    input.persona.guardrails?.hooks
+      ? mergeHooks(guarded, sandboxRefusalHooks())
+      : guarded,
+    input.attention
+      ? attentionHooks(
+          input.attention.base,
+          input.attention.call,
+          // Issue 609: where a mark Den never took (after its last try)
+          // is recorded: its own files dir, which doctor reads.
+          { file: path.join(input.filesDir, LOST_FILE), agent: input.agentId },
+        )
+      : null,
   );
+  const allHooks = input.attention
+    ? mergeHooks(
+        hooks,
+        subagentHooks(input.attention.base, input.attention.call),
+      )
+    : hooks;
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the
   // default). Claude Code checks deny before allow: an install's deny wins.
@@ -586,6 +902,7 @@ function common(input: LaunchInput): {
       : [];
   const allow = [
     ...allowRules(input.allow ?? []),
+    ...gateAllowRules(gate?.cli, input.allow ?? []),
     ...(den?.allow ?? []),
     ...hubAllow,
   ];
@@ -598,7 +915,7 @@ function common(input: LaunchInput): {
   const settings =
     input.stateDir ||
     input.personConfigDir ||
-    hooks ||
+    allHooks ||
     allow.length ||
     noConnectors
       ? settingsPath(input)
@@ -609,6 +926,7 @@ function common(input: LaunchInput): {
       file,
       ...(noConnectors ? ["--strict-mcp-config"] : []),
       ...(settings ? ["--settings", settings] : []),
+      ...(input.skillPacks ?? []).flatMap((p) => ["--plugin-dir", p.dir]),
       "--permission-mode",
       mode,
       ...(input.model ? ["--model", input.model] : []),
@@ -618,7 +936,12 @@ function common(input: LaunchInput): {
         input.agentId,
         input.workspace.name,
         input.mcp.name,
-      ) + (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : ""),
+        input.webUrl ?? null,
+      ) +
+        skillPacksPrompt(input.skillPacks) +
+        (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : "") +
+        // Issue 158: the Hub delivery loop, after the Hub line.
+        (input.mcp.hub?.loop ? `\n\n${input.mcp.hub.loop}` : ""),
     ],
     files: {
       [file]: mcpConfigJson(input.mcp),
@@ -626,30 +949,71 @@ function common(input: LaunchInput): {
         ? {
             [settings]: `${JSON.stringify(
               {
-                ...(input.stateDir || input.personConfigDir || allow.length
-                  ? {
-                      permissions: {
-                        ...(allow.length ? { allow } : {}),
-                        ...(ask.length ? { ask } : {}),
-                        ...(input.stateDir || input.personConfigDir
-                          ? {
-                              deny: [
-                                ...(input.stateDir
-                                  ? stateDirDenyRules(
-                                      input.stateDir,
-                                      input.env?.HOME,
-                                    )
-                                  : []),
-                                ...(input.personConfigDir
-                                  ? personConfigDenyRules(input.personConfigDir)
-                                  : []),
-                              ],
-                            }
-                          : {}),
-                      },
-                    }
-                  : {}),
-                ...(hooks ? { hooks } : {}),
+                permissions: {
+                  ...(allow.length ? { allow } : {}),
+                  ...(ask.length ? { ask } : {}),
+                  deny: [
+                    ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    ...(input.skillPacks ?? []).map(
+                      (p) => `Edit(/${path.resolve(p.dir)}/**)`,
+                    ),
+                    // Issue 1264: the gate's settings (route_agents and
+                    // route_commands among them) are a person's; its slot
+                    // log beside them stays the hook's to append to.
+                    ...(gate
+                      ? ownFilesDenyRules([gate.settings], input.env?.HOME)
+                      : []),
+                    // Issue 728: this install's own folders by their
+                    // given and their real paths (a symlink in either).
+                    ...(input.stateDir
+                      ? bothSpellings(input.stateDir).flatMap((d) =>
+                          stateDirDenyRules(d, input.env?.HOME, {
+                            trailReadable: input.trailReadable === true,
+                          }),
+                        )
+                      : []),
+                    // Issue 728: the edge's key folders.
+                    ...credentialDirRules(
+                      (input.edgeKeyDirs ?? []).flatMap(bothSpellings),
+                      input.env?.HOME,
+                    ),
+                    ...(input.repoDirs?.length || input.playwrightAuthDir
+                      ? repoSecretDenyRules(
+                          (input.repoDirs ?? []).flatMap(bothSpellings),
+                          input.playwrightAuthDir
+                            ? bothSpellings(input.playwrightAuthDir)
+                            : [],
+                          input.env?.HOME,
+                        )
+                      : []),
+                    // Issue 816: announced test installs'; issue 728:
+                    // the other installs in the install registry.
+                    ...(input.otherStateDirs ?? []).flatMap((d) =>
+                      stateDirDenyRules(d, input.env?.HOME),
+                    ),
+                    ...(input.testAnnounceDir
+                      ? announceDirDenyRules(
+                          input.testAnnounceDir,
+                          input.env?.HOME,
+                        )
+                      : []),
+                    // Issue 728: the install registry, as 816's folder,
+                    // by its given and its real path.
+                    ...(input.installRegistryDir
+                      ? bothSpellings(input.installRegistryDir).flatMap((d) =>
+                          announceDirDenyRules(d, input.env?.HOME),
+                        )
+                      : []),
+                    ...(input.personConfigDir
+                      ? personConfigDenyRules(
+                          input.personConfigDir,
+                          input.distConfigFile,
+                          input.env?.HOME,
+                        )
+                      : []),
+                  ],
+                },
+                ...(allHooks ? { hooks: allHooks } : {}),
                 ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
                 ...(strays
                   ? {
@@ -761,6 +1125,38 @@ export function transcriptFile(
   return null;
 }
 
+function envHold(input: LaunchInput): {
+  env: Record<string, string>;
+  files: Record<string, string>;
+} {
+  if (!input.envHold) return { env: {}, files: {} };
+  const file = path.join(input.filesDir, ENV_HOLD_FILE);
+  const h = input.envHold;
+  return {
+    env: { CLAUDE_ENV_FILE: file },
+    files: { [file]: envHoldScript(h.hold, h.allow, h.own, {}) },
+  };
+}
+
+const stampFiles = new Map<string, string>();
+
+function stampedTranscript(
+  token: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const k = `${claudeProjectsDir(env)}\0${token}`;
+  const known = stampFiles.get(k);
+  if (known && fs.existsSync(known)) return known;
+  const file = transcriptFile(token, env);
+  if (file) {
+    stampFiles.delete(k);
+    stampFiles.set(k, file);
+    if (stampFiles.size > 4096)
+      stampFiles.delete(stampFiles.keys().next().value as string);
+  } else stampFiles.delete(k);
+  return file;
+}
+
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
   label: DEN_CLAUDE_CATALOG.name,
@@ -790,8 +1186,8 @@ export const denClaude: Runtime = {
         ...c.argv,
         ...firstPromptArg(input.firstPrompt),
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       resumeToken: id,
       warnings: [...c.warnings, ...modeWarnings],
     };
@@ -809,8 +1205,8 @@ export const denClaude: Runtime = {
         ...nameArg(input.sessionLabel),
         ...c.argv,
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       warnings: [...c.warnings, ...modeWarnings],
     };
   },
@@ -861,7 +1257,13 @@ export const denClaude: Runtime = {
     try {
       const file = transcriptFile(token, env);
       if (!file) return null;
-      return transcriptBusy(file, Date.now(), undefined, opts.readMaxBytes);
+      return transcriptBusy(
+        file,
+        Date.now(),
+        undefined,
+        opts.readMaxBytes,
+        opts.since,
+      );
     } catch {
       return null;
     }
@@ -928,6 +1330,21 @@ export const denClaude: Runtime = {
     }
     return sortHelpers(out);
   },
+  helpersStamp(rec, env) {
+    const out: number[] = [];
+    for (const c of conversationsOf(rec)) {
+      const file = stampedTranscript(c.token, env);
+      if (!file) continue;
+      const base = helpersDir(file);
+      for (const sub of ["subagents", "workflows"])
+        try {
+          out.push(fs.statSync(path.join(base, sub)).mtimeMs);
+        } catch {
+          out.push(0);
+        }
+    }
+    return out.join(",");
+  },
   helperTranscript(rec, id, opts = {}) {
     for (const c of conversationsOf(rec)) {
       const file = transcriptFile(c.token, opts.env);
@@ -946,11 +1363,17 @@ export const denClaude: Runtime = {
     noConversation: /no conversation found/i,
     idInUse: /already in use/i,
   },
-  // SRV-1b: its folder-trust question (two wordings seen), first choice Yes.
+  // SRV-1b: its folder-trust question. Two wordings, two shapes: the
+  // older numbered one ("1. Yes" first and highlighted) and 2.1.329's
+  // ("Quick safety check: … ❯ No, exit / Yes, I trust this folder": No
+  // highlighted first, so Enter alone declines; issues 658, 659).
   trustPrompt: {
     match:
-      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*1\.\s*Yes/i,
+      /(Do you trust the files in this folder\?|Is this a project you created or one you trust\?)[\s\S]*?(?:1\.\s*Yes|Yes, I trust this folder)/i,
     accept: "\r",
+    cursor: "\u276f",
+    yes: /^\s*(?:1\.\s*)?Yes\b/,
+    down: "\x1b[B",
   },
   // Issue 369: its permission dialogs ("Do you want to proceed?", "… make
   // this edit to x?", "… create x?", "… allow Claude to fetch …?"), first
@@ -958,6 +1381,17 @@ export const denClaude: Runtime = {
   permissionPrompt: {
     match: /Do you want to [^?\n]{0,300}\?[\s\S]{0,400}?1\.\s*Yes/i,
     afterMax: 600,
+  },
+  // Issue 664: its input box: a prompt line starting ">" or "❯" (then a
+  // space or a no-break space; inside a box's "│" in older versions),
+  // never a numbered choice, with the box's lower edge ("─", "╰") right
+  // under it or nothing at all; after it only its footer ("? for
+  // shortcuts", the mode) and status line. An earlier prompt echoed in
+  // the conversation has a blank line under it, so it never counts.
+  inputPrompt: {
+    match:
+      /(?:^|\n)[ \t]*(?:│[ \t]*)?[>❯](?![\t\p{Zs}]*\d+[.)])(?:[\t\p{Zs}][^\n]*)?(?=\n[ \t]*[─━╰]|$)/u,
+    afterMax: 400,
   },
   approvals: "terminal",
   envPassthrough: ["CLAUDE_CONFIG_DIR"],
@@ -973,3 +1407,38 @@ export const denClaude: Runtime = {
   // catalog entry's sign-in data.
   signInTokenEnv: DEN_CLAUDE_CATALOG.signIn?.env,
 };
+
+/**
+ * Issue 1264: allow rules for the gated form of each command the agent is
+ * already allowed (`<cli> gate run --kind cpu|browser -- <command>`), so a
+ * run the hook routes still runs without asking. Only those commands, never
+ * the gate on its own. The words match the hook's (gate-route.mjs
+ * gatePrefix, pretooluse.mjs gateRewrite); a test checks both agree.
+ */
+export function gateAllowRules(
+  cli: string | undefined,
+  commands: readonly string[],
+): string[] {
+  if (!cli) return [];
+  return ["cpu", "browser"].flatMap((kind) =>
+    allowRules(
+      commands.map((c) => `${shellQuote(cli)} gate run --kind ${kind} -- ${c}`),
+    ),
+  );
+}
+
+/**
+ * Issue 1264: this install's CLI and the gate's settings file, for the
+ * PreToolUse hook to route an agent's heavy runs through the gate; none
+ * when the install's CLI can't be found (no routing then).
+ */
+export function gateRouteArgs(): GateRouteArgs | undefined {
+  try {
+    const cli = distributionBin(product().cli, getDistRoot(), getEngineRoot());
+    return cli
+      ? { cli, settings: path.join(gateDir(), "settings.json") }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}

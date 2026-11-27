@@ -9,10 +9,18 @@ import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { pathToFileURL } from "url";
 import { startDenServer, stopServer } from "../../child-servers.js";
 
 const ENGINE = process.cwd();
-const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
+// Started as the service starts it (web-command.ts): node with tsx's
+// loader, no tsx process in between. tsx's own CLI relays a stop: when the
+// server doesn't answer within 30 ms (a busy runner), it sends a second
+// SIGTERM and then SIGKILL, and a server stopped that way never marks its
+// stop clean (issue 1571).
+const LOADER = pathToFileURL(
+  path.join(ENGINE, "node_modules", "tsx", "dist", "loader.mjs"),
+).href;
 let tmp = "";
 let stateDir = "";
 let server: ChildProcess | null = null;
@@ -51,8 +59,8 @@ beforeAll(async () => {
   );
   const t0 = Date.now();
   const started = await startDenServer(
-    TSX,
-    [path.join(ENGINE, "src", "ui", "server", "index.ts")],
+    process.execPath,
+    ["--import", LOADER, path.join(ENGINE, "src", "ui", "server", "index.ts")],
     {
       cwd: root,
       env: {
@@ -101,11 +109,14 @@ describe("the web app's crash-loop guard (den#85)", () => {
   it("records its start, and a SIGTERM stop marks it clean", async () => {
     const pid = server!.pid!;
     expect(boots().map((b) => !!b.clean)).toEqual([false, false, false]);
-    await stopServer(server);
+    // A clean stop is what this checks: on a loaded machine the server's own
+    // shutdown can take more than stopServer's 5 s before it would be killed
+    // (and a killed server never marks its stop clean).
+    await stopServer(server, 60_000);
     server = null;
     const mine = boots().at(-1)!;
     expect(mine.clean).toBe(true);
     expect(mine.pid).not.toBe(999_992);
     expect(typeof pid).toBe("number");
-  });
+  }, 90_000);
 });

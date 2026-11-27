@@ -6,16 +6,22 @@
  * browser and width, the same clauses as
  * tests/unit/server/bell-row.browser.test.ts.
  *
+ * Issue 187: before each click, the cursor over the row, its dot and its
+ * time is read; each must be the pointer.
+ *
  * Names are this check's own (gate93-*). Teardown marks their items read,
  * removes the agents, and puts back the two settings it changes for the
  * run (turn-finished shown; the page's language, for es and ja).
  */
 export const issue = 93;
+// Issue 187 (the pointer cursor on a row that opens) is proved here too.
+export const items = [93, 187];
 export const clauses = [
   "a long question's row and a short one's both open on a click in the middle of the text",
   "no element named Open (Abrir, 開く) in any row, in en, es and ja",
   "Enter on the focused row opens it, with a focus ring and one accessible name",
   "the controls inside a row do not open the row",
+  "a row that opens shows the pointer cursor over its text, its dot and its time (issue 187)",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 180000;
@@ -78,11 +84,34 @@ async function itemsFor(ctx, a, ok = (l) => l.length > 0) {
   }
 }
 
+/**
+ * A turn's end as Claude Code sends it: the answer on screen, then its
+ * Stop hook with the answer as `last_assistant_message`. Not
+ * `ctl.stop()`: that stops the agent, and no turn ends.
+ */
+async function turnEnd(a, answer) {
+  await a.ctl.print(answer);
+  await a.ctl.hook("Stop", {
+    stop_hook_active: false,
+    last_assistant_message: answer,
+  });
+}
+
 async function stub(ctx, state, role) {
   const name = `gate93-${role}-${state.tag}`;
   const ctl = await ctx.agent(name);
   const a = { name, id: ctl?.id ?? name, ctl };
   state.made.push(a);
+  // A handle creates nothing: start the agent and wait until it runs,
+  // so its session (and its file) exist before sessionStart. A refused
+  // start (agents.max_concurrent reached) says so here, not later as a
+  // missing file.
+  const r = await ctl.start("tester");
+  if (r && typeof r.code === "number" && r.code !== 0)
+    throw new Error(
+      `${name}: the bed refused to start it (agents.max_concurrent?): ${String(r.all ?? r.err ?? r.out ?? "").slice(0, 200)}`,
+    );
+  a.runMs = await ctl.running(20000);
   await ctl.sessionStart?.();
   return a;
 }
@@ -105,8 +134,8 @@ export async function setup(ctx) {
   // Two turn ends: an unread item takes the next of its kind in, so the
   // first is read (as the person would have) and the second folds under ×2.
   for (let i = 0; i < 2; i++) {
-    await turns.ctl.print(`Turn ${i + 1} done.`);
-    await turns.ctl.stop();
+    // The agent runs on between them; teardown stops it.
+    await turnEnd(turns, `Turn ${i + 1} done.`);
     const got = await itemsFor(ctx, turns, (l) => l.some((n) => !n.read));
     if (i === 0)
       for (const n of got.filter((n) => !n.read))
@@ -156,12 +185,63 @@ async function leftWithin(p, ms = 5000) {
   return left(p);
 }
 
+/** How long an element may take to show after the bell draws again. */
+const BOX_WAIT_MS = 10000;
+
+/**
+ * An element's box, once it is visible: the bell may draw its rows again
+ * between finding one and measuring it. Never throws: no box gives
+ * `detail` (the row's HTML, trimmed, the bell's row count, a screenshot),
+ * and that cell's clause fails with it.
+ */
+async function boxOf(ctx, row, el, tag) {
+  try {
+    await el.waitFor({ state: "visible", timeout: BOX_WAIT_MS });
+  } catch {
+    /* measured below all the same */
+  }
+  let box = await el.boundingBox().catch(() => null);
+  if (!box) {
+    // Drawn again since the wait: wait once more, then measure again.
+    try {
+      await el.waitFor({ state: "visible", timeout: BOX_WAIT_MS });
+    } catch {
+      /* measured below all the same */
+    }
+    box = await el.boundingBox().catch(() => null);
+  }
+  if (box) return { box };
+  const html = await row
+    .first()
+    .evaluate((e) => e.outerHTML)
+    .catch(() => null);
+  const rows = await ctx.page
+    .locator("#den-bell-pop .den-bell-row")
+    .count()
+    .catch(() => null);
+  const shot = `nobox-${tag}-${browserName(ctx)}-${ctx.width}`;
+  try {
+    await ctx.shot?.(shot);
+  } catch {
+    /* the detail says what it can */
+  }
+  return {
+    box: null,
+    detail: {
+      html: html === null ? null : String(html).slice(0, 500),
+      rows,
+      shot,
+    },
+  };
+}
+
 export async function run(ctx, state) {
   const p = ctx.page;
   const seen = { width: ctx.width };
 
   // 1. A click in the middle of each question's text opens it.
   seen.click = {};
+  seen.cursor = {};
   for (const k of ["long", "short"]) {
     const link = state.links[k];
     if (!link) {
@@ -172,13 +252,34 @@ export async function run(ctx, state) {
     const r = rowOf(p, link);
     const n = await r.count();
     let opened = false;
+    let noBox;
     if (n === 1) {
+      // Issue 187: the cursor a person sees over the row's parts.
+      // A row that opens: its text is its link (data-bell="open"), its dot
+      // the aria-hidden mark, its time the <time>.
+      const cur = await r
+        .evaluate((row) => {
+          const c = (el) =>
+            el
+              ? el.ownerDocument.defaultView.getComputedStyle(el).cursor
+              : null;
+          return {
+            row: c(row.querySelector('[data-bell="open"]')),
+            dot: c(row.querySelector('[aria-hidden="true"]')),
+            time: c(row.querySelector("time")),
+          };
+        })
+        .catch(() => null);
+      if (cur && typeof cur === "object") seen.cursor[k] = cur;
       // The question's text: its two-line span, or the link that holds it.
-      const box = await r.locator(".den-bell-t, a").first().boundingBox();
-      await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-      opened = (await leftWithin(p)) && p.url().includes(link);
+      const m = await boxOf(ctx, r, r.locator(".den-bell-t, a").first(), k);
+      if (m.box) {
+        const { box } = m;
+        await p.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        opened = (await leftWithin(p)) && p.url().includes(link);
+      } else noBox = m.detail;
     }
-    seen.click[k] = { link, rows: n, opened };
+    seen.click[k] = { link, rows: n, opened, ...(noBox ? { noBox } : {}) };
   }
   await ctx.shot?.(`bell-${browserName(ctx)}-${ctx.width}`);
 
@@ -329,6 +430,7 @@ function rows(s, cell) {
   const k = s?.keys ?? {};
   const t = s?.controls ?? {};
   const names = s?.names ?? {};
+  const cur = s?.cursor ?? {};
   return [
     {
       clause: clauses[0],
@@ -361,6 +463,15 @@ function rows(s, cell) {
           detail: `${tag} ${JSON.stringify(t)}`,
         }
       : { clause: clauses[3], ok: null, skip: "needs-row-controls" },
+    {
+      clause: clauses[4],
+      ok: ["long", "short"].every(
+        (k) =>
+          cur[k] &&
+          ["row", "dot", "time"].every((w) => cur[k][w] === "pointer"),
+      ),
+      detail: `${tag} ${JSON.stringify(cur)}`,
+    },
   ];
 }
 

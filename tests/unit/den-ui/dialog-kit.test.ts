@@ -19,7 +19,9 @@ import * as fs from "fs";
 import * as path from "path";
 import {
   DIALOG_WORDS,
+  failedLine,
   answerOf,
+  askSpec,
   configureDialog,
   dialogHtml,
   dialogWord,
@@ -36,7 +38,11 @@ const PUBLIC = path.join(ROOT, "src/ui/server/public");
 
 /** Each product name in a source. */
 const productNames = (src: string): string[] =>
-  [...src.matchAll(/\b[dD]en(?:[A-Z_$][\w$]*)?\b/g)].map((m) => m[0]);
+  // The kit's one button's class (den-btn, issue 673) is taken out first,
+  // as busy-kit takes out its element's tag.
+  [
+    ...src.replace(/den-btn/g, "").matchAll(/\b[dD]en(?:[A-Z_$][\w$]*)?\b/g),
+  ].map((m) => m[0]);
 
 /** Native dialog calls left in a page's code, comments taken out. */
 export function nativeCalls(src: string): string[] {
@@ -53,6 +59,9 @@ const ids = { h: "h1", m: "m1" };
 describe("den#133 kit: dialog.js stands alone", () => {
   it("finds a product name when one is there (the check can fail)", () => {
     expect(productNames("window.denShell.t")).toEqual(["denShell"]);
+    expect(productNames('h["X-Den-Id"]; c = "den-btn dk-btn"')).toEqual([
+      "Den",
+    ]);
   });
   it("names no product", () => {
     expect(productNames(SRC)).toEqual([]);
@@ -90,10 +99,13 @@ describe("den#133 kit: the words and the markup", () => {
       { title: "Gone <b>?", message: 'a "b"\nc', danger: true, okLabel: "Go" },
       ids,
     );
-    expect(html).toContain('<h2 id="h1">Gone &lt;b&gt;?</h2>');
-    expect(html).toContain('<p class="dk-msg" id="m1">a &quot;b&quot;\nc</p>');
+    // Issues 669, 670: the inside of the kit's frame; every answer a submit.
+    expect(html).toContain('<h2 id="h1" tabindex="-1">Gone &lt;b&gt;?</h2>');
+    expect(html).toContain(
+      '<div class="dk-msg" id="m1"><p class="dk-text">a &quot;b&quot;\nc</p></div>',
+    );
     expect(html).toMatch(
-      /class="dk-ft"><button data-report="x">Report<\/button><button type="button" class="dk-btn" data-dk="cancel">Cancel<\/button><button type="submit" class="dk-btn dk-danger" data-dk="ok">Go<\/button>/,
+      /class="dk-ft"><button data-report="x">Report<\/button><button type="submit" class="den-btn dk-btn" value="cancel" data-dk="cancel" formnovalidate>Cancel<\/button><button type="submit" class="den-btn dk-btn danger dk-danger" value="ok" data-dk="ok">Go<\/button>/,
     );
     expect(html).not.toContain("dk-primary");
   });
@@ -128,8 +140,11 @@ describe("den#133 kit: the words and the markup", () => {
 
   it("confirm and tell are alertdialogs, text a dialog; each named and described", () => {
     expect(SRC).toMatch(/kind === "text" \? "dialog" : "alertdialog"/);
-    expect(SRC).toContain('"aria-labelledby"');
-    expect(SRC).toContain('"aria-describedby"');
+    const q = dialogHtml(askSpec("confirm", { title: "T", message: "M" }, "q"));
+    expect(q).toContain('aria-labelledby="q-h"');
+    expect(q).toContain('aria-describedby="q-m"');
+    const bare = dialogHtml(askSpec("tell", { message: "M" }, "b"));
+    expect(bare).toContain('aria-labelledby="b-m"');
   });
 });
 
@@ -172,5 +187,30 @@ describe("den#133: Den serves it and its pages use it", () => {
     expect(used.size).toBeGreaterThan(10);
     const missing = [...used].filter((k) => !shell.includes(`"${k}":`));
     expect(missing).toEqual([]);
+  });
+});
+
+// Issue 1054 (review): a held action that fails says why in the dialog;
+// with no message of its own, the kit's words, never an empty alert.
+describe("issue 1054: a held action's failure line", () => {
+  it("is the error's own message", () => {
+    expect(failedLine(new Error("The project is in use."))).toBe(
+      "The project is in use.",
+    );
+    expect(failedLine("Refused.")).toBe("Refused.");
+  });
+  it("is the kit's words when the error says nothing, in each language", () => {
+    for (const e of [undefined, null, {}, new Error(""), "  "])
+      expect(failedLine(e)).toBe("That didn't work. Try again.");
+    try {
+      configureDialog({ lang: () => "es" });
+      expect(failedLine(new Error(""))).toBe(DIALOG_WORDS.es.failed);
+      configureDialog({ lang: () => "ja" });
+      expect(failedLine(null)).toBe(DIALOG_WORDS.ja.failed);
+    } finally {
+      configureDialog({ lang: () => "en" });
+    }
+    expect(DIALOG_WORDS.es.failed).not.toBe(DIALOG_WORDS.en.failed);
+    expect(DIALOG_WORDS.ja.failed).not.toBe(DIALOG_WORDS.en.failed);
   });
 });

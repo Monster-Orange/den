@@ -345,11 +345,19 @@ export async function mountSettings(deps) {
   /** The sections, in the page's language (0.4.45). */
   function localSections() {
     const tr = shell.tr;
+    const rows = shell.settings().filter(rowShown);
     return sections(
       shell.settingsCategories().map((c) => localizeCategory(c, tr)),
-      shell.settings().map((r) => localizeRow(r, tr)),
+      rows.map((r) => localizeRow(r, tr)),
       state.q,
     );
+  }
+  function rowShown(r) {
+    try {
+      return typeof r.shown !== "function" || r.shown(ctx) !== false;
+    } catch {
+      return true;
+    }
   }
   function draw() {
     const list = localSections();
@@ -360,7 +368,7 @@ export async function mountSettings(deps) {
     body.innerHTML = list.length
       ? list.map(drawSection).join("")
       : `<div class="empty" id="set-empty"><b>${esc(L("set.ui.noMatch", { q: state.q }))}</b>` +
-        ` <button type="button" class="btn sm" data-clear>${esc(L("set.ui.clearSearch"))}</button></div>`;
+        ` <button type="button" class="den-btn sm" data-clear>${esc(L("set.ui.clearSearch"))}</button></div>`;
     for (const { rows } of list) for (const r of rows) wireRow(r);
     if (keep) body.querySelector(`[data-focus-key="${keep}"]`)?.focus();
   }
@@ -390,7 +398,24 @@ export async function mountSettings(deps) {
       "</section>"
     );
   }
+  /**
+   * A row's value while its save is out: { v }. A redraw then (a plugin's
+   * rows, the appearance, the hash) draws what was just chosen, not the
+   * old value, so a switch doesn't flip back and get a second save
+   * (issue 424). Only single-value controls: a list row saves a part.
+   */
+  const pending = new Map();
+  const PENDING_TYPES = [
+    "toggle",
+    "number",
+    "select",
+    "text",
+    "seg",
+    "theme",
+    "radio",
+  ];
   function value(r) {
+    if (pending.has(r.id)) return pending.get(r.id).v;
     try {
       return r.read(ctx);
     } catch {
@@ -482,7 +507,10 @@ export async function mountSettings(deps) {
           ? `<span class="set-unit" aria-hidden="true">${esc(c.unit)}</span>`
           : "");
     } else if (t === "text") {
-      ctl = `<input type="text" id="${cid}" data-focus-key="${id}" value="${esc(v)}" ${desc}>`;
+      // Issue 158: a field may stop at the server's limit.
+      const ml = r.control.maxLength;
+      const max = Number.isInteger(ml) ? ` maxlength="${ml}"` : "";
+      ctl = `<input type="text" id="${cid}" data-focus-key="${id}" value="${esc(v)}"${max} ${desc}>`;
     } else if (t === "toggle") {
       ctl = `<input type="checkbox" class="set-check" id="${cid}" data-focus-key="${id}"${v ? " checked" : ""} ${desc}>`;
       // Bell v6: a switch may say what being off means (waiting).
@@ -521,9 +549,9 @@ export async function mountSettings(deps) {
             .map(
               (p, i) =>
                 `<div class="it" role="listitem"><span class="nm den-mono">${esc(p)}</span>` +
-                `<button type="button" class="btn sm" data-pin-move="${esc(p)}" data-d="-1" data-focus-key="pin-up-${esc(p)}"${i === 0 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveUp", { name: p }))}">↑</button>` +
-                `<button type="button" class="btn sm" data-pin-move="${esc(p)}" data-d="1" data-focus-key="pin-down-${esc(p)}"${i === pins.length - 1 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveDown", { name: p }))}">↓</button>` +
-                `<button type="button" class="btn sm" data-pin-remove="${esc(p)}" data-focus-key="pin-x-${esc(p)}" aria-label="${esc(L("set.ui.unpinX", { name: p }))}">${esc(L("act.unpin"))}</button></div>`,
+                `<button type="button" class="den-btn sm" data-pin-move="${esc(p)}" data-d="-1" data-focus-key="pin-up-${esc(p)}"${i === 0 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveUp", { name: p }))}">↑</button>` +
+                `<button type="button" class="den-btn sm" data-pin-move="${esc(p)}" data-d="1" data-focus-key="pin-down-${esc(p)}"${i === pins.length - 1 ? " disabled" : ""} aria-label="${esc(L("set.ui.moveDown", { name: p }))}">↓</button>` +
+                `<button type="button" class="den-btn sm" data-pin-remove="${esc(p)}" data-focus-key="pin-x-${esc(p)}" aria-label="${esc(L("set.ui.unpinX", { name: p }))}">${esc(L("act.unpin"))}</button></div>`,
             )
             .join("") +
           "</div>"
@@ -569,9 +597,9 @@ export async function mountSettings(deps) {
           const sameGroup = (j) => items[j] && items[j].group === n.group;
           return (
             `<div class="it${off ? " off" : ""}" role="listitem"><span class="nm">${esc(name)} <span class="set-grp">· ${esc(gl(n.group))}</span>${tag(n.from)}</span>` +
-            `<button type="button" class="btn sm" data-move="${esc(n.id)}" data-d="-1" data-focus-key="nav-up-${esc(n.id)}"${sameGroup(i - 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveUp", { name }))}">↑</button>` +
-            `<button type="button" class="btn sm" data-move="${esc(n.id)}" data-d="1" data-focus-key="nav-down-${esc(n.id)}"${sameGroup(i + 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveDown", { name }))}">↓</button>` +
-            `<button type="button" class="btn sm" data-hide="${esc(n.id)}" data-focus-key="nav-hide-${esc(n.id)}" aria-pressed="${off}" aria-label="${esc(L(off ? "set.ui.showX" : "set.ui.hideX", { name }))}">${esc(L(off ? "set.ui.show" : "set.ui.hide"))}</button></div>`
+            `<button type="button" class="den-btn sm" data-move="${esc(n.id)}" data-d="-1" data-focus-key="nav-up-${esc(n.id)}"${sameGroup(i - 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveUp", { name }))}">↑</button>` +
+            `<button type="button" class="den-btn sm" data-move="${esc(n.id)}" data-d="1" data-focus-key="nav-down-${esc(n.id)}"${sameGroup(i + 1) ? "" : " disabled"} aria-label="${esc(L("set.ui.moveDown", { name }))}">↓</button>` +
+            `<button type="button" class="den-btn sm" data-hide="${esc(n.id)}" data-focus-key="nav-hide-${esc(n.id)}" aria-pressed="${off}" aria-label="${esc(L(off ? "set.ui.showX" : "set.ui.hideX", { name }))}">${esc(L(off ? "set.ui.show" : "set.ui.hide"))}</button></div>`
           );
         })
         .join("") +
@@ -613,10 +641,15 @@ export async function mountSettings(deps) {
   async function save(r, v) {
     const el = $(`s-${slug(r.id)}`);
     let ok = false;
+    const mine = { v };
+    if (PENDING_TYPES.includes(r.control?.type)) pending.set(r.id, mine);
     try {
       ok = (await r.write(v, ctx)) !== false;
     } catch {
       ok = false;
+    } finally {
+      // A later save of the same row keeps its own.
+      if (pending.get(r.id) === mine) pending.delete(r.id);
     }
     draw();
     const again = $(`s-${slug(r.id)}`) || el;

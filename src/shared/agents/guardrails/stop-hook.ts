@@ -40,7 +40,8 @@ import {
   rotationInstruction,
 } from "../rotation.js";
 import { parseHookArgs, type RotationHookArgs } from "./rotation-hook.js";
-import { inboxArgs, inboxBlock } from "./hub-inbox.js";
+import { INBOX_CACHE_SECONDS, inboxArgs, inboxBlock } from "./hub-inbox.js";
+import { hookCallOf } from "./hook-call.js";
 
 /** A due rotation's block, or "" (no rotation due, or the handoff passes). */
 function rotationBlock(
@@ -138,7 +139,13 @@ export async function stopHook(
     if (out) return out;
     // D41: nothing else to fix: Hub comments waiting on this agent, once.
     const a = inboxArgs(argv);
-    return a && input.stop_hook_active !== true ? await inbox(a) : "";
+    return a && input.stop_hook_active !== true
+      ? await inbox(
+          // Many turn ends share one answer from Hub (2026-11-22).
+          { ...a, cacheSeconds: a.cacheSeconds ?? INBOX_CACHE_SECONDS },
+          { call: hookCallOf(argv) },
+        )
+      : "";
   } catch {
     return "";
   }

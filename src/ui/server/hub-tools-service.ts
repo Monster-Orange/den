@@ -15,7 +15,7 @@
  * (hubToolsRestarting).
  */
 import path from "node:path";
-import { HubToolsWatch, fetchHubTools } from "../../shared/hub-tools.js";
+import { HubToolsWatch, fetchHubTools } from "../../shared/hub/hub-tools.js";
 import { listRecords, readRecord } from "../../shared/agents/records.js";
 import { getRuntime } from "../../shared/agents/runtime.js";
 import { workspaceHubToolsRestart } from "../../shared/environment-manager/workspaces.js";
@@ -28,6 +28,14 @@ let timer: NodeJS.Timeout | null = null;
 let watch: HubToolsWatch | null = null;
 
 /** The agents Den is restarting now to load Hub's tools (their rows say so). */
+/**
+ * Issue 726: the Hub changed: forget the tool lists seen (the next beat
+ * reads the fresh file).
+ */
+export function dropToolsWatch(): void {
+  watch = null;
+}
+
 export function hubToolsRestarting(): ReadonlySet<string> {
   return new Set(watch?.restarting() ?? []);
 }
@@ -72,6 +80,41 @@ export function startHubToolsWatch(o: {
         const { recordAction } = await import("./audit.js");
         const d = webDeps();
         const rec = (id: string) => readRecord(getStateDir(), id);
+        // Issue 1129: Hub's tools restart agents through the one queue
+        // (agents.resume): a batch at a time, never all at once.
+        const { restartQueue } = await import("./restart-queue-service.js");
+        const { notificationDeps } = await import("./notification-service.js");
+        const queue = restartQueue({
+          log: o.log,
+          store: () => notificationDeps().store,
+        });
+        const restartOne = async (id: string): Promise<void> => {
+          const r = rec(id);
+          if (!r) throw new Error(`agent ${id} is gone`);
+          const what = `restart ${id} in ${r.workspace} (at its next idle), same conversation, to load Hub's new tools, by Den itself`;
+          try {
+            const s = await ops.restartAgent(d, id, r.workspace, "after-turn");
+            recordAction(null, {
+              verb: "agents",
+              detail: s.already
+                ? `${what}: already restarted at ${s.already.at}`
+                : s.relaunched
+                  ? `${what}: it had rotated (${s.relaunched.why}), so it relaunched from its handoff in a new conversation`
+                  : what,
+              ...(s.early
+                ? { outcome: "refused" as const, reason: "exited at once" }
+                : {}),
+            });
+          } catch (e) {
+            recordAction(null, {
+              verb: "agents",
+              detail: what,
+              outcome: "refused",
+              reason: e instanceof Error ? e.message : String(e),
+            });
+            throw e;
+          }
+        };
         w = new HubToolsWatch({
           fetchTools: async () => {
             const cfg = hub.readHubConfig();
@@ -99,31 +142,8 @@ export function startHubToolsWatch(o: {
             const r = rec(id);
             return r ? workspaceHubToolsRestart(r.workspace, installOn) : false;
           },
-          restart: async (id) => {
-            const r = rec(id);
-            if (!r) throw new Error(`agent ${id} is gone`);
-            const what = `restart ${id} in ${r.workspace} (at its next idle), same conversation, to load Hub's new tools, by Den itself`;
-            try {
-              const s = await ops.restartAgent(d, id, r.workspace, "after-turn");
-              recordAction(null, {
-                verb: "agents",
-                detail: s.already
-                  ? `${what}: already restarted at ${s.already.at}`
-                  : what,
-                ...(s.early
-                  ? { outcome: "refused" as const, reason: "exited at once" }
-                  : {}),
-              });
-            } catch (e) {
-              recordAction(null, {
-                verb: "agents",
-                detail: what,
-                outcome: "refused",
-                reason: e instanceof Error ? e.message : String(e),
-              });
-              throw e;
-            }
-          },
+          restart: (id) =>
+            queue.add({ id, why: "hub-tools", run: () => restartOne(id) }),
           file: path.join(getStateDir(), "hub", "tools-seen.json"),
           log: o.log,
         });

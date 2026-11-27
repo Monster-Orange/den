@@ -20,6 +20,7 @@ import {
   newPkce,
   ownerRepo,
   patchHubAllowTools,
+  patchHubGroups,
   readHubConfig,
   newHubTokenCache,
   readHubToken,
@@ -62,11 +63,27 @@ describe("readHubConfig", () => {
       mcpRetryAttempts: 0,
       deliveryHeartbeatSeconds: 15,
       deliveryPollSeconds: 30,
+      deliveryHeldNoteSeconds: 60,
+      deliveryLoop: true,
+      deliveryStateTimeoutSeconds: 60,
+      deliveryTypeTimeoutSeconds: 120,
+      deliveryHeldBellMinutes: 5,
+      deliveryAnswerMinutes: 30,
+      deliveryAlertMinutes: 15,
+      deliveryStaleHours: 6,
+      deliveryStreamSilenceSeconds: 75,
       inboxWatch: true,
       inboxPollSeconds: 30,
       inboxBackoffMaxSeconds: 600,
+      inboxReadsPerSecond: 2,
       toolsCheckSeconds: 300,
       toolsRestart: true,
+      agentTokens: true,
+      agentTokenRetrySeconds: 600,
+      agentTokenRevokeRetrySeconds: 600,
+      agentTokenMaxAgeDays: 30,
+      groupsCacheSeconds: 30,
+      groups: "auto",
     });
   });
 
@@ -242,6 +259,27 @@ describe("issue 166: the inbox watcher's settings", () => {
       readHubConfig({ hub: { url, inbox_poll_seconds: 1 } }, {}, noSecrets),
     ).toThrow(/hub\.inbox_poll_seconds must be a number, at least 5/);
   });
+
+  it("2026-11-22: reads at most 2 a second for the install unless set; 0 or text throws", () => {
+    expect(
+      readHubConfig({ hub: { url } }, {}, noSecrets)!.inboxReadsPerSecond,
+    ).toBe(2);
+    expect(
+      readHubConfig(
+        { hub: { url } },
+        { hub: { inbox_reads_per_second: 0.5 } },
+        noSecrets,
+      )!.inboxReadsPerSecond,
+    ).toBe(0.5);
+    for (const bad of [0, -1, "fast"])
+      expect(() =>
+        readHubConfig(
+          { hub: { url, inbox_reads_per_second: bad } },
+          {},
+          noSecrets,
+        ),
+      ).toThrow(/hub\.inbox_reads_per_second must be a number above 0/);
+  });
 });
 
 describe("hub.allow_tools", () => {
@@ -260,6 +298,77 @@ describe("hub.allow_tools", () => {
     expect(() =>
       readHubConfig({ hub: { url, allow_tools: "no" } }, {}, noSecrets),
     ).toThrow(/hub\.allow_tools must be true or false/);
+  });
+
+  it("issue 750: hub.groups is auto by default; auto, on, off; true and false read as on and off; junk is refused", () => {
+    const g = (groups: unknown) =>
+      readHubConfig({ hub: { url, groups } }, {}, noSecrets)?.groups;
+    expect(readHubConfig({ hub: { url } }, {}, noSecrets)?.groups).toBe("auto");
+    expect(g(null)).toBe("auto");
+    expect(g("auto")).toBe("auto");
+    expect(g("on")).toBe("on");
+    expect(g("off")).toBe("off");
+    expect(g(true)).toBe("on");
+    expect(g(false)).toBe("off");
+    for (const junk of ["yes", "ON", 1, {}])
+      expect(() => g(junk)).toThrow(/hub\.groups must be auto, on or off/);
+  });
+
+  it("issue 750: Settings and config set hub.groups and hub.groups_cache_seconds in user.yml; null clears; junk is refused", () => {
+    const user: Record<string, unknown> = {
+      hub: { url, token: "file:/x", allow_tools: false },
+    };
+    expect(patchHubGroups(user, { mode: "on" })).toEqual({ ok: true });
+    expect(patchHubGroups(user, { cache_seconds: 60 })).toEqual({ ok: true });
+    expect(user.hub).toEqual({
+      url,
+      token: "file:/x",
+      allow_tools: false,
+      groups: true,
+      groups_cache_seconds: 60,
+    });
+    expect(patchHubGroups(user, { mode: null, cache_seconds: null })).toEqual({
+      ok: true,
+    });
+    expect(user.hub).toEqual({ url, token: "file:/x", allow_tools: false });
+    for (const bad of [
+      { mode: "yes" },
+      { mode: 1 },
+      { cache_seconds: 4 },
+      { cache_seconds: 3601 },
+      { cache_seconds: 10.5 },
+      { cache_seconds: "30" },
+      { other: 1 },
+      "on",
+    ]) {
+      const before = JSON.stringify(user);
+      const r = patchHubGroups(user, bad);
+      expect(r.ok).toBe(false);
+      expect(JSON.stringify(user)).toBe(before);
+    }
+    // On and off are written as true and false, and auto as no key: an
+    // older Den reads only true or false, and refuses the whole hub block
+    // on anything else.
+    const b: Record<string, unknown> = { hub: { url } };
+    for (const [mode, want] of [
+      ["on", true],
+      ["off", false],
+      [true, true],
+      [false, false],
+    ] as const) {
+      expect(patchHubGroups(b, { mode })).toEqual({ ok: true });
+      expect(b).toEqual({ hub: { url, groups: want } });
+      // What it wrote reads back as the mode set.
+      expect(readHubConfig({}, b, noSecrets)?.groups).toBe(want ? "on" : "off");
+    }
+    expect(patchHubGroups(b, { mode: "auto" })).toEqual({ ok: true });
+    expect(b).toEqual({ hub: { url } });
+    // An empty hub block goes away.
+    const bare: Record<string, unknown> = {};
+    patchHubGroups(bare, { mode: "off" });
+    expect(bare).toEqual({ hub: { groups: false } });
+    patchHubGroups(bare, { mode: null });
+    expect(bare).toEqual({});
   });
 
   it("Settings' POST sets it in user.yml, null clears it, junk is refused", () => {
@@ -447,6 +556,26 @@ describe("hubWhoami (GET /connect/whoami)", () => {
     expect(h.seen.map((r) => [r.method, r.path, r.auth])).toEqual([
       ["GET", "/connect/whoami", `Bearer ${TOKEN}`],
     ]);
+  });
+
+  it("issue 406: the person's name (person.name): kept trimmed, else left out", async () => {
+    const base = { install: "north-box", login: "pat" };
+    for (const [v, want] of [
+      ["  Pat Example ", "Pat Example"],
+      ["", undefined],
+      ["   ", undefined],
+      [7, undefined],
+      [null, undefined],
+      ["x".repeat(300), undefined],
+      ["Pat\nExample", undefined],
+      ["Pat\u007fExample", undefined],
+    ] as const) {
+      const h = await fakeHub({ ...base, person: { id: "p_1", name: v } });
+      expect([v, (await hubWhoami(h.url, TOKEN)).personName]).toEqual([
+        v,
+        want,
+      ]);
+    }
   });
 
   it("unread (threads waiting on the person): a whole number of at least 0, else left out", async () => {
@@ -641,6 +770,25 @@ describe("hubStatus", () => {
     });
   });
 
+  it("issue 406: carries the person's Hub name for the rail's account entry", async () => {
+    const st = await hubStatus({
+      config: () => cfg,
+      token: async () => TOKEN,
+      whoami: async () => ({ login: "pat", personName: "Pat Example" }),
+    });
+    expect(st).toMatchObject({
+      state: "connected",
+      login: "pat",
+      name: "Pat Example",
+    });
+    const none = await hubStatus({
+      config: () => cfg,
+      token: async () => TOKEN,
+      whoami: async () => ({ login: "pat" }),
+    });
+    expect("name" in none).toBe(false);
+  });
+
   it("carries whoami's unread for the rail's badge", async () => {
     const st = await hubStatus({
       config: () => cfg,
@@ -806,5 +954,52 @@ describe("#267: Hub's address from Settings", () => {
     };
     expect(patch?.(kept, null)).toEqual({ ok: true, url: null });
     expect(kept.hub).toEqual({ allow_tools: true });
+  });
+});
+
+describe("issue 701: the delivery time limits", () => {
+  const url = "https://hub.example.test";
+  const limits = (c: unknown) => {
+    const r = c as Record<string, unknown>;
+    return [
+      r.deliveryStateTimeoutSeconds,
+      r.deliveryTypeTimeoutSeconds,
+      r.deliveryHeldBellMinutes,
+      r.deliveryAnswerMinutes,
+    ];
+  };
+  it("permissive defaults; set per install; bad values throw", () => {
+    expect(limits(readHubConfig({ hub: { url } }, {}, noSecrets))).toEqual([
+      60, 120, 5, 30,
+    ]);
+    const d = readHubConfig(
+      { hub: { url } },
+      {
+        hub: {
+          delivery_state_timeout_seconds: 90,
+          delivery_type_timeout_seconds: 300,
+          delivery_held_bell_minutes: 10,
+          delivery_answer_minutes: 120,
+        },
+      },
+      noSecrets,
+    );
+    expect(limits(d)).toEqual([90, 300, 10, 120]);
+    expect(() =>
+      readHubConfig(
+        { hub: { url, delivery_held_bell_minutes: 0 } },
+        {},
+        noSecrets,
+      ),
+    ).toThrow(/hub\.delivery_held_bell_minutes must be a number, at least 1/);
+    expect(() =>
+      readHubConfig(
+        { hub: { url, delivery_type_timeout_seconds: 1 } },
+        {},
+        noSecrets,
+      ),
+    ).toThrow(
+      /hub\.delivery_type_timeout_seconds must be a number, at least 5/,
+    );
   });
 });

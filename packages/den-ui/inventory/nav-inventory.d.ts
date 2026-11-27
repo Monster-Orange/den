@@ -53,6 +53,10 @@ export interface NavElement {
   off?: string;
   /** 0.7.3: host text in an entry of the rail (data-nav-host-text): compareNav fails on it. */
   hostText?: string;
+  /** Issue 694: on the top bar, the page holds ☰ (drawn or hidden). */
+  menu?: boolean;
+  /** Issue 694: on the top bar, the page holds a rail (drawn or hidden). */
+  rail?: boolean;
 }
 export interface NavTheme {
   id: string;
@@ -112,6 +116,8 @@ export declare const NAV_THEME: NavTheme;
  */
 export declare const PINNED_CLASSES: readonly string[];
 /** The search's x and width for a viewport width, the same in any host. */
+export declare const TOP_LEFT_MIN: number;
+export declare const SEARCH_MIN: number;
 export declare function searchSlot(viewportW: number): { x: number; w: number };
 export declare const TOP_RIGHT_MIN: number;
 /** The search away from searchSlot (slot.x, slot.w), at any width. */
@@ -121,6 +127,13 @@ export declare function searchSlotDiffs(
 ): NavDiff[];
 /** The account entry's shapes the kit draws → their line counts. */
 export declare const ACCOUNT_SHAPES: Record<string, number>;
+/** Issue 694: the top bar's shapes besides the default ("no-rail"). */
+export declare const TOP_SHAPES: readonly string[];
+/**
+ * Issue 694: a top bar shape the kit doesn't draw, or a "no-rail" page
+ * that holds ☰ or a rail, as differences (no reference needed).
+ */
+export declare function railShapeDiffs(snap: NavSnapshot): NavDiff[];
 /** The version's fixed slot width for a viewport width (0 on a phone). */
 export declare function versionSlotW(viewportW: number): number;
 /** searchSlotDiffs plus Report, bell, version and ◐ anchored from the right. */

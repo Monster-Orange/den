@@ -171,9 +171,9 @@ describe("AG-0.1: the login shell's PATH", () => {
     );
   });
 
-  it("times out (3 s by default) and falls back to the current PATH", async () => {
+  it("times out (10 s by default: agents.shell_path_timeout_seconds) and falls back to the current PATH", async () => {
     delete process.env.DEN_LOGIN_SHELL;
-    expect(LOGIN_PATH_TIMEOUT_MS).toBe(3000);
+    expect(LOGIN_PATH_TIMEOUT_MS).toBe(10_000);
     const root = tmp();
     const loginDir = path.join(root, "login-bin");
     claudeIn(loginDir);
@@ -221,12 +221,15 @@ describe("AG-0.1: agents.runtimes.<id>.bin (user.yml)", () => {
     const read = () => yaml.parse(fs.readFileSync(userYml, "utf-8"));
     const setting = configuredRuntimeBin("den-claude", read);
     expect(setting).toBe(chosen.bin);
+    // Issue 456: the copy the search finds is listed, never run.
     expect(rt().detect(env, { bin: setting })).toEqual({
       available: true,
       path: chosen.bin,
       source: "setting",
+      others: [{ path: onPath.bin, source: "PATH" }],
       searched: [],
     });
+    expect(fs.existsSync(onPath.ran)).toBe(false);
     // Another runtime's block is not this one's.
     expect(configuredRuntimeBin("generic", read)).toBeUndefined();
   });
@@ -282,6 +285,10 @@ describe("AG-0.2: the version", () => {
       bin,
       `#!/bin/sh\necho x >> "${counter}"\n[ "$1" = "--version" ] && { echo "2.3.4 (Claude Code)"; exit 0; }\nexit 1\n`,
     );
+    // Written a minute ago: a CLI written just now is asked again (issue
+    // 1598, statSettled).
+    const old = new Date(Date.now() - 60_000);
+    fs.utimesSync(bin, old, old);
     expect(await runtimeVersion(bin, ["--version"], {})).toBe("2.3.4");
     expect(await runtimeVersion(bin, ["--version"], {})).toBe("2.3.4");
     expect(fs.readFileSync(counter, "utf-8").trim().split("\n")).toHaveLength(

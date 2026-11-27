@@ -24,6 +24,8 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser, pageIsMac } from "../helpers/browser.js";
+import { uiModuleFile } from "../../../src/ui/server/ui-assets.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 const KIT = path.join(process.cwd(), "packages", "den-ui", "src");
@@ -32,7 +34,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -155,10 +157,13 @@ async function mount(o: Opts = {}): Promise<{
     const kitShell = kitAsset(url.pathname);
     if (kitShell) return r.fulfill(kitShell);
     const file = /^\/([\w-]+\.js)$/.exec(url.pathname);
-    if (file && fs.existsSync(path.join(PUBLIC, file[1])))
+    const served =
+      file &&
+      (uiModuleFile(url.pathname, PUBLIC) ?? path.join(PUBLIC, file[1]));
+    if (served && fs.existsSync(served))
       return r.fulfill({
         contentType: "text/javascript; charset=utf-8",
-        body: fs.readFileSync(path.join(PUBLIC, file[1]), "utf-8"),
+        body: fs.readFileSync(served, "utf-8"),
       });
     // UK-2: the kit's files, as Den serves them under /kit/.
     const kit = /^\/kit\/([\w-]+\.(?:js|css))$/.exec(url.pathname);
@@ -498,10 +503,18 @@ describe("the status drawer (R15)", () => {
     expect(await text(p, '.den-prob-card [data-pin="billing/billing"]')).toBe(
       "Unpin",
     );
-    expect(posts).toContainEqual({
-      path: "/api/settings",
-      body: { shell: { pins: ["billing/billing"] } },
-    });
+    // Issue 402: a pin is { item, project } (the project in view, or none).
+    expect(
+      posts
+        .filter((x) => x.path === "/api/settings")
+        .map(
+          (x) =>
+            (x.body as { shell?: { pins?: { item: string }[] } }).shell?.pins,
+        )
+        .some(
+          (pins) => pins?.length === 1 && pins[0].item === "billing/billing",
+        ),
+    ).toBe(true);
     await p.click('.den-prob-card [data-start="billing/billing"]');
     expect(await p.$(".den-drawer")).toBeNull();
     expect(
@@ -553,6 +566,22 @@ describe("the ⌘K palette (R17)", () => {
       "Logs of shop/db ACTION",
       // #80 (0.4.45): a fuzzy match, last ("Sh…o…p" in its label).
       "Show up to this many helpers under an agent SETTING",
+      // Issue 1166: fuzzy too ("s…h…o…p" in "minutes with no progress").
+      "GitHub watch: minutes with no progress SETTING",
+      // Issue 1194: fuzzy too ("s…h…o…p" in "most hours open").
+      "GitHub watch: most hours open SETTING",
+      // Issue 403: fuzzy too ("S…h…o…p" in "Report screenshots, kept for").
+      "Report screenshots, kept for SETTING",
+      "Terminal size hold after a page closes SETTING",
+      // Issue 403: and its size limit, looser still (…p in "kept").
+      "Report screenshots, largest kept SETTING",
+      // Issue 1048: fuzzy too ("s…h…o…p" in "this load per").
+      "Hold new unit test runs over this load per core SETTING",
+      // Issue 1274: fuzzy too ("s…h…o…p" in "this much swap in use").
+      "Hold new runs here over this much swap in use (GB) SETTING",
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes SETTING",
+      // Issue 816: fuzzy too ("s…h…o…p" in "installs on this computer").
+      "Test installs on this computer SETTING",
     ]);
     await p.keyboard.press("ArrowDown");
     expect(await p.getAttribute(q, "aria-activedescendant")).toBe(
@@ -641,7 +670,9 @@ describe("the ⌘K palette (R17)", () => {
         : r.fulfill({ contentType: "text/html", body: "<title>t</title>t" }),
     );
     const here = p.url();
-    const mod = process.platform === "darwin" ? "Meta" : "Control";
+    // The browser's own OS picks the key (a remote browser runs on
+    // another OS than this runner), and the page's label follows it.
+    const mod = "ControlOrMeta";
     const open = async (q: string) => {
       await p.keyboard.press(`${mod}+k`);
       await p.waitForSelector(".den-pal");
@@ -649,7 +680,7 @@ describe("the ⌘K palette (R17)", () => {
     };
     await open("");
     expect(await p.locator(".den-pal .den-foot").textContent()).toContain(
-      `${process.platform === "darwin" ? "⌘" : "Ctrl+"}↵ new tab`,
+      `${(await pageIsMac(p)) ? "⌘" : "Ctrl+"}↵ new tab`,
     );
     const wsHref = await p.evaluate(
       () =>
@@ -1128,13 +1159,18 @@ describe("criterion 5: the overlays only read", () => {
     // Nothing reached a service, workspace, edge or restart route. The
     // shell's one read of /api/edge (GET, the rail's Edge page asks whether
     // an edge is configured, dev.30) is a page load's, and only reads.
-    expect(reqs.filter((r) => r.startsWith("GET /api/edge"))).toEqual([
-      "GET /api/edge",
-    ]);
+    // Issue 455: the address banner's one read (GET /api/edge/address) is
+    // a page load's too.
+    expect(
+      reqs.filter(
+        (r) => r.startsWith("GET /api/edge") && r !== "GET /api/edge/address",
+      ),
+    ).toEqual(["GET /api/edge"]);
     expect(
       reqs.filter(
         (r) =>
           r !== "GET /api/edge" &&
+          r !== "GET /api/edge/address" &&
           /\/api\/(service|workspace|workspaces|edge|web\/restart|run|release|local-dev)\b/.test(
             r,
           ),

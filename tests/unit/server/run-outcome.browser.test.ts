@@ -20,6 +20,8 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -92,11 +94,7 @@ beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -114,6 +112,11 @@ async function testsPage(): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  await signIn(
+    ctx,
+    path.join(tmp, "home", ".acme"),
+    `http://localhost:${port}`,
+  );
   // The changelog pop-up stays shut: this version was seen.
   await ctx.addInitScript((v) => {
     try {

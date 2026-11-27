@@ -47,6 +47,27 @@ const asAgent = (body: unknown) =>
   });
 
 describe("MODE-5: Settings rows that were the command line's", () => {
+  it("web.tools_probe_seconds (issue 1664): saved from Settings, read back, cleared", async () => {
+    expect(await s.settings({ web_ready: { tools_probe_seconds: 90 } })).toBe(
+      200,
+    );
+    expect(user()).toMatchObject({ web: { tools_probe_seconds: 90 } });
+    const g = (await s.settingsGet()) as {
+      web_ready?: { toolsProbeSeconds?: number };
+    };
+    expect(g.web_ready?.toolsProbeSeconds).toBe(90);
+    expect(await s.settings({ web_ready: { tools_probe_seconds: 0 } })).toBe(
+      400,
+    );
+    expect(user()).toMatchObject({ web: { tools_probe_seconds: 90 } });
+    expect(await s.settings({ web_ready: { tools_probe_seconds: null } })).toBe(
+      200,
+    );
+    expect(
+      (user().web as Record<string, unknown> | undefined)?.tools_probe_seconds,
+    ).toBeUndefined();
+  });
+
   it("Local environment, Terminal tabs and Log pane lines: set, shown, cleared", async () => {
     expect(
       await s.settings({
@@ -76,6 +97,57 @@ describe("MODE-5: Settings rows that were the command line's", () => {
     expect(user()).not.toHaveProperty("local_dev");
     expect(user()).not.toHaveProperty("cli_tabs");
     expect(user()).not.toHaveProperty("log_window_lines");
+  });
+
+  it("a save's answer carries the rows' values, so the page redraws them as saved (issue 424)", async () => {
+    // The page redraws from the answer: a row it left out showed its old
+    // value again, and a switch that flipped back off got a second click.
+    const r = await fetch(`${s.base}/api/settings`, {
+      method: "POST",
+      headers: { ...denAuth(s.stateDir), "content-type": "application/json" },
+      body: JSON.stringify({
+        local_dev: false,
+        cli_tabs: true,
+        log_window_lines: 40_000,
+        panes_reconnect: { max_failures: 12 },
+        crash_loop: { max_wait_seconds: 600 },
+      }),
+    });
+    try {
+      expect(r.status).toBe(200);
+      const reply = (await r.json()) as Record<string, unknown>;
+      const g = await s.settingsGet();
+      for (const k of [
+        "local_dev",
+        "cli_tabs",
+        "log_window_lines",
+        "panes_reconnect",
+        "crash_loop",
+        "web_bridge",
+        "web_ready",
+        "web_pairing",
+        "agents_list",
+        "agent_context",
+        "feedback",
+        "address_check",
+      ])
+        expect([k, reply[k]]).toEqual([k, g[k]]);
+      expect(reply).toMatchObject({
+        local_dev: false,
+        cli_tabs: true,
+        log_window_lines: 40_000,
+      });
+    } finally {
+      expect(
+        await s.settings({
+          local_dev: null,
+          cli_tabs: null,
+          log_window_lines: null,
+          panes_reconnect: { max_failures: null },
+          crash_loop: { max_wait_seconds: null },
+        }),
+      ).toBe(200);
+    }
   });
 
   it("the terminals' reconnect limits and the restart guard: set one at a time, defaults kept for the rest", async () => {
@@ -127,6 +199,49 @@ describe("MODE-5: Settings rows that were the command line's", () => {
       (user().panes as Record<string, unknown>).reconnect_max_failures,
     ).toBeUndefined();
     expect((await s.settingsGet()).crash_loop).toMatchObject({ restarts: 5 });
+  });
+
+  it("issue 819: the new-device limits are Settings with permissive defaults: set, shown, refused out of range, an agent can't", async () => {
+    expect((await s.settingsGet()).web_pairing).toEqual({
+      requestsPerMinute: 30,
+      approveAttempts: 10,
+      approveWindowSeconds: 30,
+    });
+    expect(
+      await s.settings({
+        web_pairing: { requests_per_minute: 5, approve_window_seconds: 60 },
+      }),
+    ).toBe(200);
+    expect(user()).toMatchObject({
+      web: { pair_requests_per_minute: 5, approve_window_seconds: 60 },
+    });
+    expect((await s.settingsGet()).web_pairing).toEqual({
+      requestsPerMinute: 5,
+      approveAttempts: 10,
+      approveWindowSeconds: 60,
+    });
+    const before = JSON.stringify(user());
+    for (const bad of [
+      { web_pairing: { approve_attempts: 0 } },
+      { web_pairing: { requests_per_minute: 2.5 } },
+      { web_pairing: { speed: 1 } },
+    ])
+      expect([bad, await s.settings(bad)]).toEqual([bad, 400]);
+    const r = await asAgent({ web_pairing: { approve_attempts: 999 } });
+    expect(r.status).toBe(403);
+    expect(JSON.stringify(user())).toBe(before);
+    expect(
+      await s.settings({
+        web_pairing: {
+          requests_per_minute: null,
+          approve_window_seconds: null,
+        },
+      }),
+    ).toBe(200);
+    expect((await s.settingsGet()).web_pairing).toMatchObject({
+      requestsPerMinute: 30,
+      approveWindowSeconds: 30,
+    });
   });
 
   it("out of range, the wrong type or an unknown limit is refused, and nothing is written", async () => {

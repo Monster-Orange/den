@@ -22,12 +22,14 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SHOTS = process.env.DEN_AGENTS_SHOTS;
 // An invented password the sudo shim takes; it is no one's.
@@ -40,7 +42,7 @@ let latest = "";
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -103,7 +105,7 @@ async function page(url: string): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
-  await p.goto(signInUrl(s!.stateDir, s!.base, url));
+  await signInPage(p, s!.stateDir, s!.base, url);
   return p;
 }
 

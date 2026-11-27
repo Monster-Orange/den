@@ -21,6 +21,9 @@ import * as fs from "fs";
 import * as path from "path";
 import { claudeProjectsDir } from "../usage/paths.js";
 import { cleanName } from "./transcript-follow.js";
+import { endingQuestion } from "./guardrails/attention-hook.js";
+import { TURN_READ_MAX_BYTES } from "./limit-defaults.js";
+import { MTIME_TICK_MS, statSettled } from "../stat-settled.js";
 
 /** One of a runtime's conversations, as Bring in lists it. */
 export interface RuntimeConversation {
@@ -238,16 +241,38 @@ export const TURN_QUIET_MS = 5_000;
  * D39: how far back from its end a transcript is read for its last turn
  * (agents.turn_read_max_mb). Past it: can't tell (null).
  */
-export const TURN_READ_MAX_BYTES = 8 * 1024 * 1024;
+export { TURN_READ_MAX_BYTES };
 
 /** A turn's verdict from the file: "quiet" is busy until it has been quiet. */
 type TurnVerdict = boolean | "quiet" | null;
 
-/** The last verdicts, by file, while its size and mtime stay the same. */
+/**
+ * A verdict and, issue 607, when the record it came from was written (ms;
+ * none when it carries no time). The time is kept, not weighed: the
+ * session start it is weighed against is the caller's.
+ */
+interface TurnRead {
+  v: TurnVerdict;
+  at?: number;
+}
+
+/**
+ * The last verdicts, by file, while its size and mtime stay the same.
+ * `readAt`: when it was read (the wall clock, ms).
+ */
 const turnCache = new Map<
   string,
-  { size: number; mtimeMs: number; bytes: number; max: number; v: TurnVerdict }
+  {
+    size: number;
+    mtimeMs: number;
+    readAt: number;
+    bytes: number;
+    max: number;
+    r: TurnRead;
+  }
 >();
+
+export { MTIME_TICK_MS };
 const TURN_CACHE_MAX = 256;
 
 /** Forget the cached verdicts (tests). */
@@ -268,13 +293,22 @@ export function resetTurnCache(): void {
  * D39: it reads back from the end, `bytes` at first and four times more
  * each try, until a turn's record shows; never the file's start (that is
  * the conversation's first turn). None in the last `maxBytes`: null, can't
- * tell. A verdict is kept while the file's size and mtime stay the same.
+ * tell. A verdict is kept while the file's size and mtime stay the same,
+ * and only once its mtime is older than its read by more
+ * than MTIME_TICK_MS: a same-size write in the same tick is read again.
+ *
+ * Issue 607: `since` is when the agent's live session started (ms). A turn
+ * whose last record was written before it is no running turn: the session
+ * that made it is gone (a terminal host restart cut it), and a resumed
+ * runtime never carries on a turn by itself. It reads idle. A record with
+ * no time, or no `since`: as before.
  */
 export function transcriptBusy(
   file: string | null,
   now = Date.now(),
   bytes = ENDS_BYTES,
   maxBytes = TURN_READ_MAX_BYTES,
+  since?: number,
 ): boolean | null {
   if (!file) return false;
   let st: fs.Stats;
@@ -284,17 +318,21 @@ export function transcriptBusy(
     return false;
   }
   const hit = turnCache.get(file);
-  const v =
+  // The wall clock, never `now` (a caller's): mtimes are stamped by it.
+  const readAt = Date.now();
+  const r =
     hit &&
     hit.size === st.size &&
     hit.mtimeMs === st.mtimeMs &&
+    statSettled(hit, hit.readAt) &&
     hit.bytes === bytes &&
     hit.max === maxBytes
-      ? hit.v
+      ? hit.r
       : turnVerdict(file, bytes, maxBytes);
+  const { v, at } = r;
   if (
     !hit ||
-    hit.v !== v ||
+    hit.r !== r ||
     hit.size !== st.size ||
     hit.mtimeMs !== st.mtimeMs
   ) {
@@ -302,28 +340,33 @@ export function transcriptBusy(
     turnCache.set(file, {
       size: st.size,
       mtimeMs: st.mtimeMs,
+      readAt,
       bytes,
       max: maxBytes,
-      v,
+      r,
     });
     if (turnCache.size > TURN_CACHE_MAX)
       turnCache.delete(turnCache.keys().next().value as string);
   }
+  if (
+    (v === true || v === "quiet") &&
+    since !== undefined &&
+    Number.isFinite(since) &&
+    at !== undefined &&
+    at < since
+  )
+    return false;
   return v === "quiet" ? now - st.mtimeMs < TURN_QUIET_MS : v;
 }
 
 /** The verdict from the file, reading back at most `maxBytes`. */
-function turnVerdict(
-  file: string,
-  bytes: number,
-  maxBytes: number,
-): TurnVerdict {
+function turnVerdict(file: string, bytes: number, maxBytes: number): TurnRead {
   for (let want = Math.max(1, Math.min(bytes, maxBytes)); ; want *= 4) {
     const { lines, whole } = readTail(file, Math.min(want, maxBytes));
-    const v = lastTurnBusy(lines);
-    if (v !== null) return v;
-    if (whole) return false;
-    if (want >= maxBytes) return null;
+    const r = lastTurnBusy(lines);
+    if (r.v !== null) return r;
+    if (whole) return { v: false };
+    if (want >= maxBytes) return { v: null };
   }
 }
 
@@ -356,7 +399,7 @@ function readTail(
  * The verdict from the last turn's record in `lines`, or null when they
  * hold none.
  */
-function lastTurnBusy(lines: string[]): TurnVerdict {
+function lastTurnBusy(lines: string[]): TurnRead {
   // A local command's output was passed over: its `<command-name>` is next.
   let localCommand = false;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -378,21 +421,28 @@ function lastTurnBusy(lines: string[]): TurnVerdict {
       continue;
     }
     localCommand = false;
-    if (r.type === "assistant") {
-      const msg = r.message as { stop_reason?: unknown } | undefined;
-      const stop = msg?.stop_reason;
-      if (stop === "tool_use" || toolNames(r).length) return true;
-      if (
-        stop === "end_turn" ||
-        stop === "stop_sequence" ||
-        stop === "max_tokens"
-      )
-        return false;
-      return "quiet";
-    }
-    return !userText(r).startsWith("[Request interrupted");
+    const t =
+      typeof r.timestamp === "string" ? Date.parse(r.timestamp) : Number.NaN;
+    return { v: turnRecordBusy(r), ...(Number.isFinite(t) ? { at: t } : {}) };
   }
-  return null;
+  return { v: null };
+}
+
+/** The verdict from a turn's record (lastTurnBusy's pick). */
+function turnRecordBusy(r: Record<string, unknown>): TurnVerdict {
+  if (r.type === "assistant") {
+    const msg = r.message as { stop_reason?: unknown } | undefined;
+    const stop = msg?.stop_reason;
+    if (stop === "tool_use" || toolNames(r).length) return true;
+    if (
+      stop === "end_turn" ||
+      stop === "stop_sequence" ||
+      stop === "max_tokens"
+    )
+      return false;
+    return "quiet";
+  }
+  return !userText(r).startsWith("[Request interrupted");
 }
 
 /**
@@ -435,13 +485,7 @@ export function lastAnswerQuestion(
         )
         .join("\n")
         .trim();
-      const last =
-        text
-          .split(/\r?\n/)
-          .filter((l) => l.trim())
-          .pop() ?? "";
-      const bare = last.trim().replace(/[\s*_`"'”’)\]]+$/u, "");
-      return /[?？]$/u.test(bare) ? last.trim().slice(0, 300) : null;
+      return endingQuestion(text);
     }
     if (whole || want >= maxBytes) return null;
   }

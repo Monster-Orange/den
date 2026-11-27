@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -23,6 +23,7 @@ import {
   type FrameServer,
 } from "./helpers/error-frame-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 jest.setTimeout(60_000);
 
@@ -52,7 +53,7 @@ let bad: FrameServer | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -120,7 +121,8 @@ async function sweep(base: string, route: string, width: number, auth = true) {
         document.head.appendChild(st);
       });
     });
-    await p.goto(auth ? signInUrl(s!.stateDir, base, route) : base + route);
+    if (auth) await signInPage(p, s!.stateDir, base, route);
+    else await p.goto(base + route);
     await p.waitForSelector(".den-top");
     await p.waitForFunction(
       () => !!document.querySelector('[data-den-report], [data-act="report"]'),

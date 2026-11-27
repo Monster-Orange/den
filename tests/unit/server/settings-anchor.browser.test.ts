@@ -14,12 +14,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 type Engine = "chromium" | "webkit";
 const ENGINES: Engine[] = ["chromium", "webkit"];
@@ -33,11 +34,7 @@ const HELD_MS = 1500;
 beforeAll(async () => {
   try {
     const pw = await import("playwright");
-    const ws = process.env.DEN_PW_WS;
-    for (const e of ENGINES)
-      browsers[e] = ws
-        ? await pw[e].connect(ws, { exposeNetwork: "<loopback>" })
-        : await pw[e].launch();
+    for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -77,7 +74,7 @@ async function open(e: Engine): Promise<{ p: Page; landed: Promise<void> }> {
   // Signed in first, in a tab of its own (signing in keeps the path, not
   // the #).
   const first = await ctx.newPage();
-  await first.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(first, s!.stateDir, s!.base, "/settings");
   await first.waitForSelector(ROW);
   // The link opens in a fresh tab of the same signed-in browser: a fresh
   // load, as from a bell link. Not via about:blank in the same tab: under

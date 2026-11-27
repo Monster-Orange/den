@@ -4,14 +4,16 @@
  * says who can see a report.
  *
  * - private and internal repos say so; public says public;
- * - an unknown answer, a failure, or no GitHub sign-in reads as public
- *   (and with no sign-in nothing is looked up);
+ * - when the person's `gh` can't say (no sign-in, a failure, no answer),
+ *   GitHub's tokenless answer is asked: a public repo is public there;
+ * - still not known: "unknown", never "public" (the form then neither says
+ *   public nor claims private). With no sign-in, `gh` is not asked;
  * - a real answer is kept for feedback.visibility_cache_hours: a second
  *   open within it makes no second call; after it, one more; kept on disk
  *   too. A failure is held feedback.visibility_retry_seconds (60; 0: asked
  *   again on every open), then asked again;
  * - a slow GitHub never holds the form past
- *   feedback.visibility_timeout_seconds: public now, the real answer on
+ *   feedback.visibility_timeout_seconds: unknown now, the real answer on
  *   the next open, from the same one call.
  *
  * `gh` is a fake: never the real one, no network. Invented names only; a
@@ -20,7 +22,6 @@
 import { beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import { Writable } from "stream";
 import {
@@ -29,7 +30,13 @@ import {
   type ReportRouteDeps,
 } from "../../../src/ui/server/report-routes.js";
 import { feedbackSettings } from "../../../src/shared/report-store.js";
-import { visibilityOf } from "../../../src/ui/server/report-visibility.js";
+import {
+  publicRepoVisibility,
+  visibilityOf,
+} from "../../../src/ui/server/report-visibility.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 /** What GitHub says for each repo: its JSON, a failure, or a wait. */
 let answers: Record<string, GhResult | (() => Promise<GhResult>)> = {};
@@ -38,6 +45,9 @@ let user: Record<string, unknown> = {};
 let state = "";
 let clock = 1_000_000;
 const lookups: string[] = [];
+/** GitHub's answer without a sign-in (only a public repo shows there). */
+let anon: Record<string, "public"> = {};
+const anonLookups: string[] = [];
 
 const ok = (o: unknown): GhResult => ({
   code: 0,
@@ -67,6 +77,10 @@ const deps = (): ReportRouteDeps => ({
     ),
   stateDir: () => state,
   gh,
+  publicRepo: async (repo: string) => {
+    anonLookups.push(repo);
+    return anon[repo] ?? null;
+  },
   names: () => ({ home: "/Users/pat", hosts: [], projects: [] }),
   diagnostics: async () => ({}),
   agentOf: () => null,
@@ -118,7 +132,9 @@ beforeEach(() => {
   user = {};
   clock = 1_000_000;
   lookups.length = 0;
-  state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-vis-"));
+  anon = {};
+  anonLookups.length = 0;
+  state = tempDir("den-report-vis-");
 });
 
 describe("GET /api/report: each destination's visibility (issue 415)", () => {
@@ -138,22 +154,39 @@ describe("GET /api/report: each destination's visibility (issue 415)", () => {
     expect(visOf(await info())["acme-eng/notes"]).toBe("internal");
   });
 
-  it("an unknown answer or a failure reads as public", async () => {
+  it("an unknown answer or a failure reads as unknown, never public", async () => {
     answers = {
       "acme-eng/engine": ok({ name: "engine" }),
       "acme-eng/notes": { code: 1, stdout: "", stderr: "HTTP 404" },
     };
     expect(visOf(await info())).toEqual({
-      "acme-eng/engine": "public",
-      "acme-eng/notes": "public",
+      "acme-eng/engine": "unknown",
+      "acme-eng/notes": "unknown",
     });
   });
 
-  it("no GitHub sign-in: public, and nothing is looked up", async () => {
+  it("a failure, but GitHub shows the repo to anyone: public", async () => {
+    answers = {
+      "acme-eng/engine": { code: 1, stdout: "", stderr: "HTTP 502" },
+      "acme-eng/notes": { code: 1, stdout: "", stderr: "HTTP 404" },
+    };
+    anon = { "acme-eng/engine": "public" };
+    expect(visOf(await info())).toEqual({
+      "acme-eng/engine": "public",
+      "acme-eng/notes": "unknown",
+    });
+  });
+
+  it("no GitHub sign-in: GitHub's tokenless answer, else unknown; gh is not asked", async () => {
     signedIn = false;
     answers = { "acme-eng/notes": ok({ private: true }) };
-    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    anon = { "acme-eng/engine": "public" };
+    expect(visOf(await info())).toEqual({
+      "acme-eng/engine": "public",
+      "acme-eng/notes": "unknown",
+    });
     expect(lookups).toEqual([]);
+    expect(anonLookups.sort()).toEqual(["acme-eng/engine", "acme-eng/notes"]);
   });
 
   it("a second open within the hours kept makes no second call; after them, one more", async () => {
@@ -183,7 +216,7 @@ describe("GET /api/report: each destination's visibility (issue 415)", () => {
       "acme-eng/engine": ok({ visibility: "public" }),
       "acme-eng/notes": { code: 1, stdout: "", stderr: "HTTP 502" },
     };
-    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    expect(visOf(await info())["acme-eng/notes"]).toBe("unknown");
     // Within a minute: held, so repeated opens don't storm GitHub.
     clock += 30_000;
     await info();
@@ -226,12 +259,12 @@ describe("GET /api/report: each destination's visibility (issue 415)", () => {
   it("no sign-in, then a sign-in: the next open looks it up", async () => {
     signedIn = false;
     answers = { "acme-eng/notes": ok({ private: true }) };
-    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    expect(visOf(await info())["acme-eng/notes"]).toBe("unknown");
     signedIn = true;
     expect(visOf(await info())["acme-eng/notes"]).toBe("private");
   });
 
-  it("a slow GitHub: public within the wait, the answer on the next open, one call", async () => {
+  it("a slow GitHub: unknown within the wait, the answer on the next open, one call", async () => {
     user = { visibility_timeout_seconds: 0.5 };
     let release: (r: GhResult) => void = () => undefined;
     answers = {
@@ -239,7 +272,7 @@ describe("GET /api/report: each destination's visibility (issue 415)", () => {
       "acme-eng/notes": () => new Promise<GhResult>((r) => (release = r)),
     };
     const t0 = Date.now();
-    expect(visOf(await info())["acme-eng/notes"]).toBe("public");
+    expect(visOf(await info())["acme-eng/notes"]).toBe("unknown");
     expect(Date.now() - t0).toBeLessThan(3000);
     // Still running: a second open waits again, with no second call.
     const second = info();
@@ -258,5 +291,76 @@ describe("visibilityOf: GitHub's repo answer", () => {
     expect(visibilityOf('{"private":false}')).toBe("public");
     expect(visibilityOf('{"visibility":"secret"}')).toBeNull();
     expect(visibilityOf("not json")).toBeNull();
+  });
+});
+
+describe("publicRepoVisibility: GitHub's tokenless answer (a stubbed fetch, no network)", () => {
+  /** A fetch that answers `status` with `body`, or throws. */
+  const stub = (status: number | "throw", body: unknown = {}) => {
+    const calls: { url: string; signal?: AbortSignal }[] = [];
+    const f = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, signal: init?.signal ?? undefined });
+      if (status === "throw") throw new Error("offline");
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+    return { f, calls };
+  };
+
+  it("only a 200 with private: false is public", async () => {
+    const { f, calls } = stub(200, { private: false });
+    expect(
+      await publicRepoVisibility("https://gh.test", f)("acme-eng/engine", 3000),
+    ).toBe("public");
+    expect(calls[0]!.url).toBe("https://gh.test/repos/acme-eng/engine");
+    expect(calls[0]!.signal).toBeDefined();
+  });
+
+  it.each([
+    ["a 404 (private, gone or renamed)", 404, {}],
+    ["a rate limit", 403, { message: "API rate limit exceeded" }],
+    ["a 500", 500, {}],
+    ["a 200 that doesn't say", 200, { name: "engine" }],
+    ["a 200 that says private", 200, { private: true }],
+  ])("%s: not known, never private", async (_n, status, body) => {
+    const { f } = stub(status as number, body);
+    expect(
+      await publicRepoVisibility("https://gh.test", f)("acme-eng/engine", 3000),
+    ).toBeNull();
+  });
+
+  it("a timeout or no network: not known", async () => {
+    const { f } = stub("throw");
+    expect(
+      await publicRepoVisibility("https://gh.test", f)("acme-eng/engine", 3000),
+    ).toBeNull();
+  });
+
+  it("not an owner/name: not asked", async () => {
+    const { f, calls } = stub(200, { private: false });
+    expect(
+      await publicRepoVisibility("https://gh.test", f)("../x?y", 3000),
+    ).toBeNull();
+    expect(calls).toEqual([]);
+  });
+});
+
+describe("GET /api/report: GitHub's tokenless answer is kept (issue 415)", () => {
+  it("a second open within the hours asks GitHub nothing", async () => {
+    signedIn = false;
+    anon = { "acme-eng/engine": "public" };
+    await info();
+    await info();
+    expect(anonLookups.filter((r) => r === "acme-eng/engine")).toHaveLength(1);
+  });
+
+  it("a not-known answer is held feedback.visibility_retry_seconds, then asked again", async () => {
+    signedIn = false;
+    await info();
+    clock += 30_000;
+    await info();
+    expect(anonLookups.filter((r) => r === "acme-eng/notes")).toHaveLength(1);
+    clock += 31_000;
+    await info();
+    expect(anonLookups.filter((r) => r === "acme-eng/notes")).toHaveLength(2);
   });
 });

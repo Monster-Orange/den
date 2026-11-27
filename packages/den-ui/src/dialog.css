@@ -1,7 +1,16 @@
-/* den-ui: the ask-and-tell dialogs' look (dialog.js). Tokens only (UK-1):
-   no colour of its own. Linked, never injected: clean under style-src 'self'. */
+/* den-ui: the dialog frame's look (dialog.js: dialogHtml, mountDialog,
+   askConfirm, askText, tell). Issues 669, 670: one look for every
+   product's Yes/No questions and large dialogs. Tokens only (UK-1): the
+   theme's radius, backdrop and font, no number of its own for them.
+   Linked, never injected: clean under style-src 'self'. */
+/* Issue 673: the actions are the kit's one button (button.css). The page
+   links button.css itself (Den: on every page, KIT_PAGE_CSS), never an
+   @import here: that would ask for it by a second URL (issue 231). */
+/* Issue 793: its own font, so it never takes the page's (or the
+   browser's serif); the kit's stack when a theme has no --sans. */
 .dk-dlg {
-  font-family: var(--sans);
+  /* prettier-ignore */
+  font-family: var(--sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif);
   position: fixed;
   inset-block: auto;
   inset-inline: 0;
@@ -15,7 +24,7 @@
   width: min(440px, calc(100vw - 32px));
   max-width: 100%;
   padding: 0;
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
@@ -23,34 +32,63 @@
   box-sizing: border-box;
 }
 .dk-dlg::backdrop {
-  background: color-mix(in srgb, var(--sunken) 70%, transparent);
+  background: var(--kit-scrim);
 }
+/* Issue 651: fields and buttons in the dialog's font, never the browser's. */
+.dk-dlg :where(button, input, select, textarea) {
+  font: inherit;
+}
+.dk-dlg [hidden] {
+  display: none;
+}
+
+/* A Yes/No question (kind "confirm"). */
 .dk-b {
   padding: var(--space-4) calc(var(--space-4) + 2px);
   display: grid;
   gap: 10px;
   margin: 0;
 }
-.dk-b h2 {
+.dk-dlg h2 {
   font-size: var(--fs-l);
   margin: 0;
   overflow-wrap: anywhere;
+  outline: none;
 }
 .dk-msg {
+  display: grid;
+  gap: var(--space-2);
   margin: 0;
   font-size: var(--fs-s);
   line-height: 1.5;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-height: 50dvh;
   overflow: auto;
 }
+.dk-msg :where(p, ul, ol) {
+  margin: 0;
+}
+.dk-msg :where(ul) {
+  padding-left: 18px;
+  color: var(--muted);
+}
+.dk-text {
+  white-space: pre-wrap;
+}
+/* One choice of several (a radio and its words). */
+.dk-opt {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+.dk-opt select {
+  margin-left: var(--space-1);
+}
 .dk-in {
-  font: inherit;
   font-size: var(--fs-s);
   min-height: var(--tap-min);
   padding: 0 var(--space-2);
-  border: 1px solid var(--border-strong);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   border-radius: var(--radius-button);
   background: var(--bg);
   color: var(--text);
@@ -58,9 +96,86 @@
   box-sizing: border-box;
 }
 .dk-in:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 1px);
 }
+
+/* A large dialog (kind "panel"): the header and footer stay, the body
+   scrolls. */
+.dk-panel {
+  width: min(820px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dk-panel:not([open]) {
+  display: none;
+}
+/* Issue 791: a panel that is a full-screen sheet on a phone (sheet: true). */
+@media (max-width: 640px) {
+  .dk-panel.dk-sheet {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    top: 0;
+    transform: none;
+    border: 0;
+    border-radius: initial;
+  }
+  .dk-panel.dk-sheet::backdrop {
+    background: transparent;
+  }
+}
+.dk-hd {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px var(--edge-style, solid) var(--border);
+  flex: none;
+}
+.dk-hd h2 {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.dk-sub {
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dk-acts {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex: none;
+  margin-inline-start: auto;
+}
+.dk-x-f {
+  display: contents;
+}
+.dk-body {
+  padding: var(--space-2) var(--space-4);
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.dk-note {
+  margin: 0;
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  color: var(--muted);
+  font-size: var(--fs-xs);
+  border-top: 1px var(--edge-style, solid) var(--border);
+  flex: none;
+}
+.dk-panel > .dk-ft {
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  border-top: 1px var(--edge-style, solid) var(--border);
+  flex: none;
+}
+
+/* The footer: the product's Report first, on the left; the actions after. */
 .dk-ft {
   display: flex;
   flex-wrap: wrap;
@@ -71,30 +186,32 @@
 .dk-ft > :first-child:not(.dk-btn) {
   margin-right: auto;
 }
+/* Issue 673: each action is the kit's one button (.den-btn, button.css,
+   imported above); the footer sets only its size here. A dialog's
+   danger is filled: the one step it asks about takes something away. */
 .dk-btn {
-  font: inherit;
   font-size: var(--fs-s);
   min-height: var(--tap-min);
   padding: 0 var(--space-3);
-  border-radius: var(--radius-button);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
 }
-.dk-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* Issue 1054: why a held action failed, above the footer. */
+.dk-err {
+  margin: 0;
+  color: var(--bad);
+  font-size: var(--fs-s);
 }
-.dk-btn.dk-primary {
-  background: var(--accent-fill);
-  border-color: var(--accent-fill);
-  color: var(--on-accent);
+.den-btn.dk-danger,
+.den-btn.dk-danger:not([aria-busy="true"]):hover {
+  background: var(--danger-bg, var(--bad));
+  border-color: var(--danger-border, var(--bad));
+  color: var(--danger-text, var(--on-accent));
+  /* Issue 1137: its edge's width and style (sketch: a solid 2px edge). */
+  border-width: var(--danger-edge-width, 1px);
+  border-style: var(--danger-edge-style, var(--edge-style, solid));
 }
-.dk-btn.dk-danger {
-  background: var(--bad);
-  border-color: var(--bad);
-  color: var(--on-accent);
+.den-btn.dk-danger:disabled,
+.den-btn.dk-danger:disabled:hover {
+  color: var(--btn-disabled-text, var(--danger-text, var(--on-accent)));
 }
 @media (max-width: 480px) {
   .dk-btn {

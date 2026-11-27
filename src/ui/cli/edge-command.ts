@@ -1,5 +1,7 @@
 /**
- * `edge up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes`
+ * `route --for nginx|caddy|traefik` (issue 455): the block another proxy
+ * that already owns port 80 needs so Den's name reaches Den. Printed for
+ * the person to paste; Den never edits another project's files.
  *
  * This org's edge: routes at `<name>.<edge.domain>`, TLS as `edge.tls` says
  * (none, mkcert or files). `trust` / `untrust` exist only under mkcert.
@@ -9,8 +11,13 @@
  */
 import chalk from "chalk";
 import { readBrand } from "../../shared/brand.js";
-import { readEdgeConfig } from "../../shared/edge/config.js";
-import { edgeDomains, edgeNames, routeUrl } from "../../shared/edge/render.js";
+import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
+import {
+  edgeDomains,
+  edgeNames,
+  routeUrl,
+  webRouteHosts,
+} from "../../shared/edge/render.js";
 import {
   caDir,
   caTrusted,
@@ -31,6 +38,44 @@ import {
 } from "../../shared/edge/status.js";
 import { tlsYaml } from "../../shared/edge/tls.js";
 import { runEdgeUp } from "../../shared/edge/up.js";
+import {
+  PROXIES,
+  isProxyKind,
+  proxyRoute,
+  upstreamHostFor,
+} from "../../shared/edge/proxy-route.js";
+import { portOwner } from "../../shared/edge/port-owner.js";
+import { addressWord } from "../../shared/edge/address-words.js";
+import { cliLanguage } from "../../shared/edge/address-check.js";
+import { readWebUrl, type WebUrl } from "../../shared/web/web-url.js";
+import { isLoopbackUrl } from "../../shared/web/web-url-check.js";
+
+/**
+ * `edge route`'s target: Den's own route on the edge (`edgeHost`, on the
+ * edge's http port). Issue 666: a loopback web.url is never the address,
+ * so the route is never built on it (`loopback` says one was set).
+ */
+export function denRouteTarget(
+  w: WebUrl | null,
+  edgeHost: string,
+  httpPort: number,
+): { host: string; listen: number; loopback: boolean } {
+  return {
+    host: edgeHost,
+    listen: httpPort,
+    loopback: isLoopbackUrl(w?.url),
+  };
+}
+import { product } from "../../shared/product.js";
+
+/** `edge route --for <proxy>`'s proxy, from `--for x` or `--for=x`. */
+export function routeFor(args: readonly string[]): string | null {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--for") return args[i + 1] ?? null;
+    if (args[i].startsWith("--for=")) return args[i].slice(6);
+  }
+  return null;
+}
 
 /** An included router's URLs (the hosts its rule names), else its name. */
 function includedUrl(r: IncludedRouter): string {
@@ -79,7 +124,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
             "  CA not trusted yet — run `edge trust` (asks for your password once)",
           ),
         );
-      for (const name of ["edge", ...Object.keys(cfg.routes)])
+      for (const name of Object.keys(cfg.routes))
         console.log(`  ${routeUrl(name, cfg)}`);
       return;
     }
@@ -93,6 +138,59 @@ export async function cmdEdge(args: string[]): Promise<void> {
     case "untrust":
       process.exitCode = untrustCa(cfg);
       return;
+    case "route": {
+      const kind = (routeFor(args.slice(1)) ?? "").toLowerCase();
+      const lang = cliLanguage();
+      if (!isProxyKind(kind))
+        throw new Error(
+          addressWord(lang, "routeUnknown", { cli: product().cli }),
+        );
+      const webPort = readWebPort();
+      const w = readWebUrl();
+      const { host, listen, loopback } = denRouteTarget(
+        w,
+        webRouteHosts(cfg, new Set([webPort]))[0]?.host ??
+          `${product().cli}.${cfg.domain}`,
+        cfg.ports?.http ?? 80,
+      );
+      if (loopback && w)
+        process.stderr.write(
+          `${w.url} names this machine only, so it is not this install's address: the route is for ${host}. Set the address: ${product().cli} web url https://${host}\n`,
+        );
+      const owner = portOwner(listen);
+      const target = {
+        host,
+        listen,
+        upstreamHost: upstreamHostFor(owner?.kind ?? null),
+        upstreamPort: webPort,
+        name: product().cli,
+      };
+      if (args.includes("--json")) {
+        console.log(
+          JSON.stringify(
+            {
+              kind,
+              host,
+              listen,
+              upstream: `http://${target.upstreamHost}:${webPort}`,
+              config: proxyRoute(kind, target),
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+      process.stderr.write(
+        addressWord(lang, "routeHelp", {
+          host,
+          port: webPort,
+          title: readBrand().name,
+        }) + "\n",
+      );
+      console.log(proxyRoute(kind, target));
+      return;
+    }
     case "routes": {
       for (const r of edgeRoutes(cfg))
         console.log(`${r.url.padEnd(52)} → ${r.upstream}`);
@@ -147,7 +245,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
     }
     default:
       throw new Error(
-        `Unknown edge command "${sub}". Use: up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes`,
+        `Unknown edge command "${sub}". Use: up [--take-over] [--rotate-proof] | down | status | trust | untrust | routes | route --for ${PROXIES.join("|")}`,
       );
   }
 }

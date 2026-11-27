@@ -37,6 +37,13 @@ export interface EdgeConfig {
   subzones?: string[];
   /** `<name>` → upstream URL, served at `https://<name>.<domain>`. */
   routes: Record<string, string>;
+  /**
+   * The route names the config's `edge.routes` gives on purpose (team or
+   * user), as opposed to the one Den makes from the brand. The migration
+   * to web.url prefers these: a distribution adds one when only that name
+   * is reachable from other machines.
+   */
+  namedRoutes?: string[];
   /** Host ports to publish, or null when another proxy fronts the edge. */
   ports: EdgePorts | null;
   /** Where the org's CA, certs and generated config live. */
@@ -75,11 +82,6 @@ export interface EdgeConfig {
   mounts: Record<string, string>;
   /** Extra external Docker networks the edge joins. */
   networks: string[];
-  /**
-   * Extra Traefik static-config arguments. Den owns the entrypoints'
-   * forwarded-header and PROXY-protocol trust (SEC-2a): an argument that
-   * sets either is dropped, with a warning at `edge up`.
-   */
   args: string[];
   /**
    * `edge.proxy_protocol.trusted_ips` (SEC-2a): the front proxies (IPs or
@@ -94,6 +96,7 @@ export interface EdgeConfig {
    * upstream has just closed (a 502 with no retry).
    */
   upstreamIdleSeconds?: number;
+  addressRecheckSeconds?: number;
   /**
    * `edge.access_log` (#63, off by default): Traefik's access log, masked
    * by Den into `edge-access.log` before it is kept.

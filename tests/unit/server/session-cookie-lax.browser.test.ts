@@ -9,12 +9,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -22,7 +23,7 @@ let s: AgentsPageServer | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -42,7 +43,7 @@ describe("the session cookie moves to Lax", () => {
     if (!browser) return;
     const ctx = await browser.newContext();
     const p = await ctx.newPage();
-    await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+    await signInPage(p, s!.stateDir, s!.base, "/settings");
     const session = (await ctx.cookies()).find((c) =>
       c.name.startsWith("den_session_"),
     )!;

@@ -14,6 +14,7 @@ import {
   type GateRun,
 } from "../../../src/ui/cli/gate-command.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
+import { GATE_DEFAULTS } from "../../../src/shared/gates/rules.js";
 
 const tmps: string[] = [];
 const kids: ChildProcess[] = [];
@@ -60,7 +61,11 @@ function deps(over: Partial<GateDeps> = {}) {
   const beats: (() => void)[] = [];
   let handler: ((s: NodeJS.Signals) => void) | undefined;
   const d: GateDeps = {
-    store: new GateStore({ dir, alive: () => true }),
+    store: new GateStore({
+      platform: "linux",
+      dir,
+      alive: () => true,
+    }),
     env: {},
     out: (l) => out.push(l),
     err: (l) => err.push(l),
@@ -147,6 +152,8 @@ describe("gate run", () => {
 
   it("waits while another run holds the machine, saying who and until when, then runs", async () => {
     const t = deps();
+    // Issue 751: a browser run runs alone only at 0 beside it.
+    t.d.store.writeSettings({ cpu_slots_beside_browser: 0 });
     const other = t.d.store.ask({
       kind: "browser",
       who: "Den · other-repo · a person",
@@ -159,14 +166,16 @@ describe("gate run", () => {
       if (++sleeps === 2) t.d.store.release(other.id);
       return Promise.resolve();
     };
-    expect(await cmdGate(["run", "--kind", "cpu", "--", "jest"], t.d)).toBe(0);
+    expect(
+      await cmdGate(["run", "--kind", "cpu", "--", "jest", "a.test.ts"], t.d),
+    ).toBe(0);
     const said = t.err.join("\n");
     expect(said).toContain(
       "waiting: " +
         other.id +
         '  holds browser  Den · other-repo · a person  "browser suite"  until about ',
     );
-    expect(t.ran).toEqual([["jest"]]);
+    expect(t.ran).toEqual([["jest", "a.test.ts"]]);
     expect(t.d.store.list()).toEqual([]);
     // The other run was never stopped: it gave its slot back itself.
     expect(t.d.store.events().filter((e) => e.event === "released")).toEqual([
@@ -211,12 +220,22 @@ describe("gate run", () => {
 
   it("a real run killed with SIGTERM stops its command and gives its slot back", async () => {
     const dir = tmp();
-    const store = new GateStore({ dir });
+    const store = new GateStore({
+      platform: "linux",
+      dir,
+    });
     const k = spawn(
       process.execPath,
       ["--import", "tsx", path.join(__dirname, "run-child.ts")],
       {
-        env: { ...process.env, DEN_GATE_DIR: dir, TSX_DISABLE_CACHE: "1" },
+        env: {
+          ...process.env,
+          DEN_GATE_DIR: dir,
+          TSX_DISABLE_CACHE: "1",
+          // A browser run declares a container browser (macOS hosts), not on
+          // this machine (a loopback one needs a container on its port).
+          DEN_PW_WS: "ws://192.0.2.1:9",
+        },
         stdio: ["ignore", "ignore", "pipe"],
       },
     );
@@ -249,12 +268,22 @@ describe("gate run", () => {
 
   it("a real wrapper killed with SIGKILL: the slot stays while its run goes on, then frees at once", async () => {
     const dir = tmp();
-    const store = new GateStore({ dir });
+    const store = new GateStore({
+      platform: "linux",
+      dir,
+    });
     const k = spawn(
       process.execPath,
       ["--import", "tsx", path.join(__dirname, "run-child.ts")],
       {
-        env: { ...process.env, DEN_GATE_DIR: dir, TSX_DISABLE_CACHE: "1" },
+        env: {
+          ...process.env,
+          DEN_GATE_DIR: dir,
+          TSX_DISABLE_CACHE: "1",
+          // A browser run declares a container browser (macOS hosts), not on
+          // this machine (a loopback one needs a container on its port).
+          DEN_PW_WS: "ws://192.0.2.1:9",
+        },
         stdio: ["ignore", "ignore", "pipe"],
       },
     );
@@ -295,6 +324,7 @@ describe("gate run", () => {
     const r = fakeRun();
     const t = deps({ now: () => now, exec: () => r.run });
     t.d.store = new GateStore({
+      platform: "linux",
       dir: t.d.store.dir,
       alive: () => true,
       now: () => now,
@@ -318,6 +348,51 @@ describe("gate run", () => {
       "gate: e2e is past its estimate (5 min); it is not stopped, and the slot stays its own until it ends",
     ]);
     expect(t.beats).toEqual([]);
+  });
+
+  it("refuses a test run that names no tests; --all-tests allows it", async () => {
+    const t = deps();
+    expect(
+      await cmdGate(
+        ["run", "--kind", "cpu", "--", "npx", "jest", "--maxWorkers=1"],
+        t.d,
+      ),
+    ).toBe(2);
+    expect(t.ran).toEqual([]);
+    expect(t.err).toEqual([
+      "gate: this jest run names no test files and no filter, so it would run every test. " +
+        "Name the files (build the list first and check it isn't empty), or pass --all-tests when a full run is meant",
+    ]);
+    expect(
+      await cmdGate(
+        [
+          "run",
+          "--kind",
+          "cpu",
+          "--all-tests",
+          "--",
+          "npx",
+          "jest",
+          "--maxWorkers=1",
+        ],
+        t.d,
+      ),
+    ).toBe(0);
+    expect(t.ran).toEqual([["npx", "jest", "--maxWorkers=1"]]);
+  });
+
+  it("reads npm test's script from the repo's package.json", async () => {
+    const repo = tmp();
+    fs.writeFileSync(
+      path.join(repo, "package.json"),
+      JSON.stringify({ scripts: { test: "jest --ci" } }),
+    );
+    const t = deps({ cwd: repo });
+    expect(await cmdGate(["run", "--", "npm", "test"], t.d)).toBe(2);
+    expect(
+      await cmdGate(["run", "--", "npm", "test", "--", "a.test.ts"], t.d),
+    ).toBe(0);
+    expect(t.ran).toEqual([["npm", "test", "--", "a.test.ts"]]);
   });
 
   it("says what is wrong with the asking", async () => {
@@ -368,7 +443,9 @@ describe("gate end and settings: a person's only", () => {
     expect(await cmdGate(["settings", "--cpu-slots", "4"], agent)).toBe(2);
     expect(t.d.store.settings().cpuSlots).toBe(2);
     expect(await cmdGate(["settings", "--cpu-slots", "4"], t.d)).toBe(0);
-    expect(t.out.at(-1)).toBe("cpu slots 4 · flagged 15 min past its estimate");
+    expect(t.out.at(-1)).toBe(
+      `cpu slots 4, 2 beside a browser run, none beside a release one · browser runs at once here 1 · cpu runs wait at load ${GATE_DEFAULTS.cpuHoldLoad} while a release browser run holds · new cpu runs wait over a load of 3 × the cores while one is going · no run starts at a load of ${GATE_DEFAULTS.maxStartLoad} or more (starts anyway after 10 min) · leftovers killed 10 s after a run ends · flagged 15 min past its estimate, in the bell past 2× it · CI runners renew every 30 s, taken back after 120 s, at most 4 slots and 4 asks each · release priority: 1 per kind at a time, never past another marked run, past the other kind's earlier runs waiting up to 30 min, agents and people may ask · test boxes checked within 8 s, a held or unreachable one checked again after 30 s · browser runs need a container: no · a browser run with no --box: here or a test box`,
+    );
     expect(await cmdGate(["settings"], agent)).toBe(0);
   });
 });
@@ -377,7 +454,13 @@ describe("gate status", () => {
   it("lists holders then waiters; --json carries overrun", async () => {
     const t = deps();
     expect(await cmdGate(["status"], t.d)).toBe(0);
-    expect(t.out).toEqual(["No gate runs hold or wait."]);
+    // Issue 1274: the machine line (tests/setup.ts pins 100% free, 0 swap).
+    expect(t.out).toEqual([
+      "No gate runs hold or wait.",
+      "This machine: 100% of memory free.",
+    ]);
+    // Issue 751: a browser run runs alone only at 0 beside it.
+    t.d.store.writeSettings({ cpu_slots_beside_browser: 0 });
     const a = t.d.store.ask({
       kind: "browser",
       who: "A",

@@ -1,0 +1,150 @@
+/* den-ui: the panel fold toggle (issue 548) and the folded panel's edge
+   strip (issue 549), panel-fold.js. Tokens only: no colour of its own.
+   Linked, never injected: clean under style-src 'self'. The host shows or
+   hides each with the hidden attribute and lays its page out itself. */
+
+/* The fold toggle: an icon and a word; pressed (the panel shows) is the
+   sunken fill and the strong border. */
+.den-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px var(--edge-style, solid) var(--border);
+  border-radius: var(--r-btn);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-s);
+  font-weight: 400;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease;
+}
+.den-fold[hidden] {
+  display: none;
+}
+.den-fold:hover {
+  border-color: var(--border-strong);
+}
+.den-fold[aria-pressed="true"] {
+  background: var(--sunken);
+  border-color: var(--border-strong);
+  font-weight: 500;
+}
+.den-fold svg,
+.den-strip-show svg {
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.den-fold svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* The edge strip: 40px wide where the folded panel was; Show panel, then
+   the count under it. */
+.den-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 40px;
+  min-height: 120px;
+  padding: var(--space-2) 0;
+  align-self: start;
+  background: var(--surface);
+  border: 1px var(--edge-style, solid) var(--border);
+  border-radius: var(--r);
+}
+.den-strip[hidden] {
+  display: none;
+}
+.den-strip-show {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 1px var(--edge-style, solid) var(--border);
+  border-radius: var(--r-btn);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+.den-strip-show:hover {
+  border-color: var(--border-strong);
+  background: var(--sunken);
+}
+.den-strip-show svg {
+  width: 16px;
+  height: 16px;
+}
+.den-strip-n {
+  min-width: 24px;
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+  color: var(--accent-text);
+}
+/* The count's words: heard, never seen. */
+.den-strip-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.den-fold:focus-visible,
+.den-strip-show:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+
+/* A phone or a touch screen: the toggle is a 44px row; Show panel keeps
+   its 32px look inside the 40px strip, with a 44×44px tap centred on it
+   (as .den-hit). */
+@media (pointer: coarse), (max-width: 720px) {
+  .den-fold {
+    min-height: var(--tap);
+  }
+  .den-strip-show::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 100%;
+    height: 100%;
+    min-width: var(--tap);
+    min-height: var(--tap);
+    transform: translate(-50%, -50%);
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .den-fold {
+    transition: none;
+  }
+}

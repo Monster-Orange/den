@@ -105,11 +105,41 @@ That's it: `acme` is now your tool, with your name, your CLI and your config, in
 One project focus with Switch, agent pane layouts, and a Start dialog with personas, roles and a choice of
 runtime and model.
 
+## Browser tests through the gate
+
+Projects that run browser tests on a test box import Den's box guard instead of copying it:
+
+```js
+import {
+  allowFromEnv,
+  connectGuarded,
+  guardBrowser,
+  ownPorts,
+  pinLoopbackNames,
+} from "@monster-orange/den/pw-guard";
+```
+
+It holds a box's pages to the run's base URLs, never this machine's ports 80 or 443, and has no Playwright
+dependency. `connectGuarded(chromium, process.env.DEN_PW_WS)` returns a browser that is already guarded by the
+run's base URLs (`DEN_GATE_ALLOW`); with none, it loads nothing. A browser connected another way needs
+`guardBrowser`. Guarding a browser twice is harmless.
+
+A `host:*` base URL covers only the ports this process serves, counted from when `@monster-orange/den/pw-guard` is
+first imported. Import it before you start your servers, or claim a port with `boxOwnPort(port)`; a server it
+didn't see is refused. The guard routes pages: it doesn't stop the test's own code, such as a CDP session it opens.
+
+`@monster-orange/den/pw-guard` follows semver: These names and their behaviour change only in a major version. A new option is a minor. The guard never gets looser in a patch.
+
 ## Docs
 
 [Reference](docs/reference.md) (configuration, manifests, strategies, CLI) · [Distributions](docs/distributions.md) ·
 [Den Hub](docs/hub.md) (connect an install to Hub) · [Changelog](CHANGELOG.md)
 
-Found a bug or have an idea? [Open an issue](https://github.com/Monster-Orange/den/issues/new).
+Found a bug or have an idea? Press the Report button on any page or pop-up in Den. It sends a screenshot, the page
+and the Den version to the install's feedback repo, and shows whether that repo is private or public. An agent can't press it yet: a `den report` command and agent tool
+are coming (issue 565). If you can't press it,
+[open an issue](https://github.com/Monster-Orange/den/issues/new) with the Den version (`den --version`), your OS,
+the steps, and what you expected against what happened. The repo is public: never paste secrets, tokens, private
+repo names, customer or company names, or internal URLs.
 
 MIT licence.

@@ -19,7 +19,9 @@ import {
 } from "./runtime.js";
 import { sessionPath, type RuntimeFind } from "./runtime-search.js";
 import { ACTOR_TOKEN_FILE_ENV } from "../actor-token.js";
+import { installLocationEnv } from "../product.js";
 import { AGENT_ACTOR_ENV, buildSessionEnv } from "../sessions/env.js";
+import { applyEnvHold, DEFAULT_ENV_HOLD } from "./env-hold.js";
 
 registerRuntime(denClaude);
 for (const e of BUILTIN_CATALOG)
@@ -76,7 +78,7 @@ export function withSessionPath(
  * An agent's session env, as `agents start` builds it and `doctor --probe`
  * checks it: the allowlist (its PATH the search's, withSessionPath), the runtime's passthrough and launch env, Den's
  * markers (DEN_AGENT=agent:<id>, and SEC-1c's DEN_ACTOR_TOKEN when one was
- * minted), then every runtime's scrubEnv and any person credential.
+ * minted, and the install's location: installLocationEnv), then every runtime's scrubEnv and any person credential.
  */
 export function agentSessionEnv(
   caller: NodeJS.ProcessEnv,
@@ -95,14 +97,26 @@ export function agentSessionEnv(
   declared: Record<string, string> = {},
   /** Issue 163 (b): the sign-in token's env (the always-on service only). */
   signIn: Record<string, string> = {},
+  hold: { hold: readonly string[]; allow: readonly string[] } = {
+    hold: DEFAULT_ENV_HOLD,
+    allow: [],
+  },
 ): Record<string, string> {
+  const from = withSessionPath(caller, extraDirs);
+  const defined: Record<string, string> = {};
+  for (const [k, v] of Object.entries(from))
+    if (v !== undefined) defined[k] = v;
   return buildSessionEnv({
-    caller: withSessionPath(caller, extraDirs),
+    caller: applyEnvHold(defined, hold.hold, hold.allow),
+    keep: hold.allow,
     passthrough: rt.envPassthrough,
     launch,
     // The distribution's declared env (agents.git's GIT_CONFIG_*).
     extra: declared,
     den: {
+      // The install it runs under (its root and state folder): a CLI the
+      // agent runs in its shell finds its token there.
+      ...installLocationEnv(caller),
       [AGENT_ACTOR_ENV]: `agent:${agentId}`,
       ...(actorTokenFile ? { [ACTOR_TOKEN_FILE_ENV]: actorTokenFile } : {}),
     },

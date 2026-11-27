@@ -1,6 +1,6 @@
 /**
  * `<cli> mcp`: an MCP server over stdio, a thin client of the running web
- * server (http://localhost:<web.port>). Agents and the web UI share one
+ * server, dialed where it listens (web-dial.ts). Agents and the web UI share one
  * state and one set of guards; nothing is started implicitly.
  *
  * stdout carries the protocol only: diagnostics go to stderr.
@@ -50,7 +50,7 @@ import {
   ScopeUsageError,
   type McpScope,
 } from "./scope.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export interface DenMcpOptions {
   cfg: ResolvedMcpConfig;
@@ -86,7 +86,7 @@ export function mcpInstructions(
     `through the running ${p.title} web server (\`${opts.cli} web up\`). ` +
     (opts.cfg.actions.length
       ? `Actions enabled: ${opts.cfg.actions.join(", ")}.`
-      : "The org has enabled no actions (mcp.actions).") +
+      : "No actions are on (mcp.actions, in config/local/user.yml).") +
     ` The ${approvalsState(opts.cfg)}.` +
     (opts.scope && !toolScope
       ? ` You are this ${p.title}'s own server agent (${opts.scope.actor}): the whole ${p.title}, ` +
@@ -151,6 +151,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
     cfg: opts.cfg,
     cli: opts.cli,
     ...(toolScope ? { scope: toolScope } : {}),
+    ...(opts.scope ? { actor: opts.scope.actor } : {}),
   };
 
   // A pinned tool with no workspace parameter (no grants) still takes a
@@ -359,6 +360,7 @@ export async function runOneShot(
     cfg: opts.cfg,
     cli: opts.cli,
     ...(toolScope ? { scope: toolScope } : {}),
+    ...(opts.scope ? { actor: opts.scope.actor } : {}),
   };
   // The stdio server validates arguments against each tool's schema (the
   // SDK does it); a one-shot must too, and strictly: it is typed by hand, so

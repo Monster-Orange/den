@@ -23,7 +23,7 @@ import {
   checkRequest,
   type GuardContext,
 } from "../../../src/ui/server/request-guard.js";
-import { approveKeyHash } from "../../../src/shared/web-session.js";
+import { approveKeyHash } from "../../../src/shared/web/web-session.js";
 
 const PORT = 4100;
 const SERVER_CSRF = "server-start-csrf-token-aaaaaaaaaaaaaaaaaaaaaa";
@@ -57,7 +57,6 @@ function ctx(): GuardContext {
               session: { name: "server" },
             }
           : null,
-    csrfToken: SERVER_CSRF,
     session: (req) => {
       const c = String(req.headers.cookie ?? "");
       return c.includes(`den_session_${PORT}=good`)
@@ -157,10 +156,12 @@ describe("approverAllowed: only a signed-in browser session", () => {
     ).toEqual({ guard: false, approver: null });
   });
 
-  it("an agent's curl with no credential and the server-start CSRF token (the loopback page's): refused", () => {
+  it("an agent's curl with no credential and a CSRF token it got hold of: refused by the guard (0.4.71: a sign-in on loopback too)", () => {
     const r = allowed({ ...ORIGIN, "x-den-csrf": SERVER_CSRF });
-    expect(r.guard).toBe(true); // loopback lets it through the guard...
-    expect(r.approver).toMatchObject({ ok: false, code: "signin_to_approve" }); // ...but it can't approve
+    expect(r).toEqual({ guard: false, approver: null });
+    expect(
+      checkRequest(req({ ...ORIGIN, "x-den-csrf": SERVER_CSRF }), ctx()),
+    ).toMatchObject({ ok: false, status: 401, code: "signin_required" });
   });
 
   it("an agent's curl with no credential and no Origin: refused before it gets here", () => {
@@ -413,7 +414,7 @@ describe("the queue", () => {
     expect(ask("agent:b").state).toBe("pending");
   });
 
-  it("settled requests are dropped an hour after they settle", async () => {
+  it("an hour after it settles, only a small record stays (a week)", async () => {
     const { q, tick } = queue();
     const a = q.request({
       actor: "agent:a",
@@ -424,7 +425,16 @@ describe("the queue", () => {
     await q.decide(a.id, "deny", "s");
     tick(59 * 60_000);
     expect(q.get(a.id)?.state).toBe("denied");
+    expect(q.get(a.id)?.summary).toBe("x");
     tick(2 * 60_000);
+    q.pending();
+    // The whole record is gone; how it ended stays.
+    expect(q.get(a.id)).toMatchObject({
+      state: "denied",
+      summary: "",
+      ended: true,
+    });
+    tick(7 * 24 * 60 * 60_000);
     q.pending();
     expect(q.get(a.id)).toBeNull();
   });

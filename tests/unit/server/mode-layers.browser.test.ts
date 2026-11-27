@@ -21,12 +21,14 @@ import {
   type HostClient,
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -47,11 +49,7 @@ async function projectMode(ws: string, mode: string | null): Promise<void> {
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = process.env.DEN_PW_WS
-      ? await chromium.connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -121,7 +119,7 @@ async function open(url: string, ready: string): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, url));
+  await signInPage(p, s!.stateDir, s!.base, url);
   // Signing in keeps the path, not the #: open the link itself.
   if (new URL(p.url()).hash !== new URL(url, s!.base).hash)
     await p.goto(`${s!.base}${url}`);

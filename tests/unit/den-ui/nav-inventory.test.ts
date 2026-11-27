@@ -13,11 +13,14 @@
  *     default).
  */
 import { describe, expect, it } from "@jest/globals";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import {
   compareNav,
   navWarnings,
+  railShapeDiffs,
+  TOP_SHAPES,
   searchSlot,
   topSlotDiffs,
   NAV_BROWSER_IMAGE,
@@ -38,6 +41,37 @@ const ids = (s: NavSnapshot, ref: NavSnapshot) =>
     .map((d) => `${d.key} ${d.property}`)
     .sort();
 
+/** A job's block in the workflow: its key line up to the next job's. */
+function jobBlock(ci: string, name: string): string {
+  const at = ci.search(new RegExp(`^ {2}${name}:\\s*$`, "m"));
+  if (at < 0) return "";
+  const rest = ci.slice(at + 1);
+  const next = rest.search(/^ {2}[\w-]+:\s*$/m);
+  return ci.slice(at, next < 0 ? ci.length : at + 1 + next);
+}
+
+/**
+ * Issue 1527: what CI's den-ui-nav job (the visual job) lacks, read from
+ * that job's own block: the pinned image, its run-server, the
+ * connection, the switch, and the list of tagged tests.
+ */
+function navJobMisses(ci: string): string[] {
+  const job = jobBlock(ci, "den-ui-nav");
+  if (!job) return ["the den-ui-nav job"];
+  const v = NAV_BROWSER_IMAGE.match(/:v([\d.]+)-/)![1];
+  const want: [string, string][] = [
+    [`NAV_IMAGE: ${NAV_BROWSER_IMAGE}`, "pins NAV_BROWSER_IMAGE"],
+    [`playwright@${v} run-server`, "serves the image's Playwright"],
+    ["DEN_PW_WS: ws://localhost:3921/", "connects to it"],
+    [
+      "node scripts/visual-tests.mjs)",
+      "runs the list from scripts/visual-tests.mjs",
+    ],
+    ['DEN_VISUAL_JOB: "1"', 'sets DEN_VISUAL_JOB: "1"'],
+  ];
+  return want.filter(([line]) => !job.includes(line)).map(([, why]) => why);
+}
+
 describe("nav inventory: the pinned browser and theme", () => {
   it("CI's den-ui-nav job runs the test on NAV_BROWSER_IMAGE", () => {
     const ci = fs.readFileSync(
@@ -45,12 +79,39 @@ describe("nav inventory: the pinned browser and theme", () => {
       "utf-8",
     );
     expect(NAV_BROWSER_IMAGE).toMatch(/:v[\d.]+-\w+@sha256:[0-9a-f]{64}$/);
-    expect(ci).toContain(`NAV_IMAGE: ${NAV_BROWSER_IMAGE}`);
-    expect(ci).toContain("DEN_PW_WS: ws://localhost:3921/");
-    expect(ci).toContain("tests/unit/den-ui/nav-inventory.browser.test.ts");
-    // The run-server's Playwright is the one the image is named for.
-    const v = NAV_BROWSER_IMAGE.match(/:v([\d.]+)-/)![1];
-    expect(ci).toContain(`playwright@${v} run-server`);
+    expect(navJobMisses(ci)).toEqual([]);
+    const listed = execFileSync("node", ["scripts/visual-tests.mjs"], {
+      cwd: ROOT,
+      encoding: "utf-8",
+    }).split("\n");
+    expect(listed).toContain("tests/unit/den-ui/nav-inventory.browser.test.ts");
+  });
+
+  it("the check reads the den-ui-nav job only: the same lines in another job don't count", () => {
+    const ci = fs.readFileSync(
+      path.join(ROOT, ".github/workflows/ci.yml"),
+      "utf-8",
+    );
+    const block = jobBlock(ci, "den-ui-nav");
+    expect(block).not.toBe("");
+    // The job's steps moved to a job of another name.
+    const moved = ci.replace(
+      block,
+      block.replace(/^ {2}den-ui-nav:/m, "  den-ui-other:"),
+    );
+    expect(moved).not.toBe(ci);
+    expect(navJobMisses(moved)).toEqual(["the den-ui-nav job"]);
+    // The job stays, but runs the nav test by name, not the list.
+    const named = ci.replace(
+      block,
+      block
+        .replace("node scripts/visual-tests.mjs)", "echo nav)")
+        .replace('DEN_VISUAL_JOB: "1"', "DEN_OTHER: x"),
+    );
+    expect(navJobMisses(named)).toEqual([
+      "runs the list from scripts/visual-tests.mjs",
+      'sets DEN_VISUAL_JOB: "1"',
+    ]);
   });
 
   it("NAV_THEME is Den's default theme as shipped", () => {
@@ -240,6 +301,40 @@ describe("nav inventory: red cases on the reference", () => {
     expect(ids(withShape("name,login", 1), r)).toEqual([`${ACCT} shape`]);
   });
 
+  // Issue 1341: the rail's foot is one .den-rail-foot holding the account
+  // entry. An entry of another line count than the reference's makes the
+  // foot taller or shorter by exactly its own change, and no more.
+  const FOOT = "#den-rail > div.den-rail-foot";
+  const oneLine = (extra = 0) => {
+    const s = withShape("login", 1);
+    const a = at(s, ACCT);
+    const d = 16;
+    a.box.h -= d;
+    a.box.y += d;
+    a.style.height = `${parseFloat(a.style.height) - d}px`;
+    const f = at(s, FOOT);
+    f.box.h -= d + extra;
+    f.box.y += d + extra;
+    f.style.height = `${parseFloat(f.style.height) - d - extra}px`;
+    return s;
+  };
+  it("issue 1341: the foot follows the account entry's own height change", () => {
+    const r = withShape("name,login", 2);
+    expect(ids(oneLine(), r).filter((x) => x.startsWith(FOOT + " "))).toEqual(
+      [],
+    );
+  });
+  it("issue 1341: a foot that changes by more than the account entry fails", () => {
+    const r = withShape("name,login", 2);
+    expect(ids(oneLine(8), r)).toContain(`${FOOT} style.height`);
+  });
+  it("issue 1341: the foot's height still holds when the account's line count matches", () => {
+    const r = withShape("name,login", 2);
+    const s = withShape("name,login", 2);
+    at(s, FOOT).style.height = `${parseFloat(at(s, FOOT).style.height) - 16}px`;
+    expect(ids(s, r)).toContain(`${FOOT} style.height`);
+  });
+
   it("an account given the old label/detail fails: flagged as deprecated", () => {
     const r = withShape("name,login", 2);
     const s = withShape("name,login", 2);
@@ -257,7 +352,14 @@ describe("nav inventory: red cases on the reference", () => {
     expect(searchSlot(1280)).toEqual({ x: 464, w: 304 });
     expect(searchSlot(1100)).toEqual({ x: 396, w: 304 });
     expect(searchSlot(960)).toEqual({ x: 256, w: 304 });
-    expect(searchSlot(800)).toEqual({ x: 96, w: 304 });
+    // Issue 981: under 944px the search gives way before the crumbs do
+    // (the left part keeps 220px, the project picker in it); down to its
+    // icon (56px) where the page is zoomed.
+    expect(searchSlot(944)).toEqual({ x: 240, w: 304 });
+    expect(searchSlot(820)).toEqual({ x: 240, w: 180 });
+    expect(searchSlot(800)).toEqual({ x: 240, w: 160 });
+    expect(searchSlot(768)).toEqual({ x: 240, w: 128 });
+    expect(searchSlot(721)).toEqual({ x: 240, w: 81 });
     expect(searchSlot(390)).toEqual({ x: 82, w: 54 });
     expect(searchSlot(600)).toEqual({ x: 220, w: 54 });
   });
@@ -335,5 +437,82 @@ describe("nav inventory: red cases on the reference", () => {
     n.name = "3 of 4 up";
     n.style.color = "rgb(200, 0, 0)";
     expect(ids(s, ref)).toEqual([]);
+  });
+});
+
+// Issue 694: a page drawn with topBarHtml({ rail: false }) (the header's
+// data-nav-shape "no-rail") has no rail and no ☰, at any width.
+describe("nav inventory: the top bar's no-rail shape (issue 694)", () => {
+  const ref = read("chromium", 390);
+  const TOP = "header.den-top";
+  const head = (s: NavSnapshot) => s.elements.find((e) => e.key === TOP)!;
+  // The bar as rail: false draws it: no ☰, no rail, the shape stamped.
+  const noRail = () => {
+    const s = copy(ref);
+    s.elements = s.elements.filter(
+      (e) => e.slot === "top" && !e.key.startsWith("#den-menu-btn"),
+    );
+    head(s).shape = "no-rail";
+    delete head(s).menu;
+    delete head(s).rail;
+    return s;
+  };
+
+  it("no-rail is a shape the kit draws", () => {
+    expect(TOP_SHAPES).toContain("no-rail");
+  });
+
+  it("the default shape (☰ and a rail) passes, as before", () => {
+    expect(railShapeDiffs(ref)).toEqual([]);
+    expect(ids(copy(ref), ref)).toEqual([]);
+  });
+
+  it("a no-rail page with neither a rail nor ☰ passes, against its own shape", () => {
+    const s = noRail();
+    expect(railShapeDiffs(s)).toEqual([]);
+    expect(ids(s, noRail())).toEqual([]);
+  });
+
+  it("a no-rail page that draws ☰ fails", () => {
+    const s = noRail();
+    const menu = ref.elements.find((e) => e.key === "#den-menu-btn")!;
+    s.elements.splice(1, 0, JSON.parse(JSON.stringify(menu)));
+    expect(railShapeDiffs(s).map((d) => `${d.key} ${d.property}`)).toEqual([
+      `${TOP} menu`,
+    ]);
+    expect(ids(s, noRail())).toContain(`${TOP} menu`);
+  });
+
+  it("a no-rail page with ☰ in the page but hidden fails all the same", () => {
+    const s = noRail();
+    head(s).menu = true;
+    expect(railShapeDiffs(s).map((d) => d.property)).toEqual(["menu"]);
+  });
+
+  it("a no-rail page that draws a rail fails", () => {
+    const s = noRail();
+    s.elements.push(
+      ...ref.elements
+        .filter((e) => e.slot !== "top")
+        .map((e) => JSON.parse(JSON.stringify(e))),
+    );
+    expect(railShapeDiffs(s).map((d) => `${d.key} ${d.property}`)).toEqual([
+      `${TOP} rail`,
+    ]);
+    const hidden = noRail();
+    head(hidden).rail = true;
+    expect(railShapeDiffs(hidden).map((d) => d.property)).toEqual(["rail"]);
+  });
+
+  it("a top bar shape the kit doesn't draw fails", () => {
+    const s = noRail();
+    head(s).shape = "no-menu";
+    expect(railShapeDiffs(s).map((d) => `${d.key} ${d.property}`)).toEqual([
+      `${TOP} shape`,
+    ]);
+  });
+
+  it("a no-rail page against the default reference fails on the shape", () => {
+    expect(ids(noRail(), ref)).toContain(`${TOP} shape`);
   });
 });

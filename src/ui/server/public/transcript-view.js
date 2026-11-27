@@ -4,13 +4,14 @@
  * tool?, text, error? }, as the server summarizes them: tool calls in a few
  * words, their results under them, never thinking.
  *
- * openTranscript({ title, subtitle?, note?, load, opener? }) shows it in a
- * modal <dialog> of its own (made once, kept in <body>): labelled, focus on
+ * openTranscript({ title, subtitle?, note?, load, opener? }) shows it in the
+ * kit's large dialog (issue 670; made once, kept in <body>): labelled, focus on
  * its heading, Escape or Close gives focus back to the opener. `load()`
  * resolves { items, omitted } (or rejects with an Error to show).
  */
 import { dismissable } from "/popover.js";
 import { timeHtml } from "/kit/time.js";
+import { dialogHtml, mountDialog } from "/dialog-den.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -53,15 +54,8 @@ export function transcriptHtml(items, { omitted = 0 } = {}) {
   );
 }
 
+/** The items' look; the dialog's own is the kit's frame (issue 670). */
 const CSS = `
-.tx-dlg{font-family:var(--sans);box-shadow:var(--shadow);width:min(860px,calc(100vw - 32px));max-height:calc(100vh - 48px);padding:0;border:1px solid var(--border-strong);border-radius:10px;background:var(--raised, var(--surface));color:var(--text)}
-.tx-dlg::backdrop{background:rgba(0,0,0,.35)}
-.tx-hd{display:flex;gap:8px;align-items:baseline;padding:12px 16px;border-bottom:1px solid var(--border)}
-.tx-hd h2{font-size:15px;margin:0;outline:none;min-width:0;overflow-wrap:anywhere}
-.tx-sub{color:var(--muted);font-size:12px;min-width:0;overflow-wrap:anywhere}
-.tx-hd .x{margin-left:auto;flex:none}
-.tx-body{padding:8px 16px 4px;overflow:auto;max-height:calc(100vh - 200px)}
-.tx-note{margin:0;padding:8px 16px 12px;color:var(--muted);font-size:12px;border-top:1px solid var(--border)}
 .tx-list{list-style:none;margin:0;padding:0}
 .tx-i{display:grid;grid-template-columns:auto auto 1fr;gap:4px 8px;padding:4px 0;font-size:13px;align-items:baseline;border-bottom:1px dashed var(--border)}
 .tx-i:last-child{border-bottom:0}
@@ -114,6 +108,9 @@ export function focusBack(el, key) {
   now?.focus?.();
 }
 
+/** The kit's large dialog (issue 670), made once and kept in <body>. */
+let frame = null;
+
 function dialog() {
   if (dlg && dlg.isConnected) return dlg;
   if (!document.getElementById("tx-css")) {
@@ -122,39 +119,41 @@ function dialog() {
     s.textContent = CSS;
     document.head.append(s);
   }
-  dlg = document.createElement("dialog");
-  dlg.className = "tx-dlg";
-  dlg.id = "tx-dlg";
-  dlg.setAttribute("aria-labelledby", "tx-h");
-  dlg.innerHTML =
-    `<div class="tx-hd"><h2 id="tx-h" tabindex="-1"></h2><span class="tx-sub" id="tx-sub"></span>` +
-    `<button type="button" class="den-btn sm x" data-tx-close></button></div>` +
-    `<div class="tx-body" id="tx-body" aria-live="polite"></div>` +
-    `<p class="tx-note" id="tx-note" hidden></p>`;
-  dlg.querySelector("[data-tx-close]").addEventListener("click", () => close());
-  dlg.addEventListener("close", () => {
-    release?.();
-    release = null;
-    const o = opener;
-    const k = openerKey;
-    opener = null;
-    openerKey = "";
-    focusBack(o, k);
-  });
-  document.body.append(dlg);
+  frame = mountDialog(
+    dialogHtml({
+      kind: "panel",
+      id: "tx-dlg",
+      className: "tx-dlg",
+      ids: { h: "tx-h", sub: "tx-sub", body: "tx-body" },
+      subtitle: "",
+      closeLabel: t("tx.close"),
+      closeAttrs: { "data-tx-close": true },
+      bodyAttrs: { "aria-live": "polite" },
+      foot: `<p class="dk-note" id="tx-note" hidden></p>`,
+    }),
+    {
+      show: false,
+      remove: false,
+      onClose: () => {
+        release?.();
+        release = null;
+        const o = opener;
+        const k = openerKey;
+        opener = null;
+        openerKey = "";
+        focusBack(o, k);
+      },
+    },
+  );
+  dlg = frame.dialog;
   return dlg;
 }
 
-/** D50: a press on its backdrop closes it (popover.js); Esc is native. */
+/** D50: a press on its backdrop closes it (popover.js); Esc is the kit's. */
 let release = null;
 
 function close() {
-  if (!dlg) return;
-  if (typeof dlg.close === "function" && dlg.open) dlg.close();
-  else {
-    dlg.removeAttribute("open");
-    dlg.dispatchEvent(new Event("close"));
-  }
+  frame?.close("close");
 }
 
 /** Show a transcript (see the file's comment). Resolves once it is drawn. */
@@ -178,10 +177,7 @@ export async function openTranscript({
   const body = d.querySelector("#tx-body");
   body.setAttribute("aria-busy", "true");
   body.innerHTML = `<p class="tx-empty">${esc(t("tx.loading"))}</p>`;
-  if (!d.open) {
-    if (typeof d.showModal === "function") d.showModal();
-    else d.setAttribute("open", "");
-  }
+  if (!d.open) frame.show(from ?? opener);
   release ??= dismissable(d, { close: () => close() });
   d.querySelector("#tx-h").focus();
   try {

@@ -27,6 +27,9 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -41,10 +44,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -97,14 +97,8 @@ async function open(width: number) {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
-  });
+  await signIn(ctx, s.stateDir, s.base);
+  await seeWhatsNew(ctx, s.base);
   const p: Page = await ctx.newPage();
   const errors: string[] = [];
   p.on("pageerror", (e) => errors.push(e.message));

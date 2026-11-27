@@ -8,7 +8,9 @@
  *   changed   a changed test file;
  *   mapped    the browser specs mapped to a changed page, route or public
  *             file in tests/affected-map.json (browser tests load pages over
- *             HTTP, so jest's import graph never reaches them);
+ *             HTTP, so jest's import graph never reaches them), and each
+ *             test that starts Den as a process, when its subject changes
+ *             (issue 708: a spawn is not an import either);
  *   smoke     the map's fixed smoke set, on every pull request;
  *   ALL       every test, when a changed file matches the map's
  *             "everything" list (the shared shell, the kit, the request
@@ -88,6 +90,17 @@ export function validateMap(map) {
     if (r.mentions !== undefined && typeof r.mentions !== "boolean")
       problems.push(`rules[${i}]: mentions is true or false`);
   }
+  // Issue 708: the subjects of tests that start Den, and the shrink-only
+  // list of those without one.
+  if (
+    map.subjects !== undefined &&
+    (typeof map.subjects !== "object" ||
+      Array.isArray(map.subjects) ||
+      Object.values(map.subjects).some((g) => !Array.isArray(g) || !g.length))
+  )
+    problems.push("subjects: {test file: [globs]}, none empty");
+  if (map.subjectless !== undefined && !Array.isArray(map.subjectless))
+    problems.push("subjectless: a list of test files");
   if (problems.length) throw new Error(`affected map: ${problems.join("; ")}`);
   return map;
 }
@@ -108,6 +121,30 @@ export function loadMap(file = DEFAULT_MAP) {
  *             English text, for a rule with `mentions: true`
  * Returns { all, allBecause, files: Map<test file, reasons[]> }.
  */
+/**
+ * Issue 843: the jest files CI's `fast` job ran (scripts/fast-checks.json).
+ * The pull request's jobs wait for `fast`, so a selection leaves them out:
+ * one run per check per tree.
+ */
+export function ranFirstTests(root = ROOT) {
+  const file = path.join(root, "scripts", "fast-checks.json");
+  if (!fs.existsSync(file)) return [];
+  return JSON.parse(fs.readFileSync(file, "utf-8")).jest ?? [];
+}
+
+export function testsNamingPaths(changed, sources) {
+  const out = {};
+  for (const [t, text] of Object.entries(sources))
+    for (const f of changed) {
+      if (f === t) continue;
+      let i = text.indexOf(f);
+      while (i >= 0 && /[\w.-]/.test(text[i + f.length] ?? ""))
+        i = text.indexOf(f, i + 1);
+      if (i >= 0) (out[t] ??= []).push(f);
+    }
+  return out;
+}
+
 export function selectTests({
   changed,
   allTests,
@@ -115,7 +152,11 @@ export function selectTests({
   map,
   importersOf = {},
   mentioned = [],
+  named = {},
+  ranFirst = [],
 }) {
+  const skip = new Set(ranFirst);
+  allTests = allTests.filter((f) => !skip.has(f));
   const everything = (map.everything ?? []).map((e) =>
     typeof e === "string" ? { glob: e } : e,
   );
@@ -136,6 +177,8 @@ export function selectTests({
   const tests = new Set(allTests);
   for (const f of changed) if (tests.has(f)) add(f, "changed");
   for (const f of related) if (tests.has(f)) add(f, "related");
+  for (const [t, paths] of Object.entries(named))
+    if (tests.has(t)) for (const p of paths) add(t, `names ${p}`);
   for (const rule of map.rules) {
     const when = matcher(rule.when);
     const trigger = changed.filter(when);
@@ -322,7 +365,7 @@ async function main(argv) {
   // The page rules written from today's code join the file's: a spec or
   // page added since the file was last written still runs (never fewer).
   const { buildRules } = await import("./affected-map.mjs");
-  map.rules = [...map.rules, ...buildRules()];
+  map.rules = [...map.rules, ...buildRules(map)];
   const { allTests, related } = jestLists(changed);
   // Rules that run a helper's importers, or the specs naming a changed key.
   const fired = map.rules.filter((r) => changed.some(matcher(r.when)));
@@ -366,6 +409,13 @@ async function main(argv) {
     map,
     importersOf,
     mentioned,
+    named: testsNamingPaths(
+      changed,
+      Object.fromEntries(
+        allTests.map((t) => [t, fs.readFileSync(path.join(ROOT, t), "utf-8")]),
+      ),
+    ),
+    ranFirst: ranFirstTests(),
   });
   if (sel.all)
     console.log(

@@ -17,13 +17,15 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vm from "vm";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
-import { kitPseudo } from "./helpers/kit-shell.js";
+import { kitAsset, kitPseudo } from "./helpers/kit-shell.js";
+import { NotificationStore } from "../../../src/shared/notifications.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
 let browser: Browser | null = null;
@@ -122,11 +124,7 @@ beforeAll(async () => {
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
     // DEN_PW_WS: Den's own Playwright server instead of a local browser.
-    browser = process.env.DEN_PW_WS
-      ? await pw[engine].connect(process.env.DEN_PW_WS, {
-          exposeNetwork: "<loopback>",
-        })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -170,6 +168,12 @@ async function open(next: string): Promise<Page> {
     const res = await r.fetch();
     r.fulfill({ response: res, body: (await res.text()) + kitPseudo("es") });
   });
+  // Issue 1025: the bell imports the kit as modules, with their own
+  // strings.js: that copy gets the pseudo-locale's words too.
+  await p.route(`${s!.base}/kit/strings.js*`, (r) => {
+    const a = kitAsset("/kit/strings.js", "es")!;
+    r.fulfill({ contentType: a.contentType, body: a.body });
+  });
   await p.addInitScript(() => {
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
@@ -177,7 +181,7 @@ async function open(next: string): Promise<Page> {
       document.head.appendChild(st);
     });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, next));
+  await signInPage(p, s!.stateDir, s!.base, next);
   return p;
 }
 
@@ -299,9 +303,22 @@ describe("pages in a pseudo-locale: no literal inside <main>", () => {
 
   it("the bell, open", async () => {
     if (!browser) return;
+    // Issue 1025: a row in Earlier (ten days old, so folded as older), so
+    // the bell draws its section headings (the kit's own words) every run,
+    // not only when a run left one.
+    new NotificationStore(
+      s!.stateDir,
+      () => new Date(Date.now() - 10 * 86_400_000),
+    ).add({
+      kind: "service",
+      subject: "agent:shipper",
+      scope: "workspace/north",
+      text: "Release shipped",
+    });
     const p = await open("/agents");
     await p.click("#den-bell");
     await p.waitForSelector(".den-bell-pop");
+    await p.waitForSelector("#den-bell-earlier");
     const found = await leaks(p, ".den-bell-pop");
     await p.close();
     expect(found).toEqual([]);
@@ -355,7 +372,7 @@ describe("den#171: Edge, Tests, Release, Logs, Environments and Services in es a
           const p = await browser.newPage({
             viewport: { width: 1440, height: 1000 },
           });
-          await p.goto(signInUrl(s!.stateDir, s!.base, url));
+          await signInPage(p, s!.stateDir, s!.base, url);
           await p.waitForLoadState("networkidle").catch(() => {});
           await p.waitForTimeout(300);
           const shown = await p.evaluate(() => {
@@ -431,7 +448,7 @@ describe("issue 171: values the server sends, in es and ja", () => {
               body: JSON.stringify(EDGE),
             }),
           );
-          await p.goto(signInUrl(s!.stateDir, s!.base, url));
+          await signInPage(p, s!.stateDir, s!.base, url);
           if (url === "/edge")
             await p.waitForSelector("#edge-body:not([aria-busy])");
           else {

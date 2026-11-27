@@ -31,12 +31,13 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as http from "http";
 import type { AddressInfo } from "net";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const AXE = require.resolve("axe-core/axe.min.js");
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"];
@@ -55,10 +56,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -114,7 +112,7 @@ async function page(
   const p = await ctx.newPage();
   await p.emulateMedia({ colorScheme: scheme });
   p.on("pageerror", (e) => errors.push(`${url}: ${e.message}`));
-  await p.goto(signInUrl(s!.stateDir, s!.base, url));
+  await signInPage(p, s!.stateDir, s!.base, url);
   return p;
 }
 

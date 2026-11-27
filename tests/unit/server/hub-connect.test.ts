@@ -187,6 +187,55 @@ describe("start: den_url, this Den's https edge address", () => {
   });
 });
 
+describe("the agents' grant on Connect", () => {
+  it("the first Connect sends agents=yes, with no whoami before it", () => {
+    const h = harness();
+    expect(start(h).q.agents).toBe("yes");
+  });
+
+  it("whoami's connect.agents feature is never read as 'the grant took': nothing is kept from it", async () => {
+    let whoami = 0;
+    const h = harness({
+      ...({
+        confirmAgents: async () => {
+          whoami += 1;
+          return true;
+        },
+      } as Partial<HubConnectDeps>),
+    });
+    const { q } = start(h);
+    expect((await h.hc.finish(back({ state: q.state, code: "c1" }))).ok).toBe(
+      true,
+    );
+    expect(whoami).toBe(0);
+    expect(
+      (h.user().hub as Record<string, unknown>).agents_grant,
+    ).toBeUndefined();
+  });
+
+  it("every Connect and every Disconnect clears the not-covered hold and the reconnect item, so the next mint asks again", async () => {
+    const settled: string[] = [];
+    const h = harness({
+      agentGrantSettled: () => void settled.push("settled"),
+      config: () =>
+        ({
+          url: HUB,
+          tokenRef: null,
+          tokenSource: { kind: "file", path: "/state/hub/token" },
+          tokenFrom: "hub.token",
+        }) as unknown as HubConfig,
+    });
+    let q = start(h).q;
+    await h.hc.finish(back({ state: q.state, code: "c1" }));
+    expect(settled).toEqual(["settled"]);
+    q = start(h).q;
+    await h.hc.finish(back({ state: q.state, code: "c2" }));
+    expect(settled).toEqual(["settled", "settled"]);
+    await h.hc.disconnect();
+    expect(settled).toEqual(["settled", "settled", "settled"]);
+  });
+});
+
 describe("finish: what comes back from Hub", () => {
   it("approved: trades the code with the verifier, keeps the token, writes hub.* in user.yml", async () => {
     const h = harness();
@@ -308,34 +357,34 @@ describe("finish: what comes back from Hub", () => {
     const { q } = start(h);
     await h.hc.finish(back({ state: q.state, code: "c1" }));
     const last = h.hc.lastResult();
-    expect(last).toEqual({ ok: true, message: "Connected to Hub (Acme Co)." });
+    expect(last).toEqual({
+      ok: true,
+      message: "Connected to Hub (Acme Co).",
+      words: { team: "Acme Co" },
+    });
     expect(h.hc.lastResult()).toBeNull();
   });
 
-  it("0.4.45: Connect links the clear projects and says how many need a pick; an older Hub links none", async () => {
-    for (const [after, said] of [
-      [
-        { linked: ["north", "west"], unclear: ["south"] },
-        "Connected to Hub (Acme Co). Linked 2 projects to Hub; 1 needs your pick.",
-      ],
-      [
-        { linked: ["north"], unclear: [] },
-        "Connected to Hub (Acme Co). Linked 1 project to Hub.",
-      ],
-      [{ linked: [], unclear: [] }, "Connected to Hub (Acme Co)."],
-      [
-        { cannot: true },
-        "Connected to Hub (Acme Co). Hub can't link projects yet: link them in Settings › Agents › Unclear matches when it can.",
-      ],
+  it("issue 646: Connect links nothing itself; it says how many projects wait for the review", async () => {
+    // Issue 648: the count is data; Settings words it (en/es/ja).
+    for (const [after, review] of [
+      [{ review: 3 }, { n: 3 }],
+      [{ review: 1 }, { n: 1 }],
+      [{ review: 0 }, { n: 0 }],
+      [{ cannot: true }, { cannot: true }],
     ] as const) {
-      const h = harness({ linkAfter: async () => after });
+      const h = harness({ reviewAfter: async () => after });
       const { q } = start(h);
       await h.hc.finish(back({ state: q.state, code: "c1" }));
-      expect(h.hc.lastResult()).toEqual({ ok: true, message: said });
+      expect(h.hc.lastResult()).toEqual({
+        ok: true,
+        message: "Connected to Hub (Acme Co).",
+        words: { team: "Acme Co", review },
+      });
     }
-    // Linking that throws never fails the Connect.
+    // A review count that throws never fails the Connect.
     const h = harness({
-      linkAfter: async () => {
+      reviewAfter: async () => {
         throw new Error("boom");
       },
     });
@@ -343,7 +392,7 @@ describe("finish: what comes back from Hub", () => {
     expect(
       await h.hc.finish(back({ state: q.state, code: "c1" })),
     ).toMatchObject({ ok: true });
-    expect(h.hc.lastResult()?.message).toMatch(/Hub can't link projects yet/);
+    expect(h.hc.lastResult()?.words?.review).toEqual({ cannot: true });
   });
 
   it("at most 16 connects wait; the oldest goes first", async () => {
@@ -413,6 +462,43 @@ describe("disconnect", () => {
     });
   });
 
+  it("revokes every agent's Hub token, then the install's; one Hub can't revoke stops it unless forced", async () => {
+    const calls: string[] = [];
+    let fail = 1;
+    const h = harness({
+      config: () => cfg,
+      revoke: async (url, t) => {
+        calls.push(`install ${url} ${t === TOKEN ? "TOKEN" : t}`);
+        return true;
+      },
+      unbindAgents: async (hub, force) => {
+        calls.push(
+          `agents ${hub.url} ${hub.token === TOKEN ? "TOKEN" : hub.token} ${force}`,
+        );
+        return { revoked: 2, failed: force ? 0 : fail };
+      },
+    });
+    h.setUser({ hub: { url: HUB, token: "file:/state/hub/token" } });
+    expect(await h.hc.disconnect()).toMatchObject({
+      ok: false,
+      error: /1 agent's Hub token.*Nothing was removed/,
+    });
+    expect(calls).toEqual([`agents ${HUB} TOKEN false`]);
+    expect(h.forgot).toEqual([]);
+    fail = 0;
+    calls.length = 0;
+    expect(await h.hc.disconnect()).toEqual({
+      ok: true,
+      revoked: true,
+      message:
+        "Disconnected. Hub revoked this install's token and 2 agents' tokens.",
+    });
+    expect(calls).toEqual([
+      `agents ${HUB} TOKEN false`,
+      `install ${HUB} TOKEN`,
+    ]);
+  });
+
   it("not connected: nothing to do", async () => {
     expect(await harness().hc.disconnect()).toEqual({
       ok: true,
@@ -473,5 +559,99 @@ describe("the pieces", () => {
 
   it("Den's own token file lives under the state dir", () => {
     expect(hubTokenFile(tmp)).toBe(path.join(tmp, "hub", "token"));
+  });
+});
+
+describe("issue 726: a Hub change, from Connect and Disconnect", () => {
+  const cfg = {
+    url: HUB,
+    tokenRef: null,
+    tokenSource: { kind: "file", path: "/state/hub/token" },
+    tokenFrom: "hub.token",
+    allowTools: true,
+  } as unknown as HubConfig;
+
+  it("clause 3: a forced disconnect Hub couldn't hear is kept on record for doctor", async () => {
+    const kept: { url: string; why: string; token: string }[] = [];
+    const h = harness({
+      config: () => cfg,
+      revoke: async () => {
+        throw new HubCallError("unreachable", "Hub did not answer in 5000 ms");
+      },
+      unrevoked: (u) => void kept.push(u),
+    });
+    h.setUser({ hub: { url: HUB, token: "file:/state/hub/token" } });
+    await h.hc.disconnect();
+    expect(kept).toEqual([]);
+    await h.hc.disconnect(true);
+    expect(kept).toEqual([
+      { url: HUB, why: "Hub did not answer in 5000 ms", token: TOKEN },
+    ]);
+  });
+
+  it("clause 1: Connect binds the Hub and its company before projects are reviewed", async () => {
+    const order: string[] = [];
+    const h = harness({
+      rebind: async (url, company) =>
+        void order.push(`rebind ${url} ${company}`),
+      reviewAfter: async () => {
+        order.push("review");
+        return { review: 2 };
+      },
+      exchange: async () => ({
+        token: TOKEN,
+        company: { slug: "acme", name: "Acme Co" },
+        hubUrl: HUB,
+      }),
+    });
+    const { q } = start(h);
+    const r = await h.hc.finish(back({ code: "c1", state: q.state }));
+    expect(r.ok).toBe(true);
+    expect(order).toEqual([`rebind ${HUB} acme`, "review"]);
+    expect(h.hc.lastResult()?.words?.review).toEqual({ n: 2 });
+  });
+});
+
+describe("issue 726: Connect again for another company on the same Hub", () => {
+  const cfg = {
+    url: HUB,
+    tokenRef: null,
+    tokenSource: { kind: "file", path: "/state/hub/token" },
+    tokenFrom: "hub.token",
+    allowTools: true,
+  } as unknown as HubConfig;
+
+  it("clause 3: the old company's token is revoked on that Hub after the new one is kept", async () => {
+    const order: string[] = [];
+    const h = harness({
+      config: () => cfg,
+      readToken: async () => "hubi_TESTONLY_old_company",
+      exchange: async () => ({
+        token: TOKEN,
+        company: { slug: "two" },
+        hubUrl: HUB,
+      }),
+      store: async () => {
+        order.push("store");
+        return { kind: "file", source: "file:/state/hub/token", where: "x" };
+      },
+      revoke: async (url, t) => {
+        order.push(`revoke ${url} ${t === TOKEN ? "NEW" : "OLD"}`);
+        return true;
+      },
+      rebind: async (_u, c) => void order.push(`rebind ${c}`),
+    });
+    const { q } = start(h);
+    expect((await h.hc.finish(back({ code: "c", state: q.state }))).ok).toBe(
+      true,
+    );
+    expect(order).toEqual(["store", `revoke ${HUB} OLD`, "rebind two"]);
+  });
+
+  it("the same token back (nothing new): nothing is revoked", async () => {
+    const h = harness({ config: () => cfg });
+    const { q } = start(h);
+    await h.hc.finish(back({ code: "c", state: q.state }));
+    expect(h.revoked).toEqual([]);
   });
 });

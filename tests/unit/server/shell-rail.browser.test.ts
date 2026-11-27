@@ -22,6 +22,7 @@ import * as path from "path";
 import type { Browser, Page } from "playwright";
 import { kitAsset, kitPage } from "./helpers/kit-shell.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 const SHELL = fs.readFileSync(
   path.join(process.cwd(), "src", "ui", "server", "public", "shell.js"),
@@ -32,7 +33,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -103,7 +104,13 @@ async function postsAtLeast(
 
 const rail = (p: Page) =>
   p.evaluate(() =>
-    [...document.querySelectorAll(".den-rail > *")].map((g) =>
+    // The foot's entries are listed one by one (issue 1341: they sit in
+    // one .den-rail-foot after the spacer).
+    [
+      ...document.querySelectorAll(
+        ".den-rail > :not(.den-rail-foot), .den-rail > .den-rail-foot > *",
+      ),
+    ].map((g) =>
       g.classList.contains("den-rail-group")
         ? {
             heading: g.querySelector(".den-gh > span")?.textContent,
@@ -359,8 +366,9 @@ describe("the rail", () => {
     await p.keyboard.press("Delete");
     expect(await p.$$('[data-pin="shop"]')).toHaveLength(0);
     await postsAtLeast(p, posts, 2);
+    // Issue 402: a pin is { item, project }; no project picked here: none.
     expect(posts).toEqual([
-      { shell: { pins: ["shop"] } },
+      { shell: { pins: [{ item: "shop", project: null }] } },
       { shell: { pins: [] } },
     ]);
     await p.context().close();
@@ -560,7 +568,7 @@ describe("the scope breadcrumb (R4)", () => {
     });
     expect(await menuRows(p)).toEqual([
       { text: "All active (2)", role: "menuitemradio", checked: "false" },
-      { text: "ws-aCLI default", role: "menuitemradio", checked: "false" },
+      { text: "ws-a", role: "menuitemradio", checked: "false" },
       { text: "ws-b", role: "menuitemradio", checked: "true" },
       { text: "Manage projects…", role: "menuitem", checked: null },
     ]);
@@ -1029,7 +1037,8 @@ describe("a consumer's dev.18 run (two consumers)", () => {
     await p.click("#ws-pill");
     await p.waitForSelector(".den-pop");
     const items = await axNames(p, "menuitemradio");
-    expect(items).toContain("default, CLI default");
+    // Issue 897: the row is named by the project alone, no "CLI default".
+    expect(items).toContain("default");
     await p.context().close();
   });
 
@@ -1101,7 +1110,15 @@ describe("Navigation prefs (R21)", () => {
       expect.arrayContaining([
         { shell: { hidden: ["release"] } },
         { shell: { hidden: [], order: ["environments"] } },
-        { shell: { pins: ["shop", "billing/api"] } },
+        {
+          shell: {
+            // Issue 402: no project picked here, so pins of none.
+            pins: [
+              { item: "shop", project: null },
+              { item: "billing/api", project: null },
+            ],
+          },
+        },
       ]),
     );
     expect(await p.$$('.den-rail [data-nav="release"]')).toHaveLength(1);

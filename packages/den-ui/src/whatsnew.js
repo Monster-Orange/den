@@ -18,12 +18,15 @@
  *                      unless the page put it in a control of its own meanwhile
  *   changelogView(entries, showAll)  what it shows (pure)
  *
- * It is an aria-modal dialog: Tab stays in it, Escape and a click on the
- * veil close it. Markdown and Slack copy buttons on each version.
+ * Issue 793: it is the kit's dialog frame (dialog.js: dialogHtml, kind
+ * "panel", and mountDialog), so it has the frame's look and its own font,
+ * never the page's or the browser's serif. A modal: Tab stays in it,
+ * Escape, Close, Got it and a click on the backdrop close it; Report is
+ * first in its footer. Markdown and Slack copy buttons on each version.
  */
 import { esc, kitT } from "./strings.js";
 import { reportButtonHtml } from "./shell-html.js";
-import { focusBack, openerOf } from "./dialog.js";
+import { dialogHtml, mountDialog, onAsk, openerOf } from "./dialog.js";
 
 const cfg = {
   lang: "en",
@@ -33,8 +36,12 @@ const cfg = {
 };
 let entries = [];
 let showAll = false;
-let returnFocus = null;
-let made = false;
+/** The open frame (mountDialog's handle); null while closed. */
+let frame = null;
+/** Waiting for another pop-up to close before opening. */
+let waiting = false;
+/** Closed to make way for a question (issue 864): not read, not seen. */
+let aside = false;
 
 const lang = () => (typeof cfg.lang === "function" ? cfg.lang() : cfg.lang);
 const t = (key, vars) => kitT(lang(), key, vars);
@@ -77,72 +84,84 @@ export async function loadWhatsNew() {
   return entries;
 }
 
-/** The overlay, made once (hidden until opened). */
-export function ensureWhatsNew() {
-  if (made && document.getElementById("cl-overlay")) return;
-  made = true;
+/**
+ * Kept for hosts that call it at load: the dialog is made when it opens
+ * and taken off the page when it closes (issue 793), like the kit's other
+ * pop-ups, so nothing of it is on the page while closed.
+ */
+export function ensureWhatsNew() {}
+
+/** The dialog, made for one opening. */
+function makeFrame() {
   const report = cfg.reportButton
     ? cfg.reportButton()
     : reportButtonHtml({ inFoot: false, lang: lang() });
-  const overlay = document.createElement("div");
-  overlay.id = "cl-overlay";
-  overlay.className = "cl-overlay";
-  overlay.innerHTML =
-    '<div class="cl-box" role="dialog" aria-modal="true" aria-labelledby="cl-title">' +
-    `<div class="cl-hdr"><h3 id="cl-title" tabindex="-1">${escT("kit.whatsnew.title")}</h3><button type="button" class="cl-close" id="cl-close-btn" title="${escT("kit.whatsnew.close")}" aria-label="${escT("kit.whatsnew.close")}">×</button></div>` +
-    '<div class="cl-body" id="cl-body"></div>' +
-    '<div class="cl-footer">' +
-    // Report, as in every pop-up.
-    (report || "") +
-    '<button type="button" class="cl-more-btn" id="cl-more" aria-controls="cl-body" aria-expanded="false" hidden></button><button class="cl-got-it" id="cl-got-it-btn">' +
-    escT("kit.whatsnew.gotIt") +
-    "</button></div>" +
-    "</div>";
-  document.body.appendChild(overlay);
-  document.getElementById("cl-more")?.addEventListener("click", () => {
+  const close = t("kit.whatsnew.close");
+  const html = dialogHtml({
+    kind: "panel",
+    id: "cl-overlay",
+    className: "cl-dlg",
+    ids: { h: "cl-title", body: "cl-body" },
+    title: t("kit.whatsnew.title"),
+    closeLabel: close,
+    closeAttrs: { id: "cl-close-btn", title: close, "aria-label": close },
+    // Report, as in every pop-up (none when reports are off).
+    report: report || "",
+    attrs: report ? null : { "data-dk-report": true },
+    actions: [
+      {
+        label: "",
+        type: "button",
+        className: "cl-more-btn",
+        attrs: {
+          id: "cl-more",
+          "aria-controls": "cl-body",
+          "aria-expanded": "false",
+          hidden: true,
+        },
+      },
+      {
+        label: t("kit.whatsnew.gotIt"),
+        value: "ok",
+        kind: "primary",
+        className: "cl-got-it",
+        attrs: { id: "cl-got-it-btn" },
+      },
+    ],
+  });
+  frame = mountDialog(html, { show: false, onClose: closed });
+  const d = frame.dialog;
+  d.querySelector("#cl-more")?.addEventListener("click", () => {
     showAll = !showAll;
     renderBody();
     const body = document.getElementById("cl-body");
     if (body) body.scrollTop = 0;
   });
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) closeWhatsNew();
-  });
-  document
-    .getElementById("cl-close-btn")
-    ?.addEventListener("click", () => closeWhatsNew());
-  document
-    .getElementById("cl-got-it-btn")
-    ?.addEventListener("click", () => closeWhatsNew());
-  document.addEventListener("keydown", (e) => {
-    if (!overlay.classList.contains("open")) return;
-    if (e.key === "Escape") {
-      e.preventDefault();
+  // A click on the backdrop (outside the box) closes it.
+  d.addEventListener("click", (e) => {
+    if (e.target !== d) return;
+    const r = d.getBoundingClientRect();
+    if (
+      e.clientX < r.left ||
+      e.clientX > r.right ||
+      e.clientY < r.top ||
+      e.clientY > r.bottom
+    )
       closeWhatsNew();
-    } else if (e.key === "Tab") trapTab(e, overlay);
   });
 }
 
-/** Tab and Shift+Tab stay inside the open dialog (aria-modal). */
-function trapTab(e, overlay) {
-  const box = overlay.querySelector(".cl-box");
-  const stops = [
-    ...box.querySelectorAll("button, a[href], [tabindex]:not([tabindex='-1'])"),
-  ].filter((el) => !el.hidden && !el.disabled && el.getClientRects().length);
-  if (!stops.length) return;
-  const first = stops[0];
-  const last = stops[stops.length - 1];
-  const at = document.activeElement;
-  // Anything not one of the stops (the focused heading, or outside) counts
-  // as outside: Shift+Tab from the heading must not leave the dialog.
-  const inside = stops.includes(at);
-  if (e.shiftKey ? at === first || !inside : at === last) {
-    e.preventDefault();
-    (e.shiftKey ? last : first).focus();
-  } else if (!inside) {
-    e.preventDefault();
-    first.focus();
+/** After it closes, however: remember the newest version as seen. */
+function closed() {
+  frame?.dialog.classList.remove("open");
+  frame = null;
+  if (aside) {
+    aside = false;
+    return;
   }
+  if (cfg.onClose) cfg.onClose(entries[0]?.version ?? null);
+  const pip = document.getElementById("v-pip");
+  if (pip) pip.style.display = "none";
 }
 
 const COPY_ICON =
@@ -374,49 +393,83 @@ export function buildMarkdown(entry) {
   return lines.join("\n");
 }
 
+/** Another pop-up of the page's that is open as a modal, if any. */
+function otherModal() {
+  return [...document.querySelectorAll("dialog[open]")].find(
+    (d) => d.id !== "cl-overlay" && d.matches(":modal"),
+  );
+}
+
 export function openWhatsNew() {
-  showAll = false;
-  ensureWhatsNew();
-  renderBody();
-  const overlay = document.getElementById("cl-overlay");
-  if (!overlay) return;
-  if (!overlay.classList.contains("open")) {
-    const at = openerOf();
-    // Nothing focused (a first-visit open): the version chip.
-    returnFocus =
-      at && !overlay.contains(at)
-        ? at
-        : document.getElementById("version-pill");
+  // Issue 793: never over a question or pop-up already open (a modal sits
+  // on top of the one before it): it opens once that one closes.
+  const other = otherModal();
+  if (other) {
+    if (!waiting) {
+      waiting = true;
+      other.addEventListener(
+        "close",
+        () => {
+          // Closed (or seen) meanwhile: nothing to open.
+          if (!waiting) return;
+          waiting = false;
+          setTimeout(openWhatsNew, 0);
+        },
+        { once: true },
+      );
+    }
+    return;
   }
-  overlay.classList.add("open");
-  // Always at the newest release. After `.open`: while the overlay is
-  // display:none the body has no scroll box, so a reset there doesn't stick.
+  showAll = false;
+  if (!frame) makeFrame();
+  renderBody();
+  const d = frame.dialog;
+  if (!d.open) {
+    // Focus goes back to what opened it; nothing focused (a first-visit
+    // open): the version chip.
+    const at = openerOf();
+    frame.show(
+      at && !d.contains(at) ? at : document.getElementById("version-pill"),
+    );
+    // The page's own style hides it: the frame closed it again.
+    if (!d.open) return;
+  }
+  d.classList.add("open");
+  // Always at the newest release.
   const body = document.getElementById("cl-body");
   if (body) body.scrollTop = 0;
   // The heading first, so a screen reader starts at the latest notes.
   document.getElementById("cl-title")?.focus();
 }
 
+/**
+ * Issue 864: a kit question (askConfirm, askText, tell) asked while this
+ * is open: it steps aside, so the question is the only pop-up, and opens
+ * again once the question is answered. It isn't counted as seen.
+ */
+function stepAside(ask) {
+  if (!frame?.dialog.open) return;
+  aside = true;
+  waiting = true;
+  frame.close("cancel");
+  ask.addEventListener(
+    "close",
+    () => {
+      // Closed by the page meanwhile (closeWhatsNew): it stays closed.
+      if (!waiting) return;
+      waiting = false;
+      setTimeout(openWhatsNew, 0);
+    },
+    { once: true },
+  );
+}
+if (typeof document !== "undefined") onAsk(stepAside);
+
 export function closeWhatsNew() {
-  const overlay = document.getElementById("cl-overlay");
-  const wasOpen = !!overlay?.classList.contains("open");
-  // Issue 143: where the keyboard is now. The page may have given it to a
-  // field of its own while this was open (a deep link's composer, which
-  // came after What's new): that field keeps it.
-  const at = document.activeElement;
-  const elsewhere =
-    !!at &&
-    at !== document.body &&
-    at !== document.documentElement &&
-    !overlay?.contains(at);
-  if (overlay) overlay.classList.remove("open");
-  if (wasOpen) {
-    const back = returnFocus;
-    returnFocus = null;
-    if (!elsewhere && !focusBack(back))
-      focusBack(document.getElementById("version-pill"));
-  }
-  if (cfg.onClose) cfg.onClose(entries[0]?.version ?? null);
-  const pip = document.getElementById("v-pip");
-  if (pip) pip.style.display = "none";
+  // Issue 143: a field of the page's own that wanted the keyboard while
+  // this was open (a deep link's composer) gets it now (focusWhenFree);
+  // else what opened it, else the version chip.
+  waiting = false;
+  if (frame?.dialog.open) frame.close("cancel");
+  else closed();
 }

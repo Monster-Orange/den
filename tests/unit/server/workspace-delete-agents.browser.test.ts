@@ -11,12 +11,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { readRecord } from "../../../src/shared/agents/records.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -24,7 +25,7 @@ let browser: Browser | null = null;
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -49,7 +50,7 @@ afterAll(async () => {
 async function page(): Promise<Page> {
   const ctx = await browser!.newContext({ reducedMotion: "reduce" });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/agents"));
+  await signInPage(p, s!.stateDir, s!.base, "/agents");
   await p.waitForFunction(() =>
     Boolean((window as never as { denShell?: unknown }).denShell),
   );

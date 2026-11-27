@@ -17,7 +17,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as strings from "../../../packages/den-ui/src/strings.js";
 import {
@@ -26,8 +25,12 @@ import {
   reportButtonHtml,
   searchHtml,
   shellHtml,
+  topBarHtml,
 } from "../../../packages/den-ui/src/shell-html.js";
 import { KIT_FILES, KIT_PAGE_CSS } from "../../../src/ui/server/ui-assets.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 const PKG = path.join(process.cwd(), "packages", "den-ui");
 const GATE = path.join(PKG, "bin", "den-ui-parity.mjs");
@@ -126,26 +129,53 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(html).toContain(ja["kit.report.word"]);
   });
 
-  it("the search's placeholder and name are the kit's words, in en, es and ja; a host can't change them", () => {
-    const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
-    const ph = (h: string) => /class="den-search-ph"[^>]*>([^<]*)</.exec(h)![1];
+  const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
+  const ph = (h: string) => /class="den-search-ph"[^>]*>([^<]*)</.exec(h)![1];
+
+  it("the search's placeholder and name are the kit's words by default, in en, es and ja", () => {
     for (const [lang, word, name] of [
       ["en", "Search…", "Search"],
       ["es", "Buscar…", "Buscar"],
       ["ja", "検索…", "検索"],
     ] as const) {
-      // A host's own words are ignored: one search in every product.
-      const h = searchHtml({
-        lang,
-        placeholder: "Find anything…",
-        label: "Search pages",
-      } as Parameters<typeof searchHtml>[0]);
+      const h = searchHtml({ lang });
       expect(ph(h)).toBe(word);
       expect(label(h)).toBe(name);
     }
     // They are the kit's words: the nav inventory compares them.
     expect(searchHtml({})).not.toContain("data-nav-name");
     expect(searchHtml({})).not.toContain("data-nav-role");
+  });
+
+  it("issue 560: a host's placeholder shows, per locale, and names the search", () => {
+    const one = searchHtml({ lang: "es", placeholder: "Buscar agentes…" });
+    expect(ph(one)).toBe("Buscar agentes…");
+    expect(label(one)).toBe("Buscar agentes");
+    const per = { en: "Find work…", es: "Buscar trabajo…", ja: "仕事を探す…" };
+    const ja = searchHtml({ lang: "ja", placeholder: per });
+    expect(ph(ja)).toBe("仕事を探す…");
+    expect(label(ja)).toBe("仕事を探す");
+    expect(ph(searchHtml({ lang: "es-MX", placeholder: per }))).toBe(
+      "Buscar trabajo…",
+    );
+    expect(label(searchHtml({ placeholder: "Find work..." }))).toBe(
+      "Find work",
+    );
+    expect(label(searchHtml({ placeholder: "Jump to" }))).toBe("Jump to");
+    const none = searchHtml({ lang: "ja", placeholder: { en: "Find…" } });
+    expect(ph(none)).toBe("検索…");
+    expect(label(none)).toBe("検索");
+    expect(ph(searchHtml({ lang: "en", placeholder: "  " }))).toBe("Search…");
+    expect(searchHtml({ placeholder: '<b>"x"</b>' })).toContain(
+      "&lt;b&gt;&quot;x&quot;&lt;/b&gt;",
+    );
+    expect(
+      label(
+        searchHtml({ lang: "en", label: "Mine" } as Parameters<
+          typeof searchHtml
+        >[0]),
+      ),
+    ).toBe("Search");
   });
 
   // 0.7.1: the account is data ({ name?, login, role? }); the kit owns
@@ -168,12 +198,14 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(login).toContain('data-nav-shape="login"');
     // The role is never in the rail's entry: its shape is name, login.
     const role = accountHtml({
-      name: "Ada",
+      name: "Ada Lovelace",
       login: "ada",
       role: "Owner",
       href: "/me",
     });
-    expect(lines(role)).toEqual(["n:Ada", "l:@ada"]);
+    // (Issue 656: a name that is just the login, "Ada" for "ada", is no
+    // name; account-name-parity.test.ts has those.)
+    expect(lines(role)).toEqual(["n:Ada Lovelace", "l:@ada"]);
     expect(role).toContain('data-nav-shape="name,login"');
     expect(role).not.toContain("Owner");
     expect(
@@ -304,12 +336,56 @@ describe("shellHtml (shell-html.js), in Node", () => {
   });
 });
 
+// Issue 694: a page with no rail draws the bar without ☰.
+describe("topBarHtml({ rail: false }) (issue 694)", () => {
+  const model = {
+    product: { name: "Acme", version: "1.2.3" },
+    lang: "en",
+    slots: { end: '<span id="s-end"></span>' },
+  };
+  const MENU = /<button class="den-ib den-menu-btn"[^>]*>☰<\/button>/;
+
+  it("by default draws ☰, wired to the rail (unchanged)", () => {
+    const h = topBarHtml(model);
+    expect(h).toMatch(MENU);
+    expect(h).toContain('aria-controls="den-rail"');
+    expect(h).toContain('<header class="den-top">');
+    expect(topBarHtml({ ...model, rail: true })).toBe(h);
+  });
+
+  it("with rail: false draws no ☰ and nothing that points at the rail", () => {
+    const h = topBarHtml({ ...model, rail: false });
+    expect(h).not.toContain("☰");
+    expect(h).not.toContain("den-menu-btn");
+    expect(h).not.toContain("aria-controls");
+    expect(h).not.toContain("den-rail");
+  });
+
+  it("with rail: false is otherwise the same bar, stamped for the parity gate", () => {
+    const def = topBarHtml(model);
+    const want = def
+      .replace(MENU, "")
+      .replace(
+        '<header class="den-top">',
+        '<header class="den-top" data-nav-shape="no-rail">',
+      );
+    expect(topBarHtml({ ...model, rail: false })).toBe(want);
+  });
+
+  it("shellHtml with rail: false draws the bar without ☰ and no rail", () => {
+    const h = shellHtml({ ...model, rail: false });
+    expect(h).toContain(topBarHtml({ ...model, rail: false }));
+    expect(h).not.toContain("den-rail");
+    expect(h).toContain('class="den-skip"');
+  });
+});
+
 describe("den-ui-parity (bin)", () => {
   const run = (root: string) =>
     spawnSync(process.execPath, [GATE, "--root", root, "--src", "src"], {
       encoding: "utf-8",
     });
-  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "den-ui-parity-"));
+  const tmp = () => tempDir("den-ui-parity-");
 
   it("fails on a product's own copy of a kit component", () => {
     const root = tmp();
@@ -395,6 +471,41 @@ describe("den-ui-parity (bin)", () => {
       expect(r.stdout).toMatch(new RegExp(`${c}: .*1 copy`));
   });
 
+  // Issue 673: a product's own button (.btn) is a copy of the kit's.
+  it("fails on a product's own .btn button, its look or its markup", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "own.css"),
+      ".btn { padding: 6px 12px; }\n.btn.primary:hover { color: red; }\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "own.js"),
+      "el.innerHTML = '<button class=\"btn primary\">Go</button>';\n",
+    );
+    const r = run(root);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/button: .*2 copies/);
+  });
+
+  it("the kit's .den-btn, a host's layout of it, and other -btn names are not copies", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "ok.js"),
+      [
+        "const a = '<button class=\"den-btn primary sm\">Go</button>';",
+        "const b = '<button class=\"appearance-btn-x copy-btn\">x</button>';",
+        "row.querySelector('.btn');",
+      ].join("\n") + "\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "ok.css"),
+      ".acts .den-btn { margin-left: 8px; }\n.copy-btn { color: red; }\n",
+    );
+    expect(run(root).status).toBe(0);
+  });
+
   it("a product's own words in the kit's options, or its rows in the bell, are not copies", () => {
     const root = tmp();
     fs.mkdirSync(path.join(root, "src"));
@@ -419,7 +530,7 @@ describe("den-ui-parity (bin)", () => {
     expect(fs.existsSync(path.join(process.cwd(), "DIVERGE.md"))).toBe(false);
     expect([r.status, r.stdout.trim()]).toEqual([
       0,
-      "den-ui-parity: ok, no copies of the kit's 11 components in src",
+      "den-ui-parity: ok, no copies of the kit's 12 components in src",
     ]);
   });
 });
@@ -439,13 +550,19 @@ describe("the package ships every kit file", () => {
   });
 
   it("Den serves each one at /kit/ (KIT_FILES)", () => {
+    // den-ui 0.7.5: the Markdown editor is for a host's bundler only (it
+    // imports CodeMirror by package name), and Den's own pages never load
+    // it: never served (markdown-editor-kit.test.ts checks it is not).
+    const bundlerOnly = ["markdown-editor.js", "markdown-editor.css"];
     const src = fs
       .readdirSync(path.join(PKG, "src"))
-      .filter((f) => /\.(js|css)$/.test(f));
+      .filter((f) => /\.(js|css)$/.test(f) && !bundlerOnly.includes(f));
     for (const f of src) expect([f, KIT_FILES.includes(f)]).toEqual([f, true]);
+    for (const f of bundlerOnly)
+      expect(fs.existsSync(path.join(PKG, "src", f))).toBe(true);
   });
   it("packs src/ and bin/, with den-ui-parity as its bin", () => {
-    expect(pkg.version).toMatch(/^0\.7\.\d+$/);
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(pkg.files).toEqual(expect.arrayContaining(["src/", "bin/"]));
     expect(pkg.bin["den-ui-parity"]).toBe("bin/den-ui-parity.mjs");
     expect(fs.existsSync(path.join(PKG, pkg.bin["den-ui-parity"]))).toBe(true);

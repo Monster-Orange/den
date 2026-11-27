@@ -25,6 +25,8 @@ import type { Browser, Page } from "playwright";
 import { denAuth } from "./helpers/den-auth.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 /** SEC-1a: the CLI's credential for the test server. */
 const auth = () => denAuth(path.join(tmp, "home", ".den"));
@@ -120,7 +122,7 @@ beforeAll(async () => {
     )[0]?.version ?? "";
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS !== "1") throw err;
   }
@@ -133,6 +135,46 @@ afterAll(async () => {
     after: () => fs.rmSync(tmp, { recursive: true, force: true }),
   });
 });
+
+/**
+ * Settled: the page's layout and the graph's view (cards, world size and
+ * transform, zoom, the viewport and the list's width) unchanged for ten
+ * frames in a row. Every click and key here acts in its handler; this
+ * waits out what follows it (a resize refit, a re-render) by its state.
+ */
+const settled = (p: Page) =>
+  p.waitForFunction(
+    () =>
+      new Promise<boolean>((done) => {
+        const snap = () => {
+          const r = (s: string) => {
+            const e = document.querySelector(s);
+            if (!e) return null;
+            const b = e.getBoundingClientRect();
+            return [b.left, b.top, b.width, b.height].map(Math.round);
+          };
+          return JSON.stringify([
+            document.querySelectorAll(".dg-card, .dg-grp").length,
+            (document.querySelector(".dg-world") as HTMLElement | null)?.style
+              .cssText,
+            document.querySelector('[data-z="100"]')?.textContent,
+            r(".dg-vp"),
+            r(".sidebar"),
+            r("#den-content > .ph"),
+          ]);
+        };
+        let last = snap();
+        let same = 0;
+        const tick = () => {
+          const now = snap();
+          same = now === last ? same + 1 : 0;
+          last = now;
+          if (same >= 10) done(true);
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+  );
 
 /** A page for a workspace: /graph (the graph drawn) or / (the table). */
 async function open(
@@ -153,6 +195,7 @@ async function open(
   const ctx = await browser!.newContext({
     viewport: { width: o.width ?? 1280, height: o.height ?? 800 },
   });
+  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);
@@ -161,10 +204,27 @@ async function open(
     }
   }, latest);
   const p = await ctx.newPage();
+  // The page and the graph each read the saved settings once, and may
+  // repaint (the list) or redraw (the graph) when they land: wait for
+  // every read to answer, then for the page to settle.
+  let pending = 0;
+  let answered = () => {};
+  const read = new Promise<void>((r) => (answered = r));
+  const isRead = (u: string, m: string) =>
+    m === "GET" && new URL(u).pathname === "/api/settings";
+  p.on("request", (r) => {
+    if (isRead(r.url(), r.method())) pending++;
+  });
+  const done = (r: { url(): string; method(): string }) => {
+    if (isRead(r.url(), r.method()) && --pending === 0) answered();
+  };
+  p.on("requestfinished", done);
+  p.on("requestfailed", done);
   const where = o.path ?? "/graph";
   await p.goto(api(`${where}?ws=${o.ws ?? "main"}`));
   await p.waitForSelector(where === "/" ? "#repo-table tr.repo" : ".dg-card");
-  await p.waitForTimeout(500);
+  await read;
+  await settled(p);
   return p;
 }
 
@@ -186,7 +246,7 @@ const zoom = async (p: Page) =>
 /** Fit, then the zoom it settled on. */
 async function fit(p: Page): Promise<number> {
   await p.click('[data-z="fit"]');
-  await p.waitForTimeout(150);
+  await settled(p);
   return zoom(p);
 }
 
@@ -205,7 +265,7 @@ describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)",
     expect(await visible(p, PH)).toBe(true);
 
     await p.click('[data-z="max"]');
-    await p.waitForTimeout(300);
+    await settled(p);
     expect(await p.getAttribute('[data-z="max"]', "aria-pressed")).toBe("true");
     expect(await visible(p, PH)).toBe(false);
     const max = await vpArea(p);
@@ -217,7 +277,7 @@ describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)",
     // Esc restores (focus on the graph, nothing else open to close).
     await p.focus(".dg-vp");
     await p.keyboard.press("Escape");
-    await p.waitForTimeout(300);
+    await settled(p);
     expect(await visible(p, PH)).toBe(true);
     expect(await p.getAttribute('[data-z="max"]', "aria-pressed")).toBe(
       "false",
@@ -237,11 +297,11 @@ describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)",
     await p.fill("[data-find]", "");
     await p.focus(".dg-vp");
     await p.keyboard.press("f");
-    await p.waitForTimeout(200);
+    await settled(p);
     expect(await visible(p, PH)).toBe(false);
     expect(await p.getAttribute('[data-z="max"]', "aria-pressed")).toBe("true");
     await p.keyboard.press("f");
-    await p.waitForTimeout(200);
+    await settled(p);
     expect(await visible(p, PH)).toBe(true);
     await p.context().close();
   }, 30_000);
@@ -256,7 +316,7 @@ describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)",
       await p.$eval(".sidebar", (e) => e.getBoundingClientRect().width),
     ).toBe(260);
     await p.click("#ws-toggle");
-    await p.waitForTimeout(300);
+    await settled(p);
     expect(
       await p.$eval(".sidebar", (e) => e.getBoundingClientRect().width),
     ).toBe(40);
@@ -284,7 +344,7 @@ describe("room for the graph (R23, Ward QA 2026-11-05; on /graph since dev.35)",
     );
     // And open again, with the expand button.
     await q.click("#ws-toggle");
-    await q.waitForTimeout(300);
+    await settled(q);
     expect(
       await q.$eval(".sidebar", (e) => e.getBoundingClientRect().width),
     ).toBe(260);
@@ -324,7 +384,7 @@ describe("Fit follows the size on maximize and restore (a consumer's dev.30 find
 
     // Maximize: the fitted view refits for the bigger area by itself.
     await p.click('[data-z="max"]');
-    await p.waitForTimeout(400);
+    await settled(p);
     const zMax = await zoom(p);
     expect(zMax).toBeGreaterThan(z0);
     expect(await fits()).toBe(true);
@@ -333,7 +393,7 @@ describe("Fit follows the size on maximize and restore (a consumer's dev.30 find
 
     // Restore: back to the smaller fit.
     await p.click('[data-z="max"]');
-    await p.waitForTimeout(400);
+    await settled(p);
     expect(await zoom(p)).toBe(z0);
     expect(await fits()).toBe(true);
     await p.context().close();
@@ -373,6 +433,11 @@ describe("R20 page headers (0.3.0-dev.32)", () => {
       const ctx = await browser.newContext({
         viewport: { width: 1440, height: 900 },
       });
+      await signIn(
+        ctx,
+        path.join(tmp, "home", ".den"),
+        `http://localhost:${port}`,
+      );
       await ctx.addInitScript((v) => {
         try {
           localStorage.setItem("den-changelog-seen", v);
@@ -489,11 +554,11 @@ describe("R22: the Graph page (Ward 2026-11-05)", () => {
     expect(g.w).toBeGreaterThan(g.main - 60);
     // Maximize there hides the page header too; Esc restores it.
     await p.click('[data-z="max"]');
-    await p.waitForTimeout(200);
+    await settled(p);
     expect(await visible(p, "#den-content > .ph")).toBe(false);
     await p.focus(".dg-vp");
     await p.keyboard.press("Escape");
-    await p.waitForTimeout(200);
+    await settled(p);
     expect(await visible(p, "#den-content > .ph")).toBe(true);
     await p.context().close();
   }, 45_000);
@@ -502,6 +567,7 @@ describe("R22: the Graph page (Ward 2026-11-05)", () => {
 /** A page at 1440×900, the changelog seen. */
 async function page(url: string, w = 1440, h = 900): Promise<Page> {
   const ctx = await browser!.newContext({ viewport: { width: w, height: h } });
+  await signIn(ctx, path.join(tmp, "home", ".den"), `http://localhost:${port}`);
   await ctx.addInitScript((v) => {
     try {
       localStorage.setItem("den-changelog-seen", v);
@@ -710,7 +776,7 @@ describe("group boxes fit their content (0.3.0-dev.33)", () => {
     if (!browser) return;
     const p = await page("/graph?ws=main");
     await p.waitForSelector(".dg-grp.dg-repo");
-    await p.waitForTimeout(300);
+    await settled(p);
     // World coordinates (style), so the zoom doesn't matter.
     const boxes = await p.evaluate(() => {
       const px = (e: HTMLElement, k: "top" | "left" | "width" | "height") =>
@@ -759,8 +825,19 @@ describe("Fit reserves the legend and the zoom group (0.3.0-dev.33)", () => {
     await p.waitForSelector(".dg-card");
     try {
       // Left-right stacks the big workspace's repos: Fit is bound by height.
+      // Redrawn when the world's size changes from the top-down one.
+      const worldSize = () =>
+        p.$eval(".dg-world", (e) => {
+          const s = (e as HTMLElement).style;
+          return `${s.width}x${s.height}`;
+        });
+      const down = await worldSize();
       await p.click('[data-seg="dir"] [data-v="right"]');
-      await p.waitForTimeout(600);
+      await p.waitForFunction((was) => {
+        const s = document.querySelector<HTMLElement>(".dg-world")!.style;
+        return `${s.width}x${s.height}` !== was;
+      }, down);
+      await settled(p);
       // One line's height on this machine (fonts differ across platforms).
       const oneLineH = await p.evaluate(
         () =>
@@ -768,7 +845,7 @@ describe("Fit reserves the legend and the zoom group (0.3.0-dev.33)", () => {
       );
       await p.addStyleTag({ content: ".dg-legend { max-width: 64px; }" });
       await p.click('[data-z="fit"]');
-      await p.waitForTimeout(200);
+      await settled(p);
       const r = await p.evaluate(() => {
         const top = Math.min(
           document.querySelector(".dg-legend")!.getBoundingClientRect().top,
@@ -789,8 +866,14 @@ describe("Fit reserves the legend and the zoom group (0.3.0-dev.33)", () => {
       expect(r.legendH).toBeGreaterThan(oneLineH + 8);
       expect(r.under).toBe(0);
     } finally {
+      // The direction back to top-down, saved before the page closes.
+      const saved = p.waitForResponse(
+        (r) =>
+          r.request().method() === "POST" &&
+          new URL(r.url()).pathname === "/api/settings",
+      );
       await p.click('[data-seg="dir"] [data-v="down"]');
-      await p.waitForTimeout(300);
+      await saved;
       await p.context().close();
     }
   }, 30_000);

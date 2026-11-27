@@ -21,14 +21,16 @@ import { githubPrincipal } from "../../shared/github-device.js";
 import {
   clearWebOwner,
   readWebOwner,
+  syncWebOwnerName,
   writeWebOwner,
-} from "../../shared/web-owner.js";
+} from "../../shared/web/web-owner.js";
 import type {
   Decide,
   Decision,
   DeviceFlows,
   FlowView,
 } from "./device-flows.js";
+import { browserTagFor } from "./device-flows.js";
 
 /**
  * D17: who may claim a Den that has no owner yet.
@@ -84,6 +86,10 @@ export interface GithubRouteDeps {
   flows: DeviceFlows;
   /** The configured client id ("" when none). */
   clientId: () => string;
+  /** Issue 362: the address a request came from, when the guard knows it. */
+  client?: (req: http.IncomingMessage) => string | undefined;
+  /** Whether the request came over https (the edge's proven header). */
+  https?: (req: http.IncomingMessage) => boolean;
   /** The app issued an expiring token (its token expiry is on): a misconfiguration. */
   tokensExpire?: () => boolean;
   cli: string;
@@ -125,9 +131,9 @@ export function decideFlow(
   log: (line: string) => void,
   rules: () => ClaimRules = () => ({}),
 ): Decide {
-  /** Link `identity` as the owner unless one appeared meanwhile. */
+  /** Link `identity` (its display name too) as the owner unless one appeared meanwhile. */
   const claim = (
-    identity: { id: number; login: string },
+    identity: { id: number; login: string; name?: string },
     how: string,
   ): "ok" | "refused" => {
     const now = readWebOwner(stateDir());
@@ -139,7 +145,7 @@ export function decideFlow(
   };
   /** A member of `org` claims it; anyone else is refused, with why. */
   const memberClaim = async (
-    identity: { id: number; login: string },
+    identity: { id: number; login: string; name?: string },
     org: string,
     ctx: { orgMember(org: string): Promise<string> },
   ): Promise<Decision> => {
@@ -174,6 +180,9 @@ export function decideFlow(
         return { refused: unclaimedSigninReason(identity.login, r) };
       }
       const ok = owner.owner === githubPrincipal(identity.id);
+      // Issue 406: the owner's display name as GitHub has it now (kept for
+      // the account entry; forgotten when GitHub has none).
+      if (ok) syncWebOwnerName(identity.id, identity.name, stateDir());
       log(
         ok
           ? `  ✓ signed in with GitHub (@${identity.login})`
@@ -236,7 +245,7 @@ async function startFlow(
   deps: GithubRouteDeps,
   res: http.ServerResponse,
   purpose: "signin" | "link",
-  meta: { local?: boolean } = {},
+  meta: { local?: boolean; client?: string; browser?: string } = {},
 ): Promise<void> {
   let r;
   try {
@@ -273,6 +282,11 @@ async function startFlow(
 }
 
 /** Whether `pathname` is one of these routes' (index.ts dispatches them here). */
+/** The sign-in poll: a GET that signs in (session-writes.ts, issue 1299). */
+export function isGithubSigninPoll(pathname: string): boolean {
+  return SIGNIN_PATH.test(pathname);
+}
+
 export function isGithubRoute(pathname: string): boolean {
   return /^\/api\/(github\/|web\/owner(\/|$)|web\/pair$)/.test(pathname);
 }
@@ -334,7 +348,18 @@ export async function handleGithubRoutes(
       );
       return true;
     }
-    await startFlow(deps, res, "signin", { local });
+    const client = deps.client?.(req);
+    // A start replaces only this browser's own pending sign-in.
+    const tag = browserTagFor(
+      req.headers.cookie,
+      deps.flows,
+      deps.https?.(req) === true,
+    );
+    if (tag.setCookie) res.setHeader("Set-Cookie", tag.setCookie);
+    await startFlow(deps, res, "signin", {
+      local,
+      ...(client ? { client, browser: tag.tag } : {}),
+    });
     return true;
   }
   const s = SIGNIN_PATH.exec(pathname);
@@ -354,12 +379,16 @@ export async function handleGithubRoutes(
       return true;
     }
     if (v.state === "ok") {
-      const who = deps.flows.claim(v.id, "signin");
+      // Issue 1299: sign in before the flow is spent. A refused sign-in
+      // (the sessions file busy or unreadable) throws with the flow kept,
+      // so the next poll signs in. Nothing awaits in between.
+      const who = deps.flows.identity(v.id, "signin");
       if (!who) {
         deps.sendJson(res, { ok: false, state: "gone" }, 404);
         return true;
       }
       const s = deps.signIn(req, "github", v.login, who.name);
+      deps.flows.claim(v.id, "signin");
       res.setHeader("Set-Cookie", s.cookie);
       res.setHeader("Cache-Control", "no-store");
       // The approval key goes to this answer only (web-session.ts).

@@ -96,38 +96,31 @@
       .hubp-pair b {
         overflow-wrap: anywhere;
       }
+      /* Issue 651: the list and its buttons (Link or Create; linked, Switch
+         and Unlink) in one row, wrapping only where the row runs out. The
+         new name, when it shows, takes a line of its own. */
+      .hubp-pick {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 8px;
+        margin: 0 0 6px;
+      }
+      .hubp-pick select {
+        min-width: 0;
+        max-width: 100%;
+      }
+      .hubp-pick .hubp-new {
+        flex: 1 0 100%;
+      }
+      .hubp-pick .hubp-new[hidden] {
+        display: none;
+      }
       .hubp-more summary {
         cursor: pointer;
         min-height: 34px;
         display: flex;
         align-items: center;
-      }
-      .hubp-dlg {
-        width: min(440px, calc(100vw - 32px));
-        padding: 0;
-        border: 1px solid var(--border-strong, var(--border));
-        border-radius: 10px;
-        background: var(--raised, var(--surface, var(--bg)));
-        color: var(--text);
-      }
-      .hubp-dlg::backdrop {
-        background: rgba(0, 0, 0, 0.25);
-      }
-      .hubp-dlg-b {
-        padding: 16px 18px;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-      .hubp-dlg-b h2 {
-        font-size: 15px;
-        margin: 0;
-      }
-      .hubp-dlg-acts {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        justify-content: flex-end;
       }
       /* Issue 167 (mock v6 B): Unclear matches, one group per project;
          40px touch targets; at 600px and under the rows stack. */
@@ -161,6 +154,149 @@
         .hubla-group button,
         .hubla-list button {
           min-height: 40px;
+        }
+      }
+      /* Issue 646: Connect's review (mock v4, shape B): a row per project,
+         the picker opens in the row; at 700px and under the rows stack. */
+      .hub-rv {
+        margin: 12px 0 0;
+        padding: 12px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        display: grid;
+        gap: 10px;
+      }
+      .hub-rv-h {
+        margin: 0;
+        font-size: 16px;
+      }
+      .hub-rv-rows {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .hub-rv-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 160px) 1fr auto;
+        gap: 6px 14px;
+        padding: 10px 12px;
+        border-top: 1px solid var(--border);
+        align-items: center;
+      }
+      .hub-rv-row:first-child {
+        border-top: 0;
+      }
+      .hub-rv-row.chg {
+        background: color-mix(in srgb, var(--accent) 6%, transparent);
+      }
+      .hub-rv-pj {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .hub-rv-key {
+        font-weight: 400;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .hub-rv-pp {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+      .hub-rv-pp:has(.hub-pick) {
+        grid-column: 2 / -1;
+      }
+      .hub-rv-why {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .hub-rv-why.new {
+        color: var(--accent-text);
+      }
+      .hub-rv-why.warn {
+        color: var(--warn);
+      }
+      .hub-rv-row button {
+        min-height: 40px;
+      }
+      .hub-rv-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .hub-rv-prog {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+      .hub-pick {
+        display: grid;
+        gap: 8px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        grid-column: 1 / -1;
+      }
+      .hub-pick h4 {
+        margin: 0;
+        font-size: 14px;
+      }
+      .hub-pick-list {
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        max-height: 260px;
+        overflow-y: auto;
+        display: grid;
+      }
+      .hub-pick-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 2px 10px;
+        text-align: left;
+        border: 0;
+        border-top: 1px solid var(--border);
+        background: none;
+        color: inherit;
+        font: inherit;
+        padding: 8px 10px;
+        min-height: 40px;
+        cursor: pointer;
+      }
+      .hub-pick-row:first-child {
+        border-top: 0;
+      }
+      .hub-pick-row[hidden] {
+        display: none;
+      }
+      .hub-pick-row.sel {
+        background: color-mix(in srgb, var(--accent) 12%, transparent);
+        box-shadow: inset 3px 0 0 var(--accent);
+      }
+      .hub-pick-row small {
+        grid-column: 1 / -1;
+        color: var(--muted);
+      }
+      .hub-pick-tag {
+        font-size: 12px;
+        color: var(--ok);
+      }
+      .hub-pick-q {
+        padding: 6px 10px;
+        min-height: 40px;
+      }
+      .hub-pick-acts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      @media (max-width: 700px) {
+        .hub-rv-row {
+          grid-template-columns: 1fr auto;
+        }
+        .hub-rv-pj,
+        .hub-rv-pp:has(.hub-pick) {
+          grid-column: 1 / -1;
         }
       }
       /* The Settings page (R21): the prototype's (den-shell.html) page
@@ -542,6 +678,14 @@
         flex: 1 1 100%;
         min-width: 0;
       }
+      /* Issue 774: Sounds' switch, then a play button for each sound. */
+      .set-sound-try {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-left: 10px;
+        vertical-align: middle;
+      }
       .rt-scope {
         display: flex;
         align-items: center;
@@ -606,6 +750,25 @@
       .rt-err[hidden] {
         display: none;
       }
+      /* Issue 456: the other copies found, under the one used. */
+      .rt-o {
+        grid-column: 1 / -1;
+        display: grid;
+        gap: 4px;
+        font-size: 12.5px;
+      }
+      .rt-oh,
+      .rt-ov {
+        color: var(--muted);
+      }
+      .rt-oi {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px 8px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
       /* D28: Settings › Agents › Rotation. */
       .rot-inst {
         display: grid;
@@ -639,6 +802,23 @@
         margin-top: 10px;
       }
       /* HUB-1.5: Settings › Hub. */
+      /* Issue 646 (mock v2, 1b): the connected company first and big. */
+      .hub-co {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px 16px;
+        margin-bottom: 8px;
+      }
+      .hub-co-name {
+        display: block;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .hub-co .set-note {
+        margin: 2px 0 0;
+      }
       .hub-st {
         display: grid;
         grid-template-columns: max-content 1fr;
@@ -879,32 +1059,7 @@
         color: var(--muted);
         font-size: 13px;
       }
-      /* .btn */
-      .btn {
-        border: 1px solid var(--border);
-        background: var(--surface);
-        border-radius: var(--radius-button);
-        padding: 6px 12px;
-        cursor: pointer;
-        font-weight: 500;
-        white-space: nowrap;
-      }
-      .btn:hover {
-        border-color: var(--border-strong);
-      }
-      .btn:disabled {
-        opacity: 0.45;
-        cursor: default;
-      }
-      .btn.primary {
-        background: var(--accent-fill);
-        border-color: var(--accent-fill);
-        color: var(--on-accent);
-      }
-      .btn.sm {
-        padding: 2px 9px;
-        font-size: 12.5px;
-      }
+      /* Buttons are the kit's .den-btn (issue 673). */
       .set-save {
         margin-top: 6px;
       }

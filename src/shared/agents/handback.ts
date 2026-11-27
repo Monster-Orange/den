@@ -112,13 +112,28 @@ function splitParts(lines: string[]): Parts {
   return { found, literal };
 }
 
-/** Text with URLs and code replaced by spaces (offsets kept). */
+/** A run with a slash in it, brackets and quotes left out: a path, maybe. */
+const SLASHED = /[^\s()[\]{}<>"'`,;]*\/[^\s()[\]{}<>"'`,;]*/g;
+
+/**
+ * Is this slashed run a file path? It is when something besides IDs is left
+ * once the IDs, slashes and punctuation are taken out: "/tmp/x-AB12/a.md"
+ * is a path, "#12/#13" is two IDs (issue 1021).
+ */
+function isPath(run: string): boolean {
+  let t = run;
+  for (const re of ID_PATTERNS) t = t.replace(new RegExp(re.source, "g"), " ");
+  return /[A-Za-z0-9]/.test(t);
+}
+
+/** Text with URLs, file paths and code replaced by spaces (offsets kept). */
 function prose(line: string): string {
   const blank = (s: string) => " ".repeat(s.length);
   return line
     .replace(/`[^`]*`/g, blank)
     .replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, blank)
-    .replace(/\bwww\.\S+/gi, blank);
+    .replace(/\bwww\.\S+/gi, blank)
+    .replace(SLASHED, (run) => (isPath(run) ? blank(run) : run));
 }
 
 const WORD = /[A-Za-z][A-Za-z'’]*(?:-[A-Za-z]+)*/g;

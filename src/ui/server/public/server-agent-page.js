@@ -34,6 +34,7 @@
 
 import { paneSettings, termPane } from "/term-pane.js";
 import { imeOnce } from "/term-input.js";
+import { dialogHtml, mountDialog } from "/dialog-den.js";
 
 const t = (key, vars) => globalThis.window?.denShell?.t?.(key, vars) ?? key;
 const esc = (s) =>
@@ -308,63 +309,60 @@ async function refresh() {
   }
 }
 
-async function start() {
+/** Start: the pressed Start (none on the page's own start) holds the dots. */
+async function start(button) {
   if (st.starting) return;
   st.starting = true;
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await window.denShell.api("POST", "/api/server-agent/start", {});
   } catch (err) {
     st.starting = false;
+    void release();
     const body = st.root.querySelector("#sa-body");
     const why = err?.message ?? String(err);
     body.innerHTML = `<p class="note bad" data-note="failed" role="alert">${esc(t("sa.failed", { why, cli: CLI }))}</p>`;
     return;
   }
   st.starting = false;
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 /**
  * 0.4.46 Start fresh: asks first (its conversation ends), then stops it,
  * removes it and starts a new one, with the working pop-up.
  */
-function confirmFresh(name) {
-  return new Promise((resolve) => {
-    let d = document.getElementById("sa-fresh-dlg");
-    if (!d) {
-      d = document.createElement("dialog");
-      d.id = "sa-fresh-dlg";
-      d.className = "sa-fresh-dlg";
-      d.setAttribute("role", "alertdialog");
-      d.setAttribute("aria-labelledby", "sa-fresh-h");
-      document.body.append(d);
-    }
-    d.innerHTML =
-      `<div class="sa-fresh-b"><h2 id="sa-fresh-h" tabindex="-1">${esc(t("sa.fresh.h"))}</h2>` +
-      `<p>${esc(t("sa.fresh.q", { name }))}</p>` +
-      `<div class="sa-fresh-acts"><button type="button" class="den-btn sm" data-saf="cancel">${esc(t("sa.fresh.cancel"))}</button>` +
-      `<button type="button" class="den-btn sm primary" data-saf="go">${esc(t("sa.fresh.go"))}</button></div></div>`;
-    const done = (yes) => {
-      d.removeEventListener("cancel", onCancel);
-      if (d.open && typeof d.close === "function") d.close();
-      else d.removeAttribute("open");
-      resolve(yes);
-    };
-    const onCancel = (e) => {
-      e.preventDefault();
-      done(false);
-    };
-    d.addEventListener("cancel", onCancel);
-    d.querySelector('[data-saf="cancel"]').addEventListener("click", () =>
-      done(false),
-    );
-    d.querySelector('[data-saf="go"]').addEventListener("click", () =>
-      done(true),
-    );
-    if (typeof d.showModal === "function") d.showModal();
-    else d.setAttribute("open", "");
-    d.querySelector('[data-saf="cancel"]').focus();
+async function confirmFresh(name) {
+  // Issue 669: the kit's confirm frame, no dialog of its own.
+  const html = dialogHtml({
+    kind: "confirm",
+    id: "sa-fresh-dlg",
+    ids: { h: "sa-fresh-h" },
+    className: "sa-fresh-dlg",
+    title: t("sa.fresh.h"),
+    body: `<p>${esc(t("sa.fresh.q", { name }))}</p>`,
+    actions: [
+      {
+        label: t("sa.fresh.cancel"),
+        value: "cancel",
+        attrs: { "data-saf": "cancel" },
+      },
+      {
+        label: t("sa.fresh.go"),
+        value: "go",
+        kind: "primary",
+        attrs: { "data-saf": "go" },
+      },
+    ],
   });
+  const h = mountDialog(html, { focus: '[data-saf="cancel"]' });
+  return (await h.closed) === "go";
 }
 
 async function startFresh(button) {
@@ -383,7 +381,7 @@ async function startFresh(button) {
   await refresh();
 }
 
-async function answerTrust(answer) {
+async function answerTrust(answer, button) {
   // Gate 0.4.44: check right before sending; a prompt gone since the last
   // check sends nothing (the server's 409 stays the guard behind this).
   const now = await readStatus();
@@ -392,17 +390,25 @@ async function answerTrust(answer) {
     schedule(paint());
     return;
   }
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
   try {
     await window.denShell.api("POST", "/api/server-agent/trust", { answer });
   } catch (err) {
     window.denShell?.errorToast?.(err);
   }
   st.trustLater = answer === "no";
-  await refresh();
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
 }
 
 async function saveModel(id) {
   try {
+    // busy-ok: the model list saves on change; the toast is the answer
     await window.denShell.api("POST", "/api/server-agent/model", {
       model: id,
     });
@@ -415,6 +421,7 @@ async function saveModel(id) {
 
 async function saveRuntime(id) {
   try {
+    // busy-ok: the runtime list saves on change; the toast is the answer
     await window.denShell.api("POST", "/api/server-agent/runtime", {
       runtime: id,
     });
@@ -593,15 +600,10 @@ export async function mountServerAgentPage(root) {
   if (window.denShell?.apiOff?.()) return;
   root.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-act]");
-    if (b?.dataset.act === "start") {
-      b.disabled = true;
-      void start();
-    }
+    if (b?.dataset.act === "start") void start(b);
     if (b?.dataset.act === "fresh") void startFresh(b);
-    if (b?.dataset.act === "trust-yes" || b?.dataset.act === "trust-no") {
-      b.disabled = true;
-      void answerTrust(b.dataset.act === "trust-yes" ? "yes" : "no");
-    }
+    if (b?.dataset.act === "trust-yes" || b?.dataset.act === "trust-no")
+      void answerTrust(b.dataset.act === "trust-yes" ? "yes" : "no", b);
   });
   // Gate 0.4.44: back in view, check at once; hidden, checks pause.
   document.addEventListener("visibilitychange", () => {

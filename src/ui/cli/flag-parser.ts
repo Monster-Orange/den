@@ -35,6 +35,8 @@ export interface ParsedCliArgs {
     workspace?: string;
     forceTabs?: boolean;
     skipSecrets?: boolean;
+    /** Issue 636: `--test-person`, a test bed's CLI acting as the person. */
+    testPerson?: boolean;
   };
 }
 
@@ -140,6 +142,10 @@ function applyFlag(
     flags.skipSecrets = true;
     return index + 1;
   }
+  if (token === "--test-person") {
+    flags.testPerson = true;
+    return index + 1;
+  }
   return null;
 }
 
@@ -149,7 +155,8 @@ function validateFlagScopes(parsed: ParsedCliArgs): void {
     if (
       parsed.flags.workspace ||
       parsed.flags.forceTabs !== undefined ||
-      parsed.flags.skipSecrets
+      parsed.flags.skipSecrets ||
+      parsed.flags.testPerson
     ) {
       throw new Error("Global flags require a command");
     }
@@ -190,6 +197,8 @@ export const SUBCOMMAND_OWN_HELP: Readonly<Record<string, readonly string[]>> =
       "approve",
       "claim-link",
       "url",
+      "fixture-person",
+      "fixture-login",
     ],
     mcp: ["connect", "disconnect", "clients", "config"],
     repo: ["add"],
@@ -243,7 +252,8 @@ const COMMAND_FLAGS: Record<string, readonly string[]> = {
   sync: [],
   // The only override for an edge another state dir owns; a typo'd one
   // must not be ignored.
-  edge: ["--take-over", "--rotate-proof"],
+  // `edge route --for <proxy>` (issue 455) also takes `--for=<proxy>`.
+  edge: ["--take-over", "--rotate-proof", "--for", "--json"],
 };
 
 /**
@@ -264,6 +274,7 @@ export function unknownCommandFlags(command: string, args: string[]): string[] {
       !allowed.includes(a) &&
       // `--app=<name>` and `-w=`/`--workspace=` also take the = form.
       !(allowed.includes("--app") && a.startsWith("--app=")) &&
+      !(allowed.includes("--for") && a.startsWith("--for=")) &&
       !(allowed.includes("--workspace") && /^(-w|--workspace)=/.test(a)),
   );
 }

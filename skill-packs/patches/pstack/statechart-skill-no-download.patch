@@ -1,0 +1,20 @@
+--- a/skills/statechart/SKILL.md
++++ b/skills/statechart/SKILL.md
+@@ -18,7 +18,7 @@
+ 
+ `scripts/statechart.ts` is TypeScript, so run it with a runtime that can execute TypeScript. `scripts/statechart` is a POSIX shell script that picks one. On native Windows, run `node --disable-warning=ExperimentalWarning <skill dir>/scripts/statechart.ts` with Node 22.18 to 22.x, or Node 23.6 or later.
+ 
+-The first run installs TLC and Java with mise and needs the network.
++TLC needs `TLA2TOOLS` set to the path of a local `tla2tools.jar` and `JAVA` set to a Java 11 or later binary. This copy never downloads or installs anything. If either is missing, stop and ask a person to install it.
+ 
+ ## Write the spec
+ 
+@@ -73,7 +73,7 @@
+ 
+ Show `chart.mmd` to the user as a `mermaid` code block. The chart has a budget of 500 states, counted by TLC on the config as written. Above that, the chart draws only the paths to the rules that break, and when no rule breaks, the command writes no `chart.mmd`. It still checks each rule, and the report gives the state count and each bug path. To see the whole graph, make the model smaller.
+ 
+-Render charts with Pele. When the user asks for an image, or a chart is too large to read as text, follow `references/render.md`. Do not use a different renderer unless the user asks for it.
++This copy installs no renderer. When the user asks for an image, ask which local renderer to use.
+ 
+ ## Hand off
+ 

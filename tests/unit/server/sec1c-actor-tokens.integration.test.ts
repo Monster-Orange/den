@@ -21,6 +21,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { denAuth } from "./helpers/den-auth.js";
+import { signedIn } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -183,21 +184,24 @@ describe("the audit actor comes from the credential", () => {
     expect(e).not.toHaveProperty("unverified");
   });
 
-  it("a header alone (no credential) is never an agent: recorded as an unverified claim", async () => {
-    const csrf = String(
-      (await call("GET", "/api/session", { "sec-fetch-site": "same-origin" }))
-        .json.csrf,
+  it("a header alone is never an agent: with no credential a write needs a sign-in on this machine too (0.4.71); from a signed-in page it is recorded as an unverified claim", async () => {
+    const claim = {
+      "x-den-actor": "agent",
+      "x-den-mcp-client": "test-client",
+      "x-den-mcp-agent": "agent:planner",
+    };
+    const bare = await call(
+      "POST",
+      "/api/activity",
+      { origin: s.base, "x-den-csrf": "", ...claim },
+      report,
     );
+    expect([bare.status, bare.json.code]).toEqual([401, "signin_required"]);
+    const page = await signedIn(s.stateDir, s.base);
     const r = await call(
       "POST",
       "/api/activity",
-      {
-        origin: s.base,
-        "x-den-csrf": csrf,
-        "x-den-actor": "agent",
-        "x-den-mcp-client": "test-client",
-        "x-den-mcp-agent": "agent:planner",
-      },
+      { ...page.headers, ...claim },
       report,
     );
     expect(r.status).toBe(200);
@@ -208,11 +212,25 @@ describe("the audit actor comes from the credential", () => {
       claimed: { agent: "agent:planner" },
     });
     expect(e).not.toHaveProperty("agent");
-    expect(e).not.toHaveProperty("principal");
+    // The principal is the person the session proves, never the claim.
+    expect(String(e.principal ?? "")).not.toMatch(/^agent:/);
   });
 });
 
 describe("what an agent's token can't do (403 agent_forbidden)", () => {
+  // Issue 1215: the fixture person's project acts open nothing to agents.
+  it.each([
+    ["POST", "/api/workspaces/create", { name: "agent-1215" }],
+    ["POST", "/api/workspaces", { name: "default", action: "activate" }],
+    ["DELETE", "/api/workspaces", { name: "agent-1215" }],
+  ] as [string, string, Record<string, string>][])(
+    "%s %s (a project act)",
+    async (m, p, body) => {
+      const r = await call(m, p, agent(), body);
+      expect([r.status, r.json.code]).toEqual([403, "agent_forbidden"]);
+    },
+  );
+
   it("open another session's io (HTTP or a WebSocket upgrade); its own passes the checks", async () => {
     const other = await call("GET", "/api/sessions/someone-else/io", agent());
     expect([other.status, other.json.code]).toEqual([403, "agent_forbidden"]);
@@ -241,10 +259,12 @@ describe("what an agent's token can't do (403 agent_forbidden)", () => {
       {},
     );
     expect([r.status, r.json.code]).toEqual([403, "agent_forbidden"]);
+    // A signed-in page without its CSRF token.
+    const page = await signedIn(s.stateDir, s.base);
     const c = await call(
       "POST",
       `/api/sessions/${sessionId}/uploads?name=y.png`,
-      { origin: s.base, "sec-fetch-site": "same-origin" },
+      { cookie: page.cookie, origin: s.base, "sec-fetch-site": "same-origin" },
       {},
     );
     expect([c.status, c.json.code]).toEqual([403, "csrf"]);

@@ -3,6 +3,7 @@ import type {
   AppearanceMenu,
   BellItem,
   BellPanelOptions,
+  PageMenuItem,
   WaitingOptions,
 } from "./shell-html.js";
 
@@ -16,7 +17,37 @@ export interface HydrateOptions {
   inert?: () => (Element | null)[];
   /** True while a product menu is open (Escape is the menu's then). */
   menuOpen?: () => boolean;
+  /** Issue 1444: the rail's section folds' store; false: no folds. */
+  folds?: RailFoldStore | false;
 }
+/** Issue 1444: where the folded sections' ids are kept. */
+export interface RailFoldStore {
+  get(): string[];
+  set(ids: string[]): void;
+}
+export interface RailFolds {
+  /** Make new headings toggles and draw each section's state. */
+  apply(): void;
+  folded(): string[];
+  destroy(): void;
+}
+export declare const RAIL_FOLD_KEY: "den.rail.folded";
+export declare function railFoldStore(
+  storage?: Pick<Storage, "getItem" | "setItem"> | null,
+): RailFoldStore;
+export declare function toggleFolded(ids: string[], id: string): string[];
+export declare function foldCount(badges: { n: unknown; bad?: boolean }[]): {
+  n: number;
+  bad: boolean;
+};
+export declare function hydrateRailFolds(
+  root: ParentNode,
+  opts?: {
+    store?: RailFoldStore;
+    lang?: string | (() => string | undefined);
+    onChange?: (ids: string[]) => void;
+  },
+): RailFolds;
 export interface Shell {
   nav: HTMLElement | null;
   rove(): void;
@@ -27,6 +58,8 @@ export interface Shell {
   closeDrawer(refocus?: boolean): void;
   drawerOpen(): boolean;
   syncPinToggles(root: ParentNode, isPinned: (id: string) => boolean): void;
+  /** Issue 1444: the rail's section folds (null with folds: false). */
+  folds: RailFolds | null;
 }
 export declare function syncPinToggles(
   root: ParentNode,
@@ -89,6 +122,17 @@ export interface BellHandle {
   paint(): void;
   setCount(n: number): void;
 }
+/**
+ * Issue 1024: makes `live`'s children match `next`'s, keeping every
+ * unchanged node (a bell row is matched by data-ap-row, data-go-row,
+ * data-id or id, and replaced whole only when it changed).
+ */
+export declare function patchChildren(live: Element, next: Element): void;
+/** Issue 420: a click anywhere on a row clicks its link (not on its controls). */
+export declare function wireRowOpens(
+  root: Element,
+  rowSelector: string,
+): () => void;
 export declare function hydrateBell(
   button: HTMLElement,
   opts?: BellHydrateOptions,
@@ -141,6 +185,18 @@ export interface AppearanceHandle {
 export declare function hydrateAppearance(
   button: HTMLElement,
   opts?: AppearanceHydrateOptions,
+): AppearanceHandle;
+export interface PageMenuHydrateOptions {
+  /** The items, or a function giving them each time the menu opens. */
+  items: PageMenuItem[] | (() => PageMenuItem[]);
+  /** A pick of an item with no onSelect of its own. */
+  onSelect?: (id: string, item: PageMenuItem) => void;
+  lang?: string | (() => string);
+}
+/** The page action menu on the button pageMenuButtonHtml drew. */
+export declare function hydratePageMenu(
+  button: HTMLElement,
+  opts: PageMenuHydrateOptions,
 ): AppearanceHandle;
 /** The update-waiting pill after the version chip; null hides it. */
 export declare function setWaiting(

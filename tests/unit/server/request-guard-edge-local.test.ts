@@ -33,6 +33,8 @@ const HERE: LocalNet = {
   bridges: [{ address: "192.168.216.0", netmask: "255.255.255.0" }],
 };
 
+const EDGE_ADDRS: ReadonlySet<string> = new Set(["172.18.0.3"]);
+
 const ctx = (over: Partial<GuardContext> = {}): GuardContext => ({
   port: PORT,
   loopbackNames: ["localhost", "127.0.0.1", "[::1]"],
@@ -47,10 +49,9 @@ const ctx = (over: Partial<GuardContext> = {}): GuardContext => ({
           session: { name: "s1", id: "s1" },
         }
       : null,
-  csrfToken: "start-csrf",
   session: () => null,
   peerIsLoopback: (r) => r.socket?.remoteAddress === "127.0.0.1",
-  peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress),
+  peerIsEdge: (r) => isEdgePeer(r.socket?.remoteAddress, EDGE_ADDRS),
   // H1: the real edge adds its proof to every request it forwards.
   edgeProved: () => true,
   localNet: () => HERE,
@@ -86,8 +87,10 @@ describe("the edge hostname from an edge peer counts as local when the edge atte
           p,
           expect.objectContaining({ ok: true, via: "edge", beyond: false }),
         ]);
+      // 0.4.71: local, and a shell-grade route signs in, as on localhost.
       expect(checkRequest(shellGrade(xff(a)), ctx())).toMatchObject({
-        ok: true,
+        ok: false,
+        code: "signin_required",
         via: "edge",
         beyond: false,
       });
@@ -96,7 +99,10 @@ describe("the edge hostname from an edge peer counts as local when the edge atte
 
   it("X-Forwarded-For of one of this machine's own addresses (LAN, VPN): local, its address kept for the device record", () => {
     for (const a of ["192.168.1.122", "100.101.102.103"])
-      expect([a, checkRequest(shellGrade(xff(a)), ctx())]).toEqual([
+      expect([
+        a,
+        checkRequest(req("GET", "/api/settings", xff(a)), ctx()),
+      ]).toEqual([
         a,
         expect.objectContaining({ ok: true, beyond: false, client: a }),
       ]);
@@ -132,31 +138,40 @@ describe("the edge hostname from an edge peer counts as local when the edge atte
   it("believes only the right-most X-Forwarded-For entry (the one the edge appended): a forged loopback on the left is ignored", () => {
     expect(
       checkRequest(shellGrade(xff("127.0.0.1, 203.0.113.7")), ctx()),
-    ).toMatchObject({ ok: false, code: "signin_required" });
+    ).toMatchObject({ ok: false, code: "signin_required", beyond: true });
     expect(
       checkRequest(shellGrade(xff("127.0.0.1, 172.18.0.5")), ctx()),
-    ).toMatchObject({ ok: false, code: "signin_required" });
+    ).toMatchObject({ ok: false, code: "signin_required", beyond: true });
     expect(
       checkRequest(shellGrade(xff("203.0.113.7, 127.0.0.1")), ctx()),
-    ).toMatchObject({ ok: true });
+    ).toMatchObject({ ok: false, code: "signin_required", beyond: false });
+    expect(
+      checkRequest(
+        req("GET", "/settings", xff("203.0.113.7, 127.0.0.1")),
+        ctx(),
+      ),
+    ).toMatchObject({ ok: true, beyond: false });
   });
 
-  it("Host, Origin and CSRF still apply", () => {
+  it("Host, Origin and CSRF still apply (a signed-in browser)", () => {
     const here = xff("127.0.0.1");
+    const signed = ctx({
+      session: () => ({ key: "k".repeat(64), csrf: "session-csrf" }),
+    });
     // Host: the edge hostname from a LAN peer (not the edge): 421.
     expect(
-      checkRequest(req("GET", "/", here, "192.168.1.50"), ctx()),
+      checkRequest(req("GET", "/", here, "192.168.1.50"), signed),
     ).toMatchObject({ ok: false, status: 421 });
     expect(
       checkRequest(
         req("POST", START, { origin: "https://evil.example", ...here }),
-        ctx(),
+        signed,
       ),
     ).toMatchObject({ ok: false, code: "origin_rejected" });
     expect(
       checkRequest(
         req("POST", START, { origin: `https://${EDGE}`, ...here }),
-        ctx(),
+        signed,
       ),
     ).toMatchObject({ ok: false, code: "csrf" });
   });
@@ -207,8 +222,17 @@ describe("a client the edge can't place (SEC-2a: web.edge_unattested)", () => {
   it.each(unplaced)(
     "%s: local with web.edge_unattested: local (0.4.3's allow), no address recorded",
     (_w, h, peer) => {
+      // 0.4.71: local, so a shell-grade route signs in as on localhost.
+      expect(
+        checkRequest(shellGrade(h, peer), ctx({ edgeUnattested: "local" })),
+      ).toMatchObject({
+        ok: false,
+        code: "signin_required",
+        via: "edge",
+        beyond: false,
+      });
       const r = checkRequest(
-        shellGrade(h, peer),
+        req("GET", "/settings", h, peer),
         ctx({ edgeUnattested: "local" }),
       );
       expect(r).toMatchObject({ ok: true, via: "edge", beyond: false });
@@ -251,8 +275,11 @@ describe("a client the edge can't place (SEC-2a: web.edge_unattested)", () => {
     ).toMatchObject({ ok: false, code: "cross_site" });
   });
 
-  it("localhost always works with no sign-in (a loopback Host from a loopback peer)", () => {
-    for (const c of [ctx(), ctx({ edgeUnattested: "signin" })])
+  it("localhost is always local (a loopback Host from a loopback peer): reads pass, a write signs in (0.4.71)", () => {
+    for (const c of [ctx(), ctx({ edgeUnattested: "signin" })]) {
+      expect(
+        checkRequest(req("GET", "/settings", { host: `localhost:${PORT}` }), c),
+      ).toMatchObject({ ok: true, via: "loopback", beyond: false });
       expect(
         checkRequest(
           req("POST", START, {
@@ -262,7 +289,13 @@ describe("a client the edge can't place (SEC-2a: web.edge_unattested)", () => {
           }),
           c,
         ),
-      ).toMatchObject({ ok: true, via: "loopback", beyond: false });
+      ).toMatchObject({
+        ok: false,
+        code: "signin_required",
+        via: "loopback",
+        beyond: false,
+      });
+    }
   });
 });
 

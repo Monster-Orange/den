@@ -30,6 +30,9 @@ import {
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { signIn } from "./helpers/signed-in.js";
+import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -44,10 +47,7 @@ beforeAll(async () => {
         ? process.env.DEN_HELPERS_BROWSER
         : "chromium"
     ) as "chromium" | "firefox" | "webkit";
-    const ws = process.env.DEN_PW_WS;
-    browser = ws
-      ? await pw[engine].connect(ws, { exposeNetwork: "<loopback>" })
-      : await pw[engine].launch();
+    browser = await launchBrowser(pw[engine]);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -91,14 +91,8 @@ async function open(width = 1280) {
     viewport: { width, height: 900 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
-  });
+  await signIn(ctx, s.stateDir, s.base);
+  await seeWhatsNew(ctx, s.base);
   const p: Page = await ctx.newPage();
   const errors: string[] = [];
   p.on("pageerror", (e) => errors.push(e.message));
@@ -110,7 +104,8 @@ async function open(width = 1280) {
   // Connected: the PTY's output is on screen.
   const mark = `ready-${Math.random().toString(36).slice(2, 8)}`;
   await p.locator(`.pane[data-id="${sid}"] .xterm`).waitFor();
-  await new Promise((r) => setTimeout(r, 300));
+  // Attached: the pane knows the PTY's size once its session answered.
+  await p.locator(`.pane[data-id="${sid}"][data-pty-cols]`).waitFor();
   pty.emit(`${mark}$ `);
   await p.waitForFunction(
     (m) =>
@@ -178,10 +173,7 @@ describe("AG-DROP: a file onto an agent's terminal", () => {
       { name: "shot one.png", type: "image/png", bytes: PNG },
       { name: "notes.txt", type: "text/plain", bytes: [104, 105] },
     ]);
-    const t0 = Date.now();
-    while (!/ $/.test(typed(from)) && Date.now() - t0 < 15_000)
-      await new Promise((r) => setTimeout(r, 100));
-    const out = typed(from);
+    const out = await typedSoon(from, / $/, 15_000);
     expect(out).not.toMatch(/[\r\n]/);
     // One with a space is quoted; the other is a plain word.
     const m = /^'([^']+)' (\S+) $/.exec(out);
@@ -196,7 +188,7 @@ describe("AG-DROP: a file onto an agent's terminal", () => {
     // Its chips say so, then go.
     await p
       .locator(`.pane[data-id="${sid}"] .agup-c[data-tone="ok"]`)
-      .first()
+      .filter({ has: p.locator(".agup-n", { hasText: "notes.txt" }) })
       .waitFor();
     expect(errors).toEqual([]);
     await p.context().close();
@@ -234,16 +226,12 @@ describe("AG-DROP: a file onto an agent's terminal", () => {
       );
     let from = pty.writes.length;
     await paste({ file: true });
-    const t0 = Date.now();
-    while (!/ $/.test(typed(from)) && Date.now() - t0 < 15_000)
-      await new Promise((r) => setTimeout(r, 100));
-    expect(typed(from)).toMatch(pathRe("pasted.png"));
+    expect(await typedSoon(from, / $/, 15_000)).toMatch(pathRe("pasted.png"));
     from = pty.writes.length;
     await paste({ text: "hello there" });
-    const t1 = Date.now();
-    while (!typed(from).includes("hello there") && Date.now() - t1 < 10_000)
-      await new Promise((r) => setTimeout(r, 100));
-    expect(typed(from)).toContain("hello there");
+    expect(await typedSoon(from, /hello there/, 10_000)).toContain(
+      "hello there",
+    );
     expect(typed(from)).not.toContain("uploads");
     expect(errors).toEqual([]);
     await p.context().close();
@@ -269,10 +257,9 @@ describe("AG-DROP: a file onto an agent's terminal", () => {
         mimeType: "application/pdf",
         buffer: Buffer.from("%PDF-1"),
       });
-      const t0 = Date.now();
-      while (!/ $/.test(typed(from)) && Date.now() - t0 < 15_000)
-        await new Promise((r) => setTimeout(r, 100));
-      expect(typed(from)).toMatch(/^'.*\/\d{8}-\d{6}-\d{3}-my doc\.pdf' $/);
+      expect(await typedSoon(from, / $/, 15_000)).toMatch(
+        /^'.*\/\d{8}-\d{6}-\d{3}-my doc\.pdf' $/,
+      );
       expect(
         await p.evaluate(() => document.documentElement.scrollWidth),
       ).toBeLessThanOrEqual(width);
@@ -303,6 +290,8 @@ describe("AG-DROP: a file onto an agent's terminal", () => {
       const bad = p.locator(`.pane[data-id="${sid}"] .agup-c[data-tone="bad"]`);
       await bad.waitFor({ timeout: 15_000 });
       expect(await bad.textContent()).toContain("agents.uploads.max_bytes");
+      // Kept on purpose: this proves nothing is typed after the refusal, so
+      // it gives a late write a moment to show; no state marks "never".
       await new Promise((r) => setTimeout(r, 300));
       expect(typed(from)).toBe("");
       expect(fs.existsSync(upDir()) ? fs.readdirSync(upDir()) : []).toEqual(
@@ -431,10 +420,11 @@ async function centre(p: Page, sel: string) {
   return [b.x + b.width / 2, b.y + b.height / 2] as const;
 }
 
-async function typedSoon(from: number, want: RegExp) {
-  const t0 = Date.now();
-  while (!want.test(typed(from)) && Date.now() - t0 < 8000)
-    await new Promise((r) => setTimeout(r, 100));
+/** What was typed since `from`, once it matches `want` (or `ms` passes). */
+async function typedSoon(from: number, want: RegExp, ms = 8000) {
+  const end = Date.now() + ms;
+  while (!want.test(typed(from)) && Date.now() < end)
+    await new Promise((r) => setTimeout(r, 50));
   return typed(from);
 }
 
@@ -517,7 +507,10 @@ describe("AG-DROP: the whole pane, and after a restart", () => {
         { timeout: 15_000 },
       )
       .catch(() => undefined);
-    await new Promise((r) => setTimeout(r, 1500));
+    // The pane's bar has caught up: an ended session offers no Attach.
+    await p
+      .locator(`.pane[data-id="${sid}"] [data-act="attach"]`)
+      .waitFor({ state: "detached", timeout: 15_000 });
     const ended = await dropAt(p, ...(await centre(p, ".pane .xterm-screen")));
     expect(ended.overlay).toBe("Can't attach: scout isn't running");
     expect(ended.toast).toBe("Can't attach: scout isn't running");
@@ -543,7 +536,10 @@ describe("AG-DROP: the whole pane, and after a restart", () => {
       sessionName: "acme-north:scout",
     });
     await p.waitForSelector(`.pane[data-id="${sid}"]`, { timeout: 20_000 });
-    await new Promise((r) => setTimeout(r, 800));
+    // The new pane is live: attached (it knows the PTY's size), with Attach.
+    await p
+      .locator(`.pane[data-id="${sid}"][data-pty-cols] [data-act="attach"]`)
+      .waitFor({ timeout: 20_000 });
     for (const part of [".xterm-screen", ".agto", ".bar2"]) {
       const from = pty.writes.length;
       const r = await dropAt(

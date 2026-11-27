@@ -1,0 +1,96 @@
+/* den-ui: the bulk bar's look (bulk-bar.js, issue 553). Tokens only: no
+   colour of its own. Linked, never injected: clean under style-src
+   'self'. Sticky at the bottom of the scrolling list, over its rows. */
+.den-bulk {
+  position: sticky;
+  bottom: max(var(--space-3), env(safe-area-inset-bottom, 0px));
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  box-sizing: border-box;
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  font-family: var(--sans);
+  font-size: var(--fs-s);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px var(--edge-style, solid) var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-menu);
+}
+.den-bulk[hidden] {
+  display: none;
+}
+.den-bulk-count {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.den-bulk-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-inline-start: auto;
+}
+.den-bulk-clear,
+.den-bulk-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: var(--tap-min);
+  margin: 0;
+  padding: 0 var(--space-3);
+  font: inherit;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px var(--edge-style, solid) var(--border-strong);
+  border-radius: var(--radius-button);
+  cursor: pointer;
+}
+.den-bulk-clear {
+  border-color: transparent;
+  background: transparent;
+  color: var(--accent-text);
+}
+.den-bulk-act:hover:not([disabled]) {
+  border-color: var(--accent);
+}
+.den-bulk-act[disabled] {
+  cursor: not-allowed;
+  border-style: dashed;
+  color: var(--muted);
+}
+.den-bulk-clear:focus-visible,
+.den-bulk-act:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+/* The live region beside the bar: heard, never seen. */
+.den-bulk-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* A phone or a narrow pane: each action the bar's width. */
+@media (max-width: 720px) {
+  .den-bulk-actions {
+    flex: 1 1 100%;
+    flex-direction: column;
+    margin-inline-start: 0;
+  }
+}
+@media (max-width: 720px), (pointer: coarse) {
+  .den-bulk-clear,
+  .den-bulk-act {
+    min-height: var(--tap);
+  }
+}

@@ -24,12 +24,14 @@ import type { Browser, Page } from "playwright";
 import { writeRotation } from "../../../src/shared/agents/rotation.js";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
 import { GOOD_HANDOFF } from "../agents/helpers/handoff.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
+import { runtimeArgs } from "../helpers/unwrap-sandbox.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -47,7 +49,7 @@ const files = (id: string) => path.join(s!.stateDir, "agent-files", id);
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -119,7 +121,7 @@ async function open(ws: string): Promise<Page> {
   p.on("console", (m) => {
     if (m.type() === "error") errors.push(`console: ${m.text()}`);
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}`));
+  await signInPage(p, s!.stateDir, s!.base, `/agents?ws=${ws}`);
   await p.waitForSelector("#agl:not([aria-busy]) .agst", { timeout: 20_000 });
   return p;
 }
@@ -244,13 +246,14 @@ describe("rotated agents on the Agents page (den#4)", () => {
       .slice(before)
       .filter((m) => m.opts.env?.DEN_AGENT === "agent:relay");
     expect(made).toHaveLength(1);
-    const args = made[0].args;
+    const args = runtimeArgs(made[0]);
     expect(args[0]).toBe("--session-id");
     expect(args[1]).not.toBe(TOKEN.relay);
     expect(args).not.toContain("--resume");
     expect(args[args.length - 1]).toContain(GOOD_HANDOFF);
-    // A new conversation: in north's repo (gap 7), not the folder above it.
-    expect(made[0].opts.cwd).toBe(path.join(s!.tmp, "repos", "notes"));
+    // Issue 658: a new conversation in the folder it ran in (the one its
+    // runtime knows and trusts), never moved to a repo by a relaunch.
+    expect(made[0].opts.cwd).toBe(path.join(s!.tmp, "workspaces", "north"));
     await p.waitForSelector(
       '#agl .agr[data-kind="agent"][data-state="running"]',
     );

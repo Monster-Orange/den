@@ -113,8 +113,10 @@ That is `examples/demo/demo-api/.den.yml`; the other demo repos are in
   project's checkout, with an MCP server pinned to that project and a
   token of its own. The web UI's Agents tab lists them and opens their
   terminals.
-- **Browser sign-in beyond loopback.** On localhost no route needs a sign-in,
-  nor through the edge when it shows the browser is on this machine.
+- **Browser sign-in, on this machine too.** On localhost (and through the
+  edge when it shows the browser is on this machine) a browser that isn't
+  signed in can read, but every change, agent and terminal needs a sign-in;
+  `web up` and `web open` open a one-time sign-in link for it.
   Anywhere else, every route needs one: Sign in with GitHub as the Den's
   owner (`<cli> web owner link` links the account once), approving the
   computer with the code its page shows (`<cli> web approve <code>`, or
@@ -167,6 +169,50 @@ other active projects; when it is in several, the error lists the `-w`
 command for each.
 
 In a distribution the command is that distribution's `cli` name.
+
+### Test beds
+
+A test bed is an install that runs Den's live checks against stub agents.
+Mark it at install time with `den create <name> --test-bed` (it writes
+`web.test_install: true` in the distribution config; Settings, `config` and
+an agent's token can't change it), and start it with the test launcher on
+its own state folder, with no owner. `den doctor` says whether an install is
+a test bed.
+
+To give the test bed's fixture person a name on the rail, set it by hand
+next to `web.test_install` in the distribution config:
+
+```yaml
+web:
+  test_install: true
+  fixture_person:
+    name: Robin Example # one line, at most 64 characters, no @
+    login: robin-example # a GitHub-style login, at most 39 characters
+```
+
+Use an invented name, never a real person's. The rail shows the name over
+the login; the audit and the server log still say "fixture person". Den makes
+no GitHub call for it. A wrong value, or the key in
+`config/local/user.yml`, is ignored with a warning at start; it never stops
+Den. On an install that isn't a test bed it does nothing, and `den doctor`
+says so.
+
+A test driver that runs inside an agent-like environment and needs to act
+as the person (start or end a stub agent, answer a fixture prompt) runs
+`den --test-person <command>`. It doesn't remove environment variables. On
+a test bed the command runs as the person, and the audit row says it came
+from the test-person path. On any other install it is refused with a clear
+error, and nothing runs.
+
+## Sending feedback about Den
+
+**Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and
+the Den version to the install's feedback repo, and it shows whether that repo is private or public. Ask your
+person to press it. An agent can't press it yet: a `den report` command and agent tool are coming (issue 565).
+
+**Fallback.** Open an issue at https://github.com/Monster-Orange/den/issues/new. Check for an existing issue first.
+Put in the Den version (`den --version`), the OS, the steps, and what you expected against what happened. The repo
+is public: never paste secrets, tokens, private repo names, customer or company names, or internal URLs.
 
 ## Developing Den
 

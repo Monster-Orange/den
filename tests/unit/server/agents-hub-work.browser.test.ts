@@ -9,12 +9,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -24,7 +25,7 @@ const errors: string[] = [];
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -76,7 +77,7 @@ async function open(work: Record<string, unknown>): Promise<Page> {
         (row as Record<string, unknown>).hubWork = work;
     await r.fulfill({ response: res, json: b });
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/agents?ws=north"));
+  await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
   await p.waitForSelector("#agl:not([aria-busy]) .agr", {
     state: "attached",
     timeout: 20_000,
@@ -123,6 +124,21 @@ describe("0.4.40: Hub comments on the agent's card", () => {
       "Working on 1 Hub comment · Pricing page",
     );
     expect(await p.$(`${line} a`)).toBeNull();
+    await p.context().close();
+  }, 60_000);
+
+  it("issue 664: held because it isn't at its prompt: the line says why", async () => {
+    if (skip()) return;
+    const p = await open({
+      working: 0,
+      queued: 1,
+      artifact: "Pricing page",
+      held: "not_at_prompt",
+    });
+    await p.waitForSelector(line);
+    expect((await p.textContent(line))?.trim()).toBe(
+      "1 Hub comment waits for it · Pricing page · Waiting: the agent isn't at its prompt",
+    );
     await p.context().close();
   }, 60_000);
 

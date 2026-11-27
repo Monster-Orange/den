@@ -24,6 +24,10 @@ export const BUSY_WORDS = {
     network: "Couldn't reach {who}.",
     next: "Trying again won't help. Do this first:",
     progress: "Progress",
+    server: "the server",
+    send_working: "Sending…",
+    send_success: "Sent.",
+    send_failure: "Not sent.",
   },
   es: {
     wait: "Esperando a {who}…",
@@ -45,6 +49,10 @@ export const BUSY_WORDS = {
     network: "No se pudo contactar con {who}.",
     next: "Intentar de nuevo no servirá. Haz esto primero:",
     progress: "Progreso",
+    server: "el servidor",
+    send_working: "Enviando…",
+    send_success: "Enviado.",
+    send_failure: "No se envió.",
   },
   ja: {
     wait: "{who} の応答を待っています…",
@@ -67,5 +75,9 @@ export const BUSY_WORDS = {
     network: "{who} に接続できませんでした。",
     next: "もう一度試しても解決しません。先にこちらを:",
     progress: "進行状況",
+    server: "サーバー",
+    send_working: "送信中…",
+    send_success: "送信しました。",
+    send_failure: "送信できませんでした。",
   },
 };

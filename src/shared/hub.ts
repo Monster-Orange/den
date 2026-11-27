@@ -22,8 +22,9 @@
  */
 import { isServerScope } from "./agents/server-agent.js";
 import * as crypto from "crypto";
+import { hubUrlProblem } from "./hub/hub-url.js";
 import { readDenConfig, readUserConfig, type DenConfig } from "./den-config.js";
-import { readHubProjectChoices } from "./hub-project-link.js";
+import { readHubProjectChoices } from "./hub/hub-project-link.js";
 import {
   getSecretsProvider,
   namedSecretRef,
@@ -78,6 +79,14 @@ export interface HubConfig {
    */
   inboxOnStop: "nudge" | "off";
   /**
+   * Issue 158 hub.delivery_loop (default true): every agent gets the Hub
+   * delivery loop in its instructions (shared/hub/hub-loop.ts); a project's
+   * own setting wins.
+   */
+  deliveryLoop: boolean;
+  /** Issue 158: why a bad hub.delivery_loop was ignored (doctor says it). */
+  deliveryLoopIgnored?: string;
+  /**
    * H5 hub.sync_check_seconds (default 30, at least 5): how often Den
    * checks whether its project list changed, to send it to Hub.
    */
@@ -98,6 +107,54 @@ export interface HubConfig {
    */
   deliveryPollSeconds: number;
   /**
+   * Issue 664 hub.delivery_held_note_seconds (default 60, at least 5): how
+   * long text waits for an agent that isn't at its prompt before the bell
+   * says so (it keeps saying it while the text waits).
+   */
+  deliveryHeldNoteSeconds: number;
+  /**
+   * Issue 701 hub.delivery_state_timeout_seconds (default 60, at least 5):
+   * the longest Den waits to read one agent's state before it holds that
+   * agent's comments and goes on with the others.
+   */
+  deliveryStateTimeoutSeconds: number;
+  /**
+   * Issue 701 hub.delivery_type_timeout_seconds (default 120, at least 5):
+   * the longest one agent's paste holds the others' deliveries.
+   */
+  deliveryTypeTimeoutSeconds: number;
+  /**
+   * Issue 701 hub.delivery_held_bell_minutes (default 5, at least 1): how
+   * long a Hub comment waits for a busy agent (or one with a dialog, a
+   * held Allow, a pause) before the bell says so, and why.
+   */
+  deliveryHeldBellMinutes: number;
+  /**
+   * Issue 701 hub.delivery_answer_minutes (default 30, at least 1): a typed
+   * comment whose turn never shows as ended is "delivered, no answer yet"
+   * after this, and the agent's next comments go on.
+   */
+  deliveryAnswerMinutes: number;
+  /**
+   * Issue 702 hub.delivery_alert_minutes (default 15, 0: off): minutes
+   * with no good read of Hub's comments (and no open stream) before
+   * doctor warns and the bell says "Hub comments aren't arriving".
+   */
+  deliveryAlertMinutes: number;
+  /**
+   * hub.delivery_stale_hours (default 6, 0: off; hours, any
+   * number 0 or more): the comment stream open but no delivery for this
+   * long, with comments waiting in Hub's list, and doctor and the bell say
+   * the cursor is stuck.
+   */
+  deliveryStaleHours: number;
+  /**
+   * Issue 703 hub.delivery_stream_silence_seconds (default 75, three of
+   * Hub's 25 s keep-alives; 0: off; else at least 5): no bytes on the
+   * comment stream this long, and Den reopens it.
+   */
+  deliveryStreamSilenceSeconds: number;
+  /**
    * 0.4.51 hub.inbox_watch (default true): one watcher per install reads
    * Hub's inbox for this install's agents and types each new item into
    * its agent's pane (issue 166). False: no reading at all.
@@ -113,6 +170,11 @@ export interface HubConfig {
    * longest wait between reads while Hub doesn't answer.
    */
   inboxBackoffMaxSeconds: number;
+  /**
+   * hub.inbox_reads_per_second (default 2, more than 0): the most inbox
+   * reads the whole install makes a second, however many agents it has.
+   */
+  inboxReadsPerSecond: number;
   /**
    * 0.4.46 hub.mcp_retry_seconds (default 30, at least 5): how often Den
    * asks whether Hub answers again, for agents that started without its
@@ -139,26 +201,73 @@ export interface HubConfig {
    * `agents.hub_tools_restart` (workspaces.yml) wins over it.
    */
   toolsRestart: boolean;
+  agentTokens: boolean;
+  agentTokenRetrySeconds: number;
+  agentTokenRevokeRetrySeconds: number;
+  agentTokenMaxAgeDays: number;
+  /**
+   * Issue 750 hub.groups_cache_seconds (default 30, at least 5): how long
+   * the agents page's copy of Hub's groups is kept in memory before Den
+   * reads them again. Den stores no groups.
+   */
+  groupsCacheSeconds: number;
+  /**
+   * Issue 750 hub.groups (default auto): whether Den reads Hub's groups
+   * for the agents page. Auto: when the connected Hub's whoami lists
+   * groups.read. Off: nothing new on the page, Hub never asked for
+   * groups. true and false read as on and off.
+   */
+  groups: HubGroupsMode;
 }
+
+/** Issue 750: hub.groups. */
+export type HubGroupsMode = "auto" | "on" | "off";
+
+/** Issue 750: hub.groups as given (true/false: on/off), or null if junk. */
+export function hubGroupsMode(v: unknown): HubGroupsMode | null {
+  if (v === undefined || v === null) return "auto";
+  if (v === true) return "on";
+  if (v === false) return "off";
+  return v === "auto" || v === "on" || v === "off" ? v : null;
+}
+
+/** Issue 750: the cache's seconds Settings and config may set. */
+export const HUB_GROUPS_CACHE_SECONDS = { min: 5, max: 3600 } as const;
 
 type RawHub =
   | {
       url?: unknown;
       token?: unknown;
       allow_tools?: unknown;
+      delivery_loop?: unknown;
       mcp_url?: unknown;
       inbox_on_stop?: unknown;
       sync_check_seconds?: unknown;
       names_check_seconds?: unknown;
       delivery_heartbeat_seconds?: unknown;
       delivery_poll_seconds?: unknown;
+      delivery_held_note_seconds?: unknown;
+      delivery_state_timeout_seconds?: unknown;
+      delivery_type_timeout_seconds?: unknown;
+      delivery_held_bell_minutes?: unknown;
+      delivery_answer_minutes?: unknown;
+      delivery_alert_minutes?: unknown;
+      delivery_stale_hours?: unknown;
+      delivery_stream_silence_seconds?: unknown;
       inbox_watch?: unknown;
       inbox_poll_seconds?: unknown;
       inbox_backoff_max_seconds?: unknown;
+      inbox_reads_per_second?: unknown;
       mcp_retry_seconds?: unknown;
       mcp_retry_attempts?: unknown;
       tools_check_seconds?: unknown;
       tools_restart?: unknown;
+      agent_tokens?: unknown;
+      agent_token_retry_seconds?: unknown;
+      agent_token_revoke_retry_seconds?: unknown;
+      agent_token_max_age_days?: unknown;
+      groups_cache_seconds?: unknown;
+      groups?: unknown;
     }
   | undefined;
 
@@ -168,21 +277,7 @@ function rawHub(den: unknown, user: unknown): RawHub {
   return { ...d, ...u };
 }
 
-/** A URL Den will send a token to: https, or http to this machine. */
-export function hubUrlProblem(url: string): string | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return `hub.url is not a URL: ${url}`;
-  }
-  const local =
-    ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) ||
-    u.hostname.endsWith(".localhost");
-  if (u.protocol !== "https:" && !(u.protocol === "http:" && local))
-    return `hub.url must be https (http only to this machine): ${url}`;
-  return null;
-}
+export { hubUrlProblem };
 
 /**
  * hub.* (org config, then user.yml), or null without hub.url. A bad value
@@ -227,6 +322,13 @@ export function readHubConfig(
   const at = h.allow_tools;
   if (at !== undefined && at !== null && typeof at !== "boolean")
     throw new Error("hub.allow_tools must be true or false");
+  // Issue 158: a bad hub.delivery_loop is ignored (the default, on) and
+  // said in doctor; it never drops every agent's Hub connection.
+  const dl = h.delivery_loop;
+  const dlIgnored =
+    dl !== undefined && dl !== null && typeof dl !== "boolean"
+      ? "hub.delivery_loop must be true or false; Den uses the default (on) until it is fixed"
+      : undefined;
   let mcpUrl = `${url}/mcp`;
   if (h.mcp_url !== undefined && h.mcp_url !== null && h.mcp_url !== "") {
     if (typeof h.mcp_url !== "string")
@@ -257,6 +359,63 @@ export function readHubConfig(
     15,
   );
   const poll = secs(h.delivery_poll_seconds, "delivery_poll_seconds", 30);
+  const heldNote = secs(
+    h.delivery_held_note_seconds,
+    "delivery_held_note_seconds",
+    60,
+  );
+  const stateTimeout = secs(
+    h.delivery_state_timeout_seconds,
+    "delivery_state_timeout_seconds",
+    60,
+  );
+  const typeTimeout = secs(
+    h.delivery_type_timeout_seconds,
+    "delivery_type_timeout_seconds",
+    120,
+  );
+  const mins = (v: unknown, key: string, dflt: number): number => {
+    if (v === undefined || v === null) return dflt;
+    if (typeof v === "number" && Number.isFinite(v) && v >= 1) return v;
+    throw new Error(`hub.${key} must be a number, at least 1`);
+  };
+  const heldBell = mins(
+    h.delivery_held_bell_minutes,
+    "delivery_held_bell_minutes",
+    5,
+  );
+  const answer = mins(h.delivery_answer_minutes, "delivery_answer_minutes", 30);
+  const am = h.delivery_alert_minutes;
+  if (
+    am !== undefined &&
+    am !== null &&
+    !(typeof am === "number" && Number.isFinite(am) && am >= 0)
+  )
+    throw new Error(
+      "hub.delivery_alert_minutes must be a number, 0 or more (0: off)",
+    );
+  const sh = h.delivery_stale_hours;
+  if (
+    sh !== undefined &&
+    sh !== null &&
+    !(typeof sh === "number" && Number.isFinite(sh) && sh >= 0)
+  )
+    throw new Error(
+      "hub.delivery_stale_hours must be a number of hours, 0 or more (0: off)",
+    );
+  const sil = h.delivery_stream_silence_seconds;
+  if (
+    sil !== undefined &&
+    sil !== null &&
+    !(
+      typeof sil === "number" &&
+      Number.isFinite(sil) &&
+      (sil === 0 || sil >= 5)
+    )
+  )
+    throw new Error(
+      "hub.delivery_stream_silence_seconds must be 0 (off) or a number, at least 5",
+    );
   const names = secs(h.names_check_seconds, "names_check_seconds", 300);
   const iw = h.inbox_watch;
   if (iw !== undefined && iw !== null && typeof iw !== "boolean")
@@ -267,11 +426,48 @@ export function readHubConfig(
     "inbox_backoff_max_seconds",
     600,
   );
+  const rps = h.inbox_reads_per_second;
+  if (
+    rps !== undefined &&
+    rps !== null &&
+    !(typeof rps === "number" && Number.isFinite(rps) && rps > 0)
+  )
+    throw new Error("hub.inbox_reads_per_second must be a number above 0");
+  const inboxReads = typeof rps === "number" ? rps : 2;
   const retry = secs(h.mcp_retry_seconds, "mcp_retry_seconds", 30);
   const toolsCheck = secs(h.tools_check_seconds, "tools_check_seconds", 300);
+  const groupsCache = secs(h.groups_cache_seconds, "groups_cache_seconds", 30);
+  const groupsMode = hubGroupsMode(h.groups);
+  if (!groupsMode) throw new Error("hub.groups must be auto, on or off");
   const tr = h.tools_restart;
   if (tr !== undefined && tr !== null && typeof tr !== "boolean")
     throw new Error("hub.tools_restart must be true or false");
+  const agentTok = h.agent_tokens;
+  if (
+    agentTok !== undefined &&
+    agentTok !== null &&
+    typeof agentTok !== "boolean"
+  )
+    throw new Error("hub.agent_tokens must be true or false");
+  const agentRetry = secs(
+    h.agent_token_retry_seconds,
+    "agent_token_retry_seconds",
+    600,
+  );
+  const revokeRetry = secs(
+    h.agent_token_revoke_retry_seconds,
+    "agent_token_revoke_retry_seconds",
+    600,
+  );
+  const maxAge = h.agent_token_max_age_days;
+  if (
+    maxAge !== undefined &&
+    maxAge !== null &&
+    !(typeof maxAge === "number" && Number.isFinite(maxAge) && maxAge >= 0)
+  )
+    throw new Error(
+      "hub.agent_token_max_age_days must be a number, 0 or more (0: never)",
+    );
   const tries = h.mcp_retry_attempts;
   if (
     tries !== undefined &&
@@ -288,18 +484,35 @@ export function readHubConfig(
     tokenFrom,
     mcpUrl,
     allowTools: at !== false,
+    deliveryLoop: dl !== false,
+    ...(dlIgnored ? { deliveryLoopIgnored: dlIgnored } : {}),
     inboxOnStop: ios === "off" ? "off" : "nudge",
     syncCheckSeconds: typeof scs === "number" ? scs : 30,
     namesCheckSeconds: names,
     deliveryHeartbeatSeconds: beat,
     deliveryPollSeconds: poll,
+    deliveryHeldNoteSeconds: heldNote,
+    deliveryStateTimeoutSeconds: stateTimeout,
+    deliveryTypeTimeoutSeconds: typeTimeout,
+    deliveryHeldBellMinutes: heldBell,
+    deliveryAnswerMinutes: answer,
+    deliveryAlertMinutes: typeof am === "number" ? am : 15,
+    deliveryStaleHours: typeof sh === "number" ? sh : 6,
+    deliveryStreamSilenceSeconds: typeof sil === "number" ? sil : 75,
     inboxWatch: iw !== false,
     inboxPollSeconds: inboxPoll,
     inboxBackoffMaxSeconds: inboxBackoff,
+    inboxReadsPerSecond: inboxReads,
     mcpRetrySeconds: retry,
     mcpRetryAttempts: typeof tries === "number" ? tries : 0,
     toolsCheckSeconds: toolsCheck,
     toolsRestart: tr !== false,
+    agentTokens: agentTok !== false,
+    agentTokenRetrySeconds: agentRetry,
+    agentTokenRevokeRetrySeconds: revokeRetry,
+    agentTokenMaxAgeDays: typeof maxAge === "number" ? maxAge : 30,
+    groupsCacheSeconds: groupsCache,
+    groups: groupsMode,
   };
 }
 
@@ -316,6 +529,62 @@ export function patchHubAllowTools(
   const hub = { ...((user.hub as Record<string, unknown> | undefined) ?? {}) };
   if (v === null) delete hub.allow_tools;
   else hub.allow_tools = v;
+  if (Object.keys(hub).length) user.hub = hub;
+  else delete user.hub;
+  return { ok: true };
+}
+
+/**
+ * Issue 750: hub.groups and hub.groups_cache_seconds from Settings › Hub
+ * or `config`, into user.yml's hub block, in place: { mode?: auto | on |
+ * off (or true/false), cache_seconds?: 5 to 3600, whole }; null clears
+ * one. On and off are written as true and false, and auto (the default)
+ * as no key: every older Den reads hub.groups as true or false only, and
+ * refuses the whole hub block on anything else. Nothing is written when
+ * any part is refused.
+ */
+export function patchHubGroups(
+  user: Record<string, unknown>,
+  v: unknown,
+): { ok: true } | { ok: false; error: string } {
+  if (!v || typeof v !== "object" || Array.isArray(v))
+    return {
+      ok: false,
+      error: "hub_groups is an object: mode, cache_seconds",
+    };
+  const o = v as Record<string, unknown>;
+  for (const k of Object.keys(o))
+    if (k !== "mode" && k !== "cache_seconds")
+      return {
+        ok: false,
+        error: `hub_groups.${k} is not a setting (mode, cache_seconds)`,
+      };
+  let mode: HubGroupsMode | null | undefined;
+  if (o.mode === null) mode = null;
+  else if (o.mode !== undefined) {
+    mode =
+      typeof o.mode === "string" || typeof o.mode === "boolean"
+        ? hubGroupsMode(o.mode)
+        : null;
+    if (!mode)
+      return { ok: false, error: "hub.groups must be auto, on or off" };
+  }
+  const c = o.cache_seconds;
+  const { min, max } = HUB_GROUPS_CACHE_SECONDS;
+  if (
+    c !== undefined &&
+    c !== null &&
+    !(typeof c === "number" && Number.isInteger(c) && c >= min && c <= max)
+  )
+    return {
+      ok: false,
+      error: `hub.groups_cache_seconds must be a whole number of seconds, ${min} to ${max}`,
+    };
+  const hub = { ...((user.hub as Record<string, unknown> | undefined) ?? {}) };
+  if (mode === null || mode === "auto") delete hub.groups;
+  else if (mode !== undefined) hub.groups = mode === "on";
+  if (c === null) delete hub.groups_cache_seconds;
+  else if (c !== undefined) hub.groups_cache_seconds = c;
   if (Object.keys(hub).length) user.hub = hub;
   else delete user.hub;
   return { ok: true };
@@ -501,6 +770,10 @@ export async function readHubToken(
     Object.assign(cache, newHubTokenCache(), {
       key,
       gen: cache.gen + 1,
+      token: undefined,
+      forgotAt: undefined,
+      retryAt: undefined,
+      error: undefined,
       reading: undefined,
     });
   if (cache.token && !cache.stale) return cache.token;
@@ -624,6 +897,11 @@ export interface HubWhoami {
    * comment from the agent's own person; Den falls back to the login.
    */
   personId?: string;
+  /**
+   * Issue 406: that person's name on Hub (whoami's `person.name`), for the
+   * rail's account entry when GitHub has none. Trimmed; at most 200 characters.
+   */
+  personName?: string;
   company?: { slug?: string; name?: string; url?: string };
   /** Hub's MCP endpoint; opaque. */
   mcpUrl?: string;
@@ -686,6 +964,10 @@ export type HubStatus =
       state: HubState;
       /** hub.allow_tools: agents use Hub's tools without asking. */
       allowTools?: boolean;
+      /** Issue 158: hub.delivery_loop (Settings › Hub). */
+      deliveryLoop?: boolean;
+      /** Issue 158: why a bad hub.delivery_loop was ignored. */
+      deliveryLoopIgnored?: string;
       /** The company's name (Hub's company.name). */
       team?: string;
       /** Its page on Hub, for the deep link. */
@@ -694,6 +976,8 @@ export type HubStatus =
       label?: string;
       role?: string;
       login?: string;
+      /** Issue 406: the person's name on Hub (whoami's person.name). */
+      name?: string;
       /** Hub threads waiting on the person (whoami's unread). */
       unread?: number;
       /**
@@ -709,9 +993,16 @@ export type HubStatus =
 
 type FetchFn = typeof fetch;
 const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+/** Issue 406: a person's name from Hub: trimmed, one line, at most 200 characters. */
+const personName = (v: unknown): string | undefined => {
+  const n = typeof v === "string" ? v.trim() : "";
+  // No control characters (code points below 32, and 127).
+  const plain = [...n].every((c) => c >= " " && c !== "\u007f");
+  return n && n.length <= 200 && plain ? n : undefined;
+};
 
 /** One JSON call to Hub, bounded; its answer, or a HubCallError. */
-async function hubCall(
+export async function hubCall(
   url: string,
   init: RequestInit,
   opts: { timeoutMs?: number; fetch?: FetchFn },
@@ -754,6 +1045,9 @@ async function hubCall(
       "forbidden",
       `${said ?? "Hub refused this install"}: ask an admin of the company on Hub`,
       str(body.error),
+      // Issue 750: Hub's answer too (its `code`, e.g. groups_not_in_plan).
+      403,
+      body,
     );
   if (res.status >= 400 && res.status < 500)
     throw new HubCallError(
@@ -766,6 +1060,8 @@ async function hubCall(
   throw new HubCallError(
     "unreachable",
     `Hub answered ${res.status}${said ? `: ${said}` : ""}`,
+    str(body.error),
+    res.status,
   );
 }
 
@@ -798,6 +1094,11 @@ export async function hubWhoami(
     ...(str(b.login) ? { login: str(b.login)! } : {}),
     ...(str((b.person as Record<string, unknown> | undefined)?.id)
       ? { personId: str((b.person as Record<string, unknown>).id)! }
+      : {}),
+    ...(personName((b.person as Record<string, unknown> | undefined)?.name)
+      ? {
+          personName: personName((b.person as Record<string, unknown>).name)!,
+        }
       : {}),
     ...(Object.keys(company).length ? { company } : {}),
     ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
@@ -1036,6 +1337,83 @@ export async function hubPlanCreate(
   }
 }
 
+/**
+ * Issue 646: ask Hub for several new projects as ONE plan an owner applies
+ * once in Hub (Connect's review): POST <url>/api/projects/plan with
+ * {changes: [{op: "create", slug, name}, …], reason}, the same path as one
+ * create (issue 271). Slugs skip `taken` and each other. One name: the
+ * same as hubPlanCreate (a taken slug is re-picked).
+ */
+export async function hubPlanCreates(
+  url: string,
+  token: string,
+  ask: { names: string[]; reason: string; taken?: readonly string[] },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{
+  held: string;
+  state: string;
+  url?: string;
+  made: { name: string; slug: string }[];
+}> {
+  const names = ask.names.map((n) => n.replace(/\s+/g, " ").trim());
+  if (!names.length) throw new Error("no projects to create");
+  if (names.some((n) => !n || n.length > HUB_PROJECT_NAME_MAX))
+    throw new Error(
+      `name: 1 to ${HUB_PROJECT_NAME_MAX} characters, as Hub takes it`,
+    );
+  if (names.length === 1) {
+    const one = await hubPlanCreate(
+      url,
+      token,
+      { name: names[0]!, reason: ask.reason, taken: ask.taken },
+      opts,
+    );
+    return {
+      held: one.held,
+      state: one.state,
+      ...(one.url ? { url: one.url } : {}),
+      made: [{ name: one.name, slug: one.slug }],
+    };
+  }
+  const reason = ask.reason.replace(/\s+/g, " ").trim();
+  if (!reason) throw new Error("say why: Hub's owner reads the reason");
+  const taken = [...(ask.taken ?? [])];
+  const made = names.map((name) => {
+    const slug = hubSlugFor(name, taken);
+    taken.push(slug);
+    return { name, slug };
+  });
+  const b = await hubCall(
+    `${url}/api/projects/plan`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        changes: made.map((m) => ({
+          op: "create",
+          slug: m.slug,
+          name: m.name,
+        })),
+        reason,
+      }),
+    },
+    opts,
+  );
+  const held = str(b.held);
+  if (!held) throw new HubCallError("refused", "Hub held no change for it");
+  const link = str(b.url);
+  return {
+    held,
+    state: str(b.state) ?? "pending",
+    ...(link && /^https?:\/\//.test(link) ? { url: link } : {}),
+    made,
+  };
+}
+
 /** What Den reads of a plan's outcome (issue 271). */
 export type HubPlanState = "pending" | "applied" | "declined" | "superseded";
 
@@ -1121,6 +1499,74 @@ export async function hubPutProjects(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
+    },
+    { timeoutMs: 10_000, ...opts },
+  );
+}
+
+const HUB_PROJECT_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const movedHub = (v: unknown): { hub: string } | null => {
+  const h = (v as { hub?: unknown } | null)?.hub;
+  return typeof h === "string" && !hubUrlProblem(h) ? { hub: h } : null;
+};
+
+export async function hubGetProject(
+  url: string,
+  token: string,
+  id: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{
+  id: string;
+  slug: string;
+  name: string;
+  movedFrom: { hub: string } | null;
+  movedTo: { hub: string } | null;
+} | null> {
+  if (!HUB_PROJECT_ID.test(id)) return null;
+  let b: Record<string, unknown>;
+  try {
+    b = await hubCall(
+      `${url}/api/projects/${encodeURIComponent(id)}`,
+      { headers: { ...bearer(token), Accept: "application/json" } },
+      { timeoutMs: 10_000, ...opts },
+    );
+  } catch (e) {
+    if (e instanceof HubCallError && e.status === 404) return null;
+    throw e;
+  }
+  const p = (b.project ?? null) as Record<string, unknown> | null;
+  if (!p || p.id !== id || typeof p.slug !== "string") return null;
+  return {
+    id,
+    slug: p.slug.slice(0, 200),
+    name: typeof p.name === "string" ? p.name.slice(0, 200) : p.slug,
+    movedFrom: movedHub(b.movedFrom),
+    movedTo: movedHub(b.movedTo),
+  };
+}
+
+/**
+ * Issue 869: tell Hub this install's address after it changes: PUT
+ * <url>/api/installs/self/den-url {url}. Hub answers {changed}.
+ */
+export async function hubPutDenUrl(
+  url: string,
+  token: string,
+  denUrl: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<Record<string, unknown>> {
+  return hubCall(
+    `${url}/api/installs/self/den-url`,
+    {
+      method: "PUT",
+      headers: {
+        ...bearer(token),
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ url: denUrl }),
     },
     { timeoutMs: 10_000, ...opts },
   );
@@ -1322,6 +1768,11 @@ export interface HubGrant {
   /** Hub's canonical origin: kept as hub.url. */
   hubUrl?: string;
   mcpUrl?: string;
+  /**
+   * Issue 648: what Hub's one approval did with the projects Den sent
+   * (checked by parseGrantReview; unread here).
+   */
+  review?: unknown;
 }
 
 /** Trade the one-time code for the install's token, server to server. */
@@ -1362,6 +1813,7 @@ export async function hubExchange(
     },
     ...(str(b.hub_url) ? { hubUrl: str(b.hub_url)!.replace(/\/+$/, "") } : {}),
     ...(str(b.mcp_url) ? { mcpUrl: str(b.mcp_url)! } : {}),
+    ...(b.review !== undefined ? { review: b.review } : {}),
   };
 }
 
@@ -1386,6 +1838,66 @@ export async function hubRevoke(
     return true;
   } catch (e) {
     if (e instanceof HubCallError && e.kind === "rejected") return false;
+    throw e;
+  }
+}
+
+export async function hubMintAgentToken(
+  url: string,
+  installToken: string,
+  agent: { id: string; name: string },
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<{ token: string; tokenId: string }> {
+  const b = await hubCall(
+    `${url}/connect/agent`,
+    {
+      method: "POST",
+      headers: {
+        ...bearer(installToken),
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ agent_id: agent.id, agent_name: agent.name }),
+    },
+    { timeoutMs: 15_000, ...opts },
+  );
+  const token = str(b.token);
+  const tokenId = str(b.token_id);
+  if (!token || !/^\S{8,}$/.test(token) || !tokenId)
+    throw new HubCallError("refused", "Hub's answer had no agent token");
+  const for_ = (b.agent as { id?: unknown } | null | undefined)?.id;
+  if (for_ !== undefined && for_ !== agent.id)
+    throw new HubCallError(
+      "refused",
+      "Hub's answer was a token for another agent",
+    );
+  return { token, tokenId };
+}
+
+export async function hubRevokeAgentToken(
+  url: string,
+  installToken: string,
+  tokenId: string,
+  opts: { timeoutMs?: number; fetch?: FetchFn } = {},
+): Promise<boolean> {
+  try {
+    await hubCall(
+      `${url}/connect/revoke`,
+      {
+        method: "POST",
+        headers: {
+          ...bearer(installToken),
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ token_id: tokenId }),
+      },
+      opts,
+    );
+    return true;
+  } catch (e) {
+    if (e instanceof HubCallError && e.kind === "refused" && e.status === 404)
+      return false;
     throw e;
   }
 }
@@ -1521,6 +2033,10 @@ async function hubStatusOnce(
     configured: true as const,
     url: cfg.url,
     allowTools: cfg.allowTools,
+    deliveryLoop: cfg.deliveryLoop,
+    ...(cfg.deliveryLoopIgnored
+      ? { deliveryLoopIgnored: cfg.deliveryLoopIgnored }
+      : {}),
   };
   if (!cfg.tokenRef && !cfg.tokenSource)
     return {
@@ -1590,6 +2106,7 @@ async function hubStatusOnce(
       ...(who.install ? { label: who.install } : {}),
       ...(who.role ? { role: who.role } : {}),
       ...(who.login ? { login: who.login } : {}),
+      ...(who.personName ? { name: who.personName } : {}),
       ...(who.unread !== undefined ? { unread: who.unread } : {}),
       ...(who.token === "legacy" && !rotated ? { legacy: true } : {}),
       ...(rotated ? { rotated: true } : {}),

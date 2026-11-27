@@ -1,7 +1,8 @@
 /**
  * The double-click fix. Start fresh, Resume (and Relaunch, Stop, Write
  * handoff) hold the agent's buttons while the server answers: a redraw of
- * the list (its poll) keeps them disabled, the pressed one "Working…", so
+ * the list (its poll) keeps them disabled, the pressed one held with the
+ * kit's pulsing dots (issue 698; no "Working…" label of its own), so
  * a second click sends nothing. Success clears it; an error is shown and
  * the buttons come back. The server answers two at once with one result.
  *
@@ -10,12 +11,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, BrowserContext, Page, Route } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
+import { launchBrowser } from "../helpers/browser.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -26,7 +28,7 @@ const STOPPED_AT = "2026-11-06T10:30:00.000Z";
 beforeAll(async () => {
   try {
     const { chromium } = await import("playwright");
-    browser = await chromium.launch();
+    browser = await launchBrowser(chromium);
   } catch (err) {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
@@ -100,7 +102,7 @@ async function open(
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}`));
+  await signInPage(p, s!.stateDir, s!.base, `/agents?ws=${ws}`);
   await p.waitForSelector("#agl:not([aria-busy]) .agr", {
     state: "attached",
     timeout: 20_000,
@@ -174,7 +176,7 @@ describe("the double-click fix", () => {
     ["fresh-one", "fresh"],
     ["back-one", "resume"],
   ] as const)
-    it(`${act}: a second click after a redraw sends nothing; Working… until the answer`, async () => {
+    it(`${act}: a second click after a redraw sends nothing; dots until the answer`, async () => {
       if (skip()) return;
       const p = await open("north");
       const h = await hold(p, act);
@@ -185,7 +187,19 @@ describe("the double-click fix", () => {
         (sel) => (document.querySelector(sel) as HTMLButtonElement)?.disabled,
         btn(agent, act),
       );
-      expect(await p.textContent(btn(agent, act))).toBe("Working…");
+      // Issue 698: the redrawn button shows the kit's dots, its label kept.
+      await p.waitForFunction(
+        (sel) => {
+          const b = document.querySelector(sel);
+          return (
+            // The kit's dots: the button's own aria-hidden span.
+            !!b?.querySelector(':scope > span[aria-hidden="true"]') &&
+            b.getAttribute("aria-busy") === "true"
+          );
+        },
+        btn(agent, act),
+      );
+      expect(await p.textContent(btn(agent, act))).not.toContain("Working…");
       await p.click(btn(agent, act), { force: true }).catch(() => undefined);
       await p.dblclick(btn(agent, act), { force: true }).catch(() => undefined);
       // Issue 274: the first request has left (however slow the machine),
@@ -226,7 +240,11 @@ describe("the double-click fix", () => {
     await p.waitForFunction(
       (sel) => {
         const b = document.querySelector(sel) as HTMLButtonElement | null;
-        return b && !b.disabled && b.textContent !== "Working…";
+        return (
+          b &&
+          !b.disabled &&
+          !b.querySelector(':scope > span[aria-hidden="true"]')
+        );
       },
       btn("fail-one", "fresh"),
     );

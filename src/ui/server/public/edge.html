@@ -212,6 +212,180 @@
       .empty b {
         color: var(--text);
       }
+      /* Issue 455 (mock v3): the address card, when another server holds
+         the port Den's address needs. */
+      .addr-card {
+        display: grid;
+        gap: 14px;
+        margin-bottom: 22px;
+        max-width: 880px;
+      }
+      .addr-card[hidden],
+      #edge-address[hidden] {
+        display: none;
+      }
+      .addr-status {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 14px 16px;
+        border: 1px solid color-mix(in srgb, var(--warn) 70%, var(--border));
+        border-radius: var(--radius);
+        background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+      }
+      .addr-dot {
+        flex: none;
+        width: 10px;
+        height: 10px;
+        margin-top: 7px;
+        border-radius: 50%;
+        background: var(--warn);
+      }
+      .addr-title {
+        font: 600 17px/1.3 var(--display);
+        margin: 0 0 4px;
+      }
+      .addr-line {
+        margin: 0;
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+      .addr-line b {
+        color: var(--text);
+      }
+      .addr-card code,
+      .addr-line code {
+        font: 600 12.5px var(--mono);
+        overflow-wrap: anywhere;
+      }
+      .addr-box {
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+        min-width: 0;
+      }
+      .addr-box h3 {
+        font: 600 15px var(--display);
+        margin: 0 0 10px;
+      }
+      .addr-box p {
+        margin: 10px 0;
+        overflow-wrap: anywhere;
+      }
+      .addr-opts,
+      .addr-kinds {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .addr-opt,
+      .addr-chip,
+      .addr-copy {
+        min-height: 44px;
+        padding: 0 16px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-button, 8px);
+        background: var(--surface);
+        color: var(--text);
+        font: 500 14px var(--sans);
+        cursor: pointer;
+      }
+      /* The card's buttons are the kit's (issue 673), at the mock's 44px. */
+      .addr-card .den-btn {
+        min-height: 44px;
+        padding: 0 16px;
+      }
+      .addr-opt[aria-pressed="true"],
+      .addr-chip[aria-pressed="true"] {
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 1px var(--accent);
+        font-weight: 600;
+      }
+      .addr-snip {
+        position: relative;
+        margin-top: 10px;
+        min-width: 0;
+      }
+      .addr-snip pre {
+        margin: 0;
+        padding: 14px 16px;
+        padding-right: 96px;
+        max-width: 100%;
+        overflow: auto;
+        border-radius: var(--radius);
+        border: 1px solid var(--border-strong);
+        background: var(--bg);
+        color: var(--text);
+        font: 13px/1.55 var(--mono);
+      }
+      .addr-copy {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: var(--surface);
+      }
+      .addr-check-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-top: 12px;
+      }
+      .addr-out {
+        color: var(--muted);
+      }
+      .addr-now {
+        margin: 0;
+        display: grid;
+        gap: 8px;
+      }
+      .addr-row {
+        display: grid;
+        grid-template-columns: minmax(120px, 30%) 1fr;
+        gap: 12px;
+        align-items: baseline;
+      }
+      .addr-row dt {
+        color: var(--muted);
+      }
+      .addr-row dd {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .addr-pill {
+        display: inline-block;
+        padding: 0 8px;
+        border: 1px solid var(--border-strong);
+        border-radius: 999px;
+        font: 12px var(--mono);
+        white-space: nowrap;
+      }
+      .addr-pill.warn {
+        color: var(--warn);
+        border-color: color-mix(in srgb, var(--warn) 70%, var(--border));
+      }
+      .addr-done {
+        margin: 0 0 22px;
+        color: var(--ok, var(--accent-text));
+      }
+      @media (max-width: 520px) {
+        .addr-opts {
+          flex-direction: column;
+        }
+        .addr-opt {
+          width: 100%;
+        }
+        .addr-row {
+          grid-template-columns: 1fr;
+          gap: 2px;
+        }
+        .addr-snip pre {
+          padding-right: 16px;
+          padding-top: 60px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -229,6 +403,8 @@
           </div>
         </div>
       </div>
+      <!-- Issue 455: when another server holds the port Den's address needs. -->
+      <div id="edge-address" hidden></div>
       <div id="edge-body" aria-busy="true" aria-live="polite"></div>
 
       <script type="module">
@@ -239,17 +415,34 @@
           initLogBadge,
           initWorkspacePill,
         } from "/header.js";
-        import { mountEdge } from "/edge-page.js";
+        import { edgeSub, mountEdge } from "/edge-page.js";
+        import { mountAddressCard } from "/address-card.js";
         void Promise.all([
           initHealth(),
           initWorkspacePill(),
           applyDenConfig(),
           initChangelog(),
         ]).then(initLogBadge);
+        // Issue 455: the sub line follows the address card's state (one
+        // fetch of /api/edge/address feeds both), and Check again's too.
+        const sub = document.getElementById("edge-sub");
+        let edge = null;
+        const onState = (s) => {
+          if (edge && !edge.unreachable) sub.textContent = edgeSub(edge, s);
+        };
+        const card = mountAddressCard(
+          document.getElementById("edge-address"),
+          undefined,
+          onState,
+        );
         void mountEdge(
           document.getElementById("edge-body"),
-          document.getElementById("edge-sub"),
-        );
+          sub,
+          fetch,
+          card,
+        ).then((st) => {
+          edge = st;
+        });
       </script>
     </main>
   </body>
