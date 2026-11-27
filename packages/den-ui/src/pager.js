@@ -488,22 +488,36 @@ function hydratePages(root, opts) {
   };
 }
 
+function cursorUrl(url) {
+  try {
+    return new URL(String(url), "http://h/");
+  } catch {
+    return null;
+  }
+}
+
+export function cursorStart(url, o = {}) {
+  const u = cursorUrl(url);
+  return u ? num(u.searchParams.get(o.offset ?? "o")) : 0;
+}
+
 export function cursorHref(url, target, next, o = {}) {
   const at = o.after ?? "after";
   const bk = o.back ?? "back";
-  let u;
-  try {
-    u = new URL(String(url), "http://h/");
-  } catch {
-    return "";
-  }
+  const off = o.offset ?? "o";
+  const u = cursorUrl(url);
+  if (!u) return "";
   const q = u.searchParams;
+  const size = num(q.get(o.per ?? "per")) || num(o.size) || 50;
+  const start = num(q.get(off));
+  const setStart = (n) => (n > 0 ? q.set(off, String(n)) : q.delete(off));
   const trail = q.get(bk) ? q.get(bk).split(".") : [];
   const here = q.get(at) ?? "";
   q.delete("page");
   if (target === "first") {
     q.delete(at);
     q.delete(bk);
+    q.delete(off);
   } else if (target === "next") {
     if (!next) return "";
     trail.push(here || "-");
@@ -513,6 +527,7 @@ export function cursorHref(url, target, next, o = {}) {
       trail.splice(0, trail.length, "~", ...real.slice(-keep));
     q.set(at, String(next));
     q.set(bk, trail.join("."));
+    setStart(start + size);
   } else if (target === "prev") {
     if (!here || !trail.length || trail.at(-1) === "~") return "";
     const to = trail.pop();
@@ -520,9 +535,11 @@ export function cursorHref(url, target, next, o = {}) {
     else q.delete(at);
     if (trail.length) q.set(bk, trail.join("."));
     else q.delete(bk);
+    setStart(to && to !== "-" ? Math.max(0, start - size) : 0);
   } else if (target && typeof target === "object" && "per" in target) {
     q.delete(at);
     q.delete(bk);
+    q.delete(off);
     q.set(o.per ?? "per", String(target.per));
   } else return "";
   const s = q.toString();
