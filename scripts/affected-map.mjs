@@ -440,7 +440,28 @@ export function buildRules(map = readMap()) {
   return rules.filter((r) => r.run.length);
 }
 
-function main(argv) {
+export async function mapText(map) {
+  const prettier = await import("prettier");
+  const config = (await prettier.resolveConfig(MAP)) ?? {};
+  return prettier.format(JSON.stringify(map, null, 2) + "\n", {
+    ...config,
+    filepath: MAP,
+  });
+}
+
+export async function formIssue(text) {
+  let map;
+  try {
+    map = JSON.parse(text);
+  } catch (err) {
+    return `tests/affected-map.json is not JSON (${err.message})`;
+  }
+  return (await mapText(map)) === text
+    ? null
+    : "tests/affected-map.json is not in the generator's form: run node scripts/affected-map.mjs";
+}
+
+async function main(argv) {
   const map = readMap();
   const rules = buildRules(map);
   if (argv.includes("--check")) {
@@ -458,14 +479,21 @@ function main(argv) {
         `${t} is on "subjectless" but has a subject now (or starts no Den): take it off`,
       );
     if (missing.length || stale.length || empty.length) return 1;
-    if (JSON.stringify(map.rules) === JSON.stringify(rules)) return 0;
-    console.error(
-      "tests/affected-map.json is out of date: run node scripts/affected-map.mjs (then prettier)",
-    );
-    return 1;
+    if (JSON.stringify(map.rules) !== JSON.stringify(rules)) {
+      console.error(
+        "tests/affected-map.json is out of date: run node scripts/affected-map.mjs",
+      );
+      return 1;
+    }
+    const issue = await formIssue(fs.readFileSync(MAP, "utf-8"));
+    if (issue) {
+      console.error(issue);
+      return 1;
+    }
+    return 0;
   }
   map.rules = rules;
-  fs.writeFileSync(MAP, JSON.stringify(map, null, 2) + "\n");
+  fs.writeFileSync(MAP, await mapText(map));
   return 0;
 }
 
@@ -473,5 +501,5 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
 }
