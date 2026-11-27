@@ -5013,8 +5013,7 @@
     "lg.empty.click":
       "開いているログはありません。上のサービス名をクリックして開いてください。",
     "lg.search.pane": "検索: 「{q}」",
-    "lg.search.matches": "{n} 件一致（クリックでログを開く）",
-    "lg.search.matchesMore": "{n}+ 件一致（クリックでログを開く）",
+    "lg.search.matches": "このページに {n} 件（クリックでログを開く）",
     "lg.search.none": "どのサービスの履歴にも「{q}」は見つかりません",
     "lg.pager.rangeOpen": "{from}–{to}",
     "lg.pager.label": "検索結果のページ",

@@ -5159,10 +5159,8 @@
     "lg.empty.click":
       "No active log streams. Click a service name above to open one.",
     "lg.search.pane": 'search: "{q}"',
-    "lg.search.matches": "{n} matches (click to open stream)",
-    "lg.search.matches.one": "{n} match (click to open stream)",
-    "lg.search.matchesMore": "{n}+ matches (click to open stream)",
-    "lg.search.matchesMore.one": "{n}+ match (click to open stream)",
+    "lg.search.matches": "{n} on this page (click to open stream)",
+    "lg.search.matches.one": "{n} on this page (click to open stream)",
     "lg.search.none": 'no matches for "{q}" in any service\'s history',
     "lg.pager.rangeOpen": "{from}–{to}",
     "lg.pager.label": "Search results pages",

@@ -5166,13 +5166,10 @@
     "lg.empty.click":
       "No hay registros abiertos. Haz clic en el nombre de un servicio de arriba para abrir uno.",
     "lg.search.pane": 'búsqueda: "{q}"',
-    "lg.search.matches": "{n} coincidencias (haz clic para abrir el registro)",
+    "lg.search.matches":
+      "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.matches.one":
-      "{n} coincidencia (haz clic para abrir el registro)",
-    "lg.search.matchesMore":
-      "{n}+ coincidencias (haz clic para abrir el registro)",
-    "lg.search.matchesMore.one":
-      "{n}+ coincidencia (haz clic para abrir el registro)",
+      "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.none":
       'no hay coincidencias para "{q}" en el historial de ningún servicio',
     "lg.pager.rangeOpen": "{from}–{to}",

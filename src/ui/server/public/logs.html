@@ -1370,12 +1370,9 @@
               total += result.matches.length;
               const [sysRepo, sysService] = result.system.split("/");
               line(
-                `── ${result.system} — ${t(
-                  result.truncated
-                    ? "lg.search.matchesMore"
-                    : "lg.search.matches",
-                  { n: result.matches.length },
-                )} ──`,
+                `── ${result.system} — ${t("lg.search.matches", {
+                  n: result.matches.length,
+                })} ──`,
                 "log-cmd",
                 () => toggleLog(sysRepo, sysService),
               );
