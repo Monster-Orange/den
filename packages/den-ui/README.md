@@ -714,7 +714,9 @@ panel }`: `id` names it, `text` is its words, `href` its page, `count`
   `aria-selected` and `aria-controls` its `panel` (the host's element,
   which becomes a `role="tabpanel"` shown only while its tab is chosen),
   with the same keys, and Tab goes on into the panel. With no script each
-  panel tab is a link, its `href` or `?tab=<id>`. The `label` names the group, and each item's
+  panel tab is a link, its `href` or `?tab=<id>`. A tab's id is
+  `den-tab-<panel>`, so every `panel` id must be unique on the page, as
+  any id must, even across two tablists. The `label` names the group, and each item's
   `text` is the host's own words; the kit adds none. A `count` follows
   the label and is read with it. A `disabled` item is faint and read out,
   but can't be chosen. No label, or fewer than two items: nothing is drawn.
