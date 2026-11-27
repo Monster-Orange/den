@@ -4900,7 +4900,7 @@
     "set.access.owner.d":
       "La cuenta de GitHub a la que pertenece este Den. Vincularla solo guarda su id (el token se descarta), y desde entonces esa cuenta puede iniciar sesión desde cualquier dispositivo. __DEN_CLI__ web owner link hace lo mismo desde la línea de comandos.", // words-ok: the en string's own word, translated
     "set.access.devices.d":
-      "Los navegadores con la sesión iniciada en este Den; Revocar cierra la sesión de uno.",
+      "Los navegadores conectados a este Den; Revocar desconecta uno.",
     "set.access.waiting.d":
       "Ordenadores cuya página sin iniciar sesión muestra un código. Escribe el código que muestra la pantalla de ese ordenador para aprobarlo, y su página inicia sesión sola; una solicitud dura 10 minutos. __DEN_CLI__ web approve --list los muestra.",
     "set.embed.url_max.d":
