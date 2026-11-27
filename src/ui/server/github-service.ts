@@ -42,6 +42,21 @@ function gh(args: string[], timeout: number): Promise<string> {
   });
 }
 
+const BRANCH_NAME = /^[A-Za-z0-9._/-]{1,255}$/;
+
+export function pinDefault(names: string[], def: string): string[] {
+  const d = def.trim();
+  if (!BRANCH_NAME.test(d)) return names;
+  return [d, ...names.filter((n) => n !== d)];
+}
+
+export const defaultBranchArgs = (slug: string) => [
+  "api",
+  `repos/${slug}`,
+  "--jq",
+  ".default_branch",
+];
+
 export interface GitHubRepo {
   name: string;
   nameWithOwner: string;
@@ -56,6 +71,7 @@ export class GitHubService {
     { names: string[]; fetchedAt: number }
   >();
   private reposCache: { data: GitHubRepo[]; fetchedAt: number } | null = null;
+  private reposInFlight: Promise<GitHubRepo[]> | null = null;
   private warnedNotConfigured = false;
 
   /**
@@ -73,11 +89,14 @@ export class GitHubService {
     }
 
     try {
-      const raw = await gh(
-        ["api", `repos/${slug}/branches?per_page=100`, "--jq", "[.[].name]"],
-        GH_API_TIMEOUT_MS,
-      );
-      const names = JSON.parse(raw.trim() || "[]") as string[];
+      const [raw, def] = await Promise.all([
+        gh(
+          ["api", `repos/${slug}/branches?per_page=100`, "--jq", "[.[].name]"],
+          GH_API_TIMEOUT_MS,
+        ),
+        gh(defaultBranchArgs(slug), GH_API_TIMEOUT_MS).catch(() => ""),
+      ]);
+      const names = pinDefault(JSON.parse(raw.trim() || "[]") as string[], def);
       this.branchesCache.set(slug, { names, fetchedAt: Date.now() });
       return names;
     } catch {
@@ -99,6 +118,14 @@ export class GitHubService {
       return this.reposCache.data;
     }
 
+    if (this.reposInFlight) return this.reposInFlight;
+    this.reposInFlight = this.fetchOrgRepos().finally(() => {
+      this.reposInFlight = null;
+    });
+    return this.reposInFlight;
+  }
+
+  private async fetchOrgRepos(): Promise<GitHubRepo[]> {
     const orgs = this.resolveOrgs();
     if (orgs.length === 0) {
       if (!this.warnedNotConfigured) {
@@ -127,7 +154,7 @@ export class GitHubService {
           "--json",
           "name,nameWithOwner,defaultBranchRef,isArchived",
           "--limit",
-          "100",
+          "200",
         ],
         GH_API_TIMEOUT_MS,
       );

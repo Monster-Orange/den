@@ -98,7 +98,7 @@ describe("GitHubService", () => {
       replyAlways('["main"]\n');
       await svc.listBranches("org/repo");
       await svc.listBranches("org/repo");
-      expect(mockExecFile).toHaveBeenCalledTimes(1);
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
     });
 
     it("returns empty array when gh api throws", async () => {
@@ -106,15 +106,15 @@ describe("GitHubService", () => {
       expect(await svc.listBranches("org/repo")).toEqual([]);
     });
 
-    it("asks GitHub for one page, never --paginate", async () => {
-      replyAlways('["main","dev","feature-a"]\n');
-      expect(await svc.listBranches("org/repo")).toEqual([
-        "main",
-        "dev",
-        "feature-a",
-      ]);
+    it("asks GitHub for one page, never --paginate, and puts the default branch first", async () => {
+      const page = Array.from({ length: 100 }, (_, i) => `feat/${i}`);
+      replyWith(JSON.stringify(page), "main\n");
+      const names = await svc.listBranches("org/repo");
+      expect(names.slice(0, 2)).toEqual(["main", "feat/0"]);
+      expect(names).toHaveLength(101);
       expect(ghArgs()).toEqual([
         "api repos/org/repo/branches?per_page=100 --jq [.[].name]",
+        "api repos/org/repo --jq .default_branch",
       ]);
     });
   });
