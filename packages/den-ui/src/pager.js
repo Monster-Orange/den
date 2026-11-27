@@ -298,7 +298,23 @@ export function hydratePager(el, opts = {}) {
   }
 
   async function more() {
-    if (loading || typeof opts.load !== "function") return;
+    if (loading) return;
+    if (typeof opts.load !== "function") {
+      if (typeof opts.onNavigate !== "function") return;
+      loading = true;
+      holdDots(btn, true);
+      try {
+        await opts.onNavigate({
+          kind: "more",
+          target: "more",
+          href: btn.getAttribute("href") ?? "",
+        });
+      } finally {
+        holdDots(btn, false);
+        loading = false;
+      }
+      return;
+    }
     loading = true;
     if (err) err.hidden = true;
     holdDots(btn, true);

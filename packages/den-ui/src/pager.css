@@ -145,7 +145,7 @@
 .den-pager-menu.den-pager-sheet .den-pager-menu-range {
   display: block;
 }
-@media (pointer: coarse) {
+@media (pointer: coarse), (max-width: 600px) {
   .den-pager-row,
   .den-pager-menu[popover] {
     --den-pager-h: var(--tap);
@@ -169,9 +169,6 @@
   }
 }
 @container den-pager (max-width: 600px) {
-  .den-pager-row {
-    --den-pager-h: var(--tap);
-  }
   [data-den-pager="pages"] > .den-pager-row {
     justify-content: center;
     gap: var(--space-1);
