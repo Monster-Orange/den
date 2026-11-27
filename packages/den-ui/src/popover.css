@@ -69,6 +69,15 @@
   :is([role^="menuitem"], .den-popover-row):is(:hover, :focus-visible) {
   background: var(--sunken);
 }
+.den-popover-body[role="menu"] [role^="menuitem"]::before {
+  content: "" / "";
+  flex: none;
+  width: 16px;
+  text-align: center;
+}
+.den-popover-body[role="menu"] [role^="menuitem"][aria-checked="true"]::before {
+  content: "✓" / "";
+}
 .den-popover-body [aria-disabled="true"] {
   color: var(--faint);
   cursor: default;
