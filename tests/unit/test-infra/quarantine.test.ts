@@ -360,6 +360,37 @@ describe("in CI", () => {
     );
     expect(jobs["pr-shards"]["timeout-minutes"]).toBeGreaterThanOrEqual(30);
   });
+  it("every quarantined test still runs in the full runs: main's tests job, the nightly and the release gates", () => {
+    const full: [string, string][] = [
+      ["ci.yml", "tests"],
+      ["ci.yml", "nightly-node22"],
+      ["release-gates.yml", "tests"],
+    ];
+    for (const [f, name] of full) {
+      const j = wf(f).jobs[name];
+      expect([f, name, !!j]).toEqual([f, name, true]);
+      expect([f, name, j.env?.DEN_TEST_QUARANTINE]).toEqual([
+        f,
+        name,
+        undefined,
+      ]);
+      expect(
+        j.steps.filter((s) => s.env?.DEN_TEST_QUARANTINE !== undefined),
+      ).toEqual([]);
+      expect(
+        j.steps.some((s) =>
+          /^npm test -- --shard=\$\{\{ matrix\.shard \}\}\/\d+$/.test(
+            s.run ?? "",
+          ),
+        ),
+      ).toBe(true);
+    }
+    for (const e of q.loadQuarantine({}).entries)
+      expect([e.file, fs.existsSync(path.join(ROOT, e.file))]).toEqual([
+        e.file,
+        true,
+      ]);
+  });
   it("the release never sets it", () => {
     for (const f of ["release.yml", "release-gates.yml", "release-dry-run.yml"])
       expect([
