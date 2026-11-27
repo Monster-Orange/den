@@ -27,15 +27,20 @@
 import { esc, kitT } from "./strings.js";
 import { reportButtonHtml } from "./shell-html.js";
 import { dialogHtml, mountDialog, onAsk, openerOf } from "./dialog.js";
+import { hydratePager, pagerHtml } from "./pager.js";
 
 const cfg = {
   lang: "en",
   changelog: null,
+  changelogPage: null,
   reportButton: null,
   onClose: null,
 };
 let entries = [];
 let showAll = false;
+const PAGE_PER = 10;
+let page = null;
+let per = PAGE_PER;
 /** The open frame (mountDialog's handle); null while closed. */
 let frame = null;
 /** Waiting for another pop-up to close before opening. */
@@ -66,6 +71,71 @@ export function changelogView(list, all) {
       ? { label: "Show latest only", expanded: true }
       : { label: `Show all versions (${earlier} earlier)`, expanded: false },
   };
+}
+
+const PAGER_WORDS = [
+  "range",
+  "rangeOpen",
+  "label",
+  "first",
+  "firstSr",
+  "prev",
+  "prevSr",
+  "next",
+  "nextSr",
+  "last",
+  "lastSr",
+  "pageOf",
+  "pageShort",
+  "pageSr",
+  "go",
+  "perPage",
+  "more",
+];
+
+async function goPage(ask) {
+  try {
+    const p = cfg.changelogPage ? await cfg.changelogPage(ask) : null;
+    page = p && Array.isArray(p.items) ? p : null;
+  } catch {
+    page = null;
+  }
+  renderBody();
+  const body = frame?.dialog.querySelector("#cl-body");
+  if (body) body.scrollTop = 0;
+}
+
+function askOf(target) {
+  if (target && typeof target === "object" && "per" in target) per = target.per;
+  const q = { limit: String(per) };
+  if (target === "first") q.at = "first";
+  else if (target === "last") q.at = "last";
+  else if (target === "next" && page?.next) q.cursor = page.next;
+  else if (target === "prev" && page?.prev) q.cursor = page.prev;
+  else if (target && typeof target === "object" && "page" in target)
+    q.page = String(target.page);
+  return q;
+}
+
+function pagerOf(p) {
+  const on = {
+    first: !!p.prev,
+    prev: !!p.prev,
+    next: !!p.next,
+    last: !!p.next && !!p.pages,
+  };
+  return pagerHtml({
+    from: (p.offset ?? 0) + 1,
+    to: (p.offset ?? 0) + p.items.length,
+    total: typeof p.total === "number" ? p.total : null,
+    hasNext: !!p.next,
+    ...(p.pages ? { page: p.page, pages: p.pages } : {}),
+    per,
+    perOptions: [10, 25, 50],
+    href: (tg) => (typeof tg === "string" && !on[tg] ? null : "#cl-body"),
+    lang: lang(),
+    words: Object.fromEntries(PAGER_WORDS.map((k) => [k, t(`kit.pager.${k}`)])),
+  });
 }
 
 export function setEntries(list) {
@@ -133,7 +203,11 @@ function makeFrame() {
   const d = frame.dialog;
   d.querySelector("#cl-more")?.addEventListener("click", () => {
     showAll = !showAll;
-    renderBody();
+    if (showAll && cfg.changelogPage) void goPage({ limit: String(per) });
+    else {
+      page = null;
+      renderBody();
+    }
     const body = document.getElementById("cl-body");
     if (body) body.scrollTop = 0;
   });
@@ -194,70 +268,77 @@ export function renderBody() {
     return;
   }
   const view = changelogView(entries, showAll);
-  body.innerHTML = view.shown
-    .map(
-      (entry, i) =>
-        (i > 0 ? '<hr class="cl-divider">' : "") +
-        '<div class="cl-entry">' +
-        '<div class="cl-ver-row">' +
-        '<h4 class="cl-ver">v' +
-        escHtml(entry.version) +
-        "</h4>" +
-        '<span class="cl-date">' +
-        escHtml(entry.date) +
-        "</span>" +
-        '<div class="cl-copy-group">' +
-        '<button class="cl-copy-btn" data-cl-version="' +
-        escHtml(entry.version) +
-        '" title="' +
-        escT("kit.whatsnew.copyMd") +
-        '" aria-label="' +
-        escT("kit.whatsnew.copyMdX", { v: entry.version }) +
-        '">' +
-        COPY_ICON +
-        "</button>" +
-        '<button class="cl-slack-btn" data-cl-version="' +
-        escHtml(entry.version) +
-        '" title="' +
-        escT("kit.whatsnew.copySlack") +
-        '" aria-label="' +
-        escT("kit.whatsnew.copySlackX", { v: entry.version }) +
-        '">' +
-        SLACK_ICON +
-        "</button>" +
-        "</div>" +
-        "</div>" +
-        (entry.note
-          ? '<p class="cl-note">' + renderItem(entry.note) + "</p>"
-          : "") +
-        Object.entries(entry.sections ?? {})
-          .map(
-            ([sec, items]) =>
-              '<div class="cl-sec">' +
-              escHtml(sec) +
-              "</div>" +
-              '<ul class="cl-items">' +
-              items
-                .map(
-                  (it) =>
-                    "<li>" +
-                    renderItem(it.text) +
-                    (it.sub?.length
-                      ? '<ul class="cl-subitems">' +
-                        it.sub
-                          .map((s) => "<li>" + renderItem(s) + "</li>")
-                          .join("") +
-                        "</ul>"
-                      : "") +
-                    "</li>",
-                )
-                .join("") +
-              "</ul>",
-          )
-          .join("") +
-        "</div>",
-    )
-    .join("");
+  const shown = showAll && page ? page.items : view.shown;
+  body.innerHTML =
+    shown
+      .map(
+        (entry, i) =>
+          (i > 0 ? '<hr class="cl-divider">' : "") +
+          '<div class="cl-entry">' +
+          '<div class="cl-ver-row">' +
+          '<h4 class="cl-ver">v' +
+          escHtml(entry.version) +
+          "</h4>" +
+          '<span class="cl-date">' +
+          escHtml(entry.date) +
+          "</span>" +
+          '<div class="cl-copy-group">' +
+          '<button class="cl-copy-btn" data-cl-version="' +
+          escHtml(entry.version) +
+          '" title="' +
+          escT("kit.whatsnew.copyMd") +
+          '" aria-label="' +
+          escT("kit.whatsnew.copyMdX", { v: entry.version }) +
+          '">' +
+          COPY_ICON +
+          "</button>" +
+          '<button class="cl-slack-btn" data-cl-version="' +
+          escHtml(entry.version) +
+          '" title="' +
+          escT("kit.whatsnew.copySlack") +
+          '" aria-label="' +
+          escT("kit.whatsnew.copySlackX", { v: entry.version }) +
+          '">' +
+          SLACK_ICON +
+          "</button>" +
+          "</div>" +
+          "</div>" +
+          (entry.note
+            ? '<p class="cl-note">' + renderItem(entry.note) + "</p>"
+            : "") +
+          Object.entries(entry.sections ?? {})
+            .map(
+              ([sec, items]) =>
+                '<div class="cl-sec">' +
+                escHtml(sec) +
+                "</div>" +
+                '<ul class="cl-items">' +
+                items
+                  .map(
+                    (it) =>
+                      "<li>" +
+                      renderItem(it.text) +
+                      (it.sub?.length
+                        ? '<ul class="cl-subitems">' +
+                          it.sub
+                            .map((s) => "<li>" + renderItem(s) + "</li>")
+                            .join("") +
+                          "</ul>"
+                        : "") +
+                      "</li>",
+                  )
+                  .join("") +
+                "</ul>",
+            )
+            .join("") +
+          "</div>",
+      )
+      .join("") + (showAll && page ? pagerOf(page) : "");
+  if (showAll && page)
+    hydratePager(body.querySelector("[data-den-pager]"), {
+      shortcuts: false,
+      onNavigate: (ask) => void goPage(askOf(ask.target)),
+    });
 
   // The toggle lives in the footer, so it is in view however long the
   // newest entry is.
@@ -275,7 +356,9 @@ export function renderBody() {
   const copyBtn = (sel, icon, title, make, write) =>
     body.querySelectorAll(sel).forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const entry = entries.find((e) => e.version === btn.dataset.clVersion);
+        const entry = [...(page?.items ?? []), ...entries].find(
+          (e) => e.version === btn.dataset.clVersion,
+        );
         if (!entry) return;
         try {
           await write(make(entry));

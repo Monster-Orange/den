@@ -87,6 +87,7 @@ import type { BulkBar, BulkBarOptions } from "./bulk-bar.js";
 /** Every call to the product goes through it; the kit names no URL. */
 export interface Adapter extends ReportAdapter {
   changelog?: () => Promise<ChangelogEntry[]>;
+  changelogPage?: WhatsNewOptions["changelogPage"];
   applyUpdate?: () => Promise<unknown>;
   request?: (id: string) => Promise<RequestState | null>;
 }
