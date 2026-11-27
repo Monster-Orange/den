@@ -1,18 +1,3 @@
-/**
- * Issue 1926: the Agents page's list, paged on the server in the order the
- * page shows it (DS #2 v6, "lists whose order changes live").
- *
- * - Bands in attention order: Needs you, Done, Working, Idle, then Stopped.
- *   The order inside a band follows the den-ui kit's attention table
- *   (packages/den-ui/src/attention.js): Needs you and Done oldest first,
- *   Working and Idle by the person's order, then by name.
- * - Needs you never pages: every such row comes back in `pinned`.
- * - The rest is cut by page number, not by cursor: rows change band at
- *   every poll. A page past the end lands on the new last page.
- * - Counts are whole: per band, and per project for By project.
- * - "Seen" stays the viewer's own: the page sends `seen=` (id~attnSince
- *   pairs), and a Done row it has seen counts as Idle, as in the browser.
- */
 import type { ListedSession } from "./session-routes.js";
 
 export type ViewBand = "needs" | "done" | "working" | "idle" | "stopped";
@@ -47,7 +32,6 @@ export interface ViewPage {
   projects?: Record<string, Record<ViewBand, number>>;
 }
 
-/** `seen=`: up to 500 `id~attnSince` pairs, comma-separated; bad ones skipped. */
 export function parseSeen(v: string | null): Map<string, string> {
   const out = new Map<string, string>();
   for (const pair of (v ?? "").split(",")) {
@@ -118,10 +102,6 @@ const zero = (): Record<ViewBand, number> => ({
   stopped: 0,
 });
 
-/**
- * One page of the view. `projects` is the order By project shows its
- * groups in; Stopped stays one group after them all, as the page draws it.
- */
 export function viewPage(
   rows: readonly ListedSession[],
   ask: ViewAsk,
