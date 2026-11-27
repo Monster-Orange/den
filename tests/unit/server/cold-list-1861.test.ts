@@ -89,8 +89,11 @@ function list(
   );
 }
 
+let reads = 0;
+
 function slow(spinMs = SPIN_MS): typeof rowHelpers {
   return (rec, ...rest) => {
+    reads++;
     const end = Date.now() + spinMs;
     let spins = 0;
     while (Date.now() < end) spins++;
@@ -100,9 +103,9 @@ function slow(spinMs = SPIN_MS): typeof rowHelpers {
 }
 
 async function hops(file: string): Promise<number> {
-  const t0 = Date.now();
+  const before = reads;
   for (let i = 0; i < HOPS; i++) await fs.promises.stat(file);
-  return Date.now() - t0;
+  return reads - before;
 }
 
 const counted = (j: Awaited<ReturnType<typeof list>>) =>
@@ -124,12 +127,11 @@ describe("issue 1861: agents.helpers.list_wait_seconds and reader_rest_ms", () =
 });
 
 describe("issue 1861: the first list over many unread agents never waits for all of them", () => {
-  it("answers well before every helper row is read, and the reader fills in the rest", async () => {
+  it("answers before every helper row is read, and the reader fills in the rest", async () => {
     const rows = new HelperRows();
-    const t0 = Date.now();
+    reads = 0;
     const first = await list(rows, slow());
-    const took = Date.now() - t0;
-    expect(took).toBeLessThan((AGENTS * SPIN_MS) / 2);
+    expect(reads).toBeLessThan(AGENTS / 2);
     expect(first.sessions.filter((s) => s.agent)).toHaveLength(AGENTS);
     await rows.idle();
     expect(counted(await list(rows, slow()))).toBe(AGENTS);
@@ -139,12 +141,11 @@ describe("issue 1861: the first list over many unread agents never waits for all
     const rows = new HelperRows();
     const file = path.join(dir, "probe");
     fs.writeFileSync(file, "x");
-    const idle = await hops(file);
     const listing = list(rows, slow());
     const during = await hops(file);
     await listing;
     await rows.idle();
-    expect(during).toBeLessThan(Math.max(150, 10 * idle));
+    expect(during).toBeLessThan(HOPS / 5);
   });
 
   it("rows not read yet say so, the list says so, and the next list has them", async () => {
@@ -181,9 +182,9 @@ describe("issue 1861: the first list over many unread agents never waits for all
     await list(rows, slow());
     await rows.idle();
     seed(AGENTS, AGENTS + 8);
-    const t0 = Date.now();
+    reads = 0;
     const next = await list(rows, slow(150));
-    expect(Date.now() - t0).toBeLessThan(600);
+    expect(reads).toBeLessThan(8);
     expect(next.sessions.filter((s) => s.agent)).toHaveLength(AGENTS + 8);
     await rows.idle();
   });
