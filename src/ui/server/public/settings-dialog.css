@@ -42,3 +42,14 @@
     grid-template-rows: none;
   }
 }
+.setd .setd-sub + .setd-sub {
+  margin-top: var(--space-5);
+}
+.setd .setd-subh {
+  margin: 0 0 var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
