@@ -16,7 +16,7 @@ export const readOnly = true;
 const GH = "https://api.github.com";
 const CI_FILE = "ci.yml";
 const SHARD = /^pr(-shards)? \(/;
-const EVENTS = new Set(["pull_request", "merge_group", "push"]);
+const EVENTS = new Set(["pull_request", "merge_group"]);
 
 function json(text) {
   try {
@@ -65,6 +65,11 @@ async function ciRun(ctx) {
         )
       ).workflow_runs ?? [];
     const run = runs.find((r) => EVENTS.has(r.event));
+    if (!run && runs.some((r) => r.event === "push"))
+      return {
+        skip: "needs-pr-run",
+        detail: `only a push run on ${short} (${repo}): a push to main runs no unit or browser shard`,
+      };
     if (!run) return { ok: false, detail: `no ci run on ${short} (${repo})` };
     const at = `${CI_FILE} run ${run.html_url} on ${short}`;
     if (run.status !== "completed")

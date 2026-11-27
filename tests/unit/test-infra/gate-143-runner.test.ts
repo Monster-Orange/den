@@ -188,6 +188,35 @@ describe("gate/143.mjs: the clean-run clause reads CI's first attempt on the bed
     expect(row.detail).toContain("no ci run");
   });
 
+  it("only a push run (a push to main runs no shards): not judged, saying so", () => {
+    const row = clean(
+      runGate({ runs: [{ ...RUN, event: "push" }], jobs: [] }),
+    )!;
+    expect(row.ok).toBeNull();
+    expect(row.skip).toBe("needs-pr-run");
+    expect(row.detail).toContain("push to main runs no unit or browser shard");
+  });
+
+  it("a newer push run beside a clean pull_request run: PASS on the pull_request run", () => {
+    const row = clean(
+      runGate({
+        runs: [
+          {
+            ...RUN,
+            id: 888,
+            event: "push",
+            html_url: "https://github.com/acme/widget/actions/runs/888",
+          },
+          RUN,
+        ],
+        jobsByRun: { "888": [{ name: "dist-smoke", conclusion: "success" }] },
+        jobs: shards(),
+      }),
+    )!;
+    expect(row.ok).toBe(true);
+    expect(row.detail).toContain("actions/runs/777");
+  });
+
   it("CI still running: not judged yet, with the run's link", () => {
     const row = clean(
       runGate({
