@@ -8,6 +8,7 @@
 // the rail's Terminal must never open one. Every shell this check starts
 // is closed again through the page; a shell the bed had already is only
 // opened, never typed in or closed. The view is put back.
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 448;
 export const clauses = [
   "Terminal opens and focuses the shell already running in that project, no new session",
@@ -99,7 +100,7 @@ async function wordsIn(ctx, page, ws, id, cell) {
 
 /** Project `ws`'s running plain shells, by id. */
 async function shells(page, ws) {
-  const d = await getJson(page, "/api/sessions?all=1");
+  const d = await allSessions((u) => getJson(page, u));
   return (d?.sessions ?? [])
     .filter((s) => s.kind === "session" && s.workspace === ws && !s.exited)
     .map((s) => s.id);
@@ -107,7 +108,7 @@ async function shells(page, ws) {
 
 /** Every running plain shell, in any project, by id. */
 async function allShells(page) {
-  const d = await getJson(page, "/api/sessions?all=1");
+  const d = await allSessions((u) => getJson(page, u));
   return (d?.sessions ?? [])
     .filter((s) => s.kind === "session" && !s.exited)
     .map((s) => s.id);
@@ -115,7 +116,7 @@ async function allShells(page) {
 
 /** Whether shell `id` has ended (exited, or no longer listed). */
 async function ended(page, id) {
-  const d = await getJson(page, "/api/sessions?all=1");
+  const d = await allSessions((u) => getJson(page, u));
   const s = (d?.sessions ?? []).find((x) => x.id === id);
   return !s || s.exited === true;
 }
@@ -190,7 +191,7 @@ export async function run(ctx) {
   const out = { cell, steps: {} };
   await visit(ctx, page, "/agents");
   const scope = await getJson(page, "/api/scope");
-  const list = await getJson(page, "/api/sessions?all=1");
+  const list = await allSessions((u) => getJson(page, u));
   const projects = (list?.workspaces ?? []).filter(Boolean);
   if (!projects.length) return { skipped: true, why: "needs-project" };
   // A project with no shell running proves clause 2; else the first one.

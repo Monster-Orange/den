@@ -33,6 +33,7 @@
 const answered = (d) => d != null && d.ack == null && d.acked === true;
 
 import { doctorChecks } from "./lib/read-json.mjs";
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 701;
 export const clauses = [
   "a Hub comment for an agent that asked its person a question (ask_human) is typed into the agent, once",
@@ -96,9 +97,10 @@ async function typedOf(a, since) {
 
 /** The agent's row as the Agents page gets it. */
 async function rowOf(ctx, id) {
-  const d = await ctx
-    .api(`/api/sessions?all=1&ws=${encodeURIComponent(WS)}`)
-    .catch(() => null);
+  const d = await allSessions(
+    (u) => ctx.api(u),
+    `ws=${encodeURIComponent(WS)}`,
+  ).catch(() => null);
   const r = (d?.sessions ?? []).find(
     (s) => s?.kind === "agent" && s?.agent === id,
   );

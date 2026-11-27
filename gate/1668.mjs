@@ -1,3 +1,4 @@
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 1668;
 export const items = [1668];
 
@@ -192,15 +193,13 @@ export const seedFiles = { findHome, seed, seedBig, bigRoom, clean };
 
 async function timedList(d2) {
   const t = Date.now();
-  const r = await d2
-    .fetch("/api/sessions?all=1", { method: "GET" })
-    .catch((e) => ({ status: null, body: { error: msg(e) } }));
-  return {
-    ms: Date.now() - t,
-    end: Date.now(),
-    status: r.status,
-    body: r.body,
-  };
+  let status = null;
+  const body = await allSessions(async (u) => {
+    const r = await d2.fetch(u, { method: "GET" });
+    status = r.status;
+    return r.body;
+  }).catch((e) => ({ error: msg(e) }));
+  return { ms: Date.now() - t, end: Date.now(), status, body };
 }
 
 function helperRows(body) {
