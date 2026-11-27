@@ -30,6 +30,8 @@ export const UI_MODULES: readonly string[] = [
   "/settings-page.js",
   "/settings-rows.js",
   "/settings-rows.css",
+  "/settings-dialog.js",
+  "/settings-dialog.css",
   "/account-panes.js",
   "/account-panes.css",
   "/topbar.js",
