@@ -131,6 +131,22 @@ function linkRow(shell, pane) {
 }
 
 let live = null;
+let railWas = null;
+
+function markRail(on) {
+  const items = [...document.querySelectorAll(".den-ni[data-nav]")];
+  if (on && !railWas) {
+    railWas = items.filter((a) => a.getAttribute("aria-current") === "page");
+    for (const a of items)
+      if (a.dataset.nav === "settings") a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+  } else if (!on && railWas) {
+    for (const a of items)
+      if (railWas.includes(a)) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    railWas = null;
+  }
+}
 
 async function build(shell) {
   if (!shell.settingsCategories().some((c) => c.id === "appearance"))
@@ -231,6 +247,7 @@ async function build(shell) {
       else shell.openAccount(to || null);
     },
     onClose: () => {
+      markRail(false);
       dialog.remove();
       live = null;
     },
@@ -253,6 +270,7 @@ export async function openSettings(
     ({ pane, at } = to);
   }
   nav.open(pane, at);
+  markRail(true);
   const sq = new URLSearchParams(location.search).get("sq");
   const box = sq && nav.element.querySelector("[data-dn-search]");
   if (box) {
