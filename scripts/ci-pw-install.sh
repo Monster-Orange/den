@@ -122,9 +122,10 @@ moved=()
 put_back() {
   local f
   for f in "${moved[@]+"${moved[@]}"}"; do
-    $sudo_ mv "$aside/$f" "$sources/$f" || echo "::warning::could not put $sources/$f back"
+    $sudo_ mv "$aside/$f" "$sources/$f" ||
+      echo "::warning::could not put $sources/$f back: kept in $aside"
   done
-  rm -rf "$aside"
+  rmdir "$aside" 2>/dev/null || true
 }
 trap put_back EXIT
 while IFS= read -r f; do
