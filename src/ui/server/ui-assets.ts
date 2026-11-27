@@ -29,6 +29,7 @@ export const UI_MODULES: readonly string[] = [
   "/settings-registry.js",
   "/settings-page.js",
   "/settings-rows.js",
+  "/settings-rows.css",
   "/topbar.js",
   // NT-3: the bell in the top bar.
   "/bell.js",

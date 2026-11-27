@@ -123,11 +123,18 @@ export async function settingsCtx(deps) {
   return ctx;
 }
 
-export function rowKit(ctx, { redraw }) {
+export function rowKit(
+  ctx,
+  { redraw, root = null, idPrefix = "", scopeTag = true },
+) {
   const shell = ctx.shell;
   const L = (k, v) => shell.t(k, v);
   const wsName = ctx.wsName;
-  const $ = (id) => document.getElementById(id);
+  const $ = (id) =>
+    root
+      ? root.querySelector(`#${CSS.escape(id)}`)
+      : document.getElementById(id);
+  const rid = (r) => idPrefix + slug(r.id);
   function tag(from) {
     return from
       ? ` <span class="den-tagx" title="${esc(L("set.ui.from", { from }))}">${esc(from)}</span>`
@@ -170,7 +177,7 @@ export function rowKit(ctx, { redraw }) {
     );
   }
   function drawRow(r) {
-    const id = slug(r.id);
+    const id = rid(r);
     const lid = `l-${id}`;
     const cid = `c-${id}`;
     const did = `d-${id}`;
@@ -307,7 +314,10 @@ export function rowKit(ctx, { redraw }) {
     return (
       `<div class="set-row" id="setting-${id}" data-setting="${esc(r.id)}" data-scope="${esc(r.scope)}">` +
       `<div class="row">${label}<div class="ctl">${ctl}</div>` +
-      `<span class="set-scope" data-scope="${esc(r.scope)}">${esc(scopeText(r, ctx.workspace ? wsName(ctx.workspace) : null, L))}</span></div>` +
+      (scopeTag
+        ? `<span class="set-scope" data-scope="${esc(r.scope)}">${esc(scopeText(r, ctx.workspace ? wsName(ctx.workspace) : null, L))}</span>`
+        : "") +
+      "</div>" +
       // helpInControl: the control shows its own help line (mock v6);
       // the description stays for screen readers.
       `<div class="d${r.helpInControl ? " den-sr" : ""}" id="${did}">${esc(r.description)}${note}${tag(r.from)}</div>` +
@@ -374,7 +384,7 @@ export function rowKit(ctx, { redraw }) {
 
   // ── writing: only on an explicit change ────────────────────────────────
   async function save(r, v) {
-    const el = $(`s-${slug(r.id)}`);
+    const el = $(`s-${rid(r)}`);
     let ok = false;
     const mine = { v };
     if (PENDING_TYPES.includes(r.control?.type)) pending.set(r.id, mine);
@@ -387,7 +397,7 @@ export function rowKit(ctx, { redraw }) {
       if (pending.get(r.id) === mine) pending.delete(r.id);
     }
     redraw();
-    const again = $(`s-${slug(r.id)}`) || el;
+    const again = $(`s-${rid(r)}`) || el;
     if (!again) return;
     again.className = "set-saved " + (ok ? "ok" : "bad");
     again.textContent = L(ok ? "set.ui.saved" : "set.ui.saveFailed");
@@ -398,7 +408,7 @@ export function rowKit(ctx, { redraw }) {
   }
   function wireRow(r) {
     if (!r.write && !drawsItself(r)) return;
-    const row = $(`setting-${slug(r.id)}`);
+    const row = $(`setting-${rid(r)}`);
     if (!row) return;
     const t = r.control?.type;
     if (t === "seg" || t === "theme")
@@ -505,11 +515,17 @@ export function rowKit(ctx, { redraw }) {
 }
 
 const kits = new WeakMap();
-export function drawRows(host, rows, ctx) {
+let hosts = 0;
+export function drawRows(host, rows, ctx, { idPrefix, scopeTag } = {}) {
   let k = kits.get(host);
   if (!k || k.ctx !== ctx) {
     k = { ctx, rows };
-    k.kit = rowKit(ctx, { redraw: () => drawRows(host, k.rows, ctx) });
+    k.kit = rowKit(ctx, {
+      redraw: () => drawRows(host, k.rows, ctx),
+      root: host,
+      idPrefix: idPrefix ?? `rows${++hosts}-`,
+      scopeTag,
+    });
     kits.set(host, k);
   }
   k.rows = rows;
