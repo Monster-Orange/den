@@ -894,6 +894,9 @@
     "err.421.lead":
       "このサーバーは自身のアドレスでのみ応答するため、別の名前のページからは届きません。",
     "err.421.open": "localhost で開く",
+    "err.starting.title": "Den を起動しています",
+    "err.starting.lead":
+      "Den は起動したばかりで、このアドレスではまだ準備ができていません。このページはまもなく自動でもう一度試します。",
     "err.link.title": "このエージェントへのリンクは開けません",
     "err.link.project": "この Den にプロジェクト {project} はありません。",
     "err.link.agent":

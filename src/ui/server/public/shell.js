@@ -1900,6 +1900,9 @@
     "err.421.lead":
       "This server answers only on its own addresses, so a page on another name can't reach it.",
     "err.421.open": "Open on localhost",
+    "err.starting.title": "Den is starting",
+    "err.starting.lead":
+      "Den has just started and isn't ready for this address yet. This page tries again by itself in a moment.",
     "err.link.title": "This agent link can't open",
     "err.link.project": "There is no project {project} in this Den.",
     "err.link.agent":

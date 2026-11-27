@@ -13,15 +13,21 @@ const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
 interface Reply {
   status: number;
   body: string;
+  type: string;
+  retryAfter: string | undefined;
 }
 
-function get(port: number, headers: Record<string, string>): Promise<Reply> {
+function get(
+  port: number,
+  headers: Record<string, string>,
+  p = "/api/server-info",
+): Promise<Reply> {
   return new Promise((resolve, reject) => {
     const req = http.request(
       {
         host: "localhost",
         port,
-        path: "/api/server-info",
+        path: p,
         agent: false,
         timeout: 15_000,
         setHost: false,
@@ -30,7 +36,14 @@ function get(port: number, headers: Record<string, string>): Promise<Reply> {
       (res) => {
         let out = "";
         res.on("data", (d: Buffer) => (out += d.toString()));
-        res.on("end", () => resolve({ status: res.statusCode ?? 0, body: out }));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            body: out,
+            type: String(res.headers["content-type"] ?? ""),
+            retryAfter: res.headers["retry-after"] as string | undefined,
+          }),
+        );
       },
     );
     req.on("error", reject);
@@ -47,6 +60,15 @@ const fromTheEdge = {
   host: "den.acme.localhost",
   "x-forwarded-for": "127.0.0.1",
   ...EDGE_PROOF,
+};
+const wrongProof = {
+  ...fromTheEdge,
+  "x-den-edge-proof": "00".repeat(32),
+};
+const withoutId = (body: string) => {
+  const j = JSON.parse(body) as Record<string, unknown>;
+  delete j.requestId;
+  return j;
 };
 
 async function until(
@@ -138,11 +160,32 @@ describe("the edge start settling", () => {
     await until(h.asked);
 
     expect(await settled(s.port)).toBe(false);
-    expect((await get(s.port, fromTheEdge)).status).toBe(401);
+    const right = await get(s.port, fromTheEdge);
+    const wrong = await get(s.port, wrongProof);
+    for (const r of [right, wrong]) {
+      expect(r.status).toBe(503);
+      expect(r.retryAfter).toBe("1");
+    }
+    expect(withoutId(right.body)).toEqual({
+      ok: false,
+      error: "Den is starting. Try again in a moment.",
+      code: "edge_starting",
+    });
+    expect(withoutId(wrong.body)).toEqual(withoutId(right.body));
+    const page = await get(s.port, { ...fromTheEdge, accept: "text/html" }, "/");
+    expect([page.status, page.type, page.retryAfter]).toEqual([
+      503,
+      expect.stringMatching(/text\/html/),
+      "1",
+    ]);
+    expect(page.body).toContain('"code":"edge_starting"');
+    expect((await get(s.port, fromTheEdge, "/shell.js")).status).toBe(200);
+    expect((await get(s.port, {})).status).toBe(200);
 
     h.release();
     await until(async () => (await settled(s.port)) === true);
     expect((await get(s.port, fromTheEdge)).status).toBe(200);
+    expect((await get(s.port, wrongProof)).status).toBe(401);
   }, 60_000);
 
   it("a test's server is up only once the edge start has settled, so its first edge request is trusted", async () => {

@@ -917,6 +917,9 @@
     "err.421.lead":
       "Este servidor solo responde en sus propias direcciones, así que una página con otro nombre no puede alcanzarlo.",
     "err.421.open": "Abrir en localhost",
+    "err.starting.title": "Den se está iniciando",
+    "err.starting.lead":
+      "Den acaba de iniciarse y todavía no está listo para esta dirección. Esta página lo intentará de nuevo sola en un momento.",
     "err.link.title": "Este enlace al agente no se puede abrir",
     "err.link.project": "No hay ningún proyecto {project} en este Den.",
     "err.link.agent":

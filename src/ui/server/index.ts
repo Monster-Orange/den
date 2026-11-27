@@ -1286,7 +1286,10 @@ function sendErrorPage(
   // A refusal page (421, signed out): every /api call the shell frame
   // would make answers the same refusal, so the shell starts none of its
   // polls and streams (data-api-off; shell.js apiOff).
-  const off = data.status === 421 || data.code === "signin_required";
+  const off =
+    data.status === 421 ||
+    data.code === "signin_required" ||
+    data.code === "edge_starting";
   serveFile(
     res,
     path.join(PUBLIC_DIR, "error.html"),
@@ -2752,6 +2755,7 @@ const GUARD: GuardContext = {
   edgeUnattested: WEB_AUTH.edgeUnattested,
   // H1: the edge's forwarded client is believed only with its proof.
   edgeProved: (req) => EDGE_PROVED(req),
+  edgeStarting: () => EDGE_TRUST.starting,
   // Issue 636: the test-person path, on a test bed (issue 810's binding).
   testBed: () => testInstallNow(),
 };
@@ -3513,6 +3517,7 @@ function sendGuardRefusal(
   requestId: string,
   search = "",
 ): void {
+  if (refusal.code === "edge_starting") res.setHeader("Retry-After", "1");
   // UK-2: /requests/<id> is the API's too (the working pop-up's Check again).
   if (
     pathname === "/api" ||
@@ -7041,7 +7046,9 @@ async function handleRequest(
   if (
     !guard.ok &&
     !(
-      (guard.code === "misdirected" || guard.code === "signin_required") &&
+      (guard.code === "misdirected" ||
+        guard.code === "signin_required" ||
+        guard.code === "edge_starting") &&
       isPublicAsset(req, pathname)
     )
   ) {
@@ -12093,6 +12100,14 @@ function handleUpgrade(
     );
     auditGuardRefusal(req, pathname, guard);
     if (guard.code === "signin_required") traceUpgradeSignin(pathname, guard);
+    if (guard.code === "edge_starting")
+      return refuseUpgrade(
+        socket,
+        503,
+        { ok: false, error: guard.error, code: guard.code, requestId },
+        http.STATUS_CODES[503] ?? "",
+        { "Retry-After": "1" },
+      );
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);
