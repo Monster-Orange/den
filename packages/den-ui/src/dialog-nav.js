@@ -187,7 +187,10 @@ export function hydrateDialogNav(dialog, opts = {}) {
   const write = (pane, how, at) => {
     if (opts.url === false || how === "none") return;
     win.history[how === "push" ? "pushState" : "replaceState"](
-      { dn: param, dnPhonePane: how === "push" },
+      {
+        dn: param,
+        dnPhonePane: how === "push" || !!win.history.state?.dnPhonePane,
+      },
       "",
       url(pane, at),
     );
