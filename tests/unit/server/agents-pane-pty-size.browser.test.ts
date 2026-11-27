@@ -76,10 +76,15 @@ describe("issue 1641: a pane says its PTY's size only for the session it is on",
     p.on("pageerror", (e) => errors.push(e.message));
     let release = () => {};
     const held = new Promise<void>((r) => (release = r));
-    await p.routeWebSocket(/\/api\/sessions\/[^/]+\/io$/, async (ws) => {
-      if (!ws.url().includes(encodeURIComponent(old))) await held;
-      ws.connectToServer();
-    });
+    const routed: string[] = [];
+    await p.routeWebSocket(
+      /\/api\/sessions\/[^/?]+\/io(?:\?|$)/,
+      async (ws) => {
+        routed.push(ws.url());
+        if (!ws.url().includes(encodeURIComponent(old))) await held;
+        ws.connectToServer();
+      },
+    );
     await p.goto(`${s.base}/agents?open=${old}&layout=tabs`);
     await p.locator(`[data-id="${old}"][data-pty-cols]`).waitFor({
       timeout: 20_000,
@@ -92,6 +97,7 @@ describe("issue 1641: a pane says its PTY's size only for the session it is on",
     await p
       .locator(`[data-id="${next}"][data-cols]`)
       .waitFor({ timeout: 20_000 });
+    expect(routed.some((u) => u.includes(encodeURIComponent(next)))).toBe(true);
     expect(await ptyCols(p, next)).toBeNull();
     release();
     await p
