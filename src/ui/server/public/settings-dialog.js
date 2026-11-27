@@ -11,7 +11,7 @@ import { drawRows, settingsCtx } from "/settings-rows.js";
 export const SETTINGS_GROUPS = [
   {
     id: "you",
-    panes: ["appearance", "editor", "navigation", "graph", "notifications"],
+    panes: ["appearance", "editor", "navigation", "graph"],
   },
   { id: "work", panes: ["workspace", "agents", "hub"] },
   { id: "access", panes: ["access", "embed", "secrets"] },
@@ -33,7 +33,6 @@ export const inAccount = (row) =>
   row.category === "notifications";
 
 export const ACCOUNT_LINKS = {
-  notifications: { pane: "notifications", text: "setd.toAccount.notifications" },
   access: { pane: "devices", text: "setd.toAccount.devices" },
   cli: { pane: "profile", text: "setd.toAccount.profile" },
 };
@@ -44,6 +43,8 @@ export function paneOf(hash, rows) {
   if (PANES[h]) return { pane: h, at: null };
   const row = rows.find((r) => r.id === h);
   if (row && PANES[row.category]) return { pane: row.category, at: row.id };
+  if (h === "notifications" || h.startsWith("notifications."))
+    return { pane: null, at: null, account: "notifications" };
   const cat = h.split(".")[0];
   return PANES[cat] ? { pane: cat, at: null } : { pane: null, at: null };
 }
@@ -121,7 +122,6 @@ async function build(shell) {
       .map((id) => ({
         id,
         title: cats.get(id).label,
-        desc: cats.get(id).description,
         lazy: true,
         readOnly: PANES[id].check === PANE_CHECKS.person ? readOnly : undefined,
       })),
@@ -147,9 +147,14 @@ async function build(shell) {
     );
   }
   document.body.append(dialog);
+  const descOf = (pane) => {
+    const d = cats.get(pane)?.description;
+    return d ? `<p class="setd-desc">${esc(d)}</p>` : "";
+  };
   const load = (pane, body) => {
-    body.innerHTML = '<div class="setd-rows"></div>' + linkRow(shell, pane);
-    const host = body.firstElementChild;
+    body.innerHTML =
+      descOf(pane) + '<div class="setd-rows"></div>' + linkRow(shell, pane);
+    const host = body.querySelector(".setd-rows");
     const own = bySection.get(pane)?.rows ?? [];
     const mark = () => {
       for (const el of host.querySelectorAll(".set-row[data-setting]")) {
@@ -184,8 +189,15 @@ export async function openSettings(
 ) {
   live ??= build(shell);
   const { nav, rows } = await live;
-  if (hash) ({ pane, at } = paneOf(hash, rows));
+  if (hash) {
+    const to = paneOf(hash, rows);
+    if (to.account) return location.assign(`?account=${to.account}`);
+    ({ pane, at } = to);
+  }
   nav.open(pane, at);
+  nav.element
+    .querySelector('a.dn-row[aria-current="true"]')
+    ?.scrollIntoView({ block: "nearest" });
 }
 
 function fromHref(a) {
