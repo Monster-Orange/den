@@ -84,6 +84,8 @@ config and manifest changes a distribution must make to move to it under
 - The browser tab shows Den's icon from its SVG first, with favicon.ico (16, 32 and 48 px) as `sizes="any"` for browsers without SVG icons. Every icon URL in a page's head and in the app manifest carries `?v=<version>`, so a browser shows the new icon after Den updates instead of a cached one.
 - Settings › Project setup, Agents and Hub say each setting in one short sentence, and each pane's intro is one line. The command-line line under each stays as it was. Words in en, es and ja. (issue 1926)
 
+- Settings › Access and Embedding say each setting in one short sentence, and each pane's intro is one line. The command-line line under each stays as it was. Words in en, es and ja. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed

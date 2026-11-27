@@ -1908,23 +1908,23 @@
     "set.access.pair_requests":
       "アドレスごとの新しいサインイン要求 (1 分あたり)",
     "set.access.pair_requests.d":
-      "1 つのアドレスが 1 分間にサインインを要求できる新しいデバイスの数です。超えた分は 1 分たつまで受け付けません。__DEN_CLI__ config web.pair_requests_per_minute=30",
+      "1 つのアドレスが 1 分間に出せる新しいサインイン要求の数。__DEN_CLI__ config web.pair_requests_per_minute=30",
     "set.access.approve_attempts": "承認時に許される誤ったコードの数",
     "set.access.approve_attempts.d":
-      "下の時間内にデバイスの承認で受け付ける誤ったコードの数です。超えると待ちになります。__DEN_CLI__ config web.approve_attempts=10",
+      "下の時間内に許される誤ったコードの数。超えると待ちます。__DEN_CLI__ config web.approve_attempts=10",
     "set.access.approve_window": "誤ったコードを数える時間 (秒)",
     "set.access.approve_window.d":
-      "誤ったコードを数える時間です。過ぎると、もう一度承認を試せます。__DEN_CLI__ config web.approve_window_seconds=30",
+      "誤ったコードを数える時間。__DEN_CLI__ config web.approve_window_seconds=30",
     "set.access.agent_view": "エージェントによるページの閲覧 (読み取り専用)",
     "set.access.agent_view.d":
-      "オンにすると、ここで動くエージェントが自分自身としてこのページを読み取り専用で開き、確認やスクリーンショットができます (page_view)。何も変更せず、開いたページはそのエージェントの名前で記録されます。オフにすると、閲覧がオフであることがエージェントに伝えられます。 __DEN_CLI__ config web.agent_view=true",
+      "ここのエージェントがこれらのページを読み取り専用で開けます。開くたびに記録します。__DEN_CLI__ config web.agent_view=true",
     "set.access.agent_view_minutes": "エージェントの閲覧時間 (分)",
     "set.access.agent_view_minutes.d":
-      "エージェントの読み取り専用の閲覧が続く時間。過ぎると終わります。 __DEN_CLI__ config web.agent_view_minutes=10",
+      "エージェントの読み取り専用ビューが続く時間。__DEN_CLI__ config web.agent_view_minutes=10",
     "set.access.sessions_lock_wait":
       "サインインがサインインファイルを待つ時間 (ミリ秒)",
     "set.access.sessions_lock_wait.d":
-      "別のコマンドがサインインファイルを変更している間、サインインが待つ時間。過ぎると、もう一度試すよう求めます。 __DEN_CLI__ config web.sessions_lock_wait_ms=2000",
+      "サインインのファイルが使用中のとき、サインインが待つ時間。__DEN_CLI__ config web.sessions_lock_wait_ms=2000",
     "set.access.test_installs_here":
       "このコンピューター上のテスト用インストール",
     "set.access.test_install": "テスト用インストール",
@@ -2733,33 +2733,33 @@
       "このプロジェクトのアプリからのイベントストリーム。それぞれ 1 つのエージェントが読みます。",
     "set.embed.feed_max_streams": "同時に読むアプリフィード",
     "set.embed.feed_max_streams.d":
-      "Den が全プロジェクトで同時に読むアプリのイベントフィードの最大数です。超えたフィードは読まれず、そのプロジェクトの通知でお知らせします。",
+      "Den が全プロジェクトで同時に読むアプリのイベントフィードの最大数。",
     "set.embed.feed_event_max_kb": "アプリフィードのイベントの最大サイズ",
     "set.embed.feed_event_max_kb.d":
-      "アプリフィードがエージェントのために保存するイベントの最大サイズです。それより大きいものは、データなしで届いたことを示すメモとして保存され、プロジェクトの通知でお知らせします。",
+      "アプリフィードが保持するイベントの最大サイズ。超えるとメモだけ残ります。",
     "set.embed.feed_events_per_minute":
       "アプリフィードの 1 分あたりのイベント数",
     "set.embed.feed_events_per_minute.d":
-      "Den が 1 つのアプリフィードから 1 分間に読むイベント数です。超えた分は許される速さで読み、プロジェクトの通知でお知らせします。",
+      "Den が 1 つのアプリフィードから 1 分間に読むイベント数。",
     "feed.none": "このプロジェクトにはアプリのイベントフィードがありません。",
     "feed.row": "{name} から {agent} へ: {url}",
     "feed.last": "最後のイベント {time}。",
     "feed.noEvents": "まだイベントはありません。",
     "set.embed.feed_keep_events": "1 つのアプリフィードが保存するイベント数",
     "set.embed.feed_keep_events.d":
-      "Den が 1 つのアプリフィードのために保存するイベントの最大数です。超えると古いものから消え、未読のものが消えたときはプロジェクトの通知でお知らせします。",
+      "1 つのアプリフィードに Den が保持するイベントの最大数。古いものから消えます。",
     "set.embed.feed_read_max_kb": "1 回の読み取りのアプリフィードデータ",
     "set.embed.feed_read_max_kb.d":
-      "app_feed_read の 1 回の呼び出しでエージェントに渡すイベントデータの最大量です。残りは次の呼び出しで読みます。",
+      "app_feed_read の 1 回の呼び出しで返すイベントデータの最大量。",
     "set.embed.feed_list_timeout": "アプリフィードの一覧の待ち時間",
     "set.embed.feed_list_timeout.d":
-      "切断後の抜けを埋めるアプリのイベント一覧を Den が待つ時間です。過ぎると後でもう一度試します。",
+      "アプリのイベント一覧を待つ時間。過ぎると後で再試行します。",
     "set.embed.feed_list_max_mb": "アプリフィードの一覧の最大サイズ",
     "set.embed.feed_list_max_mb.d":
-      "Den がアプリから一度に読むイベント一覧の最大サイズです。それより大きい応答は断り、後でもう一度試します。",
+      "Den が一度にアプリから読むイベント一覧の最大サイズ。",
     "set.embed.paste_max_kb": "エージェントに一度に入力する最大テキスト",
     "set.embed.paste_max_kb.d":
-      "Den がエージェントに一度に入力するテキストの最大量です (Hub のコメント、転送メッセージ、アプリフィードの行)。残りは次に入力します。",
+      "Den が一度にエージェントへ入力するテキストの最大量。",
     "feed.unread": "未読: {n}。",
     "bell.m.appFeed.dropped":
       "{agent} のアプリフィード {name}: 保存数の上限のため未読のイベントが消えました。",
@@ -4351,8 +4351,7 @@
     "set.ui.deny": "拒否",
     "set.ui.codeLabel": "画面のコード",
     "set.ui.fromLogin": "{time} に実行した web login から",
-    "set.ui.noWaiting":
-      "承認待ちのコンピューターはありません。別のコンピューターのサインアウト中のページにはコードが表示され、承認できるようここに表示されます。",
+    "set.ui.noWaiting": "承認待ちのコンピューターはありません。",
     "set.ui.waitingSignedIn":
       "承認待ちのデバイスは、サインイン中かこのマシン上でのみ表示されます。",
     "set.ui.testInstallYes": "これはテスト用インストールです。",
@@ -4572,11 +4571,10 @@
     "setc.agents": "エージェント",
     "setc.agents.d": "エージェントが動くランタイムと、その動かし方。",
     "setc.access": "アクセス",
-    "setc.access.d":
-      "ほかのデバイスからこの Den にアクセスします。オーナーとして GitHub でサインインするか、一回限りのリンクでデバイスをペアリングします。localhost では何も求められません。",
+    "setc.access.d": "ほかのデバイスからこの Den を使います。",
     "setc.embed": "埋め込み",
     "setc.embed.d":
-      "ほかのウェブアプリからエージェントにリンクできるようにします。リンクはエージェントのメッセージ欄に入力します。送信を押すまで何も送られません。",
+      "ほかのウェブアプリからエージェントへのリンクを許可します。",
     "setc.secrets": "シークレット",
     "setc.secrets.d":
       "Den がシークレットの解決に使う認証情報を、このマシンがどこから取得するかです。マシンごとの設定 (config/local/user.yml) で、表示されるのは取得元だけで、シークレットは表示されません。",
@@ -4806,31 +4804,31 @@
     "set.cli.op_token.d":
       "サービスとして動く Den のために、このマシンの 1Password サービスアカウントのトークンをどこから取得するかです。config/local/user.yml で secrets.onepassword.token を keychain:<service>、file:<path>、env:<VAR> のいずれかに設定します。トークン自体は表示されません。", // words-ok: the en string's own word, translated
     "set.access.owner.d":
-      "この Den が属する GitHub アカウントです。リンクすると ID だけが保存され (トークンは破棄されます)、以後そのアカウントはどのデバイスからでもサインインできます。__DEN_CLI__ web owner link でもコマンドラインから同じことができます。", // words-ok: the en string's own word, translated
+      "この Den の持ち主の GitHub。どのデバイスからでもサインインできます。__DEN_CLI__ web owner link でもコマンドラインから同じことができます。", // words-ok: the en string's own word, translated
     "set.access.devices.d":
       "この Den にサインインしているブラウザです（「取り消す」で 1 つをサインアウト）。",
     "set.access.waiting.d":
-      "サインアウト中のページにコードが表示されているコンピューターです。そのコンピューターの画面のコードを入力して承認すると、そのページは自動でサインインします。リクエストの有効期限は 10 分です。__DEN_CLI__ web approve --list で一覧できます。",
+      "サインインを待つコンピューター。画面のコードを入力して承認します。__DEN_CLI__ web approve --list で一覧できます。",
     "set.embed.url_max.d":
-      "エージェントへのリンクがメッセージ欄に渡せるウェブアドレスの最大長です。これより長いと、その旨を示すページが開きます。",
+      "エージェントへのリンクに含められるウェブアドレスの最大長。",
     "set.embed.app_keys.d":
-      "このコンピューター上のウェブアプリ自身のバックエンド用のキーです: その人のメッセージを 1 つのエージェントに渡し (エージェントのターンの後に入力されます)、そのエージェントの状態を読めます。それ以外は何もできません。キーは一つずつ許可し、一度だけ表示され、ここで取り消せます。",
+      "ウェブアプリのバックエンドが 1 つのエージェントに送信し、その状態を読むためのキー。",
     "set.embed.app_key_audit.d":
-      "アプリキーによる状態の読み取りは、この秒数ごとに 1 行として回数とともにアクティビティ記録に残ります。頻繁に確認するウェブアプリで記録があふれません。",
+      "アプリキーの読み取りを 1 行の記録にまとめる秒数。",
     "set.embed.origins.d":
-      "各ウェブアプリのアドレスを正確に、1 行に 1 つずつ: https://app.example.com。これらだけが自分のページの中にエージェントのパネルを表示でき、それもあなたが許可した後だけです。ほかのサイトは、この Den のどのページも自分のページの中に表示できません。",
+      "エージェントのペインを表示できるウェブアプリのアドレス (1 行に 1 つ)。",
     "set.embed.key_minutes.d":
       "埋め込まれたエージェントのパネルが、もう一度許可を求めるまでに送信できる時間です。",
     "set.embed.context_max_kb.d":
-      "ほかのウェブアプリがエージェントと共有できるページの最大サイズです。これより大きいと拒否され、パネルに理由が表示されます。",
+      "ほかのウェブアプリがエージェントと共有できるページの最大サイズ。",
     "set.access.machine_name.d":
-      "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
+      "サインアウト中のページでのこのマシンの名前。空欄なら短いホスト名。",
     "set.access.pair.d":
       "GitHub を使わないデバイス用の、1 回限りのリンクと QR コードです。 __DEN_CLI__ web login --host <name>",
     "set.access.test_installs_here.d":
-      "起動元が知らせている、テスト用の人物を待っているこのコンピューター上のテスト用インストール。「テスト用の人物を設定」で、どのブラウザーからでも、あなた自身の許可でここから設定します。",
+      "このコンピューター上で、テスト用の人を待っているテスト用インストール。",
     "set.access.test_install.d":
-      "このインストールがテスト用として印付けされているかどうか: ディストリビューションの設定の web.test_install で、手作業で設定します。その場合に限り、ライブチェックはテスト用の人物としてサインインできます (あなたでも、エージェントでもありません)。ブラウザのこの画面で「テスト用の人物を設定」を押して一度作成します。",
+      "テスト用インストールかどうか。ライブチェックはテスト用の人としてサインインします。",
     "set.distribution.brand.d":
       "brand.name: ページ、CLI のバナー、ヘルプに表示される名前です。",
     "set.distribution.github_org.d":
