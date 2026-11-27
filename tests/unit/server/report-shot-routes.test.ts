@@ -26,7 +26,6 @@ import {
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import type { AddressInfo } from "net";
 import {
@@ -53,6 +52,9 @@ import {
 } from "../../../src/ui/server/request-guard.js";
 import { DeviceFlows } from "../../../src/ui/server/device-flows.js";
 import type { GithubDeviceClient } from "../../../src/shared/github-device.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 /** Everything that happened, in order: Hub's calls and gh's. */
 const events: string[] = [];
@@ -293,7 +295,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-shot-"));
+  state = tempDir("den-report-shot-");
   events.length = 0;
   hubSeen.length = 0;
   ghCalls.length = 0;

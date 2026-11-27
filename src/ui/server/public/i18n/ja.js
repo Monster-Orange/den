@@ -1399,6 +1399,13 @@
     "set.server.sessions_close_grace": "ターミナルを閉じるときの猶予",
     "set.server.sessions_close_grace.d":
       "ターミナルを閉じてから、強制的に止めるまでに、ターミナルが終了できる時間です。__DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_size_claim_grace": "ターミナルのサイズの保持",
+    "set.server.sessions_size_claim_grace.d":
+      "ターミナルのサイズを最後に決めたウィンドウが、接続が切れたあともそのサイズを保つ時間です。短い切断や再読み込みで、サイズがほかのウィンドウに移りません。0 にするとすぐに移ります。__DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    "set.server.sessions_size_leave_grace":
+      "ページを閉じたときのターミナルのサイズの保持",
+    "set.server.sessions_size_leave_grace.d":
+      "ターミナルのサイズを最後に決めたウィンドウが、そのページを閉じたり再読み込みしたりしたあとも、そのサイズを保つ時間です。再読み込みではサイズが保たれ、閉じたページのサイズはほかのウィンドウに移ります。ターミナルのサイズの保持の時間内に戻ると、そのウィンドウはサイズを取り戻します。その間にほかのウィンドウで入力や引き継ぎがあった場合は取り戻しません。0 にするとすぐに移ります。__DEN_CLI__ config sessions.size_leave_grace_seconds=3",
     "set.server.sessions_pty_close": "終了後にターミナルを閉じるまで",
     "set.server.sessions_pty_close.d":
       "ターミナルのプログラムが終了してから、そのターミナルを閉じるまでの時間です。0 ならすぐに閉じます。どちらの場合もスクロールバックは読めます。ターミナルホストが次に起動したときに反映されます。__DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -2478,6 +2485,20 @@
     "ap.det.agent_mode.running":
       "動作中です。Den はこのターンの後、同じ会話のまま {mode} で再起動します。",
     "ap.det.agent_mode.stopped": "停止中です。次は {mode} で起動します。",
+    "ap.do.den_env_hold_on":
+      "以前に起動した {count} 件のエージェントから、秘密らしい変数を外す (それぞれ次の起動時): {names}",
+    "ap.do.den_env_allow_keep":
+      "{names} をすべてのエージェントに残し、以前に起動した {count} 件のエージェントから残りを外す",
+    "ap.det.den_env_hold_on.sets":
+      "config/local/user.yml に agents.env_hold_existing: true を設定します。",
+    "ap.det.den_env_hold_on.next":
+      "各エージェントは次の起動時に失います。いま動いているものはそれまで保持します。",
+    "ap.det.den_env_hold_on.allow":
+      "agents.env_allow で残す名前はそのままです。",
+    "ap.det.den_env_allow_keep.adds":
+      "config/local/user.yml の agents.env_allow に {names} を追加します。ここのすべてのエージェントが受け取ります。",
+    "ap.det.den_env_allow_keep.on":
+      "agents.env_hold_existing: true を設定します。ほかの秘密らしい変数は、各エージェントの次の起動時に外されます。",
     "ap.det.agent_sandbox_set.self":
       "{agent} が自分自身のために求めています: 自分のサンドボックスを {value} にしたいとしています。",
     "ap.det.agent_sandbox_set.on":

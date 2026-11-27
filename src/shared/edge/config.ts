@@ -28,7 +28,6 @@
  *     include: edge/dynamic         # dynamic-config files, repo-relative
  *     mounts: { <host path>: <container path> }   # read-only
  *     networks: [<external network>]
- *     args: [--accesslog=true]
  *     proxy_protocol:               # a TCP-passthrough front proxy that
  *       trusted_ips: [172.18.0.5]   # sends the PROXY protocol (SEC-2a)
  *     upstream_idle_seconds: 1      # idle upstream connections kept (#67)
@@ -51,6 +50,7 @@ import { getActiveWorkspaces } from "../environment-manager/workspaces.js";
 import { assertDomain, DEFAULT_TRAEFIK_IMAGE } from "./render.js";
 import { tlsStrategyIds } from "./tls.js";
 import { readAccessLogConfig } from "./access-log.js";
+import { parseEdgeArgs } from "./edge-args.js";
 import type { EdgeConfig, EdgeTls } from "./types.js";
 
 import { product } from "../product.js";
@@ -78,6 +78,7 @@ interface RawEdge {
   args?: string[];
   proxy_protocol?: { trusted_ips?: unknown } | null;
   upstream_idle_seconds?: unknown;
+  address_recheck_seconds?: unknown;
   access_log?: unknown;
 }
 
@@ -135,9 +136,31 @@ function mounts(v: RawEdge["mounts"], root: string): Record<string, string> {
       throw new Error(
         `edge.mounts: "${host}" must map to an absolute container path, got "${String(target)}"`,
       );
+    if (inDynamicFolder(target))
+      throw new Error(
+        `edge.mounts: "${host}" → "${target}" is the edge's dynamic folder; Den writes it. Use edge.include for dynamic config of your own.`,
+      );
+    if (readsStaticConfig(target))
+      throw new Error(
+        `edge.mounts: "${host}" → "${target}" is where Traefik reads its static config; Den sets the edge's static config itself. Mount it somewhere else (e.g. under /etc/edge/).`,
+      );
     out[resolvePath(host, root)] = target;
   }
   return out;
+}
+
+function inDynamicFolder(target: string): boolean {
+  const t = path.posix.normalize(target).replace(/(.)\/+$/, "$1");
+  return t === "/etc/edge/dynamic" || t.startsWith("/etc/edge/dynamic/");
+}
+
+function readsStaticConfig(target: string): boolean {
+  const t = path.posix.normalize(target).replace(/(.)\/+$/, "$1");
+  const dirs = ["/etc/traefik", "/root/.config", "/"];
+  if (["/etc", "/root", ...dirs].includes(t)) return true;
+  return dirs.some((d) =>
+    /^traefik\.(toml|ya?ml)$/i.test(path.posix.relative(d, t)),
+  );
 }
 
 const TLS_KEYS: Record<string, string[]> = {
@@ -382,15 +405,32 @@ function computeEdgeConfig(root: string): EdgeConfig {
         ...list(user.networks, "networks"),
       ]),
     ],
-    args: [...list(team.args, "args"), ...list(user.args, "args")],
+    args: edgeArgs([...list(team.args, "args"), ...list(user.args, "args")]),
     proxyProtocolTrustedIps: proxyProtocolIps(
       user.proxy_protocol ?? team.proxy_protocol,
     ),
     upstreamIdleSeconds: upstreamIdle(
       user.upstream_idle_seconds ?? team.upstream_idle_seconds,
     ),
+    addressRecheckSeconds: addressRecheck(
+      user.address_recheck_seconds ?? team.address_recheck_seconds,
+    ),
     accessLog: readAccessLogConfig(user.access_log ?? team.access_log),
   };
+}
+
+function edgeArgs(args: string[]): string[] {
+  parseEdgeArgs(args);
+  return args;
+}
+
+export function addressRecheck(v: unknown): number {
+  if (v === undefined || v === null) return 60;
+  if (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 300)
+    return v;
+  throw new Error(
+    "edge.address_recheck_seconds must be a whole number of seconds, 1 to 300",
+  );
 }
 
 /** `edge.upstream_idle_seconds` (#67): a whole number, 1 to 600; default 1. */

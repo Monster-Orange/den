@@ -29,6 +29,9 @@ import {
   identityAnswer,
   identityKey,
 } from "../../../src/shared/den-identity.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 const HOME = fs.realpathSync(os.tmpdir());
 let stateDir = "";
@@ -45,7 +48,7 @@ let audits: string[] = [];
 let taken: ReturnType<typeof takeSetupGrant>[] = [];
 
 beforeEach(() => {
-  stateDir = fs.mkdtempSync(path.join(HOME, "den-816-held-"));
+  stateDir = fs.realpathSync(tempDir("den-816-held-"));
   entry = {
     id: installIdOf(stateDir),
     stateDir,

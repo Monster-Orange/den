@@ -1297,11 +1297,38 @@ later plugins.
   sends it on every request to Den's web route. Den believes what the edge
   says about a client only with it: without it, a request on the edge
   hostname signs in, this machine's included. An edge set up before 0.4.48
-  gets it at Den's next start (only `dynamic/edge.yml` is rewritten;
+  gets it at Den's next start (only Den's dynamic file is rewritten;
   Traefik reloads it, nothing restarts). `edge up --rotate-proof` makes a
   new one, and the old one stops working at once. Doctor's "Edge proof"
   line (`doctor --json`: check `edge_proof`) says whether the edge carries
-  it; the secret itself is never printed or logged.
+  it; the secret itself is never printed or logged. A proof from an older
+  version proves nothing, even when Den can't replace it (a read-only
+  state dir): doctor says so. The middleware that adds it has a name made
+  from the proof, so only Den's own route can use it: a Docker-label
+  router can't, and `edge.include` files and `edge.mounts` into the
+  dynamic folder that would are refused.
+- **Den's dynamic file is read first.** Traefik reads the dynamic folder
+  in name order and keeps the first definition of a name, so Den writes
+  its routes to `dynamic/000-den.yml` (an older `dynamic/edge.yml` is
+  moved there at the next start or edge up). Edge up refuses an
+  `edge.include` file that would sort before it, or that defines a
+  router, service, middleware or servers transport named like one Den
+  renders (`route-<name>`, `to-https`, `den-upstream`, anything starting
+  `den-`), naming the file and the key.
+- **An edge with Traefik's API on is recreated at Den's start.** If the
+  running edge's command turns the API on (one started before Den
+  refused it in `edge.args`), Den stops it before it writes any proof,
+  then recreates it without the API and with a new proof. If the stop or
+  the recreate fails, Den believes nothing through the edge (everyone
+  signs in) until `edge up` succeeds, and doctor's "Edge proof" line says
+  why.
+- **Den knows its edge by its container.** It believes the edge
+  hostname only from loopback or the edge container's own addresses: the
+  running container named `<org>-edge` that also has this state dir's
+  `den.edge.root` label and the `den.edge.org` label. It reads them again
+  every `edge.address_recheck_seconds` (default 60, 1 to 300), on a
+  request from any other address, and after edge up; with nothing read
+  for twice that, loopback only.
 - **A recreated edge keeps its routes.** After edge up creates, recreates
   or starts the edge, it rejoins the routed networks of every running stack
   whose routes file (`dynamic/stack-<project>.yml`) is in its state dir,
@@ -2618,8 +2645,21 @@ user, and the CLI does that for you:
   loopback and the Docker ranges (`127.0.0.1/32`, `::1/128`,
   `172.16.0.0/12`, `192.168.65.0/24`), never `forwardedHeaders.insecure`,
   so a client can't hand the edge an `X-Forwarded-For` of its own. An
-  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` is
-  dropped, and `edge up` says so.
+  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` (one
+  dash or two) is dropped, and `edge up` says so.
+- **`edge.args` is an allow-list.** It may set the access log (not its
+  `filePath` or `fields.headers`), `log.level` (INFO or above),
+  `log.format`, `log.noColor`, `core.defaultRuleSyntax`, `global.*`
+  telemetry, the web and websecure entrypoints' transport timeouts,
+  `serversTransport` timeouts and `providers.providersThrottleDuration`.
+  Anything else (the API, a static config file, providers, entrypoints,
+  tracing, metrics, a bare value) is refused, with a line naming the
+  key, in any spelling: one dash or two, `=` or a space. Den sets the rest
+  of the edge's static config itself. The entrypoints' `readTimeout` and
+  `idleTimeout` must be above 0, and `providersThrottleDuration` at most
+  5s. A refused entry fails the config read, so the edge page, doctor,
+  stacks and the server's edge checks all stop on it until it is removed;
+  the line says which entry.
 - **A TCP passthrough in front of the edge** (a gateway that publishes
   `:443` and passes TLS through) hides the client: the edge sees the
   gateway's address. Have the gateway send the PROXY protocol, and list it
@@ -6439,6 +6479,100 @@ Support/den/gate-slots` on macOS, else `$XDG_STATE_HOME/den/gate-slots`
   grant carries the minutes waited, a wait the slots it waits behind, so
   Coach can count time lost to waiting. Ending a slot from a page also
   writes this install's audit, pointing to the slot log.
+
+## Secrets held out of agents
+
+Den holds secret-looking environment variables out of agent sessions
+(issue 974). It works in two layers:
+
+- **The session's own environment.** Every runtime gets this layer. A
+  variable whose name matches the list is left out of what the session
+  starts with.
+- **Each shell command.** A person's shell profile can set a token again
+  (zsh reads `~/.zshenv` for every shell). For den-claude agents, Den
+  writes `env-hold.sh` in the agent's files folder at every start. Claude
+  Code runs it before each Bash command, after the profile. It unsets every
+  matching variable, exported or not. Other runtimes get the first layer
+  only; `den doctor` says which runtimes get both.
+
+**Which installs hold them back.** A personal install (the default,
+issue 1391: one person's own machine) holds nothing back until
+`agents.env_hold` is set in `user.yml`; `den doctor` says it is off there.
+A strict install (`install_mode: strict`, in the distribution's `den.yml`
+or the person's `user.yml`) holds the default list back. The guard below
+is on in both.
+
+The match ignores case, and a name may end in `_` and a digit
+(`*_KEY` matches `AWS_KEY_2`). The default list is `*_TOKEN`, `*_SECRET`,
+`*_KEY`, `*_PASSWORD` and `OP_SESSION_*`. Den keeps only the exact names it
+set for that launch (its actor token file, its install location, and the
+signing settings it gave git). A `DEN_` prefix is no exemption. A person's
+credential (`DEN_PERSON_TOKEN`, `DEN_TEST_PERSON`, or a value holding a
+person token) is always unset, even when an allow-list names it.
+
+The settings live in `config/local`, which agents can't edit:
+
+```yaml
+# config/local/user.yml
+agents:
+  env_hold: ["*_TOKEN", "*_SECRET", "*_KEY", "*_PASSWORD", "OP_SESSION_*"]
+  env_allow: [OP_SERVICE_ACCOUNT_TOKEN] # every agent keeps these
+  env_allow_agents: # one agent keeps these
+    release-bot: [NPM_TOKEN]
+  env_guard: true # mask secret-looking values in env, printenv, set and the like
+  env_hold_existing: false # true: agents from before the hold get it too
+
+# config/local/workspaces.yml
+north:
+  agents:
+    env_allow: [NORTH_DEPLOY_KEY] # this project's agents keep these
+```
+
+The three allow levels add up. `env_hold: []` holds nothing back on any
+install, and `den doctor` says so. These keys in a distribution's `den.yml` are refused,
+with a message naming `user.yml`.
+
+**The guard.** These commands run, and show the values of secret-looking
+names masked, as `NAME=•••• (held)`: `env`, `printenv`, `printenv NAME`,
+`set`, `export -p`, `declare -x` and `-p`, `typeset -x` and `-p`, and the
+same through `builtin`, `command`, `\env` or `/usr/bin/env`, anywhere in a
+pipeline or list. A PreToolUse hook rewrites the printing part into
+`{ <it>; } | <Den's masker>`, ahead of any pipe or redirect, so a later
+stage or a file (`env > f`) gets the masked text too. The masked names are
+the hold's list (`agents.env_hold`, else the default, on a personal
+install too) and a person's credentials, by name or by value. A mask keeps
+no part of a value: no prefix, suffix or length.
+
+The guard stops a secret being printed into a transcript by accident. It
+is not a boundary: an interpreter, `ps eww`, `$VAR` or `eval` still read a
+value, and the masking covers only the commands listed. The hold is the
+real control, on a strict install: a held name isn't in the session at
+all. `env_guard: false` turns the guard off.
+
+The script reads the shell's own variable list (zsh's parameters, bash's
+`compgen -v`, and `set` in a plain sh such as dash), so it finds a
+variable the profile set without exporting it.
+
+**Limits.**
+
+- A Claude Code SessionStart hook that writes its own env file runs after
+  `env-hold.sh`, so a variable such a hook exports is not held back.
+- Den keeps its own `GIT_CONFIG_COUNT`, `GIT_CONFIG_KEY_n` and
+  `GIT_CONFIG_VALUE_n` by name. A profile that sets `GIT_CONFIG_COUNT`
+  higher than Den's has its extra keys held back, and git then stops on the
+  missing key. Remove that from the profile, or give git those settings in
+  a config file.
+
+**Rollout.** Agents started after the update have the hold. An agent from
+before keeps its environment until a person turns it on. Den asks once in
+the bell with two held writes, each run only by the person's own Allow:
+
+- **Keep these** adds the named variables to `agents.env_allow` and turns
+  the hold on. A person's credential is never offered.
+- **Remove** sets `agents.env_hold_existing: true`.
+
+Each agent changes at its next start. Until then, `den doctor` lists each
+agent from before the hold with the names it still gets.
 
 ## Pinning and upgrading
 

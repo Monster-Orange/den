@@ -4,8 +4,25 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.91] - unreleased
+## [0.4.92] - unreleased
 
+### Changed
+
+- The edge runs with Traefik's API and dashboard off. `edge.args` now takes only the options Den lists: any other entry is refused, with a line naming it. `edge.include` files that sort before Den's own file or reuse its names, and `edge.mounts` into the dynamic folder, are refused too. Den makes a new edge proof at its first start after the update. See docs/distributions.md.
+
+- After you pick an agent, clicking or pressing Tab somewhere else in the moment its terminal becomes ready no longer pulls the keyboard back into that terminal. The move into the terminal waited one screen frame (about 16 ms, longer on a busy page) and didn't check whether you'd gone elsewhere, so keys you typed afterwards went to the agent. It has been there since at least 0.4.40; it's not new in 0.4.91.
+
+- A terminal host that has shut down no longer puts back a state folder that was removed. A session that ended just after the host stopped used to recreate `<state>/sessions` to save its record. While the folder is there, that record is still saved.
+
+- Agents can be kept from seeing secret-looking environment variables (`*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, `OP_SESSION_*`): set `agents.env_hold` in config/local/user.yml, or use a strict install, which holds them back by default. A name an agent needs goes in `agents.env_allow`. `env`, `printenv` and `set` in an agent's shell show those values masked. Agents started before keep theirs until you pick Keep these or Remove in the bell, and `den doctor` lists what is held back, by name only. (issue 974) It was held back from 0.4.91: on 0.4.91-dev.1 its live check (gate/974) failed because of a bug in the check itself (it sent multi-line shell probes, and read a cut-off copy of settings.json), not in the env hold. The fixed check is the proof: on that same build it passed with the hold on and with it off.
+
+- Every link Den gives to the server agent (a bell row, its question, a notification, the link in its own replies, its held write's Allow) opens the server agent's page. Before, each opened an Agents page for a project nobody can see, with nothing to answer (issue 1811)
+
+- Agents page: after an agent restarts, its pane no longer shows the old session's terminal size while the new session connects.
+
+## [0.4.91] - 2026-11-26
+
+- With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)
 - An install reached through a symlinked folder (its `node_modules` a link to another folder) no longer restarts its terminal host, ending open terminals, at every Den start. Den now compares the terminal module the host loaded and the one installed by the file they resolve to, not by how the path is spelled. A module that's gone or replaced still restarts the host.
 - When a request is slow, the server's log now says which route, who asked and how long it took, and a blocked server logs how long it was stuck. Both thresholds are in Settings › Server (`server_log.slow_request_ms`, 3 s, and `server_log.event_loop_lag_ms`, 1 s). The lines never include the address, query, headers or body, and each is written at most once a minute.
 - Two installs on one computer no longer share Hub state by accident. Each install keeps its Hub token in its own slot for each Hub (`<state>/hub/token-<slot>`, or a 1Password item or Doppler key with the slot in its name), so switching Hubs never overwrites the old Hub's token, and a crash mid-switch leaves the old Hub as it was. A token kept the old way keeps working until the next Connect. When two copies of Den share one state folder and you connect this one to another Hub, Connect offers "Give this install its own state folder": one Allow, and Den makes a new, empty folder for this install, restarts on it and carries on with Connect. Nothing is copied or moved, and the other copy keeps its folder. Doctor warns while a folder is shared. Hub lists the install by your machine's name (Settings › Access › Machine name), with a short id when another install is on this computer. A held `hub_link` or `hub_project_create` asked before a Hub change is refused at the Allow. (issue 1632)
@@ -21,6 +38,7 @@ config and manifest changes a distribution must make to move to it under
 - A self-update's pin no longer gets stuck when the remote has a branch named `den`. Den checks the remote's branches first and pushes the pin under a name that can't clash (`den-pin-<version>`), and the bell, doctor and `release_status` say which name and why. A failed pin push now shows in `release_status`, and Den tells its server agent. After the next restart the "back on" line names a pin that was never pushed.
 - You can cap how many agents one project runs at once with **Agents per project** (`agents.max_per_project`) in Settings or `config`. It's off by default (0 is no limit beyond Agents at once). A project can set a lower cap of its own in workspaces.yml. A start past the cap is refused, and says which cap holds it and how to raise it.
 - A project sets its own lower cap in its Settings (**Agents per project**). An agent can ask for one with `project_agent_cap`: you Allow it, and raising it needs your own Allow. When an agent does not come back after a restart because a cap is full, the bell says so and names the cap.
+- An agent a cap kept from coming back after a restart now waits in the restart queue and starts by itself once a place frees, up to **agents.resume.max_wait_seconds**. While it waits, its status says which cap holds it.
 - An agent can ask to move this install to another Hub with `hub_connect`, and nothing changes until you Allow it and sign in to the new Hub. Den keeps the Hub it uses now until the new one answers; if the sign-in fails, Den stays where it was and the bell says why. A switch you never sign in to ends after `hub.switch_days` (7 by default), and Settings › Hub says so.
 - More of Den's CLI has a `--json` form, for scripts and checks: `agents accounts list --json` (no token or account ref in it), `edge route --for <proxy> --json`, and `sessions start --json`. `doctor --json` also gives a check's notes, the lines the plain doctor marks healthy. The plain text is unchanged.
 - An agent that isn't Claude can say what it's doing by printing an OSC 7501 status (`ESC ] 7501 ; state=<idle|working|done|blocked|error>`). `blocked` and `error` mark it waiting for you; `working` and `idle` show on its row in the Agents list. A printed status never hides a real wait.
@@ -49,7 +67,7 @@ config and manifest changes a distribution must make to move to it under
 - An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 - A relaunched agent's first prompt now says the current local time, so it counts times and ETAs from now, not from its handoff or older messages.
 - Doctor says when agents commit without a signing key. A self-update's pin commit is signed with the agents' key when one is set. When no key is set and the branch requires signed commits, the pin goes to a pull request instead of a push that would be refused, and the bell says why.
-- Agents page: after an agent restarts, its pane no longer shows the old session's terminal size while the new session connects.
+- Den's own tests: the helper that starts a test server now reads a server's log file when its output goes there. A port another test took is tried again on a new port, and any other failed start shows the log's last 40 lines. (issue 1845)
 
 ## [0.4.90] - 2026-11-25
 
