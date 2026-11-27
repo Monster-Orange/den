@@ -24,6 +24,7 @@ import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { agentPrincipalOf, auditActorOf } from "./request-guard.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export const HUB_LINK_ALL_PATH = "/api/hub/link-suggestions";
 
@@ -273,7 +274,7 @@ export async function defaultLinkAllDeps(
 }
 
 /** Where a person picks: Settings › Agents › Unclear matches. */
-export const HUB_PICK_LINK = "/settings#agents.hub_link_all";
+export const HUB_PICK_LINK = settingsLink("hub", "agents.hub_link_all");
 
 const PICK_SUBJECT = "record:hub-pick";
 

@@ -24,12 +24,13 @@ import {
   throughServer,
   type PersonServer,
 } from "./person-server.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export const HUB_LINK_USAGE =
   "hub link -p <project> [<hub project> | --none] [--json] | hub link --suggested [--json]";
 
 /** Where Settings links each suggestion (#68; Unclear matches, issue 167). */
-export const HUB_LINK_ALL_PAGE = "/settings#agents.hub_link_all";
+export const HUB_LINK_ALL_PAGE = settingsLink("hub", "agents.hub_link_all");
 
 export interface HubLinkDeps {
   env?: Record<string, string | undefined>;

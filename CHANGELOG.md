@@ -14,6 +14,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Settings opens as a pop-up over the page you are on, from the rail's Settings item or any link to Settings: panes grouped on the left (Look and feel, Projects and agents, Access and safety, This install), a search over pane names and setting labels (never values), the open pane in the address as `?settings=<pane>`, and Back closes it. Your notifications, devices and sign-out are in Account; Settings links there. A browser that isn't signed in sees the panes read-only. (issue 1926)
 
+- Links that Den's bell items, tools and command line give for a setting open the Settings pop-up over Home, on that setting's pane and row (`/?settings=hub&at=agents.hub`). Links to your notifications open Account. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed

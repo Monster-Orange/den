@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import { hubUrlProblem } from "../../shared/hub.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export interface HubSwitch {
   to: string;
@@ -75,7 +76,7 @@ export function clearHubSwitch(stateDir: string): void {
 }
 
 export const HUB_SWITCH_SUBJECT = "record:hub-switch";
-const SETTINGS_HUB = "/settings#agents.hub";
+const SETTINGS_HUB = settingsLink("hub", "agents.hub");
 
 export function switchBell(s: HubSwitch, why?: string): BellItem {
   return why

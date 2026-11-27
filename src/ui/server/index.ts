@@ -1838,6 +1838,7 @@ import {
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { settingsLink } from "../../shared/settings-links.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -7567,7 +7568,7 @@ async function handleRequest(
     (pathname === "/local-dev" || pathname === "/local-dev.html") &&
     url.searchParams.has("settings")
   ) {
-    res.writeHead(302, { Location: "/settings#editor" });
+    res.writeHead(302, { Location: settingsLink("editor") });
     res.end();
     return;
   }

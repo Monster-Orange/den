@@ -30,6 +30,7 @@ import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { hubMatchOf } from "./hub-link-all-routes.js";
 import { agentPrincipalOf, auditActorOf } from "./request-guard.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export const HUB_REVIEW_PATH = "/api/hub/connect-review";
 
@@ -465,7 +466,7 @@ export async function reviewCount(
 }
 
 /** Where the bell's pick item opens: Settings › Hub, Connect's review. */
-export const HUB_REVIEW_LINK = "/settings#agents.hub";
+export const HUB_REVIEW_LINK = settingsLink("hub", "agents.hub");
 
 /**
  * Issue 646: what Connect runs once connected. Nothing is linked: the bell
