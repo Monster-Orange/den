@@ -10073,6 +10073,10 @@ async function handleRequest(
   // (actor "person-browser"); else, on loopback, this server start's.
   // Beyond loopback without a session there is none to hand out (every
   // route there needs a session first).
+  if (pathname === "/api/account" && req.method === "GET") {
+    res.setHeader("Cache-Control", "no-store");
+    return sendJson(res, { owner: adoptOwner(req).ok, adminHref: null });
+  }
   if (pathname === "/api/session" && req.method === "GET") {
     if (!sessionRequestAllowed(req, GUARD))
       return sendJson(
