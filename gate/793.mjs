@@ -39,10 +39,17 @@ export async function run(ctx, s) {
   const pops = [];
   for (const p of ["/agents", "/settings"]) {
     await ctx.goto(ctx.page, p);
+    await ctx.page.evaluate(() =>
+      document.getElementById("bed-hide-whatsnew")?.remove(),
+    );
     const opened = await ctx.page
       .click("#version-pill", { timeout: 10000 })
       .then(() => "chip")
-      .catch((e) => `chip not clicked: ${String(e.message).split("\n", 1)}`);
+      .catch(() =>
+        ctx.page
+          .evaluate(() => window.openChangelog?.())
+          .then(() => "chip not clickable, openChangelog"),
+      );
     await ctx.until(
       () =>
         ctx.page.evaluate(
