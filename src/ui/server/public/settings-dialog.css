@@ -35,6 +35,7 @@
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--muted);
+}
 @media (max-width: 560px) {
   .setd.dn .set-row {
     grid-template-areas: "l" "d" "t" "c" "s";
