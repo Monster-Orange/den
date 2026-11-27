@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/kit/fonts.css" />
     <link rel="stylesheet" href="/kit/tokens.css" />
     <link rel="stylesheet" href="/kit/base.css" />
+    <link rel="stylesheet" href="/kit/pager.css" />
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <link rel="stylesheet" href="/persona-ui.css" />
     <link rel="stylesheet" href="/vendor/xterm.css" />
@@ -1216,7 +1217,8 @@
         white-space: pre-wrap;
       }
       .agempty {
-        border: 1px dashed var(--border-strong);
+        border: 1px solid var(--border);
+        background: var(--sunken);
         border-radius: var(--radius);
         display: grid;
         place-items: center;
@@ -1226,11 +1228,12 @@
       }
       .signin,
       .agnote {
-        margin: 8px 12px;
-        padding: 8px 10px;
-        border: 1px dashed var(--border-strong);
+        margin: var(--space-2) var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--border);
         border-radius: var(--radius-button);
-        font-size: 12.5px;
+        background: var(--sunken);
+        font-size: var(--fs-xs);
         color: var(--muted);
       }
       /* Issue 750: By project | By group, at the top of the list: centred,
