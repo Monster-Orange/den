@@ -5761,6 +5761,7 @@
     },
     {
       "when": [
+        "src/shared/time-zone.ts",
         "src/ui/server/time-zone-pref.ts"
       ],
       "run": [
