@@ -158,6 +158,7 @@ beforeAll(async () => {
       }
     });
   });
+  server.keepAliveTimeout = 0;
   await new Promise<void>((r) => server.listen(0, "localhost", r));
   base = `http://localhost:${(server.address() as AddressInfo).port}`;
 });
