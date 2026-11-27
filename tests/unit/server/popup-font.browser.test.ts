@@ -86,7 +86,6 @@ beforeAll(async () => {
     path.join(dist, "config", "local", "workspaces.yml"),
     "active: [default]\nfocus: default\nworkspaces:\n  default:\n    services:\n      shop:\n        mode: dev-managed\n        path: /nowhere/shop\n",
   );
-  // The catalog names it, so it is a service (the graph draws its card).
   fs.writeFileSync(
     path.join(dist, "config", "local", "service-catalog.yml"),
     "shop:\n  gh: acme/shop\n",
@@ -397,7 +396,6 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
       await p.context().close();
     }, 60_000);
 
-    // Issue 837: the graph's details, popped out, on the kit's dialog.
     it("the graph's popped-out details", async () => {
       if (!browser) return;
       const p = await pageOn(theme, "/graph?ws=default");

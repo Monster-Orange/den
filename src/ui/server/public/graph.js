@@ -792,7 +792,6 @@ function openDetail(sel, keepTab) {
     return;
   }
   if (st.popped && pop) {
-    // The kit's heading names what is shown (the panel's own is left out).
     pop.dialog.querySelector(".dk-hd h2").textContent =
       target.dataset.title || gT("gr.details", "Details");
   }
@@ -802,11 +801,6 @@ function openDetail(sel, keepTab) {
     requestAnimationFrame(() => keepVisible(sel));
   }
 }
-/**
- * Issue 837: popped out, the details are the kit's dialog (its frame,
- * Close, Esc, focus, Report); the graph's panel is drawn in its body, and
- * Dock (the header's button) puts it back at the side.
- */
 let pop = null;
 function cardOf(sel) {
   if (!sel || !host) return null;
@@ -839,7 +833,6 @@ function popFrame(sel) {
       onClose: (value) => {
         if (pop !== frame) return;
         pop = null;
-        // Esc or Close shuts the details; Dock only moves them.
         if (value !== "dock") closeDetail();
       },
     },
@@ -849,7 +842,6 @@ function popFrame(sel) {
     if (e.target.closest?.("[data-dk]")) return;
     onClick(e);
   });
-  // Esc closes an open menu first, as at the side (before the kit's Esc).
   d.addEventListener(
     "keydown",
     (e) => {
@@ -1010,8 +1002,6 @@ async function recheck(services) {
 const menuOwner = new WeakMap(); // menu -> its More button
 const ownMenu = new WeakMap(); // More button -> its menu, while in the layer
 function menuLayer() {
-  // Popped out, the menu goes in the kit's dialog: a modal's top layer
-  // covers anything on <body> (issue 837).
   const home = pop?.dialog ?? document.body;
   let l = home.querySelector(":scope > .dg-layer");
   if (!l) {
@@ -1048,7 +1038,6 @@ function placeMenu(more, m) {
   const layer = menuLayer();
   layer.appendChild(m);
   const r = more.getBoundingClientRect();
-  // In the pop-up, fixed is from the dialog's box (it is transformed).
   const box =
     layer.parentElement === document.body
       ? {

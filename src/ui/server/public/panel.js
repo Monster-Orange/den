@@ -757,8 +757,6 @@ export function renderPanel(el, sel) {
         : "";
   const popLabel = gw("gr.popout", "Expand to pop-up");
   const title = kind === "repo" ? x.repo : x.name;
-  // Issue 837: popped out, the kit's dialog has the heading, Dock, Close
-  // and Report; the panel keeps the rest.
   el.dataset.title = title;
   const hbtns = st.popped
     ? `<span class="dg-hbtns">${pinButton(kind === "repo" ? x.repo : x.id)}</span>`

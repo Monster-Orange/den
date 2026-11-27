@@ -1,15 +1,3 @@
-/**
- * Issue 837: the graph's details, popped out, are the kit's dialog
- * (dialogHtml and mountDialog, through dialog-den.js), not a full-window
- * layer of the graph's own. It keeps what the pop-up did (the same panel:
- * tabs, actions, Dock back to the side) and gets the kit's frame: a modal
- * <dialog> named by the service, its Close, Esc, focus in and back to the
- * card, and Report inside it. Its words are the page's language.
- *
- * A throwaway distribution (one project, repo kettle with one service);
- * health is held back so nothing changes under the test.
- * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
 import * as fs from "fs";
@@ -45,7 +33,6 @@ beforeAll(async () => {
   const repo = path.join(tmp, "repos", "kettle");
   write(path.join(root, "den.yml"), "product:\n  name: den\n");
   write(path.join(root, "config", "den.yml"), "environments: [local]\n");
-  // A repo is a service only once the catalog names it.
   write(
     path.join(root, "config", "local", "service-catalog.yml"),
     "kettle:\n  gh: acme/kettle\n",
@@ -95,27 +82,20 @@ type Win = {
 };
 
 const POP = "dialog#dg-pop";
-// The one service's card: a group, named, keyed by its service id.
 const CARD = '[role="group"][data-id]';
-// The side panel's Expand (the pop-up's own Dock is inside the dialog).
 const SIDE_POP = "[data-popout]:visible";
 
-/** In the page: the side panel shows (its Expand, outside the dialog). */
 const SIDE_SHOWN_JS = `[...document.querySelectorAll("[data-popout]")].some((b) => !b.closest("dialog") && b.checkVisibility())`;
 
-/** The Graph page, signed in, in `lang`, with a card's details open. */
 async function details(lang = "en"): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
   await signIn(ctx, path.join(tmp, "home", ".den"), base);
-  // What's new stays shut: with no release notes there is nothing to open.
   await ctx.route("**/api/changelog", (r) => r.fulfill({ json: [] }));
   const p = await ctx.newPage();
-  await p.route(/\/api\/health(\/stream)?(\?|$)/, () => {
-    /* never answered */
-  });
+  await p.route(/\/api\/health(\/stream)?(\?|$)/, () => undefined);
   await p.goto(`${base}/settings`);
   await p.waitForFunction(() => !!(window as unknown as Win).denShell?.api);
   await p.evaluate(
@@ -180,7 +160,6 @@ describe("issue 837: the graph's popped-out details on the kit's dialog", () => 
     if (!browser) return;
     const p = await details();
     await popOut(p);
-    // Another tab (a repaint): wait for it to be the chosen one.
     const id = await p.evaluate((sel) => {
       const t = document.querySelector<HTMLElement>(
         `${sel} [role="tab"][aria-selected="false"]`,
@@ -235,7 +214,6 @@ describe("issue 837: the graph's popped-out details on the kit's dialog", () => 
         language: "en",
       }),
     );
-    // The catalog's own Spanish for the key.
     const es = fs.readFileSync(
       path.join(ENGINE, "src/ui/server/public/i18n/es.js"),
       "utf8",

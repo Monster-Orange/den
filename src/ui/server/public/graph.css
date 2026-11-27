@@ -660,8 +660,6 @@ path.dg-flow.cross {
 .dg-panel[hidden] {
   display: none !important;
 }
-/* Issue 837: popped out, the panel is drawn in the kit's dialog (its
-   frame, backdrop, Close and Report); the body holds the same panel. */
 .dk-dlg.dg-pop {
   width: min(720px, calc(100vw - 32px));
 }

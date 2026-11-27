@@ -16,7 +16,6 @@ import type { BrowserContext, Page } from "playwright";
 export const OWN_REPORT = [
   "#den-bell-pop",
   ".den-svp",
-  // Issue 837: the graph's popped-out details, on the kit's dialog.
   "dialog#dg-pop",
   "#den-lock-pop",
   ".den-agd",

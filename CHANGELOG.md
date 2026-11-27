@@ -6,6 +6,8 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+- On the Graph page, a service's details popped out are now a dialog like Den's other pop-ups: named by the service, with Close, Esc, Report, and the keyboard back on the card when it shuts. Dock puts them back at the side.
+
 ## [0.4.92] - unreleased
 
 ### Changed
