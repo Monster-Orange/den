@@ -151,24 +151,28 @@
     --den-pager-h: var(--tap);
   }
 }
-@container den-pager (max-width: 900px) {
-  [data-den-pager="pages"] .den-pager-side {
-    display: none;
-  }
-  [data-den-pager="pages"] .den-pager-opts {
-    display: inline-flex;
-  }
-}
 @container den-pager (min-width: 601px) and (max-width: 760px) {
   [data-den-pager="pages"] > .den-pager-row {
     flex-wrap: wrap;
   }
   [data-den-pager="pages"] .den-pager-range {
     order: 3;
+    flex: 1 1 auto;
+  }
+  [data-den-pager="pages"] .den-pager-ctl {
     flex-basis: 100%;
+  }
+  [data-den-pager="pages"] .den-pager-side {
+    order: 4;
   }
 }
 @container den-pager (max-width: 600px) {
+  [data-den-pager="pages"] .den-pager-side {
+    display: none;
+  }
+  [data-den-pager="pages"] .den-pager-opts {
+    display: inline-flex;
+  }
   [data-den-pager="pages"] > .den-pager-row {
     justify-content: center;
     gap: var(--space-1);
