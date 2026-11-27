@@ -426,10 +426,11 @@ async function refresh() {
       .then((r) => (r.ok ? r.json() : d))
       .catch(() => d);
   const svc = S.open ? serviceOf(S.open.id) : null;
+  S.agentsAsked = svc ? String(agentsAsk(svc)) : "";
   const [last, daemons, sess] = await Promise.all([
     get("/api/runs/last", null),
     get("/api/service/daemons", []),
-    svc ? get(`/api/sessions?${agentsAsk(svc)}`, null) : null,
+    svc ? get(`/api/sessions?${S.agentsAsked}`, null) : null,
   ]);
   S.lastRuns = last?.repos ?? S.lastRuns;
   if (Array.isArray(daemons)) {
@@ -729,6 +730,8 @@ export function initServicePanel(deps = {}) {
       if (r?.repo && r.service) S.results.set(`${r.repo}/${r.service}`, r);
     settleBusy();
     sync();
+    if (S.open && String(agentsAsk(serviceOf(S.open.id))) !== S.agentsAsked)
+      void refresh();
   });
   window.addEventListener("den:pins", () => sync());
   // D27: a press inside the open panel holds its repaint until it ends.
