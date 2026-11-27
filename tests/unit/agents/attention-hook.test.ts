@@ -170,11 +170,15 @@ describe("at launch", () => {
       "Notification",
       "PermissionRequest",
       "PostToolUse",
+      "PreToolUse",
       // Issue 327: a new session clears a dialog from before it.
       "SessionStart",
       "Stop",
       "UserPromptSubmit",
     ]);
+    expect(
+      (hooks!.PreToolUse as { matcher?: string }[]).map((e) => e.matcher),
+    ).toEqual(["Agent|Task"]);
   });
 
   it("an agent with Den's hooks gets the sandbox's refusal note, after a tool and after a failed one (issue 936)", () => {

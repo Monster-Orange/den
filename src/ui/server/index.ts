@@ -17,6 +17,7 @@ import {
   takeTestResolveLaunch,
   testInstallRestartEnv,
 } from "../../shared/test-install-launch.js";
+import { patchSkillPacksBody, skillPacksData } from "./skill-pack-settings.js";
 import { maskSecretLine } from "../../shared/secret-values.js";
 import { createLogRing } from "./log-ring.js";
 import {
@@ -124,6 +125,10 @@ import {
 } from "./test-person-held.js";
 import { auditConfig } from "../../shared/config-audit.js";
 import { userConfigPath } from "../../shared/den-config.js";
+import {
+  ownProjectCap,
+  setProjectCap,
+} from "../../shared/agents/project-cap.js";
 import { readWebSecret } from "../../shared/web/web-secret.js";
 import {
   TEST_ANNOUNCE_ENV_KEY,
@@ -145,10 +150,23 @@ import {
 } from "../../shared/test-resolve.js";
 import * as path from "path";
 import semver from "semver";
-import { edgeProofChecker } from "../../shared/edge/proof.js";
+import { edgeProofChecker, holdEdgeTrust } from "../../shared/edge/proof.js";
 import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
 import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import {
+  claimStateDir,
+  giveOwnStateDir,
+  ownStateDirProblem,
+  stateDirShared,
+  writeConnectNext,
+} from "../../shared/state-folder.js";
+import {
+  checkStateFolderOwn,
+  runStateFolderOwn,
+  type StateFolderOwnDeps,
+} from "./state-folder-held.js";
+import {
+  markEdgeProofRotated,
   rotateEdgeProofAtStart,
   syncEdgeProof,
 } from "../../shared/edge/runtime.js";
@@ -286,6 +304,8 @@ import {
   readServerAgentConfig,
   migrateSelfUpdate,
   readAgentsConfig,
+  setUserEnvHoldExisting,
+  addUserEnvAllow,
   setUserAgentSandbox,
   setUserSandboxOn,
   TOKEN_PEER_WAIT_MS_DEFAULT,
@@ -440,7 +460,6 @@ import {
   operatorActOf,
   bindRefusal,
   checkRequest,
-  isEdgePeer,
   isDockerBridgeAddress,
   isLoopbackAddress,
   isLoopbackBind,
@@ -450,6 +469,7 @@ import {
   sessionRequestAllowed,
   setPrincipal,
   signinMessage,
+  storedPrincipal,
   type GuardContext,
   type GuardResult,
   type Via,
@@ -546,7 +566,14 @@ import {
   TEST_PERSON_HEADER,
   testPersonCredentialRefusal,
 } from "../../shared/test-person.js";
-import { routeClass } from "./route-classes.js";
+import { routeClass, routePattern } from "./route-classes.js";
+import {
+  callerKind,
+  lagLine,
+  lagWatch,
+  rateLimit,
+  slowRequestLine,
+} from "./slow-log.js";
 import { envName, readEnv } from "../../shared/profile.js";
 import {
   clearSessionCookies,
@@ -633,6 +660,7 @@ import {
 } from "../../shared/agents/signin-accounts.js";
 import { getRuntime, runtimeIds } from "../../shared/agents/runtimes.js";
 import { accountNameOf } from "../../shared/agents/catalog.js";
+import { agentKeyInForce } from "../../shared/agents/git-signing.js";
 import { serviceJobState } from "../cli/doctor-where.js";
 import { cmdService, detachedRunner } from "../cli/service-command.js";
 import {
@@ -1080,6 +1108,55 @@ const toWebLog = webLogWriter({
   path: () => webLogPath(getStateDir(), product().cli),
 });
 
+const slowOnce = rateLimit({ windowMs: 60_000, now: Date.now });
+
+function noteSlowRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  ms: number,
+  left = false,
+): void {
+  if (ms < SERVER_LOG_LIMITS.slow_request_ms.min) return;
+  if (ms < serverLogSetting(readUserConfigSafe(), "slow_request_ms")) return;
+  if (String(res.getHeader("content-type") ?? "").includes("event-stream"))
+    return;
+  const method = (req.method ?? "GET").toUpperCase();
+  const pattern = routePattern(method, pathname);
+  const more = slowOnce(`${method} ${pattern}`);
+  if (more === null) return;
+  const caller = callerKind(storedPrincipal(req));
+  serverLog(
+    slowRequestLine({ method, pattern, ms, caller, more, left }),
+    "warn",
+  );
+}
+
+function readUserConfigSafe(): unknown {
+  try {
+    return readUserConfig();
+  } catch {
+    return null;
+  }
+}
+
+function startLagWatch(): void {
+  const lagOnce = rateLimit({ windowMs: 60_000, now: Date.now });
+  lagWatch({
+    everyMs: 250,
+    now: () => performance.now(),
+    setInterval,
+    clearInterval: (t) => clearInterval(t as NodeJS.Timeout),
+    onLag: (late) => {
+      if (late < SERVER_LOG_LIMITS.event_loop_lag_ms.min) return;
+      if (late < serverLogSetting(readUserConfigSafe(), "event_loop_lag_ms"))
+        return;
+      const more = lagOnce("lag");
+      if (more !== null) serverLog(lagLine(late, more), "warn");
+    },
+  });
+}
+
 function serverLog(line: string, kind: string = "info", actor?: string): void {
   const msg = maskSecretLine(line);
   pushLog(kind, msg, actor);
@@ -1484,7 +1561,12 @@ import {
   type HeldActions,
   type HeldCheck,
 } from "./approval-routes.js";
-import { heldLapsed, heldLost, syncHeldBell } from "./held-bell.js";
+import {
+  heldLapsed,
+  heldLost,
+  noteHeldWithdrawn,
+  syncHeldBell,
+} from "./held-bell.js";
 import { bellGateOverruns } from "./gate-overrun-bell.js";
 import {
   ISSUE_WRITE_PATH,
@@ -1501,6 +1583,15 @@ import {
   listRecords as listAgentRecords,
   readRecord as readAgentRecord,
 } from "../../shared/agents/records.js";
+import {
+  askEnvHold,
+  envAllowKeepOp,
+  envHoldOnOp,
+  wouldHold,
+} from "../../shared/agents/env-hold-rollout.js";
+import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
+import { shellEnvNames } from "../cli/doctor-env-hold.js";
+import { workspaceEntryRaw as workspaceEntryOf } from "../../shared/environment-manager/workspaces.js";
 import {
   askSandboxOn,
   legacyAgentIds,
@@ -1566,7 +1657,9 @@ import {
 import { lookupTimeouts } from "../../shared/proc-lookup.js";
 import { sessionRootPids } from "../../shared/person-here.js";
 import {
+  SERVER_LOG_LIMITS,
   serverLogMaxBytes,
+  serverLogSetting,
   serverLogWriter,
 } from "../../shared/server-log-file.js";
 import { denProcessPids, registerDenProcess } from "../../shared/den-procs.js";
@@ -1615,6 +1708,8 @@ import {
   startLogoutWatch,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
+import { SUBAGENT_START_PATH, handleSubagentStart } from "./subagent-routes.js";
+import { SubagentGate } from "../../shared/agents/subagent-gate.js";
 import { hostRestartOp } from "./host-restart-held.js";
 import {
   agentInputState,
@@ -1652,6 +1747,7 @@ import {
   modeResolver,
   busyAgentHolds,
   runningAgentIds,
+  runningSubagents,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
 import { freshDen } from "../cli/server-agent-ops.js";
@@ -1706,8 +1802,17 @@ import {
   EDGE_SIGNIN_NOTE,
   edgeExposedMessage,
   edgeExposure,
+  edgeContainer,
   edgeNetworkSubnets,
+  runningEdgeServesApi,
+  stopEdgeContainer,
 } from "../../shared/edge/exposure.js";
+import { edgeStartRetrying, unsureHold } from "../../shared/edge/start.js";
+import {
+  watchEdgeContainer,
+  writeEdgeWatchState,
+} from "../../shared/edge/watch.js";
+import { edgePeerCache } from "./edge-peer-cache.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import {
   linksFor,
@@ -1737,6 +1842,19 @@ function readWebPortSafe(): number {
 }
 const github = new GitHubService();
 const editors = new EditorManager();
+const subagentGate = new SubagentGate({
+  maxSubagents: () => {
+    const a = readAgentsConfig();
+    return a.maxSubagents ?? 2 * a.maxConcurrent;
+  },
+  respectLoadHold: () => readAgentsConfig().subagentsRespectLoadHold !== false,
+  loadCeiling: () => {
+    const c = agentsResume().loadCeiling;
+    return c > 0 ? c : undefined;
+  },
+  load1: () => os.loadavg()[0] ?? 0,
+  running: () => [],
+});
 
 // ── Health check ─────────────────────────────────────────────────────────────
 // pingHttp / pingShell are imported from shared health module above.
@@ -2410,7 +2528,20 @@ function adoptOwner(
 function httpsOf(req: http.IncomingMessage, via: Via | null): boolean {
   return requestIsHttps(req, via, EDGE_PROVED(req));
 }
-const EDGE_PROVED = edgeProofChecker(() => {
+const EDGE_TRUST: { starting: boolean; held: string | null } = {
+  starting: true,
+  held: null,
+};
+const EDGE_UNSURE = unsureHold(EDGE_TRUST);
+const EDGE_RECHECK: {
+  stopped: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+} = { stopped: false, timer: null };
+function EDGE_PROVED(req: http.IncomingMessage): boolean {
+  const ok = EDGE_PROOF_CHECK(req);
+  return ok && !EDGE_TRUST.starting && !EDGE_TRUST.held;
+}
+const EDGE_PROOF_CHECK = edgeProofChecker(() => {
   if (Date.now() - EDGE_DIR.at > 10_000) {
     let dir: string | null = null;
     try {
@@ -2436,8 +2567,40 @@ function currentLocalNet(): ReturnType<typeof localNet> {
   }
   return LOCAL_NET.net;
 }
+const EDGE_PEERS = edgePeerCache({
+  read: async () => {
+    const cfg = readEdgeConfig();
+    let root = cfg.stateDir;
+    try {
+      root = fs.realpathSync(root);
+    } catch {
+      /* not made yet: as configured */
+    }
+    const c = await edgeContainer({ root, org: cfg.org });
+    return c ?? { id: null, addresses: [] };
+  },
+  watch: (id, on, sinceMs) => watchEdgeContainer(id, on, undefined, sinceMs),
+  onWatchState: (st) => {
+    try {
+      writeEdgeWatchState(readEdgeConfig().stateDir, st);
+    } catch {
+      /* no edge config or state dir: doctor shows no watch row */
+    }
+  },
+  ttlMs: () => {
+    try {
+      return (readEdgeConfig().addressRecheckSeconds ?? 60) * 1000;
+    } catch {
+      return 60_000;
+    }
+  },
+});
+function peerIsEdge(req: http.IncomingMessage): boolean {
+  return EDGE_PEERS.isEdge(req.socket?.remoteAddress);
+}
 /** Read the edge's Docker networks' subnets in the background (no edge: none). */
 function readEdgeNetworks(): void {
+  EDGE_PEERS.start();
   let names: string[];
   try {
     const cfg = readEdgeConfig();
@@ -2579,8 +2742,7 @@ const GUARD: GuardContext = {
   // Once Den's own named https address works, the session lives there.
   loopbackSessions: () => !NAMED.works(),
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
-  // The edge hostname only from the edge's own peers (loopback, Docker).
-  peerIsEdge: (req) => isEdgePeer(req.socket?.remoteAddress),
+  peerIsEdge,
   // This machine's addresses and bridges, for edgeClient (SEC-2a).
   localNet: currentLocalNet,
   // A deliberate exposure (DEN_BIND_HOST beyond loopback, other than the
@@ -3911,6 +4073,20 @@ if (TEST_RESOLVE && "map" in TEST_RESOLVE && TEST_RESOLVE.map) {
   });
 } else writeTestResolveState(getStateDir(), null);
 
+function stateFolderOwnDeps(): StateFolderOwnDeps {
+  return {
+    shared: () => stateDirShared(getStateDir(), getDistRoot()),
+    give: () => giveOwnStateDir(getDistRoot(), getStateDir()),
+    carryOn: (dir, hub) => writeConnectNext(dir, hub),
+    restart: async (reason, asked) =>
+      (await approvalDeps().actions.den_restart.run({ reason }, asked)) as {
+        ok: boolean;
+        restarting?: boolean;
+        error?: string;
+      },
+  };
+}
+
 /** Issue 810: the fixture key this server sealed, or null. */
 function fixtureKeyNow(): Buffer | null {
   return verifiedFixtureKey(getStateDir(), webSecret.current());
@@ -3930,6 +4106,17 @@ try {
     );
 } catch (e) {
   serverLog(`  ⚠ install registry: ${(e as Error).message}`, "warn");
+}
+try {
+  const ignored = ownStateDirProblem(getDistRoot());
+  if (ignored) serverLog(`  ⚠ ${ignored}`, "warn");
+  if (claimStateDir(getStateDir(), getDistRoot()).shared)
+    serverLog(
+      `  ⚠ another copy of ${product().title} on this computer uses this state folder: Settings › Hub's Connect offers to give this one its own`,
+      "warn",
+    );
+} catch (e) {
+  serverLog(`  ⚠ state folder: ${(e as Error).message}`, "warn");
 }
 
 /**
@@ -5047,6 +5234,9 @@ type ApprovalDeps = {
   notify: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["notify"]>;
   held: NonNullable<Parameters<typeof handleApprovalRoutes>[4]["held"]>;
   changed: () => void;
+  withdrawn: NonNullable<
+    Parameters<typeof handleApprovalRoutes>[4]["withdrawn"]
+  >;
   webUrl: () => string | null;
   testBedAsker: (actor: string) => boolean;
 };
@@ -5383,6 +5573,13 @@ function approvalDeps(): ApprovalDeps {
             error: `gh pr close: ${(r.stderr || r.stdout).trim().split("\n").slice(-3).join(" ")}`,
           };
     },
+    projectCap: {
+      read: (project) => ({
+        own: ownProjectCap(project),
+        install: readAgentsConfig().maxPerProject,
+      }),
+      write: (project, max) => setProjectCap(project, max),
+    },
     // Issue 160: an agent asks to change the approval policy (always asks).
     approvalPolicy: {
       read: (project) => {
@@ -5454,6 +5651,17 @@ function approvalDeps(): ApprovalDeps {
       },
       run: async (a, asked) =>
         runHubCreateHeld(await defaultHubCreateDeps(), a, asked, agentNameOf),
+    },
+    stateFolderOwn: {
+      check: (a) => checkStateFolderOwn(stateFolderOwnDeps(), a),
+      run: (a, asked) => runStateFolderOwn(stateFolderOwnDeps(), a, asked),
+    },
+    hubOrigin: () => {
+      try {
+        return readHubConfig()?.url ?? null;
+      } catch {
+        return null;
+      }
     },
     // Issue 647: an agent asks to link a project to an existing Hub project.
     hubLink: {
@@ -5565,6 +5773,8 @@ function approvalDeps(): ApprovalDeps {
     gateSettings: gateSettingsHeldOp(),
     // #176: the pin commit, when the approval policy holds it.
     pinCommit: pinCommitHeldOp(),
+    envHoldOn: envHoldOnOp(envHoldOpDeps()),
+    envAllowKeep: envAllowKeepOp(envHoldOpDeps()),
     // Issue 936: the rollout's Turn on, for agents from before the sandbox.
     sandboxOn: sandboxOnServerOp(),
     // Issue 208: a Verify run on a shared environment.
@@ -5638,6 +5848,13 @@ function approvalDeps(): ApprovalDeps {
       void alertFeed().needs({ agent, workspace: project ?? "", why: "allow" }),
     // Issue 142: a held write counts in the bell while it waits.
     changed: syncHeldWrites,
+    withdrawn: (a, reason) =>
+      void noteHeldWithdrawn(
+        notificationDeps().store,
+        a,
+        reason,
+        heldProjectOf(a),
+      ),
     // Issue 1016: an agent's held write carries its full Allow link.
     webUrl: () => peopleWebUrl(),
     // What the test operator may Allow.
@@ -6024,7 +6241,10 @@ async function runPinCommit(
     return { did: "skipped", version, why: "server_agent.pin_commit: off" };
   let signingKey: string | undefined;
   try {
-    signingKey = readAgentsConfig().git?.signingKey;
+    signingKey = agentKeyInForce(
+      readAgentsConfig().git,
+      getStateDir(),
+    )?.signingKey;
   } catch {
     signingKey = undefined;
   }
@@ -6033,6 +6253,28 @@ async function runPinCommit(
     stateDir: getStateDir(),
     git: pc.pinGit(getDistRoot(), { signingKey }),
     mode,
+    signed: !!signingKey,
+    signaturesRequired: pc.ghSignaturesRequired(
+      (argv, cwd) =>
+        new Promise((resolve) =>
+          execFile(
+            argv[0],
+            argv.slice(1),
+            { cwd, timeout: 30_000, maxBuffer: 1024 * 1024 },
+            (err, out, errOut) =>
+              resolve({
+                code: err
+                  ? typeof (err as { code?: unknown }).code === "number"
+                    ? (err as { code: number }).code
+                    : null
+                  : 0,
+                out: `${out ?? ""}${errOut ?? ""}`,
+              }),
+          ),
+        ),
+      ["gh"],
+      getDistRoot(),
+    ),
     ...(policy
       ? {
           allow: () => {
@@ -6073,6 +6315,57 @@ async function runPinCommit(
         }
       : {}),
   });
+}
+
+function envHoldOpDeps(): import("../../shared/agents/env-hold-rollout.js").EnvHoldOpDeps {
+  return {
+    rows: () => {
+      const s = readAgentsConfig().envHold;
+      if (!s) return [];
+      return wouldHold(
+        listAgentRecords(getStateDir()),
+        s,
+        shellEnvNames(),
+        (ws) => {
+          try {
+            return checkProjectEnvAllow(
+              ws,
+              (
+                workspaceEntryOf(ws) as
+                  | { agents?: { env_allow?: unknown } }
+                  | undefined
+              )?.agents?.env_allow,
+            );
+          } catch {
+            return [];
+          }
+        },
+      ).filter((r) => r.names.length > 0);
+    },
+    turnOn: () => setUserEnvHoldExisting(),
+    keep: (names) => addUserEnvAllow(names),
+  };
+}
+
+function startEnvHoldAsk(): void {
+  const ask = () => {
+    try {
+      const ap = approvalDeps();
+      const deps = envHoldOpDeps();
+      void askEnvHold(
+        ap.queue,
+        envAllowKeepOp(deps),
+        envHoldOnOp(deps),
+        deps.rows,
+      ).then((asked) => {
+        if (asked) syncHeldWrites();
+      });
+    } catch {
+      return;
+    }
+  };
+  ask();
+  setInterval(ask, 60 * 60_000).unref();
 }
 
 /** #176: den_pin_commit, held for the person when the policy says ask. */
@@ -6139,7 +6432,9 @@ async function pinBellNotice(
   step: import("./pin-commit.js").PinStep,
 ): Promise<void> {
   try {
-    const { pinBellMessage } = await import("./pin-commit.js");
+    const { pinBellMessage, pinAgentLine } = await import("./pin-commit.js");
+    const line = pinAgentLine(step, product().title);
+    if (line) void tellHeldAsker(SERVER_AGENT_ID, line).catch(() => undefined);
     const m = pinBellMessage(step, product().title);
     if (!m) return;
     const store = notificationDeps().store;
@@ -6501,7 +6796,16 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
           pty_close_seconds: c.ptyCloseSeconds,
           pty_warn_above: c.ptyWarnAbove,
           pty_machine_warn_percent: c.ptyMachineWarnPercent,
+          size_claim_grace_seconds: c.sizeClaimGraceSeconds,
+          size_leave_grace_seconds: c.sizeLeaveGraceSeconds,
         };
+      } catch {
+        return null;
+      }
+    })(),
+    skill_packs: (() => {
+      try {
+        return skillPacksData(user, denForCaps());
       } catch {
         return null;
       }
@@ -6509,9 +6813,12 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
     // Issue 1373: the agents' cap in force (user.yml over den.yml).
     agents_limits: (() => {
       try {
+        const a = readAgentsConfig(undefined, user);
         return {
-          max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
-          max_per_project: readAgentsConfig(undefined, user).maxPerProject,
+          max_concurrent: a.maxConcurrent,
+          max_subagents: a.maxSubagents ?? 2 * a.maxConcurrent,
+          subagents_respect_load_hold: a.subagentsRespectLoadHold !== false,
+          max_per_project: a.maxPerProject,
         };
       } catch {
         return null;
@@ -6627,7 +6934,11 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
       };
     })(),
     // Issue 707: the server's warning lines on disk, capped (server_log.*).
-    server_log: { max_mb: serverLogMaxBytes(user) / (1024 * 1024) },
+    server_log: {
+      max_mb: serverLogMaxBytes(user) / (1024 * 1024),
+      slow_request_ms: serverLogSetting(user, "slow_request_ms"),
+      event_loop_lag_ms: serverLogSetting(user, "event_loop_lag_ms"),
+    },
     // Issue 403: how long a filed report's screenshot is kept (reports.*).
     reports: (() => {
       const l = shotLimits(user);
@@ -6699,7 +7010,12 @@ async function handleRequest(
     if (!isStatic && !isHealthPoll) {
       const start = Date.now();
       const method = bold((req.method ?? "GET").padEnd(4));
+      res.on("close", () => {
+        if (!res.writableFinished)
+          noteSlowRequest(req, res, pathname, Date.now() - start, true);
+      });
       res.on("finish", () => {
+        noteSlowRequest(req, res, pathname, Date.now() - start);
         const ms = dim(`${Date.now() - start}ms`);
         serverLog(
           `  ${logTimestamp()}  ${method}  ${loggedPath(pathname)}  →  ${logStatus(res.statusCode)}  ${ms}` +
@@ -6997,6 +7313,17 @@ async function handleRequest(
   // Issue 459: an agent reads its own app feeds (app_feed_read).
   if (guard.ok && isAppFeedPath(pathname)) {
     await handleAppFeedRoutes(req, res, pathname, url);
+    return;
+  }
+  if (guard.ok && pathname === SUBAGENT_START_PATH) {
+    await handleSubagentStart(req, res, {
+      agentOf: (r) => {
+        const a = agentPrincipalOf(r);
+        return a ? a.actor.slice("agent:".length) : null;
+      },
+      gate: async (id) =>
+        subagentGate.decide(id, await runningSubagents(agentWebDeps())),
+    });
     return;
   }
   // Issue 796: an agent asks for a read-only view of these pages.
@@ -7473,9 +7800,14 @@ async function handleRequest(
   if (
     handleEdgeUpRoute(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
-      run: async () =>
-        (await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") }))
-          .outcome,
+      run: async () => {
+        const up = await runEdgeUp({
+          log: (l) => serverLog(`  ${l}`, "lifecycle"),
+        });
+        EDGE_TRUST.held = null;
+        void EDGE_PEERS.refresh(true);
+        return up.outcome;
+      },
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -9888,6 +10220,7 @@ async function handleRequest(
       // D64: how long the browser's Restart Den waits before it shows the
       // CLI line (ui.restart_wait_seconds in config/local/user.yml).
       restartWaitSeconds: restartWaitSeconds(),
+      edgeSettled: !EDGE_TRUST.starting,
     });
   }
 
@@ -10822,6 +11155,7 @@ async function handleRequest(
           agent_hooks?: unknown;
           sessions?: unknown;
           agents_limits?: unknown;
+          skill_packs?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
           git_reads?: unknown;
@@ -10903,6 +11237,14 @@ async function handleRequest(
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
+        }
+        if (body.skill_packs !== undefined) {
+          const sp = patchSkillPacksBody(
+            user as Record<string, unknown>,
+            body.skill_packs,
+            denForCaps(),
+          );
+          if (!sp.ok) return send400(res, sp.error);
         }
         // Issue 144: the machine's gate slots (their own file, not user.yml).
         let gatePatch: GateSettingsPatch | undefined;
@@ -11240,11 +11582,18 @@ async function handleRequest(
               ),
             );
         }
-        if (modesChanged)
+        if (modesChanged || body.skill_packs !== undefined)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
           ok: true,
           ...cliRowSettings(user),
+          skill_packs: (() => {
+            try {
+              return skillPacksData(user, denForCaps());
+            } catch {
+              return null;
+            }
+          })(),
           // Issue 144: the gate slots, as GET shows them (issue 424).
           gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,
@@ -11440,6 +11789,18 @@ async function handleRequest(
     } catch (e) {
       return send400(res, `Invalid request: ${(e as Error).message}`);
     }
+  }
+
+  if (
+    process.env.DEN_DEBUG_ROUTES === "1" &&
+    (pathname === "/api/_den/slow" || pathname === "/api/_den/block")
+  ) {
+    const ms = Math.min(Number(url.searchParams.get("ms")) || 0, 10_000);
+    if (pathname === "/api/_den/block") {
+      const end = Date.now() + ms;
+      while (Date.now() < end);
+    } else await new Promise((r) => setTimeout(r, ms));
+    return sendJson(res, { ok: true });
   }
 
   // A route that throws, for the error frame's tests and screenshots only
@@ -12229,6 +12590,92 @@ try {
     "lifecycle",
   );
 }
+function syncEdgeProofAtStart(): void {
+  const ports = new Set([PORT, readWebPortSafe()]);
+  rotateEdgeProofAtStart({
+    readConfig: readEdgeConfig,
+    ports,
+    onRotated: () => {
+      const line =
+        "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
+      serverLog(`  Edge: ${line}`, "lifecycle");
+      recordAction(null, { verb: "edge-proof-rotated", detail: line });
+    },
+    warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
+  });
+  const r = syncEdgeProof(readEdgeConfig(), ports);
+  if (r === "written")
+    serverLog(
+      "  Edge: Den's route now carries the edge's proof (its dynamic file)",
+      "lifecycle",
+    );
+  else if (r === "rotated")
+    serverLog(
+      "  Edge: a new edge proof for this version; the edge's dynamic file carries it, the old one no longer works",
+      "lifecycle",
+    );
+}
+
+async function edgeAtStart(): Promise<void> {
+  let cfg: ReturnType<typeof readEdgeConfig>;
+  try {
+    cfg = readEdgeConfig();
+  } catch {
+    EDGE_TRUST.starting = false;
+    return;
+  }
+  const dir = cfg.stateDir;
+  const out = await edgeStartRetrying(
+    {
+      servesApi: () => runningEdgeServesApi(cfg),
+      stop: () => stopEdgeContainer(cfg),
+      recreate: async () => {
+        await runEdgeUp({
+          rotateProof: true,
+          log: (l) => serverLog(`  ${l}`, "lifecycle"),
+        });
+        markEdgeProofRotated(cfg);
+        void EDGE_PEERS.refresh(true);
+      },
+      sync: syncEdgeProofAtStart,
+      hold: (reason) => {
+        try {
+          holdEdgeTrust(dir, reason);
+        } catch {
+          EDGE_TRUST.held = reason;
+        }
+        serverLog(
+          `  ⚠ Edge: ${reason}; nothing through the edge is believed until edge up succeeds (doctor)`,
+          "warn",
+        );
+      },
+      unsure: (reason) => {
+        if (EDGE_UNSURE.unsure(reason))
+          serverLog(
+            `  ⚠ Edge: ${reason}; nothing through the edge is believed until it answers (asked again every edge.address_recheck_seconds)`,
+            "warn",
+          );
+      },
+      release: () => EDGE_UNSURE.release(),
+      log: (l) => serverLog(`  Edge: ${l}`, "lifecycle"),
+    },
+    {
+      everyMs: (cfg.addressRecheckSeconds ?? 60) * 1000,
+      later: (fn, ms) => {
+        EDGE_RECHECK.timer = setTimeout(fn, ms);
+        EDGE_RECHECK.timer.unref();
+      },
+      stopped: () => EDGE_RECHECK.stopped,
+    },
+  );
+  EDGE_TRUST.starting = false;
+  if (out === "recreated")
+    serverLog(
+      "  Edge: recreated without Traefik's API, with a new proof",
+      "lifecycle",
+    );
+}
+
 // Issue 163: back from a logout the server ran through: who ran meanwhile.
 void CRASH_GATE.then(() =>
   startLogoutWatch((line) => serverLog(line, "lifecycle")),
@@ -12240,8 +12687,9 @@ try {
 } catch (e) {
   serverLog(`gate store: ${(e as Error).message}`, "lifecycle");
 }
-void CRASH_GATE.then(() =>
+void CRASH_GATE.then(() => {
   server.listen(PORT, BIND_HOST, () => {
+    startLagWatch();
     void printBanner(ADDRESS ?? readWebUrl());
     // Issue 816: a waiting test install announces itself (opt-in).
     syncTestAnnouncement();
@@ -12251,6 +12699,7 @@ void CRASH_GATE.then(() =>
     startUpdateCheck();
     // Issue 142: a held write counts in the bell while it waits.
     startHeldWritesBell();
+    startEnvHoldAsk();
     void pruneDeadSnapshots()
       .then((n) => {
         if (n > 0) serverLog(`Pruned ${n} orphaned log-history snapshot(s)`);
@@ -12280,33 +12729,10 @@ void CRASH_GATE.then(() =>
     void startBridgeListener().catch((e: unknown) =>
       serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),
     );
-    // Issue 728: once agents can't read the edge's state folder, its proof
-    // is rotated once (edge.yml rewritten; Traefik reloads it by itself).
-    rotateEdgeProofAtStart({
-      readConfig: readEdgeConfig,
-      ports: new Set([PORT, readWebPortSafe()]),
-      onRotated: () => {
-        const line =
-          "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
-        serverLog(`  Edge: ${line}`, "lifecycle");
-        recordAction(null, { verb: "edge-proof-rotated", detail: line });
-      },
-      warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
+    void edgeAtStart().catch((e: unknown) => {
+      EDGE_TRUST.starting = false;
+      EDGE_TRUST.held = (e as Error).message;
     });
-    // H1: an edge set up here before 0.4.48 (or rotated) gets the proof.
-    try {
-      const r = syncEdgeProof(
-        readEdgeConfig(),
-        new Set([PORT, readWebPortSafe()]),
-      );
-      if (r === "written")
-        serverLog(
-          "  Edge: Den's route now carries the edge's proof (dynamic/edge.yml)",
-          "lifecycle",
-        );
-    } catch (e) {
-      serverLog(`  ⚠ edge proof not synced: ${(e as Error).message}`, "warn");
-    }
     // Issue 278: agents stuck compacting ring the bell (agent_context.*).
     startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
     // Issue 163 (a): an install from before it was on by default is
@@ -12517,8 +12943,8 @@ void CRASH_GATE.then(() =>
           (l) => serverLog(`  [hub] ${l}`, "warn"),
         ),
       );
-  }),
-);
+  });
+});
 
 /**
  * SRV-1a: the restart marker the last server left. An audit row says the
@@ -13207,6 +13633,9 @@ async function stopDaemons(): Promise<void> {
 
 async function handleShutdown(signal: string): Promise<void> {
   clearSudoShims();
+  EDGE_RECHECK.stopped = true;
+  EDGE_PEERS.stop();
+  if (EDGE_RECHECK.timer) clearTimeout(EDGE_RECHECK.timer);
   // The registry lives in the state dir, which is resolved from the
   // distribution root on every call: if that can no longer be found (den.yml
   // moved or removed while the server ran), still exit. Never product() here:

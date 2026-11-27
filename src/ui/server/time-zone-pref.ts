@@ -5,21 +5,9 @@
  * first paint already draws in it (the kit's time.js reads it).
  */
 
-/** True when `v` is a zone this runtime can format in. */
-export function isTimeZone(v: unknown): v is string {
-  if (typeof v !== "string" || !v || v.length > 64) return false;
-  try {
-    new Intl.DateTimeFormat("en", { timeZone: v });
-    return true;
-  } catch {
-    return false;
-  }
-}
+import { isTimeZone } from "../../shared/time-zone.js";
 
-/** The stored value, normalised: unknown or missing is null (the browser's). */
-export function timeZonePref(stored: unknown): string | null {
-  return isTimeZone(stored) ? stored : null;
-}
+export { isTimeZone, timeZonePref } from "../../shared/time-zone.js";
 
 /** A page with <html data-den-tz> when a zone is picked; else unchanged. */
 export function zonePage(html: string, zone: string | null): string {

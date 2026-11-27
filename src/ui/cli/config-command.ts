@@ -18,6 +18,19 @@ import {
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
 import { personSetCaps } from "./setting-change.js";
+import {
+  isSkillPackKey,
+  patchSkillPackKey,
+  skillPackKeyNames,
+  skillPacksSummary,
+  skillPackValue,
+} from "./config-skill-packs.js";
+
+function setSkillPackKey(name: string, value: unknown): void {
+  const user = structuredClone(readUserConfig()) as Record<string, unknown>;
+  patchSkillPackKey(user, name, value, readDenConfigOrEmpty());
+  writeUserConfig(user as UserConfig);
+}
 
 function readDenConfigOrEmpty(): DenConfig {
   try {
@@ -130,6 +143,8 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "reports.hub_screenshot_max_mb": ["reports", "hub_screenshot_max_mb"],
   // Issue 707: the server's warning lines on disk, capped.
   "server_log.max_mb": ["server_log", "max_mb"],
+  "server_log.slow_request_ms": ["server_log", "slow_request_ms"],
+  "server_log.event_loop_lag_ms": ["server_log", "event_loop_lag_ms"],
   "reports.hub_timeout_seconds": ["reports", "hub_timeout_seconds"],
   // Issue 278: when an agent counts as stuck compacting; instruction size.
   "agent_context.compaction_loop_count": [
@@ -234,6 +249,7 @@ export function configKeyNames(): string[] {
     ...Object.keys(DOTTED),
     ...Object.keys(DOTTED_SWITCH),
     ...Object.keys(HUB_GROUPS),
+    ...skillPackKeyNames(),
   ];
 }
 
@@ -280,6 +296,13 @@ export function patchConfigKey(
     return { ok: false, error: testInstallByHandRefusal(product().configFile) };
   if (HUB_GROUPS[name])
     return patchHubGroups(user, { [HUB_GROUPS[name]]: value });
+  if (isSkillPackKey(name))
+    try {
+      patchSkillPackKey(user, name, value, readDenConfigOrEmpty());
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
   if (DOTTED_SWITCH[name])
     return patchCliRows(user, { [DOTTED_SWITCH[name]]: value }, { cli: true });
   if (DOTTED[name]) {
@@ -410,6 +433,11 @@ export async function cmdConfig(args: string[]): Promise<void> {
     if (!keyArg) throw new Error(`Usage: ${product().cli} config rm <key>`);
     if (TEST_INSTALL_KEYS.has(keyArg))
       throw new Error(testInstallByHandRefusal(product().configFile));
+    if (isSkillPackKey(keyArg)) {
+      setSkillPackKey(keyArg, null);
+      console.log(chalk.green(`  ✓ Removed ${keyArg}`));
+      return;
+    }
     if (DOTTED_SWITCH[keyArg]) {
       setDotted(keyArg, null);
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
@@ -433,6 +461,27 @@ export async function cmdConfig(args: string[]): Promise<void> {
 
   const assignment = args[0];
   const eq = assignment.indexOf("=");
+  if (assignment === "skill_packs") {
+    for (const l of skillPacksSummary(readUserConfig(), readDenConfigOrEmpty()))
+      console.log(l);
+    return;
+  }
+  if (eq < 0 && isSkillPackKey(assignment)) {
+    const v = skillPackValue(
+      assignment,
+      readUserConfig(),
+      readDenConfigOrEmpty(),
+    );
+    console.error(chalk.dim(`  (${SOURCE_WORDS[v.from]})`));
+    console.log(v.value);
+    return;
+  }
+  if (eq > 0 && isSkillPackKey(assignment.slice(0, eq))) {
+    const name = assignment.slice(0, eq);
+    setSkillPackKey(name, parseValue(assignment.slice(eq + 1)));
+    console.log(chalk.green(`  ✓ Set ${name}`));
+    return;
+  }
   // Issue 1417: an agent or terminal limit prints its value in force as
   // stdout's last line (scripts read it), and where it came from on
   // stderr; every agent limit, not only the ones `config` sets.

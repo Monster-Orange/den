@@ -733,6 +733,10 @@
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
     "busy.modeW": "{name} のモードを設定しています…",
+    "busy.packsW": "{name} のスキルパックを設定しています…",
+    "busy.packsS": "{name} のスキルパックを設定しました。",
+    "busy.packsF":
+      "{name} のスキルパックを設定できませんでした。何も変わっていません。",
     "busy.modeS": "{name} のモードを設定しました。",
     "busy.modeF":
       "{name} のモードを設定できませんでした。何も変わっていません。",
@@ -1320,6 +1324,9 @@
     "set.server.gate_route_agents": "エージェントの重い実行を順番待ちに通す",
     "set.server.gate_route_agents.d":
       "オンなら、エージェントの単独のテスト、型チェック、ブラウザテストはほかと同じく順番待ちの枠を使います。オフなら、そのまま実行して下で数えます。__DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_throwaway_sweep": "使い捨てのテスト用コンテナを削除する",
+    "set.server.gate_throwaway_sweep.d":
+      "オンなら、順番待ちの実行が終わった使い捨てのテスト用コンテナを Den が削除し、使われていない保持中のコンテナを止めます。オフなら、Den はそのために docker を実行しません。手で削除するまで残り、Doctor はこの片付けがオフだと表示します。__DEN_CLI__ gate settings --throwaway-sweep 1",
     "set.server.gate_route_commands": "順番待ちに通すプログラム",
     "set.server.gate_route_commands.d":
       'カンマ区切りのプログラム名、または npm test と npm run test*(* は任意の末尾)。空なら jest, vitest, tsc, playwright, npm test, npm run test*。__DEN_CLI__ gate settings --route-commands "jest, vitest"',
@@ -1338,6 +1345,12 @@
     "set.server.server_log_max": "警告ログの最大サイズ",
     "set.server.server_log_max.d":
       "__DEN_TITLE__ がサービスとして動いている間、警告は状態フォルダーの logs/server.log にも書かれるので、再起動後も残ります。このサイズに達すると server.log.1 に移し（1 回だけ）、新しく書き始めます。__DEN_CLI__ config server_log.max_mb=20",
+    "set.server.slow_request_ms": "遅いリクエストを記録するまでの時間",
+    "set.server.slow_request_ms.d":
+      "リクエストがこれより長くかかると、__DEN_TITLE__ のログにそのルート、依頼元、かかった時間を 1 行で書きます。アドレス、クエリ、ヘッダー、本文は書きません。__DEN_CLI__ config server_log.slow_request_ms=3000",
+    "set.server.event_loop_lag_ms": "停止を記録するまでの時間",
+    "set.server.event_loop_lag_ms.d":
+      "__DEN_TITLE__ が忙しく、これより長く他の処理を何も実行しないと、その時間をログに 1 行で書きます。__DEN_CLI__ config server_log.event_loop_lag_ms=1000",
     "set.server.report_screenshot_max":
       "報告のスクリーンショットの最大サイズ（保存）",
     "set.server.report_screenshot_max.d":
@@ -1378,6 +1391,27 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_subagents": "同時に動かせるサブエージェント数",
+    "set.agents.max_subagents.d":
+      "このマシンのエージェント全体で、同時に動かせるサブエージェントの数です。これを超える開始は拒否され、エージェントにはこの設定の名前が伝えられます。未設定なら「同時に動かせるエージェント数」の2倍です。__DEN_CLI__ config agents.max_subagents=8",
+    "set.agents.subagents_respect_load_hold":
+      "負荷が高いときは新しいサブエージェントを止める",
+    "set.agents.subagents_respect_load_hold.d":
+      "オンの場合、マシンの負荷がエージェントの負荷上限を超えている間は新しいサブエージェントが拒否され、エージェントにはこの設定の名前が伝えられます。オフの場合、負荷に関係なくサブエージェントが開始します。__DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "スキルパック",
+    "set.agents.skill_packs.d":
+      "Den がエージェントに与えるスキルパック。それぞれ固定したバージョンで Den に同梱され、ダウンロードはしません。__DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "コーディングエージェント向けのオープンソースのスキル。Den のエージェントに渡すものを選びます。__DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "オン",
+    "set.ui.skillPackLicence": "ライセンス",
+    "set.ui.skillPackPin": "固定コミット",
+    "set.ui.skillPackOnCount": "{n} 個のスキルがオン",
+    "set.ui.skillPackCost": "各エージェントの起動に約 {n} トークン追加",
+    "set.ui.skillPackSkills": "スキル",
+    "set.ui.skillPackAll": "すべて",
+    "set.ui.skillPackNone": "なし",
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
@@ -1390,6 +1424,13 @@
     "set.server.sessions_close_grace": "ターミナルを閉じるときの猶予",
     "set.server.sessions_close_grace.d":
       "ターミナルを閉じてから、強制的に止めるまでに、ターミナルが終了できる時間です。__DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_size_claim_grace": "ターミナルのサイズの保持",
+    "set.server.sessions_size_claim_grace.d":
+      "ターミナルのサイズを最後に決めたウィンドウが、接続が切れたあともそのサイズを保つ時間です。短い切断や再読み込みで、サイズがほかのウィンドウに移りません。0 にするとすぐに移ります。__DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    "set.server.sessions_size_leave_grace":
+      "ページを閉じたときのターミナルのサイズの保持",
+    "set.server.sessions_size_leave_grace.d":
+      "ターミナルのサイズを最後に決めたウィンドウが、そのページを閉じたり再読み込みしたりしたあとも、そのサイズを保つ時間です。再読み込みではサイズが保たれ、閉じたページのサイズはほかのウィンドウに移ります。ターミナルのサイズの保持の時間内に戻ると、そのウィンドウはサイズを取り戻します。その間にほかのウィンドウで入力や引き継ぎがあった場合は取り戻しません。0 にするとすぐに移ります。__DEN_CLI__ config sessions.size_leave_grace_seconds=3",
     "set.server.sessions_pty_close": "終了後にターミナルを閉じるまで",
     "set.server.sessions_pty_close.d":
       "ターミナルのプログラムが終了してから、そのターミナルを閉じるまでの時間です。0 ならすぐに閉じます。どちらの場合もスクロールバックは読めます。ターミナルホストが次に起動したときに反映されます。__DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -1772,7 +1813,7 @@
       "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
     "set.agents.hub_groups": "Hub のグループ",
     "set.agents.hub_groups.d":
-      "エージェントページに Hub のグループを表示するか（「プロジェクト別」の横の「グループ別」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
+      "エージェントページに Hub のグループを表示するか（一覧の切り替えの「プロジェクト」の横の「グループ」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "自動",
     "set.agents.hub_groups.o.on": "オン",
     "set.agents.hub_groups.o.off": "オフ",
@@ -1786,6 +1827,9 @@
     "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
     "set.workspace.hub_delivery_loop.o.on": "オン",
     "set.workspace.hub_delivery_loop.o.off": "オフ",
+    "set.workspace.agents_max_per_project": "プロジェクトごとのエージェント数: このプロジェクト",
+    "set.workspace.agents_max_per_project.d":
+      "このプロジェクトのエージェントを同時に動かせる数です。空か 0 なら「プロジェクトごとのエージェント数」を使います。それより低い値だけ設定できます。これを超える起動は拒否され、どの上限で止まったかが表示されます。",
     "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
     "set.workspace.hub_delivery_loop_extra.d":
       "このプロジェクト独自のテキスト。エージェントの指示で、Den のループの後に追加されます。Den の文面は編集できません。空なら何も追加しません。",
@@ -2145,8 +2189,8 @@
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.by.label": "一覧の表示",
     "ag.by.need": "対応順",
-    "ag.by.project": "プロジェクト別",
-    "ag.by.group": "グループ別",
+    "ag.by.project": "プロジェクト",
+    "ag.by.group": "グループ",
     "ag.grp.noHub": "グループは Den Hub の機能です。",
     "ag.grp.connect": "Den Hub に接続",
     "ag.grp.notInPlan":
@@ -2245,6 +2289,9 @@
     "ap.det.den_sandbox_on.off":
       "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
+    "ap.do.project_agent_cap": "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
+    "ap.det.project_agent_cap.now": "現在: {v}",
+    "ap.det.project_agent_cap.then": "変更後: {v}",
     "ap.do.project_mode":
       "プロジェクト {project} のモードを変更: {from} → {to}",
     "ap.do.agent_folder": "エージェント {agent} を {where} に移動",
@@ -2463,6 +2510,20 @@
     "ap.det.agent_mode.running":
       "動作中です。Den はこのターンの後、同じ会話のまま {mode} で再起動します。",
     "ap.det.agent_mode.stopped": "停止中です。次は {mode} で起動します。",
+    "ap.do.den_env_hold_on":
+      "以前に起動した {count} 件のエージェントから、秘密らしい変数を外す (それぞれ次の起動時): {names}",
+    "ap.do.den_env_allow_keep":
+      "{names} をすべてのエージェントに残し、以前に起動した {count} 件のエージェントから残りを外す",
+    "ap.det.den_env_hold_on.sets":
+      "config/local/user.yml に agents.env_hold_existing: true を設定します。",
+    "ap.det.den_env_hold_on.next":
+      "各エージェントは次の起動時に失います。いま動いているものはそれまで保持します。",
+    "ap.det.den_env_hold_on.allow":
+      "agents.env_allow で残す名前はそのままです。",
+    "ap.det.den_env_allow_keep.adds":
+      "config/local/user.yml の agents.env_allow に {names} を追加します。ここのすべてのエージェントが受け取ります。",
+    "ap.det.den_env_allow_keep.on":
+      "agents.env_hold_existing: true を設定します。ほかの秘密らしい変数は、各エージェントの次の起動時に外されます。",
     "ap.det.agent_sandbox_set.self":
       "{agent} が自分自身のために求めています: 自分のサンドボックスを {value} にしたいとしています。",
     "ap.det.agent_sandbox_set.on":
@@ -2522,6 +2583,21 @@
     "ap.hl.then": "変更後: {hub}",
     "ap.hl.filed":
       "エージェントの Hub での作業は、次の呼び出しからそこに記録されます。",
+    "ap.do.state_folder_own":
+      "このインストールに専用の状態フォルダーを用意する",
+    "ap.sf.new":
+      "共有フォルダーの隣に、このインストール用の新しい空の状態フォルダーを作ります。",
+    "ap.sf.empty":
+      "何もコピーも移動もしません。エージェント、サインイン、履歴はもう一方のコピーに残り、この Den には再度サインインします。",
+    "ap.sf.other": "もう一方のコピーは共有フォルダーをそのまま使い続けます。",
+    "ap.sf.restart":
+      "Den は専用フォルダーで再起動し、{hub} への接続を続けます。",
+    "ap.sf.restartNone": "Den は専用フォルダーで再起動します。",
+    "hub.sf.shared":
+      "このコンピューター上の別の Den のコピーがこのインストールの状態フォルダーを共有しており、別の Hub に接続しています。",
+    "hub.sf.offer": "このインストールに専用の状態フォルダーを用意する",
+    "hub.sf.allow":
+      "ダイアログで許可してください。Den は再起動し、接続を続けます。",
     "ap.pm.now": "現在: {mode}",
     "ap.pm.then": "変更後: {mode}",
     "ap.pm.thenNone":
@@ -2605,6 +2681,13 @@
     "ag.mode.src.default": "Den の組み込みの既定",
     "ag.mode.item": "モード: {m}",
     "ag.mode.menu": "{id} のモード",
+    "ag.packs.item": "スキルパック: {v}",
+    "ag.packs.menu": "{id} のスキルパック",
+    "ag.packs.default": "インストールの既定",
+    "ag.packs.off": "オフ",
+    "ag.packs.on": "オン",
+    "ag.packs.set":
+      "{id} のスキルパックを設定しました。ターンの後、同じ会話のまま再起動します。",
     "ag.mode.pick": "{id} のモードを変更",
     "ag.mode.follow": "プロジェクトに従う",
     "ag.mode.setS":
@@ -2791,6 +2874,8 @@
     "pe.runtime": "既定のランタイム",
     "pe.model": "モデル",
     "pe.ver": "バージョン",
+    "pe.packs": "スキルパック",
+    "pe.packsList": "ファイルのリスト: {list}",
     "pe.rtDefault": "ランタイムの既定",
     "pe.perms": "権限モード",
     "pe.noneCmd": "なし",
@@ -2950,6 +3035,27 @@
     "bell.updates": "お知らせ({n})",
     "bell.rep": "同様の通知があと {n} 件",
     "bell.stop": "この種類を表示しない",
+    "bell.openInAgents": "エージェントで開く",
+    "peek.openInLayout": "レイアウトで開く",
+    "peek.close": "閉じる (Esc)",
+    "peek.back": "通知に戻る",
+    "peek.chipNeed": "対応が必要 · {why}",
+    "peek.chipNeedPlain": "対応が必要",
+    "peek.chipDone": "完了",
+    "peek.chipStopped": "停止済み",
+    "peek.chipRunning": "実行中",
+    "peek.connecting": "{name} に接続中…",
+    "peek.noConnect": "{name} のターミナルに接続できませんでした。",
+    "peek.retry": "再試行",
+    "peek.finished":
+      "{name} は見ている間に完了しました。今はあなたにとってアイドルです。",
+    "peek.stopped": "{name} は停止しました。答えることはありません。",
+    "peek.restart": "再起動",
+    "peek.next": "{name} ({project}) もあなたを必要としています: {why}",
+    "peek.whyWaiting": "あなたを待っています",
+    "peek.switch": "{name} に切り替える",
+    "peek.footType": "Esc で閉じる · 入力は {name} に送られます",
+    "peek.footEsc": "Esc で閉じる",
     "bell.askT": "「{kind}」を表示しませんか?",
     "bell.askB":
       "この種類だけです。アクティビティ記録には残ります。設定でいつでもオンに戻せます。",
@@ -3011,6 +3117,8 @@
       "{name}: 開始しませんでした: このフォルダは信頼されていません。再開して Yes を選んでください。",
     "bell.m.policyRan": "{name} が許可を求めずに実行しました: {what}",
     "bell.m.heldAllow": "{name} があなたの許可を待っています: {what}",
+    "bell.m.heldWithdrawn":
+      "{name} が依頼を取り下げました: {what}。理由: {reason}",
     "bell.m.gateLapsed":
       "{name} の {kind} ゲート枠「{label}」が失効しました: 更新されず、見積もりを過ぎました。次の実行が始まりました。",
     "bell.m.vschedPass": "{env} の予定実行: {n} 件のチェックが通りました。",
@@ -3034,6 +3142,8 @@
       "{name} の依頼は再起動で失われました: {what}。この依頼からは何も実行していません。エージェントにもう一度依頼するよう伝えました。",
     "bell.m.heldLostAsk":
       "依頼が再起動で失われました: {what}。この依頼からは何も実行していません。",
+    "bell.m.capHeld":
+      "{name} は起動しませんでした: {limit} のうち {n} のエージェントが動いています（{key}）。1 つ止めるか、{key} を上げてください。",
     "bell.m.restartsWaiting":
       "{n} 件のエージェントが再起動を待っています（数件ずつ再起動します）",
     "bell.m.heldLostAll":
@@ -3062,6 +3172,7 @@
     "rs.none": "再起動が必要なエージェントはありません。",
     "rs.bar": "{n} 件のエージェントがツールを読み込むために再起動が必要です。",
     "rs.barBtn": "{n} 件すべてを次の待機時に再起動",
+    "rs.barBusy": "{total} 件中 {done} 件を再起動中…",
     "rs.allName": "エージェント",
     "rs.done": "{id}: 同じ会話のまま再起動しました。",
     "rs.timedOut":
@@ -3149,8 +3260,12 @@
       "__DEN_TITLE__ {v}: 固定バージョンはコミット ({sha}) されましたが、プッシュに失敗しました: {why}。__DEN_TITLE__ は次の更新チェックで再試行します",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ は固定バージョンをコミットできませんでした: {why}。次の更新チェックで再試行します",
+    "bell.m.pinPrRenamed":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンは {branch} のプルリクエストにあります。理由: {why}",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプルリクエストにあります ({branch})。ブランチは署名付きコミットを必須としていて、エージェントの署名鍵が未設定のためプッシュしていません (doctor に手順があります)",
     "bell.m.pinPushedBehind":
       "__DEN_TITLE__ は {v} に更新されました: 固定バージョンはプッシュしました ({sha}) が、ローカルのコピーは遅れていて未保存の変更があるため、pull して固定バージョンを取り込んでください",
     "bell.m.pinPrAhead":

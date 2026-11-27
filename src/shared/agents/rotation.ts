@@ -26,6 +26,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { isTimeZone } from "../time-zone.js";
 import { checkHandoff } from "./handoff.js";
 import { agentFilesDir, writePrivate, type AgentRecord } from "./records.js";
 
@@ -743,6 +744,50 @@ function leftRunningLines(
   ];
 }
 
+function zoneOr(timeZone: string | undefined): string {
+  return isTimeZone(timeZone)
+    ? timeZone
+    : Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function utcOffset(now: Date, zone: string): string {
+  const name =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT";
+  const m = /^GMT([+-])(\d{2}):(\d{2})$/.exec(name);
+  return m ? `UTC${m[1]}${m[2]}:${m[3]}` : "UTC+00:00";
+}
+
+export function clockLine(now: Date, timeZone?: string): string {
+  const zone = zoneOr(timeZone);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      weekday: "short",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZoneName: "short",
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  const short = /^GMT/.test(parts.timeZoneName ?? "")
+    ? ""
+    : `${parts.timeZoneName} `;
+  return `It is now ${parts.weekday} ${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} ${short}(${utcOffset(now, zone)}, ${zone}).`;
+}
+
+const CLOCK_HINT =
+  "Count any time or ETA from this, not from the times in the handoff or in older messages.";
+
 /** The first prompt of a session relaunched from `handoff`. */
 export function handoffPrompt(
   handoff: string,
@@ -750,7 +795,10 @@ export function handoffPrompt(
   compactions: number,
   /** Issue 914: background work the last session left running. */
   left: readonly LeftRunning[] = [],
+  now: Date = new Date(),
+  timeZone?: string,
 ): string {
+  const clock = [clockLine(now, timeZone), CLOCK_HINT];
   const again = left.length
     ? [
         "Your last conversation ended with background work still running, and it stopped. The handoff lists it. Read each one's own handoff, then start each one again:",
@@ -761,12 +809,14 @@ export function handoffPrompt(
   if (reason === "manual" || reason === "resume_failed")
     return [
       "Den relaunched you from the last handoff your role wrote.",
+      ...clock,
       "Read it, then carry on from its Next step.",
       "",
       handoff.trim(),
     ].join("\n");
   return [
     `Den relaunched you from the handoff your last session wrote. That session ended after ${reasonText(reason, compactions)} (session rotation).`,
+    ...clock,
     "Read it, then carry on from its Next step.",
     ...again,
     "",
@@ -778,9 +828,15 @@ export function handoffPrompt(
  * Issue 658: the first prompt of a Resume that started fresh because its
  * conversation was never written, when a handoff is on file.
  */
-export function resumeHandoffPrompt(handoff: string): string {
+export function resumeHandoffPrompt(
+  handoff: string,
+  now: Date = new Date(),
+  timeZone?: string,
+): string {
   return [
     "Den started you fresh: your last conversation was never written, so it could not be continued.",
+    clockLine(now, timeZone),
+    CLOCK_HINT,
     "Here is the last handoff your role wrote. Read it, then carry on from its Next step.",
     "",
     handoff.trim(),

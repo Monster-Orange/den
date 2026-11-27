@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.91-dev.0",
+  "version": "0.4.92-dev.0",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -41,7 +41,9 @@
     "release.json",
     "docs/",
     "!docs/images/",
-    "skills/"
+    "skills/",
+    "skill-packs/",
+    "!skill-packs/patches/"
   ],
   "scripts": {
     "cli": "tsx src/ui/cli/index.ts menu",

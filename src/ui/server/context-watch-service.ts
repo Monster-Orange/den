@@ -7,6 +7,7 @@
  * the agent is among the ones Den doesn't type into (typingHeld) until a
  * person clears it on the Agents page.
  */
+import { agentPagePath } from "../../shared/agent-links.js";
 import {
   agentFilesDir,
   listRecords,
@@ -93,7 +94,7 @@ export function checkCompactions(d: ContextWatchDeps): string[] {
         scope: `workspace/${rec.workspace}`,
         text: `${name} is compacting repeatedly: ${n} times in ${m} minutes`,
         msg: { key: "bell.m.compacting", vars: { name, n, m } },
-        link: `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`,
+        link: agentPagePath(rec.workspace, rec.id),
       });
     } catch {
       /* the bell is best effort: the log line and the row still say it */

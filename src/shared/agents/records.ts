@@ -51,6 +51,7 @@ export interface AgentRecord {
    * runtime that takes one (Runtime.subagentModel).
    */
   subagents?: { model?: string; from: "persona" | "org" | "default" };
+  skillPackDirs?: string[];
   workspace: string;
   cwd: string;
   /**
@@ -118,6 +119,7 @@ export interface AgentRecord {
    * a token. Unset: none was picked (desktop sign-in, or no token).
    */
   signIn?: { id: string; label: string };
+  envHold?: { applied: boolean; legacy?: true };
   /**
    * Issue 936: whether its session started in the OS sandbox (Den's state
    * read-only to it): the tool, or why not.

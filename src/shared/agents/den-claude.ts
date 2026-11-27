@@ -67,14 +67,19 @@ import { HUB_PROMPT_LINE } from "../hub.js";
 import {
   apiOnlyHooks,
   attentionHooks,
+  subagentHooks,
   widenHookTimeouts,
   GUARDRAILS_DIR,
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  envGuardHooks,
+  withEnvMask,
+  withoutEnvGuard,
   sandboxRefusalHooks,
   type GateRouteArgs,
 } from "./guardrails.js";
+import { ENV_HOLD_FILE, envHoldScript } from "./env-hold.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
@@ -793,6 +798,18 @@ export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
 }
 
 /** The flags every run shares: Den's MCP only, the model, the role prompt. */
+export function skillPacksPrompt(packs: LaunchInput["skillPacks"]): string {
+  if (!packs?.length) return "";
+  const lines = packs.map(
+    (p) =>
+      `The ${p.name} skills are loaded as the plugin ${p.name}. Before you use one, read ${p.dir}/docs/harness/claude-code.md once.`,
+  );
+  lines.push(
+    "Den's rules win over a skill's: watch checks with github_watch, never merge or force-push, and hand a green PR to whoever merges.",
+  );
+  return `\n\n${lines.join("\n")}`;
+}
+
 function common(input: LaunchInput): {
   argv: string[];
   files: Record<string, string>;
@@ -839,10 +856,18 @@ function common(input: LaunchInput): {
           inbox && { ...inbox, files: input.filesDir },
         )
       : null;
+  const envGuard = input.envHold?.guard;
+  const guarded =
+    envGuard === true && !baseHooks?.PreToolUse
+      ? mergeHooks(baseHooks, envGuardHooks(GUARDRAILS_DIR, process.execPath))
+      : baseHooks;
+  if (envGuard === false && guarded) withoutEnvGuard(guarded);
+  else if (guarded && input.envHold?.mask?.length)
+    withEnvMask(guarded, input.envHold.mask);
   // NT-1: every agent tells Den when it waits for its person.
-  if (inbox && baseHooks)
+  if (inbox && guarded)
     widenHookTimeouts(
-      baseHooks,
+      guarded,
       "Stop",
       hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
     );
@@ -850,8 +875,8 @@ function common(input: LaunchInput): {
     // Issue 936: a refused write in the sandbox says why, with Den's hooks
     // (a persona with den_hooks: false gets none of them).
     input.persona.guardrails?.hooks
-      ? mergeHooks(baseHooks, sandboxRefusalHooks())
-      : baseHooks,
+      ? mergeHooks(guarded, sandboxRefusalHooks())
+      : guarded,
     input.attention
       ? attentionHooks(
           input.attention.base,
@@ -862,6 +887,12 @@ function common(input: LaunchInput): {
         )
       : null,
   );
+  const allHooks = input.attention
+    ? mergeHooks(
+        hooks,
+        subagentHooks(input.attention.base, input.attention.call),
+      )
+    : hooks;
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the
   // default). Claude Code checks deny before allow: an install's deny wins.
@@ -884,7 +915,7 @@ function common(input: LaunchInput): {
   const settings =
     input.stateDir ||
     input.personConfigDir ||
-    hooks ||
+    allHooks ||
     allow.length ||
     noConnectors
       ? settingsPath(input)
@@ -895,6 +926,7 @@ function common(input: LaunchInput): {
       file,
       ...(noConnectors ? ["--strict-mcp-config"] : []),
       ...(settings ? ["--settings", settings] : []),
+      ...(input.skillPacks ?? []).flatMap((p) => ["--plugin-dir", p.dir]),
       "--permission-mode",
       mode,
       ...(input.model ? ["--model", input.model] : []),
@@ -906,6 +938,7 @@ function common(input: LaunchInput): {
         input.mcp.name,
         input.webUrl ?? null,
       ) +
+        skillPacksPrompt(input.skillPacks) +
         (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : "") +
         // Issue 158: the Hub delivery loop, after the Hub line.
         (input.mcp.hub?.loop ? `\n\n${input.mcp.hub.loop}` : ""),
@@ -921,6 +954,9 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    ...(input.skillPacks ?? []).map(
+                      (p) => `Edit(/${path.resolve(p.dir)}/**)`,
+                    ),
                     // Issue 1264: the gate's settings (route_agents and
                     // route_commands among them) are a person's; its slot
                     // log beside them stays the hook's to append to.
@@ -977,7 +1013,7 @@ function common(input: LaunchInput): {
                       : []),
                   ],
                 },
-                ...(hooks ? { hooks } : {}),
+                ...(allHooks ? { hooks: allHooks } : {}),
                 ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
                 ...(strays
                   ? {
@@ -1089,6 +1125,19 @@ export function transcriptFile(
   return null;
 }
 
+function envHold(input: LaunchInput): {
+  env: Record<string, string>;
+  files: Record<string, string>;
+} {
+  if (!input.envHold) return { env: {}, files: {} };
+  const file = path.join(input.filesDir, ENV_HOLD_FILE);
+  const h = input.envHold;
+  return {
+    env: { CLAUDE_ENV_FILE: file },
+    files: { [file]: envHoldScript(h.hold, h.allow, h.own, {}) },
+  };
+}
+
 const stampFiles = new Map<string, string>();
 
 function stampedTranscript(
@@ -1137,8 +1186,8 @@ export const denClaude: Runtime = {
         ...c.argv,
         ...firstPromptArg(input.firstPrompt),
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       resumeToken: id,
       warnings: [...c.warnings, ...modeWarnings],
     };
@@ -1156,8 +1205,8 @@ export const denClaude: Runtime = {
         ...nameArg(input.sessionLabel),
         ...c.argv,
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       warnings: [...c.warnings, ...modeWarnings],
     };
   },
