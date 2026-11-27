@@ -515,13 +515,6 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
   it("a drop while it's open: it says it's connecting until it's back, then typing reaches the agent again", async () => {
     if (skip()) return;
     const p = await open(1280);
-    const ctl: { opens: number; drop?: () => Promise<void> } = { opens: 0 };
-    await p.routeWebSocket(/\/api\/sessions\/[^/]+\/io/, (ws) => {
-      ctl.opens += 1;
-      const sv = ws.connectToServer();
-      if (ctl.opens === 1)
-        ctl.drop = () => sv.close({ code: 1000 }).catch(() => undefined);
-    });
     await peek(p);
     await p
       .locator('dialog#den-peek[data-conn="live"]')
@@ -538,8 +531,35 @@ describe("issue 791: the panel never resizes the agent's terminal for the full v
         attributeOldValue: true,
       });
     });
-    await ctl.drop!();
-    await eventually(() => ctl.opens >= 2);
+    const ios = (open: boolean) =>
+      p.evaluate(
+        (o) =>
+          (
+            ((window as unknown as { __socks?: WebSocket[] }).__socks ??
+              []) as WebSocket[]
+          ).filter(
+            (x) =>
+              new URL(x.url).pathname.endsWith("/io") &&
+              (!o || x.readyState === WebSocket.OPEN),
+          ).length,
+        open,
+      );
+    expect(await ios(true)).toBe(1);
+    await p.evaluate(() =>
+      (
+        ((window as unknown as { __socks?: WebSocket[] }).__socks ??
+          []) as WebSocket[]
+      )
+        .find(
+          (x) =>
+            new URL(x.url).pathname.endsWith("/io") &&
+            x.readyState === WebSocket.OPEN,
+        )
+        ?.close(1000),
+    );
+    await eventually(
+      async () => (await ios(false)) >= 2 && (await ios(true)) === 1,
+    );
     await p
       .locator('dialog#den-peek[data-conn="live"]')
       .waitFor({ timeout: 15_000 });
