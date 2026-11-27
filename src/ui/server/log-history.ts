@@ -790,6 +790,7 @@ export interface SearchPageSystem {
 }
 
 export interface SearchPage extends Page<SearchPageMatch> {
+  forwardOnly: true;
   q: string;
   systems: SearchPageSystem[];
 }
@@ -931,6 +932,7 @@ export async function searchHistoryPage(
     items: matches,
     next: more ? searchCursor(hash, targets, o) : null,
     prev: null,
+    forwardOnly: true,
     systems,
   };
 }
