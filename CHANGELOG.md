@@ -4,9 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.91] - unreleased
+## [0.4.92] - unreleased
 
 - Restart all agents with out-of-date tools now restarts them through Den's restart queue, a batch at a time (`agents.resume.batch`, every `agents.resume.gap_seconds`, held back while the machine is busy), instead of every idle agent at once. Pressing it again while a wave runs adds nothing. The button shows "Restarting N of M…" and stays disabled until the wave is done, after a page reload too.
+
+## [0.4.91] - 2026-11-26
+
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)
 - An install reached through a symlinked folder (its `node_modules` a link to another folder) no longer restarts its terminal host, ending open terminals, at every Den start. Den now compares the terminal module the host loaded and the one installed by the file they resolve to, not by how the path is spelled. A module that's gone or replaced still restarts the host.
 - When a request is slow, the server's log now says which route, who asked and how long it took, and a blocked server logs how long it was stuck. Both thresholds are in Settings › Server (`server_log.slow_request_ms`, 3 s, and `server_log.event_loop_lag_ms`, 1 s). The lines never include the address, query, headers or body, and each is written at most once a minute.
@@ -15,7 +18,6 @@ config and manifest changes a distribution must make to move to it under
 - A restart from the update pill's Reload is named in the audit log as the update pill's, as Restart Den in the menu and in Settings already are. It used to say only "the page".
 - When the bell's Allow row leaves and comes back while you're on its Review button, the keyboard goes back to Review even if you switched to another window meanwhile. Coming back to the window isn't moving on.
 - An agent removed while Den is making its Hub token now gets 403 `agent_removed`, and nothing reaches Hub for it. Den checks the agent's record at the start of the call and again after the token, and refuses if it can't read it. (issue 1222)
-- Agents can be kept from seeing secret-looking environment variables (`*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, `OP_SESSION_*`): set `agents.env_hold` in config/local/user.yml, or use a strict install, which holds them back by default. A name an agent needs goes in `agents.env_allow`. `env`, `printenv` and `set` in an agent's shell show those values masked. Agents started before keep theirs until you pick Keep these or Remove in the bell, and `den doctor` lists what is held back, by name only. (issue 974)
 - When an update fails and putting the old version back fails too, the bell now says so on its own. It leads with what to do by hand: put the pin back on the old version in the distribution's folder and run npm install there. npm's reasons come last.
 - Doctor warns when the gate's `route_agents` setting holds a value that is neither on nor off. The warning names the value, what Den reads it as, and the forms the setting takes. How the value is read is unchanged.
 - Den's server sweep of throwaway test containers can be turned off: the gate setting `gate.throwaway_sweep` (on by default, so nothing changes unless you turn it off). It's in Settings › Server, "Remove throwaway test containers", or `gate settings --throwaway-sweep 0`. Off, Den's server never runs docker for them, and `den doctor` says the sweep is off. Turning it off needs your own Allow, also when an agent asks with `gate_settings_set`. And the dead-daemon check at start no longer lists Docker containers when this install has no daemon to check. (issue 1697)
@@ -53,6 +55,7 @@ config and manifest changes a distribution must make to move to it under
 - An agent can take back its own pending write request with `ask_withdraw`, with a short reason, so the person never has to deny a request the agent filed by mistake.
 - A relaunched agent's first prompt now says the current local time, so it counts times and ETAs from now, not from its handoff or older messages.
 - Doctor says when agents commit without a signing key. A self-update's pin commit is signed with the agents' key when one is set. When no key is set and the branch requires signed commits, the pin goes to a pull request instead of a push that would be refused, and the bell says why.
+- Den's own tests: the helper that starts a test server now reads a server's log file when its output goes there. A port another test took is tried again on a new port, and any other failed start shows the log's last 40 lines. (issue 1845)
 
 ## [0.4.90] - 2026-11-25
 
