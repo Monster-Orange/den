@@ -445,7 +445,7 @@
           }
 
           // Available repos dropdown
-          const repos = await fetch("/api/workspaces/available-repos")
+          const repos = await fetch("/api/workspaces/available-repos?all=1")
             .then((r) => r.json())
             .catch(() => []);
           const repoSel = document.getElementById("ws-repo-sel");

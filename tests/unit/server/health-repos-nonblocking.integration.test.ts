@@ -106,7 +106,7 @@ describe("server-info stays responsive", () => {
 
   it("while /api/workspaces/available-repos runs", async () => {
     const before = srv.slowCalls();
-    const repos = srv.timed("/api/workspaces/available-repos?refresh=1");
+    const repos = srv.timed("/api/workspaces/available-repos?refresh=1&all=1");
     const { worst } = await slowestProbeDuring(srv, repos, 20);
     const { status, body } = await repos;
 

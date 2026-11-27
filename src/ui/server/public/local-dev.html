@@ -2225,7 +2225,7 @@
 
           // Fetch available repos for the add modal and dep rows
           const repos = await fetch(
-            `/api/workspaces/available-repos?workspace=${encodeURIComponent(wsName)}`,
+            `/api/workspaces/available-repos?all=1&workspace=${encodeURIComponent(wsName)}`,
           )
             .then((r) => r.json())
             .catch(() => []);
