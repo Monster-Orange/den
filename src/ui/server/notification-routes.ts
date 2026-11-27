@@ -82,6 +82,7 @@ import type { SeenMarks } from "../../shared/seen-mark.js";
 import { agentSubject, personKey, type DoneAgent } from "./agent-state.js";
 import { listRecords } from "../../shared/agents/records.js";
 import { getStateDir } from "../../shared/paths.js";
+import { isPageError, pageOf, readPageAsk, sendPageError } from "./paging.js";
 
 /** Issue 1008: a withdraw's reason, one line. */
 export const WITHDRAW_REASON_MAX = 200;
@@ -506,6 +507,15 @@ export async function handleNotificationRoutes(
   if (pathname === "/api/notifications") {
     if (method !== "GET" && method !== "HEAD")
       return (refuse(res, 405, "method", "GET only."), true);
+    const q = new URL(req.url ?? "/", "http://localhost").searchParams;
+    const ask = readPageAsk(q);
+    if (isPageError(ask)) return (sendPageError(res, ask), true);
+    const section = q.get("section") ?? "recent";
+    if (!["recent", "updates", "older"].includes(section))
+      return (
+        refuse(res, 400, "bad_section", "section is recent, updates or older."),
+        true
+      );
     const prefs = (deps.prefs ?? bellPrefs)(null);
     const all = bellView(deps.store.list(), prefs);
     let done: DoneAgent[] = [];
@@ -527,10 +537,22 @@ export async function handleNotificationRoutes(
     );
     const once = (ns: Notification[]) =>
       ns.filter((n) => !(n.kind === "finished" && inDone.has(n.subject)));
-    const v = { ...all, updates: once(all.updates), older: once(all.older) };
     const keep = agentRowFilter(req);
+    const reach = keep ? bellReach(keep, deps) : null;
+    const page = (name: string, ns: Notification[]) =>
+      pageOf(ns, name === section ? ask : { ...ask, after: null }, {
+        key: (n) => n.at,
+        id: (n) => n.id,
+        order: "desc",
+        ...(reach ? { filter: (n: Notification) => reach(n.scope) } : {}),
+      });
+    const recentP = page("recent", all.recent);
+    const updatesP = page("updates", once(all.updates));
+    const olderP = page("older", once(all.older));
+    const unreadOf = (ns: Notification[]) => ns.filter((n) => !n.read).length;
+    const v = { unread: unreadOf(recentP.items) };
     const mine = (ds: DoneAgent[]) =>
-      keep ? ds.filter((d) => keep(d.workspace)) : ds;
+      (keep ? ds.filter((d) => keep(d.workspace)) : ds).slice(0, ask.limit);
     const bell = {
       ok: true,
       unread: v.unread,
@@ -550,17 +572,23 @@ export async function handleNotificationRoutes(
             ...(w ? { since: w.since } : {}),
           };
         }),
-      ],
-      groups: groupNotifications(v.recent),
+      ].slice(0, ask.limit),
+      groups: groupNotifications(recentP.items),
+      next: recentP.next,
       // ATTN-5 (den#142): updates, collapsed; never in the badge.
       updates: {
-        count: v.updates.length,
-        unread: v.updates.filter((n) => !n.read).length,
-        groups: groupNotifications(v.updates),
+        count: updatesP.items.length,
+        unread: unreadOf(updatesP.items),
+        groups: groupNotifications(updatesP.items),
+        next: updatesP.next,
       },
-      older: { count: v.older.length, groups: groupNotifications(v.older) },
-      off: v.off,
-      foldDays: v.foldDays,
+      older: {
+        count: olderP.items.length,
+        groups: groupNotifications(olderP.items),
+        next: olderP.next,
+      },
+      off: all.off,
+      foldDays: all.foldDays,
       mutes: deps.store.mutes(),
     };
     sendJson(res, keep ? narrowBell(bell, keep, deps) : bell);
@@ -765,6 +793,19 @@ function recordProjects(): ReadonlyMap<string, string> {
   return m;
 }
 
+export function bellReach(
+  keep: (ws: string) => boolean,
+  deps: Pick<NotificationRouteDeps, "agentProjects">,
+): (target: string | undefined) => boolean {
+  const projects = (deps.agentProjects ?? recordProjects)();
+  return (target) => {
+    if (!target) return false;
+    if (target.startsWith("workspace/")) return keep(target.slice(10));
+    const ws = projects.get(target);
+    return ws !== undefined && keep(ws);
+  };
+}
+
 export function narrowBell<
   T extends {
     unread: number;
@@ -779,13 +820,7 @@ export function narrowBell<
   keep: (ws: string) => boolean,
   deps: Pick<NotificationRouteDeps, "agentProjects">,
 ): T {
-  const projects = (deps.agentProjects ?? recordProjects)();
-  const reach = (target: string | undefined): boolean => {
-    if (!target) return false;
-    if (target.startsWith("workspace/")) return keep(target.slice(10));
-    const ws = projects.get(target);
-    return ws !== undefined && keep(ws);
-  };
+  const reach = bellReach(keep, deps);
   const groups = (g: BellGroups) => g.filter((x) => reach(x.scope));
   const items = (g: BellGroups) =>
     g.flatMap((x) => x.subjects.flatMap((s) => s.items));

@@ -580,9 +580,20 @@ const READ_TOOLS: DenTool[] = [
   read(
     "notifications_list",
     "Your person's bell",
-    "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. Reads only: an agent can't mark or clear these.",
-    {},
-    async (_a, { api }) => api.get("/api/notifications"),
+    "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. One page each of the recent, `updates` and `older` sections: when a section's `next` is not null there are more, so call again with `section` and `cursor` set to it. `limit` defaults to 50 and is capped by the install's list page size. Reads only: an agent can't mark or clear these.",
+    {
+      limit: z.number().int().positive().optional(),
+      cursor: z.string().max(2048).optional(),
+      section: z.enum(["recent", "updates", "older"]).optional(),
+    },
+    async (a, { api }) => {
+      const q = new URLSearchParams();
+      if (a.limit !== undefined) q.set("limit", String(a.limit));
+      if (a.cursor) q.set("cursor", a.cursor);
+      if (a.section) q.set("section", a.section);
+      const s = q.toString();
+      return api.get(`/api/notifications${s ? `?${s}` : ""}`);
+    },
   ),
   read(
     "app_feed_read",
