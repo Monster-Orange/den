@@ -27,6 +27,8 @@ config and manifest changes a distribution must make to move to it under
 
 - The server agent can watch pull request checks and workflow runs with `github_watch` (and list or cancel its watches), as other agents do. Den tells the server agent's own session once, when they finish. An MCP server that is no agent's is still refused.
 
+- Peek: a click on an agent's row in the bell opens that agent's live terminal in a panel over the page you are on, so you can answer it without leaving your view. Esc closes it and puts focus back on the row; the row's "Open in Agents" link still goes to the Agents page (issue 791).
+
 - A test stack's fixture person can now reach an agent through Hub on a test install. Den reads a Hub comment whose author is marked `verified: "fixture"` only when this install is a test install, and drops it on any other install as before. The agent sees `from: test fixture, not verified: <login>`, never "your person" or a Hub session or token, and a fixture author never counts as the install's person: its comment is never an edit request or an approval, and it answers no question the agent asked. (issue 1816)
 
 ## [0.4.91] - 2026-11-26
