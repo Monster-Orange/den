@@ -917,6 +917,7 @@
     "account.retry": "Try again",
     "account.name": "Name",
     "account.role": "Role",
+    "account.toDevices": "Your signed-in browsers are in Devices",
     "set.ui.viaGithub": "signed in with GitHub",
     "set.ui.viaCode": "approved with a code",
     "set.ui.viaAgentView": "{agent}'s read-only view",

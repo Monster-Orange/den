@@ -82,7 +82,8 @@ function profileHtml({ session, account }, t) {
         : esc(t("account.ghNone")),
     ) +
     (owner ? kv(t("account.role"), esc(t("acct.roleOwner"))) : "") +
-    `<div data-acct-rows></div>`
+    `<div data-acct-rows></div>` +
+    `<p class="dn-pane-d"><a href="?account=devices" data-dn-hit="devices">${esc(t("account.toDevices"))}</a></p>`
   );
 }
 
@@ -90,7 +91,8 @@ const localRows = (ids, shell) =>
   ids
     .map(registryRow)
     .filter(Boolean)
-    .map((r) => localizeRow(r, shell.tr));
+    .map((r) => localizeRow(r, shell.tr))
+    .map((r) => (r.id === "cli.signin" ? { ...r, description: "" } : r));
 
 const rowsCtx = (shell) =>
   settingsCtx({
