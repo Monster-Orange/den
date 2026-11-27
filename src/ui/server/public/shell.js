@@ -1148,6 +1148,8 @@
     "set.ui.moveDown": "Move {name} down",
     "set.ui.unpinX": "Unpin {name}",
     "set.ui.noPins": "Nothing pinned",
+    "set.ui.more": "More",
+    "set.ui.cmd": "Command line",
     "set.ui.setByIn": "Set by the distribution in {file}.",
     "set.ui.setBy": "Set by the distribution in its config.",
     "set.ui.showX": "Show {name}",
