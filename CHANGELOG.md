@@ -32,6 +32,7 @@ config and manifest changes a distribution must make to move to it under
 - The server agent can watch pull request checks and workflow runs with `github_watch` (and list or cancel its watches), as other agents do. Den tells the server agent's own session once, when they finish. An MCP server that is no agent's is still refused.
 
 - Peek: a click on an agent's row in the bell opens that agent's live terminal in a panel over the page you are on, so you can answer it without leaving your view. Esc closes it and puts focus back on the row; the row's "Open in Agents" link still goes to the Agents page (issue 791).
+- Peek also opens the server agent's terminal from its bell row, and its small link (named after the server agent) and Open in layout go to the server agent's page. A project agent with the same name as the server agent is never shown in its place (issue 1821).
 
 - On a personal install, `den doctor` now says whether agents can read the activity trail. If the older trail written before redaction hasn't been set aside, and Den is running, it warns that agents can't read the trail and says to restart Den (Den's log says why if it fails again). Before Den's first start it says the trail is set aside then. A strict install shows no such row, since its agents never read the trail. (issue 1399)
 
@@ -44,6 +45,8 @@ config and manifest changes a distribution must make to move to it under
 - Browser alerts for finished turns: an open Den tab can play a sound when an agent finishes or needs you, and shows how many agents need you in its title and icon. Settings › Notifications has "Sounds" and "Count in the tab" (`alerts.sound`, `alerts.tab_count`). When a Den tab is open and visible on a device that also gets push, the tab shows the alert and that device's push is skipped; if the tab hasn't shown it within `alerts.tab_first_seconds` (3 by default), the push goes (issue 774).
 
 - Agents page: after an agent restarts, its pane no longer shows the old session's terminal size while the new session connects.
+
+- With `DEN_LOGIN_SHELL=off`, `den doctor` and the server no longer start the person's shell to list the names in its environment. Den's tests set it, so a test no longer runs the developer's shell profile. (issue 1857)
 
 ## [0.4.91] - 2026-11-26
 

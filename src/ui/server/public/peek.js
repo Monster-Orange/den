@@ -11,33 +11,51 @@ const esc = (s) =>
   );
 
 const SERVER_SCOPE = "den-server";
+const SERVER_PAGE = "/server-agent";
 
 export const layoutLink = (agent, workspace) =>
-  `/agents?${new URLSearchParams({ project: workspace, agent })}`;
+  workspace === SERVER_SCOPE
+    ? SERVER_PAGE
+    : `/agents?${new URLSearchParams({ project: workspace, agent })}`;
+
+const pageOf = (workspace) =>
+  workspace === SERVER_SCOPE
+    ? /^\/server-agent(?:[?#]|$)/
+    : /^\/agents(?:[?#]|$)/;
 
 export function peekTarget(n) {
   const m = /^agent:(.+)$/.exec(n?.subject ?? "");
   const ws = /^workspace\/(.+)$/.exec(n?.scope ?? "");
-  if (!m || !ws || ws[1] === SERVER_SCOPE) return null;
+  if (!m || !ws) return null;
   const link = n.link;
   if (link !== undefined && link !== null && link !== "") {
-    if (typeof link !== "string" || !/^\/agents(?:[?#]|$)/.test(link))
-      return null;
+    if (typeof link !== "string" || !pageOf(ws[1]).test(link)) return null;
     return { agent: m[1], workspace: ws[1], link };
   }
   return { agent: m[1], workspace: ws[1], link: layoutLink(m[1], ws[1]) };
 }
 
-export function nextNeeding(bell, rows, agent) {
+const projectLabel = (ws) => (ws === SERVER_SCOPE ? tr("bell.server") : ws);
+
+const rowOf = (rows, t) =>
+  (rows ?? []).find(
+    (x) =>
+      x.kind === "agent" && x.agent === t.agent && x.workspace === t.workspace,
+  );
+
+export function nextNeeding(bell, rows, agent, workspace) {
   for (const g of bell?.groups ?? [])
     for (const s of g.subjects ?? [])
       for (const n of s.items ?? []) {
         if (n.kind !== "waiting") continue;
         const t = peekTarget(n);
-        if (!t || t.agent === agent) continue;
-        const r = (rows ?? []).find(
-          (x) => x.kind === "agent" && x.agent === t.agent,
-        );
+        if (
+          !t ||
+          (t.agent === agent &&
+            (workspace === undefined || t.workspace === workspace))
+        )
+          continue;
+        const r = rowOf(rows, t);
         return {
           ...t,
           name: r?.displayName || t.agent,
@@ -51,7 +69,7 @@ const stoppedRow = (r) => !!r && (r.exited === true || r.attachable === false);
 
 export function peekView(r, ctx = {}) {
   const name = r?.displayName || r?.agent || r?.label || ctx.agent || "";
-  const project = ctx.projectName ?? r?.workspace ?? "";
+  const project = projectLabel(ctx.projectName ?? r?.workspace ?? "");
   const failed = ctx.conn === "failed" || !r;
   const stopped = stoppedRow(r);
   let mark = "work";
@@ -97,7 +115,7 @@ export function peekView(r, ctx = {}) {
       kind: "warn",
       text: tr("peek.next", {
         name: ctx.next.name,
-        project: ctx.next.workspace,
+        project: projectLabel(ctx.next.workspace),
         why: ctx.next.why
           ? tr(`ag.waiting.${ctx.next.why}`)
           : tr("peek.whyWaiting"),
@@ -319,6 +337,7 @@ function view(st) {
       st.lastBell ?? st.bell?.() ?? null,
       st.rows,
       st.target.agent,
+      st.target.workspace,
     ),
   });
 }
@@ -328,9 +347,7 @@ async function load(st, first) {
   if (st.closed || cur !== st) return;
   if (rows) {
     st.rows = rows;
-    st.row =
-      rows.find((x) => x.kind === "agent" && x.agent === st.target.agent) ??
-      null;
+    st.row = rowOf(rows, st.target) ?? null;
     if (first && st.row?.waiting) st.wasNeeding = true;
   }
   paint(st);

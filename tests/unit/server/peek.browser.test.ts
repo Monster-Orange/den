@@ -331,6 +331,96 @@ describe("issue 791: Peek on a phone is a full-screen sheet", () => {
   }, 90_000);
 });
 
+describe("issue 1821: the server agent's bell row opens Peek on its own terminal", () => {
+  it("a /server-agent row opens the server agent's session, not a project agent's of the same name", async () => {
+    if (skip()) return;
+    const host = await connectHost(sessionPaths(s.stateDir).socket);
+    const twin = await host.start({
+      name: "acme-north:server",
+      cwd: s.wsDir("north"),
+      argv: ["sh"],
+      env: {},
+      cols: 80,
+      rows: 24,
+    });
+    const twinPty = s.made.at(-1)!;
+    const own = await host.start({
+      name: "acme-den-server:server",
+      cwd: s.wsDir("north"),
+      argv: ["sh"],
+      env: {},
+      cols: 80,
+      rows: 24,
+    });
+    const ownPty = s.made.at(-1)!;
+    host.close();
+    s.seed({
+      id: "server",
+      persona: "builder",
+      runtime: "den-claude",
+      workspace: "north",
+      session: { backend: "den-pty", id: twin.ref.id },
+      sessionName: "acme-north:server",
+    });
+    s.seed({
+      id: "server",
+      persona: "server",
+      runtime: "den-claude",
+      workspace: "den-server",
+      session: { backend: "den-pty", id: own.ref.id },
+      sessionName: "acme-den-server:server",
+    });
+    const st = new NotificationStore(s.stateDir);
+    st.add({
+      kind: "waiting",
+      subject: "agent:server",
+      scope: "workspace/den-server",
+      text: "server needs your permission",
+      link: "/server-agent",
+      source: "hub",
+    });
+    try {
+      const p = await open(1280);
+      await p.click("#den-bell");
+      const a = p.locator(
+        '#den-bell-pop a[data-bell="open"][data-peek="server"]',
+      );
+      await a.waitFor();
+      expect(await a.getAttribute("href")).toBe("/server-agent");
+      await a.click();
+      const d = p.locator('dialog#den-peek[data-conn="live"]');
+      await d.waitFor({ timeout: 15_000 });
+      expect(new URL(p.url()).pathname).toBe("/services");
+      const mark = `own-${Math.random().toString(36).slice(2, 8)}`;
+      ownPty.emit(`${mark}$ `);
+      await p.waitForFunction(
+        (m) =>
+          document
+            .querySelector("#den-peek [data-peek-term]")
+            ?.textContent?.includes(m),
+        mark,
+        { timeout: 15_000 },
+      );
+      const ownAt = ownPty.writes.length;
+      const twinAt = twinPty.writes.length;
+      await p.focus("#den-peek .xterm-helper-textarea");
+      await p.keyboard.type("y");
+      await eventually(() =>
+        Buffer.concat(ownPty.writes.slice(ownAt)).toString().includes("y"),
+      );
+      expect(twinPty.writes.length).toBe(twinAt);
+      expect(await d.locator('[data-peek="layout"]').getAttribute("href")).toBe(
+        "/server-agent",
+      );
+      await p.keyboard.press("Escape");
+      await p.locator("dialog#den-peek").waitFor({ state: "detached" });
+      await p.context().close();
+    } finally {
+      st.remove((n) => n.subject === "agent:server");
+    }
+  }, 90_000);
+});
+
 describe("issue 791: the panel never resizes the agent's terminal for the full view", () => {
   it("over the Agents page with the agent's pane open: opening and closing the peek leave the PTY's size alone", async () => {
     if (skip()) return;

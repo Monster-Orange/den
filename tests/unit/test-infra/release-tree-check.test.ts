@@ -312,16 +312,45 @@ describe("release-tree-check: the tree CI tested, with the whole suite (its `tes
     expect(r.line).toMatch(/full suite/);
   });
 
-  it("the accepted line names the run's attempt, so a re-run to green shows", () => {
+  it("a green from a re-run is refused, its run and attempt named", () => {
+    const r = decide({
+      tree: T,
+      green: [{ ...green[0], attempt: 2 }],
+      statuses: [],
+      context: "den/bed",
+      required: false,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.line).toMatch(/run 101 attempt 2/);
+    expect(r.line).toMatch(/re-run/);
+  });
+
+  it("a re-run's green doesn't count even when the bed passed", () => {
     const r = decide({
       tree: T,
       green: [{ ...green[0], attempt: 3 }],
+      statuses: [bed("success")],
+      context: "den/bed",
+      poster: POSTER,
+      required: true,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.line).toMatch(/run 101 attempt 3/);
+  });
+
+  it("a first-attempt full run counts beside a re-run of another, and the line names attempt 1", () => {
+    const r = decide({
+      tree: T,
+      green: [
+        { ...green[0], run: 102, attempt: 2 },
+        { ...green[0], run: 103, attempt: 1 },
+      ],
       statuses: [],
       context: "den/bed",
       required: false,
     });
     expect(r.ok).toBe(true);
-    expect(r.line).toMatch(/run 101 attempt 3/);
+    expect(r.line).toMatch(/run 103 attempt 1/);
   });
 
   it("the no-match line says only the newest 100 runs per event are searched", () => {
@@ -421,6 +450,40 @@ describe("release-tree-check: the tree CI tested, with the whole suite (its `tes
       ).toEqual([1, 2]);
     });
 
+    it("a fork's run found only by head_sha is still refused by candidates", () => {
+      const found = runsFrom({
+        [`${base}?head_sha=${SHA}&per_page=100`]: { workflow_runs: [r(5)] },
+      });
+      expect(found).toEqual([5]);
+      const kept = call(
+        "release-tree-check.mjs",
+        "candidates",
+        [
+          {
+            ...r(5),
+            path: ".github/workflows/ci.yml",
+            head_commit: { tree_id: T },
+            head_repository: { full_name: "fork-y/repo-x" },
+            ci_blob: "d".repeat(40),
+          },
+        ],
+        T,
+        { repo: REPO, ciBlob: "d".repeat(40) },
+      ) as unknown[];
+      expect(kept).toEqual([]);
+    });
+
+    it("a head_sha run whose artifact ran only the affected tests is still refused", () => {
+      const r2 = decide({
+        tree: T,
+        green: [{ ...green[0], selection: "affected" }],
+        statuses: [],
+        context: "den/bed",
+        required: false,
+      });
+      expect(r2.ok).toBe(false);
+    });
+
     it("a head_sha run that failed, or came from a push, doesn't count", () => {
       expect(
         runsFrom({
@@ -452,6 +515,14 @@ describe("release-tree-check: the tree CI tested, with the whole suite (its `tes
       selection: "all",
       event: "merge_group",
     });
+    expect(
+      call("release-tree-check.mjs", "entryOf", r, {
+        tree: T,
+        selection: "all",
+        attempt: 1,
+        event: "pull_request",
+      }),
+    ).toMatchObject({ run: 7, attempt: 2 });
     expect(call("release-tree-check.mjs", "entryOf", r, null)).toBeNull();
     expect(
       call("release-tree-check.mjs", "entryOf", r, { selection: "all" }),
