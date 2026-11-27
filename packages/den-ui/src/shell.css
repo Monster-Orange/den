@@ -948,7 +948,10 @@ body.den-has-shell .den-upd {
   font-size: 13px;
   min-width: 0;
 }
-/* The last crumb's least width is its whole self: it never gives way. */
+/* A crumb never gets narrower than its value; the last, than itself. */
+.den-scope .den-ib:not(.den-last) {
+  min-width: calc(5ch + 0.28em + 24px);
+}
 .den-scope .den-ib.den-last {
   min-width: auto;
 }
