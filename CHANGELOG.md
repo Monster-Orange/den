@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Changed
+
+- A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default) and an opaque `?cursor`, filters before the cut, and one answer shape `{ items, next, total? }`. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
+
 ## [0.4.92] - unreleased
 
 ### Changed
