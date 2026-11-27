@@ -251,7 +251,9 @@ import {
   resolveHistorySource,
   ensureSnapshot,
   readPageBefore,
-  searchSystemHistory,
+  searchCursorHash,
+  searchHistoryPage,
+  searchOffsets,
   pruneDeadSnapshots,
   isSafeServiceName,
   tailArgv,
@@ -1754,6 +1756,7 @@ import {
   runningSubagents,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
+import { isPageError, readPageAsk, sendPageError } from "./paging.js";
 import { freshDen } from "../cli/server-agent-ops.js";
 import { loggedPath } from "./logged-path.js";
 import {
@@ -9440,9 +9443,36 @@ async function handleRequest(
         );
     }
     const project = url.searchParams.get("workspace");
-    void Promise.all(
-      targets.map((t) => searchSystemHistory(t, q, env, project)),
-    ).then((results) => sendJson(res, { q, results }));
+    const ask = readPageAsk(url.searchParams);
+    if (isPageError(ask)) return sendPageError(res, ask);
+    const offsets = searchOffsets(
+      ask.after,
+      searchCursorHash(q, env, project, targets),
+      targets,
+    );
+    if (!offsets)
+      return sendPageError(res, {
+        status: 400,
+        code: "bad_cursor",
+        error: "cursor is not one this search gave: start again without it",
+      });
+    void searchHistoryPage(targets, q, env, project, {
+      limit: ask.limit,
+      offsets,
+    }).then((page) => {
+      const by = new Map(page.systems.map((x) => [x.system, x]));
+      const results = [
+        ...new Set(targets.map((t) => `${t.repo}/${t.service}`)),
+      ].map((system) => {
+        const { more, ...rest } = by.get(system) ?? { system };
+        return {
+          ...rest,
+          matches: page.items.filter((m) => m.system === system),
+          truncated: more === true,
+        };
+      });
+      sendJson(res, { ...page, results });
+    });
     return;
   }
 

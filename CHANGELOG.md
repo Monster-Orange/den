@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Changed
+
+- Log search pages. `GET /api/logs/search` and the `logs_search` tool return 50 matches by default, all targets merged oldest first by time, then target, then line, with `next` for the page after (`limit` and `cursor`, capped by the install's list page size). Each target's grep stops at the page size, where before it collected up to 200 matches per target, so up to 8000 at once. There's no total, since a log scan can't count cheaply. The route still returns `results` per target, holding this page's matches only. A cursor from another search, or one this route didn't give, is refused (400 `bad_cursor`).
+
 ## [0.4.92] - unreleased
 
 ### Changed
