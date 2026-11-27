@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/kit/fonts.css" />
     <link rel="stylesheet" href="/kit/tokens.css" />
     <link rel="stylesheet" href="/kit/base.css" />
+    <link rel="stylesheet" href="/kit/pager.css" />
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <title>__DEN_TITLE__ · Logs</title>
     <style>
@@ -266,6 +267,11 @@
         border-bottom: 1px solid var(--border);
         flex-shrink: 0;
       }
+      .log-search-pager {
+        padding: 6px 12px;
+        border-top: 1px solid var(--border);
+        flex-shrink: 0;
+      }
       .pane-bar span {
         font-size: 10px;
         font-weight: 600;
@@ -495,6 +501,12 @@
         } from "/header.js";
         import { isServerLog, logStreamUrl } from "/log-source.js";
         import { currentTimeZone, formatTime, formatTitle } from "/kit/time.js";
+        import {
+          cursorHref,
+          cursorStart,
+          hydratePager,
+          pagerHtml,
+        } from "/kit/pager.js";
         // issue 206: a log line's clock in the person's own zone (24 hours,
         // so the column stays even). The stored stamp stays UTC.
         function logClock(iso) {
@@ -619,6 +631,7 @@
           const savedDir =
             localStorage.getItem("__DEN_CLI__-log-dir") || "cols";
           applyLogDir(savedDir);
+          const askedSearch = new URLSearchParams(location.search).get("lsQ");
 
           await Promise.all([
             loadLogToolbar(),
@@ -628,6 +641,10 @@
             applyDenConfig(),
             initChangelog(),
           ]);
+          if (askedSearch && searchRun === 0) {
+            document.getElementById("hist-search").value = askedSearch;
+            void runHistorySearch(true);
+          }
 
           // Re-open streams from localStorage. __DEN_CLI__/server is env-agnostic so
           // it reopens regardless of the stored env value.
@@ -1225,8 +1242,42 @@
         // (addStoredLog only runs through toggleLog).
         const SEARCH_KEY = "search/results";
 
-        async function runHistorySearch() {
+        const SEARCH_URL = {
+          after: "lsAfter",
+          back: "lsBack",
+          per: "lsPer",
+          offset: "lsO",
+        };
+        let searchRun = 0;
+        const searchPer = () => {
+          const n = Number(new URL(location.href).searchParams.get("lsPer"));
+          return Number.isInteger(n) && n > 0 ? n : 50;
+        };
+        const pagerWords = () => ({
+          rangeOpen: t("lg.pager.rangeOpen"),
+          label: t("lg.pager.label"),
+          first: t("lg.pager.first"),
+          firstSr: t("lg.pager.firstSr"),
+          prev: t("lg.pager.prev"),
+          prevSr: t("lg.pager.prevSr"),
+          next: t("lg.pager.next"),
+          nextSr: t("lg.pager.nextSr"),
+          perPage: t("lg.pager.perPage"),
+          go: t("lg.pager.go"),
+          more: t("lg.pager.more"),
+        });
+
+        async function runHistorySearch(fromUrl = false) {
+          const run = ++searchRun;
           const input = document.getElementById("hist-search");
+          if (!fromUrl) {
+            const u = new URL(location.href);
+            u.searchParams.delete("lsAfter");
+            u.searchParams.delete("lsBack");
+            u.searchParams.delete("lsO");
+            u.searchParams.set("lsQ", input.value.trim());
+            history.replaceState(history.state, "", u);
+          }
           const btn = document.getElementById("hist-search-btn");
           const q = input.value.trim();
           if (q.length < 2) {
@@ -1289,15 +1340,21 @@
           btn.textContent = "…";
           btn.disabled = true;
           try {
+            const here = new URL(location.href).searchParams;
+            const per = searchPer();
             const params = new URLSearchParams({
               q,
               env,
               targets: targets.join(","),
+              limit: String(per),
             });
+            if (here.get("lsAfter")) params.set("cursor", here.get("lsAfter"));
             const data = await window.denShell.api(
               "GET",
               `/api/logs/search?${params}`,
             );
+            if (run !== searchRun) return;
+            pane.outputEl.textContent = "";
             let total = 0;
             for (const result of data.results) {
               if (result.error) {
@@ -1313,12 +1370,9 @@
               total += result.matches.length;
               const [sysRepo, sysService] = result.system.split("/");
               line(
-                `── ${result.system} — ${t(
-                  result.truncated
-                    ? "lg.search.matchesMore"
-                    : "lg.search.matches",
-                  { n: result.matches.length },
-                )} ──`,
+                `── ${result.system} — ${t("lg.search.matches", {
+                  n: result.matches.length,
+                })} ──`,
                 "log-cmd",
                 () => toggleLog(sysRepo, sysService),
               );
@@ -1334,23 +1388,54 @@
               line("", "");
             }
             if (total === 0) line(t("lg.search.none", { q }), "log-done");
+            pane.paneEl.querySelector(".log-search-pager")?.remove();
+            const shown = (data.items ?? []).length;
+            const from = cursorStart(location.href, SEARCH_URL) + 1;
+            const foot = document.createElement("div");
+            foot.className = "log-search-pager";
+            foot.innerHTML = pagerHtml({
+              from,
+              to: from + Math.max(shown, 1) - 1,
+              hasNext: !!data.next,
+              per,
+              href: (target) =>
+                cursorHref(location.href, target, data.next, SEARCH_URL),
+              lang: window.denShell?.lang?.() ?? "en",
+              words: pagerWords(),
+            });
+            pane.paneEl.appendChild(foot);
+            hydratePager(foot.querySelector(".den-pager"), {
+              list: pane.outputEl,
+              onNavigate: (ask) => {
+                history.pushState(history.state, "", ask.href);
+                runHistorySearch(true);
+              },
+            });
             pane.outputEl.scrollTop = 0;
           } catch (e) {
             line(`── ${e.message} ──`, "log-err");
           } finally {
-            btn.textContent = t("lg.search");
-            btn.disabled = false;
+            if (run === searchRun) {
+              btn.textContent = t("lg.search");
+              btn.disabled = false;
+            }
           }
         }
 
         document
           .getElementById("hist-search-btn")
-          .addEventListener("click", runHistorySearch);
+          .addEventListener("click", () => runHistorySearch());
         document
           .getElementById("hist-search")
           .addEventListener("keydown", (e) => {
             if (e.key === "Enter") runHistorySearch();
           });
+        window.addEventListener("popstate", () => {
+          const asked = new URLSearchParams(location.search).get("lsQ");
+          if (!asked) return;
+          document.getElementById("hist-search").value = asked;
+          runHistorySearch(true);
+        });
 
         function showAwsReauthPrompt(paneEl, outputEl, repo, service, env) {
           paneEl.querySelector(".aws-auth-banner")?.remove();

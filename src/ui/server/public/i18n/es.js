@@ -1183,6 +1183,9 @@
       "Consulta del nombre en GitHub al arrancar, en segundos",
     "set.server.owner_name_timeout.d":
       "Cuánto espera __DEN_TITLE__ al arrancar el nombre del propietario de su perfil público de GitHub, cuando aún no lo tiene. Nunca retrasa el arranque. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.server.list_page_max": "Página de lista más larga, en filas",
+    "set.server.list_page_max.d":
+      "Las filas que puede tener como mucho una página de una lista, cuando una página o un agente pide más. Una página tiene 50 filas si no pide otro número. __DEN_CLI__ config web.list_page_max=200",
     "set.server.github_watch_interval":
       "Vigilancia de GitHub: primer intervalo, en segundos",
     "set.server.github_watch_interval.d":
@@ -5163,15 +5166,23 @@
     "lg.empty.click":
       "No hay registros abiertos. Haz clic en el nombre de un servicio de arriba para abrir uno.",
     "lg.search.pane": 'búsqueda: "{q}"',
-    "lg.search.matches": "{n} coincidencias (haz clic para abrir el registro)",
+    "lg.search.matches":
+      "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.matches.one":
-      "{n} coincidencia (haz clic para abrir el registro)",
-    "lg.search.matchesMore":
-      "{n}+ coincidencias (haz clic para abrir el registro)",
-    "lg.search.matchesMore.one":
-      "{n}+ coincidencia (haz clic para abrir el registro)",
+      "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.none":
       'no hay coincidencias para "{q}" en el historial de ningún servicio',
+    "lg.pager.rangeOpen": "{from}–{to}",
+    "lg.pager.label": "Páginas de resultados",
+    "lg.pager.first": "Primera",
+    "lg.pager.firstSr": "Primera página",
+    "lg.pager.prev": "Anterior",
+    "lg.pager.prevSr": "Página anterior",
+    "lg.pager.next": "Siguiente",
+    "lg.pager.nextSr": "Página siguiente",
+    "lg.pager.perPage": "{select} por página",
+    "lg.pager.go": "Ir",
+    "lg.pager.more": "Más",
     "lg.aws.expired": "El acceso a AWS ha caducado",
     "lg.aws.reauth": "Volver a autenticar",
     "lg.aws.retry": "Reintentar",

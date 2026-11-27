@@ -251,7 +251,10 @@ import {
   resolveHistorySource,
   ensureSnapshot,
   readPageBefore,
-  searchSystemHistory,
+  SEARCH_LIST,
+  searchCursorHash,
+  searchHistoryPage,
+  searchOffsets,
   pruneDeadSnapshots,
   isSafeServiceName,
   tailArgv,
@@ -1754,6 +1757,7 @@ import {
   runningSubagents,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
+import { isPageError, readPageAsk, sendPageError } from "./paging.js";
 import { freshDen } from "../cli/server-agent-ops.js";
 import { loggedPath } from "./logged-path.js";
 import {
@@ -1838,6 +1842,7 @@ import {
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { pageMax } from "./paging.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -6762,6 +6767,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
             : 10,
       };
     })(),
+    web_lists: { pageMax: pageMax() },
     // Issue 796: agents' read-only page views (web.agent_view*).
     web_agent_view: (() => {
       const c = webAuthNow();
@@ -9440,9 +9446,43 @@ async function handleRequest(
         );
     }
     const project = url.searchParams.get("workspace");
-    void Promise.all(
-      targets.map((t) => searchSystemHistory(t, q, env, project)),
-    ).then((results) => sendJson(res, { q, results }));
+    const ask = readPageAsk(url.searchParams, SEARCH_LIST);
+    if (isPageError(ask)) return sendPageError(res, ask);
+    if (ask.dir === "prev" || ask.at === "last" || (ask.page ?? 1) > 1)
+      return sendPageError(res, {
+        status: 400,
+        code: "bad_page",
+        error:
+          "log search pages forward only: follow next, or start again without a cursor",
+      });
+    const offsets = searchOffsets(
+      ask.after,
+      searchCursorHash(q, env, project, targets),
+      targets,
+    );
+    if (!offsets)
+      return sendPageError(res, {
+        status: 400,
+        code: "bad_cursor",
+        error: "cursor is not one this search gave: start again without it",
+      });
+    void searchHistoryPage(targets, q, env, project, {
+      limit: ask.limit,
+      offsets,
+    }).then((page) => {
+      const by = new Map(page.systems.map((x) => [x.system, x]));
+      const results = [
+        ...new Set(targets.map((t) => `${t.repo}/${t.service}`)),
+      ].map((system) => {
+        const { more, ...rest } = by.get(system) ?? { system };
+        return {
+          ...rest,
+          matches: page.items.filter((m) => m.system === system),
+          truncated: more === true,
+        };
+      });
+      sendJson(res, { ...page, results });
+    });
     return;
   }
 
@@ -11155,6 +11195,7 @@ async function handleRequest(
           crash_loop?: unknown;
           web_bridge?: unknown;
           web_github?: unknown;
+          web_lists?: unknown;
           web_ready?: unknown;
           web_pairing?: unknown;
           web_agent_view?: unknown;
@@ -11233,6 +11274,7 @@ async function handleRequest(
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
             web_github: body.web_github,
+            web_lists: body.web_lists,
             web_ready: body.web_ready,
             web_pairing: body.web_pairing,
             web_agent_view: body.web_agent_view,

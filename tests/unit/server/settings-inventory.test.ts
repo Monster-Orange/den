@@ -43,6 +43,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   web_bridge: { listen: true, probe_seconds: true },
   // Issue 406: how long the start waits for the owner's GitHub name.
   web_github: { owner_name_timeout_seconds: true },
+  web_lists: { page_max: true },
   // den#143: how long `web up` waits for the server.
   web_ready: {
     probe_seconds: true,
@@ -337,6 +338,7 @@ describe("the settings inventory (R21)", () => {
         "web_bridge.probe_seconds",
         // Issue 406: the owner's GitHub name at start, its wait.
         "web_github.owner_name_timeout_seconds",
+        "web_lists.page_max",
         // The shared GitHub watcher's pace and API budget.
         "github.watch_interval_seconds",
         "github.watch_max_interval_seconds",

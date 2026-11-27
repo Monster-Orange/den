@@ -1156,6 +1156,9 @@
     "set.server.owner_name_timeout": "起動時の GitHub の名前の確認 (秒)",
     "set.server.owner_name_timeout.d":
       "まだ名前がないとき、起動時に __DEN_TITLE__ がオーナーの公開 GitHub プロフィールから名前を待つ時間です。起動を遅らせることはありません。__DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.server.list_page_max": "一覧の 1 ページの最大行数",
+    "set.server.list_page_max.d":
+      "ページやエージェントがそれより多く求めたときに、一覧の 1 ページに入る最大の行数です。ほかの数を求めなければ 1 ページは 50 行です。__DEN_CLI__ config web.list_page_max=200",
     "set.server.github_watch_interval": "GitHub の監視: 最初の間隔 (秒)",
     "set.server.github_watch_interval.d":
       "__DEN_TITLE__ のひとつの GitHub 監視が、エージェントの監視するプルリクエストと実行 (MCP github_watch) を確認する間隔です。変化がない間は倍になり、変化があると最初に戻ります。__DEN_CLI__ config github.watch_interval_seconds=60",
@@ -5010,9 +5013,19 @@
     "lg.empty.click":
       "開いているログはありません。上のサービス名をクリックして開いてください。",
     "lg.search.pane": "検索: 「{q}」",
-    "lg.search.matches": "{n} 件一致（クリックでログを開く）",
-    "lg.search.matchesMore": "{n}+ 件一致（クリックでログを開く）",
+    "lg.search.matches": "このページに {n} 件（クリックでログを開く）",
     "lg.search.none": "どのサービスの履歴にも「{q}」は見つかりません",
+    "lg.pager.rangeOpen": "{from}–{to}",
+    "lg.pager.label": "検索結果のページ",
+    "lg.pager.first": "最初",
+    "lg.pager.firstSr": "最初のページ",
+    "lg.pager.prev": "前へ",
+    "lg.pager.prevSr": "前のページ",
+    "lg.pager.next": "次へ",
+    "lg.pager.nextSr": "次のページ",
+    "lg.pager.perPage": "1 ページに {select} 件",
+    "lg.pager.go": "移動",
+    "lg.pager.more": "その他",
     "lg.aws.expired": "AWS のサインインが期限切れです",
     "lg.aws.reauth": "再認証",
     "lg.aws.retry": "再試行",

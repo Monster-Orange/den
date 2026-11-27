@@ -19,6 +19,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import { execFile, spawn } from "child_process";
+import { createHash } from "crypto";
+import { encodeCursor, type Page, type PageAsk } from "./paging.js";
 
 import { findServiceContainerAsync } from "../../shared/environment-manager/service-container.js";
 import { hasRunningOpctlContainers } from "../../shared/environment-manager/service-runner.js";
@@ -544,6 +546,7 @@ export interface SearchMatch {
   line: string;
   /** Surrounding context lines (already timestamp-stripped like `line`). */
   context: string[];
+  n?: number;
 }
 
 export interface SystemSearchResult {
@@ -573,6 +576,7 @@ function splitTs(raw: string): { ts: string | null; line: string } {
 export function parseGrepOutput(
   out: string,
   maxMatches: number,
+  base?: number,
 ): { matches: SearchMatch[]; truncated: boolean } {
   const matches: SearchMatch[] = [];
   let current: SearchMatch | null = null;
@@ -586,14 +590,17 @@ export function parseGrepOutput(
     }
     const m = raw.match(/^(\d+)([:-])(.*)$/);
     if (!m) continue;
-    const [, , sep, rest] = m;
+    const [, num, sep, rest] = m;
     const { ts, line } = splitTs(rest);
     if (sep === ":") {
       if (matches.length >= maxMatches) {
         truncated = true;
         break;
       }
-      current = { ts, line, context: [] };
+      current =
+        base === undefined
+          ? { ts, line, context: [] }
+          : { ts, line, context: [], n: base + Number(num) };
       matches.push(current);
     } else if (current) {
       current.context.push(line);
@@ -616,6 +623,7 @@ export async function searchSystemHistory(
   q: string,
   env: string,
   workspace?: string | null,
+  page?: { from: number; max: number },
 ): Promise<SystemSearchResult> {
   const label = `${system.repo}/${system.service}`;
   const source = await resolveHistorySource(
@@ -665,6 +673,7 @@ export async function searchSystemHistory(
     };
   }
 
+  if (page) return grepFrom(label, file, q, page);
   return new Promise((resolve) => {
     // -m bounds matching lines server-side; +context stays small. 10 MB
     // buffer is far above 200 matches × context.
@@ -700,6 +709,230 @@ export async function searchSystemHistory(
       },
     );
   });
+}
+
+function grepFrom(
+  system: string,
+  file: string,
+  q: string,
+  page: { from: number; max: number },
+): Promise<SystemSearchResult> {
+  return new Promise((resolve) => {
+    const tail = spawn("tail", ["-n", `+${page.from}`, file], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const grep = spawn(
+      "grep",
+      ["-inF", "-m", String(page.max), "-C", "2", "--", q],
+      { stdio: ["pipe", "pipe", "ignore"] },
+    );
+    let out = "";
+    let failed: string | null = null;
+    const stop = () => {
+      tail.kill();
+      grep.kill();
+    };
+    const timer = setTimeout(() => {
+      failed = "search timed out";
+      stop();
+    }, 30_000);
+    tail.on("error", (e) => {
+      failed = e.message;
+      grep.kill();
+    });
+    grep.stdin.on("error", () => undefined);
+    tail.stdout.on("error", () => undefined);
+    tail.stdout.pipe(grep.stdin);
+    grep.stdout.setEncoding("utf8");
+    grep.stdout.on("data", (chunk: string) => {
+      out += chunk;
+      if (out.length > 10 * 1024 * 1024) {
+        failed = "search output too large";
+        stop();
+      }
+    });
+    grep.on("error", (e) => {
+      failed = e.message;
+    });
+    grep.on("close", (code) => {
+      clearTimeout(timer);
+      tail.kill();
+      if (failed || (code !== 0 && code !== 1 && !out)) {
+        resolve({
+          system,
+          matches: [],
+          truncated: false,
+          error: (failed ?? `grep exited ${code}`).slice(0, 200),
+        });
+        return;
+      }
+      const { matches, truncated } = parseGrepOutput(
+        out,
+        page.max,
+        page.from - 1,
+      );
+      resolve({ system, matches, truncated });
+    });
+  });
+}
+
+export interface SearchPageMatch extends SearchMatch {
+  system: string;
+  n: number;
+}
+
+export interface SearchPageSystem {
+  system: string;
+  error?: string;
+  t?: ReasonWords;
+  skipped?: boolean;
+  more?: boolean;
+}
+
+export interface SearchPage extends Page<SearchPageMatch> {
+  q: string;
+  systems: SearchPageSystem[];
+}
+
+export const SEARCH_LIST = "logs.search";
+
+type Target = { repo: string; service: string };
+
+const labelOf = (t: Target) => `${t.repo}/${t.service}`;
+
+const labelsOf = (targets: Target[]) =>
+  [...new Set(targets.map(labelOf))].sort();
+
+export function searchCursorHash(
+  q: string,
+  env: string,
+  workspace: string | null | undefined,
+  targets: Target[],
+): string {
+  return createHash("sha256")
+    .update(JSON.stringify([q, env, workspace ?? "", labelsOf(targets)]))
+    .digest("base64url")
+    .slice(0, 16);
+}
+
+export function searchOffsets(
+  after: PageAsk["after"],
+  hash: string,
+  targets: Target[],
+): Record<string, number> | null {
+  if (!after) return {};
+  const key = Array.isArray(after.key) ? after.key : [after.key];
+  if (key.length !== 1 || key[0] !== hash) return null;
+  const labels = labelsOf(targets);
+  const parts = after.id.split(",");
+  if (parts.length !== labels.length) return null;
+  const out: Record<string, number> = {};
+  for (let i = 0; i < labels.length; i++) {
+    if (!/^(-1|\d{1,12})$/.test(parts[i])) return null;
+    const n = Number(parts[i]);
+    if (n !== 0) out[labels[i]] = n;
+  }
+  return out;
+}
+
+function searchCursor(
+  hash: string,
+  targets: Target[],
+  o: Record<string, number>,
+): string {
+  return encodeCursor(SEARCH_LIST, {
+    key: [hash],
+    id: labelsOf(targets)
+      .map((l) => String(o[l] ?? 0))
+      .join(","),
+  });
+}
+
+const pageKey = (m: SearchPageMatch): [string, string, number] => [
+  m.ts ?? "",
+  m.system,
+  m.n,
+];
+
+function before(a: SearchPageMatch, b: SearchPageMatch): boolean {
+  const [at, as, an] = pageKey(a);
+  const [bt, bs, bn] = pageKey(b);
+  if (at !== bt) return at < bt;
+  if (as !== bs) return as < bs;
+  return an < bn;
+}
+
+export async function searchHistoryPage(
+  targets: Target[],
+  q: string,
+  env: string,
+  workspace: string | null | undefined,
+  opts: { limit: number; offsets: Record<string, number> },
+): Promise<SearchPage> {
+  const limit = Math.max(1, Math.floor(opts.limit));
+  const hash = searchCursorHash(q, env, workspace, targets);
+  const offsets = opts.offsets;
+  const seen = new Set<string>();
+  const live = targets.filter((t) => {
+    const l = labelOf(t);
+    if (seen.has(l) || offsets[l] === -1) return false;
+    seen.add(l);
+    return true;
+  });
+  const found = await Promise.all(
+    live.map((t) =>
+      searchSystemHistory(t, q, env, workspace, {
+        from: (offsets[labelOf(t)] ?? 0) + 1,
+        max: limit + 1,
+      }),
+    ),
+  );
+  const systems: SearchPageSystem[] = [];
+  const queues: { system: string; items: SearchPageMatch[]; at: number }[] = [];
+  for (const r of found) {
+    if (r.error || r.skipped) {
+      systems.push({
+        system: r.system,
+        ...(r.error ? { error: r.error } : {}),
+        ...(r.t ? { t: r.t } : {}),
+        ...(r.skipped ? { skipped: true } : {}),
+      });
+      continue;
+    }
+    queues.push({
+      system: r.system,
+      items: r.matches.map((m) => ({ ...m, system: r.system, n: m.n ?? 0 })),
+      at: 0,
+    });
+  }
+  const matches: SearchPageMatch[] = [];
+  while (matches.length < limit) {
+    let pick: (typeof queues)[number] | null = null;
+    for (const qu of queues) {
+      const m = qu.items[qu.at];
+      if (m && (!pick || before(m, pick.items[pick.at]))) pick = qu;
+    }
+    if (!pick) break;
+    matches.push(pick.items[pick.at++]);
+  }
+  const o: Record<string, number> = { ...offsets };
+  let more = false;
+  for (const qu of queues) {
+    const left = qu.at < qu.items.length;
+    if (left) more = true;
+    if (!left && qu.items.length <= limit) o[qu.system] = -1;
+    else if (qu.at > 0) o[qu.system] = qu.items[qu.at - 1].n;
+    systems.push({ system: qu.system, more: o[qu.system] !== -1 });
+  }
+  for (const l of labelsOf(targets))
+    if (offsets[l] === -1) systems.push({ system: l, more: false });
+  return {
+    q,
+    items: matches,
+    next: more ? searchCursor(hash, targets, o) : null,
+    prev: null,
+    systems,
+  };
 }
 
 /** `tail -F -n <lines> <file>` as an argument list (no command line). */

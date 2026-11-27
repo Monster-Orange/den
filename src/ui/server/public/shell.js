@@ -2426,6 +2426,9 @@
     "set.server.owner_name_timeout": "GitHub name check at start, in seconds",
     "set.server.owner_name_timeout.d":
       "How long __DEN_TITLE__ waits at its start for the owner's name from their public GitHub profile, when it doesn't have the name yet. It never delays the start. __DEN_CLI__ config web.owner_name_timeout_seconds=10",
+    "set.server.list_page_max": "Longest list page, in rows",
+    "set.server.list_page_max.d":
+      "The most rows one page of a list may hold, when a page or an agent asks for more. A page holds 50 rows unless it asks for another number. __DEN_CLI__ config web.list_page_max=200",
     "set.server.github_watch_interval":
       "GitHub watch: first interval, in seconds",
     "set.server.github_watch_interval.d":
@@ -5156,11 +5159,20 @@
     "lg.empty.click":
       "No active log streams. Click a service name above to open one.",
     "lg.search.pane": 'search: "{q}"',
-    "lg.search.matches": "{n} matches (click to open stream)",
-    "lg.search.matches.one": "{n} match (click to open stream)",
-    "lg.search.matchesMore": "{n}+ matches (click to open stream)",
-    "lg.search.matchesMore.one": "{n}+ match (click to open stream)",
+    "lg.search.matches": "{n} on this page (click to open stream)",
+    "lg.search.matches.one": "{n} on this page (click to open stream)",
     "lg.search.none": 'no matches for "{q}" in any service\'s history',
+    "lg.pager.rangeOpen": "{from}–{to}",
+    "lg.pager.label": "Search results pages",
+    "lg.pager.first": "First",
+    "lg.pager.firstSr": "First page",
+    "lg.pager.prev": "Previous",
+    "lg.pager.prevSr": "Previous page",
+    "lg.pager.next": "Next",
+    "lg.pager.nextSr": "Next page",
+    "lg.pager.perPage": "{select} per page",
+    "lg.pager.go": "Go",
+    "lg.pager.more": "More",
     "lg.aws.expired": "AWS sign-in expired",
     "lg.aws.reauth": "Re-authenticate",
     "lg.aws.retry": "Retry",
