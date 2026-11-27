@@ -44,6 +44,7 @@
     ],
     "tests/unit/server/size-claim-1724.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/agents-*.js",
       "src/ui/server/term-size-lead.ts"
     ],
     "tests/unit/cli/repo-add-no-run.integration.test.ts": [
@@ -746,7 +747,8 @@
       "src/shared/agents/runtime-search.ts"
     ],
     "tests/unit/server/start-prefill.browser.test.ts": [
-      "src/ui/server/public/agents-page.js"
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/agents-*.js"
     ],
     "tests/unit/server/stop-ends-wait.integration.test.ts": [
       "src/ui/server/login-waits.ts",
@@ -837,6 +839,7 @@
     ],
     "tests/unit/server/status-not-colour-1137.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/agents-*.js",
       "src/ui/server/public/bell.js",
       "packages/den-ui/src/shell.css"
     ],
@@ -862,15 +865,18 @@
     ],
     "tests/unit/server/agents-list-view.browser.test.ts": [
       "src/ui/server/public/agents.html",
-      "src/ui/server/public/agents-page.js"
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/agents-*.js"
     ],
     "tests/unit/server/agents-order-error-width.browser.test.ts": [
       "src/ui/server/public/agents.html",
-      "src/ui/server/public/agents-page.js"
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/agents-*.js"
     ],
     "tests/unit/server/agents-tab-strip.browser.test.ts": [
       "src/ui/server/public/agents.html",
-      "src/ui/server/public/agents-page.js"
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/agents-*.js"
     ],
     "tests/unit/server/project-agent-cap-1634.integration.test.ts": [
       "src/ui/server/workspace-routes.ts"
@@ -900,7 +906,8 @@
       "src/ui/server/session-routes.ts"
     ],
     "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
-      "src/ui/server/public/agents-page.js"
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/agents-*.js"
     ]
   },
   "subjectless": [],
@@ -911,6 +918,7 @@
         "src/ui/server/public/agent-groups.js",
         "src/ui/server/public/agent-helpers.js",
         "src/ui/server/public/agent-order.js",
+        "src/ui/server/public/agents-core.js",
         "src/ui/server/public/agents-page.js",
         "src/ui/server/public/agents.html",
         "src/ui/server/public/gate-chip.js",
@@ -3601,6 +3609,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/agents-*.js",
         "src/ui/server/public/agents-page.js",
         "src/ui/server/public/agents.html"
       ],
@@ -3614,6 +3623,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/agents-*.js",
         "src/ui/server/public/agents-page.js",
         "src/ui/server/public/agents.html"
       ],
@@ -3621,7 +3631,10 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/public/agents-page.js"],
+      "when": [
+        "src/ui/server/public/agents-*.js",
+        "src/ui/server/public/agents-page.js"
+      ],
       "run": ["tests/unit/server/agents-pane-pty-size.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
@@ -3700,6 +3713,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/agents-*.js",
         "src/ui/server/public/agents-page.js",
         "src/ui/server/public/agents.html"
       ],
@@ -4794,6 +4808,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/agents-*.js",
         "src/ui/server/public/agents-page.js",
         "src/ui/server/term-size-lead.ts"
       ],
@@ -4825,13 +4840,17 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/public/agents-page.js"],
+      "when": [
+        "src/ui/server/public/agents-*.js",
+        "src/ui/server/public/agents-page.js"
+      ],
       "run": ["tests/unit/server/start-prefill.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
       "when": [
         "packages/den-ui/src/shell.css",
+        "src/ui/server/public/agents-*.js",
         "src/ui/server/public/agents-page.js",
         "src/ui/server/public/bell.js"
       ],

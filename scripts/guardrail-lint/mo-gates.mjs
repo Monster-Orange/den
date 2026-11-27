@@ -105,7 +105,7 @@ export function baseConfig(root, base) {
 
 const MOVES = ["-M30%", "-C30%"];
 
-const BLOCK = { lines: 3, chars: 20 };
+const BLOCK = { lines: 3, chars: 20, tries: 32 };
 
 /** HEAD's lines that `from` doesn't have (file -> Set of line numbers), less blocks moved in from removed lines. */
 function linesAddedSince(git, from) {
@@ -138,19 +138,36 @@ function linesAddedSince(git, from) {
     if (side === "+") files.get(path).add(run.lines.at(-1).n);
   }
   const removedAt = new Map();
-  for (const r of runs["-"]) r.lines.forEach((x, i) => x.key && (removedAt.get(x.key) ?? removedAt.set(x.key, []).get(x.key)).push([r, i]));
+  for (const r of runs["-"]) r.lines.forEach((x, i) => {
+    if (!x.key) return;
+    const list = removedAt.get(x.key) ?? removedAt.set(x.key, { head: null, tail: null }).get(x.key);
+    x.node = { r, i, list, prev: list.tail, next: null };
+    if (list.tail) list.tail.next = x.node;
+    else list.head = x.node;
+    list.tail = x.node;
+  });
   const used = new Set();
+  const take = (x) => {
+    used.add(x);
+    const nd = x.node;
+    if (!nd) return;
+    if (nd.prev) nd.prev.next = nd.next;
+    else nd.list.head = nd.next;
+    if (nd.next) nd.next.prev = nd.prev;
+    else nd.list.tail = nd.prev;
+  };
   for (const r of runs["+"]) {
     for (let i = 0; i < r.lines.length; ) {
       let best = 0, at = null;
-      for (const [o, j] of removedAt.get(r.lines[i].key) ?? []) {
+      for (let nd = removedAt.get(r.lines[i].key)?.head, tries = 0; nd && tries < BLOCK.tries && best < r.lines.length - i; nd = nd.next, tries++) {
+        const { r: o, i: j } = nd;
         let k = 0;
         while (i + k < r.lines.length && j + k < o.lines.length && !used.has(o.lines[j + k]) && r.lines[i + k].key === o.lines[j + k].key) k++;
         if (k > best) [best, at] = [k, [o, j]];
       }
       const block = r.lines.slice(i, i + best);
       if (best < BLOCK.lines || block.map((x) => x.key).join("").replace(/\W/g, "").length < BLOCK.chars) { i++; continue; }
-      for (let k = 0; k < best; k++) used.add(at[0].lines[at[1] + k]);
+      for (let k = 0; k < best; k++) take(at[0].lines[at[1] + k]);
       for (const x of block) files.get(r.path).delete(x.n);
       i += best;
     }
