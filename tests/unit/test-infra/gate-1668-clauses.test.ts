@@ -3,6 +3,7 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { listRecords } from "../../../src/shared/agents/records";
 
 const ROOT = path.resolve(__dirname, "../../..");
 
@@ -258,6 +259,21 @@ describe("gate/1668 seed files", () => {
     fs.rmSync(d, { recursive: true, force: true });
   });
 
+  it("Den's own listRecords lists every seeded agent (a record needs its own id and a session)", () => {
+    const d = fakeDen();
+    const home = path.join(d, "cwd", "abc123", "h");
+    seedJs(
+      d,
+      `f.seed(fs, path, crypto, ${JSON.stringify(home)}, D + "/stub", [], 0.01); console.log("{}");`,
+    );
+    const ids = listRecords(home).map((r) => r.id);
+    expect(ids.filter((x) => x.startsWith("g1668-a")).length).toBe(limits.n);
+    expect(new Set(listRecords(home).map((r) => r.session.id)).size).toBe(
+      limits.n + 1,
+    );
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+
   it("seeds every agent with a record, a transcript and a helper, and clean removes only those", () => {
     const d = fakeDen();
     const got = JSON.parse(
@@ -266,18 +282,19 @@ describe("gate/1668 seed files", () => {
         `const s = { home: D + "/cwd/abc123/h", dir: D + "/stub", made: [] };
         f.seed(fs, path, crypto, s.home, s.dir, s.made, 0.01);
         const rec = JSON.parse(fs.readFileSync(s.made[0].record, "utf8"));
-        const after = { records: fs.readdirSync(s.home + "/agents").length, stub: fs.readdirSync(s.dir).length, name: rec.sessionName, session: "session" in rec };
+        const after = { records: fs.readdirSync(s.home + "/agents").length, stub: fs.readdirSync(s.dir).length, name: rec.sessionName, sessionName: rec.session?.name ?? null, sessionId: rec.session?.id ?? null };
         s.made.push({ id: "g1668-a999", record: D + "/cwd/def456/h/agents/g1668-template.json", transcript: "/etc/x.jsonl" });
         const n = f.clean(fs, path, s);
         console.log(JSON.stringify({ n: SEED_AGENTS, after, cleaned: n, left: fs.readdirSync(s.home + "/agents"), stub: fs.readdirSync(s.dir).length, other: fs.existsSync(D + "/cwd/def456/h/agents/g1668-template.json") }));`,
       ),
     );
-    expect(got.after).toEqual({
+    expect(got.after).toMatchObject({
       records: got.n + 1,
       stub: got.n * 2,
       name: "p:g1668-a001",
-      session: false,
     });
+    expect(got.after.sessionId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(got.after.sessionId).not.toBe("x");
     expect(got.left).toEqual(["g1668-template.json"]);
     expect(got.stub).toBe(0);
     expect(got.other).toBe(true);
