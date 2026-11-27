@@ -443,22 +443,6 @@
               })
               .join("");
           }
-
-          // Available repos dropdown
-          const repos = await fetch("/api/workspaces/available-repos?all=1")
-            .then((r) => r.json())
-            .catch(() => []);
-          const repoSel = document.getElementById("ws-repo-sel");
-          repoSel.innerHTML =
-            `<option value="">${t("svc.ws.selectRepo")}</option>` +
-            repos
-              .map((r) => {
-                const label = r.hasManifest ? `${r.name} ✓` : r.name;
-                const disabled = r.alreadyAdded ? " disabled" : "";
-                const suffix = r.alreadyAdded ? ` ${t("svc.ws.added")}` : "";
-                return `<option value="${r.name}" data-path="${r.absPath}"${disabled}>${label}${suffix}</option>`;
-              })
-              .join("");
         }
 
         // button: the button pressed, held until the answer.

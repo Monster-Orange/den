@@ -16,6 +16,8 @@ config and manifest changes a distribution must make to move to it under
 
 - The repo picker's list pages. `GET /api/workspaces/available-repos` returns `{ items, next }`, 50 by default (`limit`, `cursor`, capped by the install's list page size), and `?q=` filters by name, path or GitHub slug before the cut. The folder walk sorts each folder by name and stops once it has one more than the page, so later pages start after the cursor's path, and the `git remote` lookups run only for the page shown. `?all=1` keeps the old full array; Local Dev and Services ask for it until they use the pager. A cursor this list didn't give is refused (400 `bad_cursor`).
 
+- Projects' Add Service shows the repos on this machine one page at a time, with the kit's pager under the list (no total), and its filter searches on the server. Local Dev no longer reads the whole repo list each time it loads; the dialog asks for its first page when it opens. Services' unused repo dropdown, which still asked for the whole list, is gone.
+
 ## [0.4.92] - unreleased
 
 ### Changed
