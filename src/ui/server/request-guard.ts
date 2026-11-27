@@ -260,6 +260,7 @@ export interface GuardContext {
    * whatever web.edge_unattested says. Unset: no proof (fails closed).
    */
   edgeProved?: (req: http.IncomingMessage) => boolean;
+  edgeStarting?: () => boolean;
   /**
    * Issue 636: whether this install is a test bed right now (issue 810's
    * test install binding). Unset: never (the test-person path is refused).
@@ -294,7 +295,7 @@ export type GuardResult =
     }
   | {
       ok: false;
-      status: 401 | 403 | 421;
+      status: 401 | 403 | 421 | 503;
       code:
         | "misdirected"
         | "unauthorized"
@@ -308,7 +309,8 @@ export type GuardResult =
         | "embed_key_scope"
         | "runner_scope"
         | "test_person_refused"
-        | "not_test_bed";
+        | "not_test_bed"
+        | "edge_starting";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
@@ -634,6 +636,14 @@ export function checkRequest(
       error:
         "This server answers only to its own host names (localhost, " +
         "127.0.0.1, [::1] with its port, or its edge hostname).",
+    };
+  if (via === "edge" && ctx.edgeStarting?.())
+    return {
+      ok: false,
+      status: 503,
+      code: "edge_starting",
+      error: `${title} is starting. Try again in a moment.`,
+      via,
     };
   // Issue 334: an embed key reaches its own routes only, never another
   // (loopback lets an anonymous request through: the key must not ride along).
@@ -1070,6 +1080,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/alerts/unsubscribe",
   "/api/alerts/test",
   "/api/alerts/forget",
+  "/api/alerts/presence",
+  "/api/alerts/ack",
   // This install's Hub link.
   "/api/hub/connect",
   "/api/hub/disconnect",
@@ -1235,6 +1247,7 @@ export const STRICT_PERSON_READS: readonly string[] = [
   "/api/approvals",
   "/api/alerts",
   "/api/alerts/devices",
+  "/api/alerts/stream",
   "/api/report/diagnostics",
   "/api/report/drafts",
   "/api/report/drafts/:id",

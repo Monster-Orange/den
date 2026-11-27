@@ -894,6 +894,9 @@
     "err.421.lead":
       "このサーバーは自身のアドレスでのみ応答するため、別の名前のページからは届きません。",
     "err.421.open": "localhost で開く",
+    "err.starting.title": "Den を起動しています",
+    "err.starting.lead":
+      "Den は起動したばかりで、このアドレスではまだ準備ができていません。このページはまもなく自動でもう一度試します。",
     "err.link.title": "このエージェントへのリンクは開けません",
     "err.link.project": "この Den にプロジェクト {project} はありません。",
     "err.link.agent":
@@ -3338,6 +3341,7 @@
     "hp.rowRunning": "実行中のヘルパー {n}",
     "hp.runningN": "実行中 {n}",
     "hp.chip": "ヘルパー {n}",
+    "hp.counting": "ヘルパーを確認中…",
     "hp.groupOf": "{name} のヘルパー",
     "hp.open": "{what}、{status}: トランスクリプトを開く",
     "hp.dlg": "{name} のヘルパー",
@@ -4647,12 +4651,32 @@
     "set.notifications.push_ttl": "プッシュの保持時間",
     "set.notifications.push_ttl.d":
       "電源が切れているかオフラインの端末向けに、プッシュサービスが通知を保持する時間 (秒) です。86400 で 1 日です。0 にすると、端末がいまオンでなければ破棄されます。__DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.tab_first": "開いているタブを優先",
+    "set.notifications.tab_first.d":
+      "プッシュも受け取る端末で __DEN_TITLE__ のタブが開いていて前面にあるときは、タブが通知を表示し、その端末へのプッシュは送りません。この秒数のうちにタブが表示しなければ、プッシュを送ります。__DEN_CLI__ config alerts.tab_first_seconds=3",
+    "set.notifications.max_streams": "通知を受け取る開いたタブ",
+    "set.notifications.max_streams.d":
+      "通知を同時に受け取れる、開いている __DEN_TITLE__ のタブの数です。これを超えると、最も古いタブは再読み込みするまで通知を受け取りません。__DEN_CLI__ config alerts.max_streams=20",
     "set.notifications.desktop": "デスクトップ通知",
     "set.notifications.desktop.d":
       "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",
     "set.notifications.desktop.denied":
       "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。",
-    "set.notifications.desktop.none": "このブラウザーは通知を表示できません。",
+    "set.notifications.desktop.none":
+      "このブラウザーではここで通知を表示できません。iPhone では、先に __DEN_TITLE__ をホーム画面に追加し、そこから開いてください。ベルとタブのカウントはそのまま使えます。",
+    "set.notifications.desktop.blocked":
+      "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。ベルとタブのカウントはそのまま使えます。",
+    "set.notifications.alert_finished": "エージェントが終わったときも知らせる",
+    "set.notifications.alert_finished.d":
+      "エージェントがターンを終え、あなたがそれを見ていないときに通知します。既定はオフです。ミュートしたエージェントは通知しません。",
+    "set.notifications.alert_sound": "サウンド",
+    "set.notifications.alert_sound.d":
+      "デスクトップ通知ごとに短い音を鳴らします。「あなたが必要」用と、より控えめな「終わりました」用の 2 つです。__DEN_TITLE__ のタブが開いているときだけ鳴ります。閉じたタブやスマートフォンは、それぞれの通知音を使います。",
+    "set.notifications.alert_sound.needs": "▶ あなたが必要",
+    "set.notifications.alert_sound.finished": "▶ 終わりました",
+    "set.notifications.tab_count": "タブのカウント",
+    "set.notifications.tab_count.d":
+      "あなたを必要としているエージェントの数を、タブのタイトルとアイコンに表示します（ベルの件数ではありません）。0 のときは何も表示しません。",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",

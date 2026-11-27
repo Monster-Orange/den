@@ -163,6 +163,8 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "agent_context.pause_after_loop": ["agent_context", "pause_after_loop"],
   // Issue 367: how long one push may take, and how long a push service keeps it.
   "alerts.push_timeout_seconds": ["alerts", "push_timeout_seconds"],
+  "alerts.tab_first_seconds": ["alerts", "tab_first_seconds"],
+  "alerts.max_streams": ["alerts", "max_streams"],
   "alerts.push_ttl_seconds": ["alerts", "push_ttl_seconds"],
   // Issue 415: how long Report keeps, and waits for, a repo's visibility.
   "feedback.visibility_cache_hours": ["feedback", "visibility_cache_hours"],

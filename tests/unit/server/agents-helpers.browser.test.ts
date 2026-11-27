@@ -1050,3 +1050,54 @@ describe("an agent's helpers on the agents page (D32)", () => {
     await p.context().close();
   }, 60_000);
 });
+
+describe("issue 1861: helpers not counted yet", () => {
+  it("rows say Counting helpers…, the page looks again each second until the list is clear, then every 5 s, and never each second while hidden", async () => {
+    const { p, errors } = await open();
+    let pending = 3;
+    const at: number[] = [];
+    await p.route("**/api/sessions", async (r) => {
+      const res = await r.fetch();
+      const j = (await res.json()) as {
+        helpersPending?: boolean;
+        sessions: {
+          kind: string;
+          helpers?: unknown;
+          helpersPending?: boolean;
+        }[];
+      };
+      at.push(Date.now());
+      if (pending > 0) {
+        pending--;
+        j.helpersPending = true;
+        for (const x of j.sessions)
+          if (x.kind === "agent") {
+            delete x.helpers;
+            x.helpersPending = true;
+          }
+      }
+      await r.fulfill({ response: res, json: j });
+    });
+    await polls(p, 1);
+    await p.waitForSelector("#agl [data-helpers-pending]", { timeout: 20_000 });
+    const marks = await p
+      .locator("#agl [data-helpers-pending]")
+      .allTextContents();
+    expect(new Set(marks)).toEqual(new Set(["Counting helpers…"]));
+    await polls(p, 4);
+    const gaps = at.slice(1).map((t, i) => t - at[i]);
+    expect(gaps.slice(0, 3).every((g) => g < 2500)).toBe(true);
+    expect(gaps[3]).toBeGreaterThanOrEqual(4000);
+    expect(await p.locator("#agl [data-helpers-pending]").count()).toBe(0);
+    pending = 99;
+    await p.evaluate(() =>
+      Object.defineProperty(document, "hidden", { get: () => true }),
+    );
+    const from = at.length;
+    await polls(p, 3);
+    const hidden = at.slice(from).map((t, i) => t - at[from + i - 1]);
+    expect(hidden.every((g) => g >= 4000)).toBe(true);
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 90_000);
+});

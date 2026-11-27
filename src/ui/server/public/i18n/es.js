@@ -917,6 +917,9 @@
     "err.421.lead":
       "Este servidor solo responde en sus propias direcciones, así que una página con otro nombre no puede alcanzarlo.",
     "err.421.open": "Abrir en localhost",
+    "err.starting.title": "Den se está iniciando",
+    "err.starting.lead":
+      "Den acaba de iniciarse y todavía no está listo para esta dirección. Esta página lo intentará de nuevo sola en un momento.",
     "err.link.title": "Este enlace al agente no se puede abrir",
     "err.link.project": "No hay ningún proyecto {project} en este Den.",
     "err.link.agent":
@@ -3469,6 +3472,7 @@
     "hp.rowRunning.one": "{n} ayudante en marcha",
     "hp.runningN": "{n} en marcha",
     "hp.chip": "{n} ayudantes",
+    "hp.counting": "Contando ayudantes…",
     "hp.chip.one": "{n} ayudante",
     "hp.groupOf": "Ayudantes de {name}",
     "hp.open": "{what}, {status}: abrir su transcripción",
@@ -4793,13 +4797,33 @@
     "set.notifications.push_ttl": "Push guardado durante",
     "set.notifications.push_ttl.d":
       "Cuánto guarda un servicio de push un aviso para un dispositivo apagado o sin conexión, en segundos. 86400 es un día; 0 lo descarta si el dispositivo no está encendido ahora. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.tab_first": "Primero la pestaña abierta",
+    "set.notifications.tab_first.d":
+      "Cuando una pestaña de __DEN_TITLE__ está abierta y al frente en un dispositivo que también recibe push, la pestaña muestra el aviso y se omite el push a ese dispositivo. Si la pestaña no lo ha mostrado en estos segundos, el push se envía. __DEN_CLI__ config alerts.tab_first_seconds=3",
+    "set.notifications.max_streams": "Pestañas abiertas que reciben avisos",
+    "set.notifications.max_streams.d":
+      "Cuántas pestañas abiertas de __DEN_TITLE__ reciben avisos a la vez. Pasado este número, la más antigua deja de recibirlos hasta que se recarga. __DEN_CLI__ config alerts.max_streams=20",
     "set.notifications.desktop": "Avisos en el escritorio",
     "set.notifications.desktop.d":
       "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",
     "set.notifications.desktop.denied":
       "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto.",
     "set.notifications.desktop.none":
-      "Este navegador no puede mostrar notificaciones.",
+      "Este navegador no puede mostrar notificaciones aquí. En iPhone, añade __DEN_TITLE__ a tu pantalla de inicio y ábrelo desde allí. La campana y el contador de la pestaña siguen funcionando.",
+    "set.notifications.desktop.blocked":
+      "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto. La campana y el contador de la pestaña siguen funcionando.",
+    "set.notifications.alert_finished":
+      "Avisarme también cuando un agente termina",
+    "set.notifications.alert_finished.d":
+      "Una notificación cuando un agente termina un turno y no lo estás mirando. Desactivado por defecto. Un agente que silenciaste nunca avisa.",
+    "set.notifications.alert_sound": "Sonidos",
+    "set.notifications.alert_sound.d":
+      "Un sonido corto con cada aviso en el escritorio, uno para “te necesita” y otro más suave para “terminó”. Solo suena con una pestaña de __DEN_TITLE__ abierta; una pestaña cerrada o un teléfono usan su propio sonido de aviso.",
+    "set.notifications.alert_sound.needs": "▶ Te necesita",
+    "set.notifications.alert_sound.finished": "▶ Terminó",
+    "set.notifications.tab_count": "Contador en la pestaña",
+    "set.notifications.tab_count.d":
+      "Muestra el número de agentes que te necesitan en el título y el icono de la pestaña (no el número de la campana). Con cero no muestra nada.",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",

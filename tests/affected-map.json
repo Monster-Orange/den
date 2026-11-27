@@ -899,6 +899,9 @@
       "src/ui/server/public/bell.js",
       "src/ui/server/term-size-lead.ts",
       "src/ui/server/session-routes.ts"
+    ],
+    "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
+      "src/ui/server/public/agents-page.js"
     ]
   },
   "subjectless": [],
@@ -936,6 +939,7 @@
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
         "tests/unit/server/agents-order-error-width.browser.test.ts",
+        "tests/unit/server/agents-pane-pty-size.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1438,6 +1442,7 @@
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
         "tests/unit/server/agents-order-error-width.browser.test.ts",
+        "tests/unit/server/agents-pane-pty-size.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1549,6 +1554,7 @@
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
         "tests/unit/server/agents-order-error-width.browser.test.ts",
+        "tests/unit/server/agents-pane-pty-size.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1666,6 +1672,7 @@
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
         "tests/unit/server/agents-order-error-width.browser.test.ts",
+        "tests/unit/server/agents-pane-pty-size.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -1903,6 +1910,7 @@
     },
     {
       "when": [
+        "src/ui/server/public/alert-sounds.js",
         "src/ui/server/public/alerts.js",
         "src/ui/server/public/appearance.js",
         "src/ui/server/public/bell.js",
@@ -1927,6 +1935,7 @@
         "src/ui/server/public/settings-registry.js",
         "src/ui/server/public/shell-pick.js",
         "src/ui/server/public/svc-panel.js",
+        "src/ui/server/public/tab-count.js",
         "src/ui/server/public/term-input.js",
         "src/ui/server/public/term-pane.js",
         "src/ui/server/public/terminals-list.js",
@@ -1984,6 +1993,7 @@
         "tests/unit/server/agents-layout.browser.test.ts",
         "tests/unit/server/agents-list-view.browser.test.ts",
         "tests/unit/server/agents-order-error-width.browser.test.ts",
+        "tests/unit/server/agents-pane-pty-size.browser.test.ts",
         "tests/unit/server/agents-pane-retry.browser.test.ts",
         "tests/unit/server/agents-project-names.browser.test.ts",
         "tests/unit/server/agents-project-view.browser.test.ts",
@@ -3325,6 +3335,11 @@
         "src/ui/server/public/agents.html"
       ],
       "run": ["tests/unit/server/agents-order-error-width.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/agents-page.js"],
+      "run": ["tests/unit/server/agents-pane-pty-size.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

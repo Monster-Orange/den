@@ -966,6 +966,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 172: a person stops push alerts to one device, by its id",
   ),
   R(
+    "/api/alerts/stream",
+    "Issue 774: an open tab's alert stream (it shows an alert before its device's push); a person's only, never an agent's or the test install's fixture person's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/presence",
+    "Issue 774: an open tab says which of its person's own devices it is and whether it shows; never an agent's or the test install's fixture person's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/ack",
+    "Issue 774: an open tab showed an alert, so its device's push is skipped; never an agent's or the test install's fixture person's",
+  ),
+  R(
     "/api/hub/link-suggestions",
     "#68: each project, its Hub project, and Hub's first suggestion for an unlinked one (names only)",
   ),

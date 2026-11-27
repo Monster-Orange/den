@@ -8,6 +8,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- The agents list no longer waits for every agent's helpers after a restart or a wave of new agents. It answers within `agents.helpers.list_wait_seconds` (0.25 s), shows "Counting helpers…" on agents not read yet, and fills them in on the next look, a second later. While helpers are read, Den's other pages and tools keep answering: the reader pauses `agents.helpers.reader_rest_ms` (2 ms) between agents. Before, the first list over 140 unread agents took about 7 s and slowed the server for about 2.7 s.
+
 - Claude Code agents get the pstack skills from Den's own pinned copy, with no download at launch. Every file is checked against its pinned hash before an agent starts, and an agent can't edit the copy. Choose the skills per install, persona or agent with `skill_packs` (the whole pack by default, without the skills the pin leaves out). An agent of a person who installed pstack themselves uses their copy instead. `den doctor` checks the installed copy against its pin, says which copy is in use, and lists the agents with packs off and what turned them off. Settings › Agents has a Skill packs switch and a pstack row (its licence, pin, skills on, context cost, and a checkbox per skill), `den config skill_packs` prints the same summary, and `den config` and `setting_change` read and write each `skill_packs` key: turning a pack off runs at once, and turning one back on asks on a strict install. Each agent's ⋯ menu has Skill packs (the install's default, off or on), and a change to an agent's packs, however it is made (Settings, `den config`, `setting_change`), restarts it after its turn, on the same conversation, with no step from the person. The persona editor and `persona_update` set a persona's Skill packs to Off or back to the install's default. A `skill_packs` block in den.yml is now read. (issue 1631) Den leaves out pstack's poteto-mode, its help skill and its guide: poteto-mode tells agents never to ask a person, to add no review, and that external actions proceed without asking, the opposite of Den's held writes and reviews. A test fails if any vendored file says so or points at poteto-mode. Den checks the folder it built for an agent against the pin each time it reuses it, and rebuilds it on any difference.
 
 - A subagent limit for the whole machine: `agents.max_subagents` (unset: twice `agents.max_concurrent`) caps the subagents all agents run at once, and with `agents.subagents_respect_load_hold` (on by default) no new subagent starts while the machine is over the agents' load ceiling. A refused start tells the agent which setting refused it. Both are in Settings › Agents, `den config` and `setting_change`. (issue 1631)
@@ -34,6 +36,12 @@ config and manifest changes a distribution must make to move to it under
 - Server info says when the edge start has settled.
 
 - A test stack's fixture person can now reach an agent through Hub on a test install. Den reads a Hub comment whose author is marked `verified: "fixture"` only when this install is a test install, and drops it on any other install as before. The agent sees `from: test fixture, not verified: <login>`, never "your person" or a Hub session or token, and a fixture author never counts as the install's person: its comment is never an edit request or an approval, and it answers no question the agent asked. (issue 1816)
+
+- A browser that reaches Den through the edge while Den is starting sees "Den is starting" and tries again by itself, instead of a sign-in page.
+
+- Browser alerts for finished turns: an open Den tab can play a sound when an agent finishes or needs you, and shows how many agents need you in its title and icon. Settings › Notifications has "Sounds" and "Count in the tab" (`alerts.sound`, `alerts.tab_count`). When a Den tab is open and visible on a device that also gets push, the tab shows the alert and that device's push is skipped; if the tab hasn't shown it within `alerts.tab_first_seconds` (3 by default), the push goes (issue 774).
+
+- Agents page: after an agent restarts, its pane no longer shows the old session's terminal size while the new session connects.
 
 ## [0.4.91] - 2026-11-26
 

@@ -54,6 +54,9 @@ const NO_SHELL: Record<string, number> = {
   "embed-page.js": 2,
 };
 
+const BACKGROUND: Record<string, number> = {
+  "alerts.js": 1,
+};
 const WRITE =
   /api\(\s*"(?:POST|PUT|PATCH|DELETE)"|method:\s*"(?:POST|PUT|PATCH|DELETE)"/g;
 const BUSY_HEADERS = /\{\s*headers\s*,?\s*\}/;
@@ -93,7 +96,7 @@ describe("BUSY-1: writes sent outside busyAction, counted", () => {
     }
     // A different number: a write moved in or out of busyAction. Set LEFT
     // to match; the 1054 sweep says whether its wait is shown.
-    expect(now).toEqual({ ...LEFT, ...NO_SHELL });
+    expect(now).toEqual({ ...LEFT, ...NO_SHELL, ...BACKGROUND });
   });
 
   it("a script exempt for having no shell really has none", () => {

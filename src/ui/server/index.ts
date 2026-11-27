@@ -1286,7 +1286,10 @@ function sendErrorPage(
   // A refusal page (421, signed out): every /api call the shell frame
   // would make answers the same refusal, so the shell starts none of its
   // polls and streams (data-api-off; shell.js apiOff).
-  const off = data.status === 421 || data.code === "signin_required";
+  const off =
+    data.status === 421 ||
+    data.code === "signin_required" ||
+    data.code === "edge_starting";
   serveFile(
     res,
     path.join(PUBLIC_DIR, "error.html"),
@@ -1769,8 +1772,10 @@ import {
   handleSessionList,
   handleSessionUpgrade,
   isSessionIoPath,
+  needsYouShared,
   sendSessionHttp,
   SESSION_HELPERS_PATH,
+  type SessionRouteDeps,
 } from "./session-routes.js";
 import { refuseUpgrade } from "./websocket.js";
 import {
@@ -2752,6 +2757,7 @@ const GUARD: GuardContext = {
   edgeUnattested: WEB_AUTH.edgeUnattested,
   // H1: the edge's forwarded client is believed only with its proof.
   edgeProved: (req) => EDGE_PROVED(req),
+  edgeStarting: () => EDGE_TRUST.starting,
   // Issue 636: the test-person path, on a test bed (issue 810's binding).
   testBed: () => testInstallNow(),
 };
@@ -3513,6 +3519,7 @@ function sendGuardRefusal(
   requestId: string,
   search = "",
 ): void {
+  if (refusal.code === "edge_starting") res.setHeader("Retry-After", "1");
   // UK-2: /requests/<id> is the API's too (the working pop-up's Check again).
   if (
     pathname === "/api" ||
@@ -6504,6 +6511,22 @@ function waitingAgentIds(): Set<string> {
   return out;
 }
 
+function needsYouCount(): Promise<number> {
+  return needsYouShared(sessionListDeps(), Date.now, alertFeed().latest());
+}
+
+function sessionListDeps(): SessionRouteDeps {
+  return {
+    waitingAgents: waitingAgentIds,
+    waitingWhy: waitingReasons,
+    activity: attentionActivity,
+    rotationPolicy: () => policyResolver(agentWebDeps()),
+    restartResume: () => restartResolver(agentWebDeps()),
+    modeOf: () => modeResolver(agentWebDeps()),
+    agentStates: agentStateDeps,
+  };
+}
+
 /**
  * The agents a Hub delivery or tools note waits for: a held Allow, a
  * permission prompt or an ask_human question. Not an idle one ("input").
@@ -7041,7 +7064,9 @@ async function handleRequest(
   if (
     !guard.ok &&
     !(
-      (guard.code === "misdirected" || guard.code === "signin_required") &&
+      (guard.code === "misdirected" ||
+        guard.code === "signin_required" ||
+        guard.code === "edge_starting") &&
       isPublicAsset(req, pathname)
     )
   ) {
@@ -7347,6 +7372,7 @@ async function handleRequest(
       // Issue 1339: read without the gate-slot lock, so a gate run that
       // holds it never stalls the bell (or the server with it).
       gateOverruns: () => bellGateOverruns(gates()),
+      needsYou: needsYouCount,
     });
     return;
   }
@@ -10588,15 +10614,7 @@ async function handleRequest(
       res,
       pathname,
       guard.ok && (!guard.beyond || !!guard.session || !!guard.principal),
-      {
-        waitingAgents: waitingAgentIds,
-        waitingWhy: waitingReasons,
-        activity: attentionActivity,
-        rotationPolicy: () => policyResolver(agentWebDeps()),
-        restartResume: () => restartResolver(agentWebDeps()),
-        modeOf: () => modeResolver(agentWebDeps()),
-        agentStates: agentStateDeps,
-      },
+      sessionListDeps(),
     )
   )
     return;
@@ -12093,6 +12111,14 @@ function handleUpgrade(
     );
     auditGuardRefusal(req, pathname, guard);
     if (guard.code === "signin_required") traceUpgradeSignin(pathname, guard);
+    if (guard.code === "edge_starting")
+      return refuseUpgrade(
+        socket,
+        503,
+        { ok: false, error: guard.error, code: guard.code, requestId },
+        http.STATUS_CODES[503] ?? "",
+        { "Retry-After": "1" },
+      );
     return refuse(guard.status, guard.error, guard.code);
   }
   setPrincipal(req, guard.principal);

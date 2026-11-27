@@ -7,7 +7,8 @@
  *
  * A category: { id, label, order, description?, from? }.
  * A row: { id, category, label, description, keywords, scope, control,
- *   read(ctx), write?(value, ctx), keys? }
+ *   read(ctx), write?(value, ctx), keys?, shown?(ctx) }
+ *   shown    false hides the row in this browser (it has no use here)
  *   scope    "user" (config/local/user.yml), "workspace" (the workspace's
  *            entry in config/local/workspaces.yml) or "distribution" (the
  *            distribution's tracked config: read-only, so no write).
@@ -52,6 +53,7 @@ import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
 import { projectColour, projectLabel } from "./workspace-picker.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
+import { playAlertSound } from "./alert-sounds.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -386,12 +388,12 @@ function alertRows() {
           if (!N)
             return L(
               "set.notifications.desktop.none",
-              "This browser can't show notifications.",
+              "This browser can't show notifications here. On iPhone, add __DEN_TITLE__ to your Home Screen first, then open it from there. The bell and the tab count still work.",
             );
           return N.permission === "denied"
             ? L(
-                "set.notifications.desktop.denied",
-                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+                "set.notifications.desktop.blocked",
+                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on. The bell and the tab count still work.",
               )
             : "";
         },
@@ -406,6 +408,46 @@ function alertRows() {
           await N.requestPermission();
         return ctx.post({ alerts: { desktop: v === true } });
       },
+    },
+    {
+      id: "notifications.alert_finished",
+      category: "notifications",
+      label: "Also tell me when an agent finishes",
+      description:
+        "A notification when an agent finishes a turn and you are not looking at it. Off by default. An agent you muted never alerts.",
+      keywords: ["notifications", "alerts", "finished", "done", "turn"],
+      scope: "user",
+      shown: () => !!notifyApi(),
+      control: { type: "toggle" },
+      keys: ["alerts.finished"],
+      read: (ctx) => ctx.data.alerts?.finished === true,
+      write: (v, ctx) => ctx.post({ alerts: { finished: v === true } }),
+    },
+    {
+      id: "notifications.alert_sound",
+      category: "notifications",
+      label: "Sounds",
+      description:
+        "A short sound with each desktop alert, one for \u201cneeds you\u201d and a softer one for \u201cfinished\u201d. Plays only while a __DEN_TITLE__ tab is open; a closed tab or a phone uses its own alert sound.",
+      keywords: ["notifications", "alerts", "sound", "chime", "audio"],
+      scope: "user",
+      control: { type: "custom", render: drawSounds },
+      keys: ["alerts.sound"],
+      read: (ctx) => ctx.data.alerts?.sound === true,
+      write: (v, ctx) => ctx.post({ alerts: { sound: v === true } }),
+    },
+    {
+      id: "notifications.tab_count",
+      category: "notifications",
+      label: "Count in the tab",
+      description:
+        "Show the number of agents that need you in the tab title and on the tab icon (not the bell's count). Zero shows nothing.",
+      keywords: ["notifications", "tab", "title", "icon", "count", "badge"],
+      scope: "user",
+      control: { type: "toggle" },
+      keys: ["alerts.tab_count"],
+      read: (ctx) => ctx.data.alerts?.tab_count !== false,
+      write: (v, ctx) => ctx.post({ alerts: { tab_count: v === true } }),
     },
     {
       // S2: push, to this device (a phone, or a computer with no tab open).
@@ -423,6 +465,7 @@ function alertRows() {
         "iphone",
       ],
       scope: "user",
+      shown: () => !!notifyApi(),
       control: { type: "custom", render: drawPush },
       keys: ["alerts.phone"],
       read: (ctx) => ctx.data.alerts?.phone !== false,
@@ -517,7 +560,48 @@ function alertRows() {
       read: (ctx) => ctx.data.alerts?.push_ttl_seconds ?? 86400,
       write: (v, ctx) => ctx.post({ alerts: { push_ttl_seconds: v } }),
     },
+    {
+      id: "notifications.tab_first",
+      category: "notifications",
+      label: "Open tab first",
+      description:
+        "When a __DEN_TITLE__ tab is open and in front on a device that also gets push, the tab shows the alert and the push to that device is skipped. If the tab hasn't shown it within this many seconds, the push goes. __DEN_CLI__ config alerts.tab_first_seconds=3",
+      keywords: ["notifications", "alerts", "push", "tab", "double", "wait"],
+      scope: "user",
+      keys: ["alerts.tab_first_seconds"],
+      control: { type: "number", min: 1, max: 10, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.tab_first_seconds ?? 3,
+      write: (v, ctx) => ctx.post({ alerts: { tab_first_seconds: v } }),
+    },
+    {
+      id: "notifications.max_streams",
+      category: "notifications",
+      label: "Open tabs that get alerts",
+      description:
+        "How many open __DEN_TITLE__ tabs of yours get alerts at once. Past this, the oldest stops getting them until it is reloaded. __DEN_CLI__ config alerts.max_streams=20",
+      keywords: ["notifications", "alerts", "tabs", "limit", "streams"],
+      scope: "user",
+      keys: ["alerts.max_streams"],
+      control: { type: "number", min: 1, max: 200, step: 1 },
+      read: (ctx) => ctx.data.alerts?.max_streams ?? 20,
+      write: (v, ctx) => ctx.post({ alerts: { max_streams: v } }),
+    },
   ];
+}
+
+function drawSounds(host, ctx, io) {
+  const on = ctx.data.alerts?.sound === true;
+  host.innerHTML =
+    `<input type="checkbox" class="set-check" id="set-alert-sound" aria-labelledby="l-notifications-alert_sound"${on ? " checked" : ""}>` +
+    `<span class="set-sound-try">` +
+    `<button type="button" class="den-btn sm" data-sound="needs">${escHtml(L("set.notifications.alert_sound.needs", "\u25b6 Needs you"))}</button> ` +
+    `<button type="button" class="den-btn sm" data-sound="finished">${escHtml(L("set.notifications.alert_sound.finished", "\u25b6 Finished"))}</button>` +
+    `</span>`;
+  host
+    .querySelector("input")
+    .addEventListener("change", (e) => void io.save(e.target.checked));
+  for (const b of host.querySelectorAll("button[data-sound]"))
+    b.addEventListener("click", () => playAlertSound(window, b.dataset.sound));
 }
 
 /**
