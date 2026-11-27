@@ -1463,7 +1463,7 @@ function paintLayout() {
     delete box.dataset.layout;
     delete box.dataset.ws;
     const view = st.data ? viewWorkspaces() : [];
-    box.innerHTML = `<div>${esc(PAGE === "terminal" ? t("tm.empty") : view.length === 1 && view[0] !== SERVER_WS ? t("ag.pickIn", { ws: view[0] }) : t("ag.empty"))}</div>`;
+    box.innerHTML = `<div>${esc(PAGE === "terminal" ? t("tm.empty") : view.length === 1 && view[0] !== SERVER_WS ? t("ag.pickIn", { ws: projName(view[0]) }) : t("ag.empty"))}</div>`;
     return;
   }
   const layout = shownLayout();
