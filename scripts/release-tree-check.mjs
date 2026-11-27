@@ -57,7 +57,7 @@ export function decide({ tree, green, statuses, context, poster, required }) {
   if (!same.length)
     return {
       ok: false,
-      line: `tree ${tree}: no green pull-request or merge-queue CI run recorded this tree as tested, so it was never tested (only the newest 100 runs per event are searched)`,
+      line: `tree ${tree}: no green pull-request or merge-queue CI run recorded this tree as tested, so it was never tested (the newest 100 runs per event, and the tag's own runs, are searched)`,
     };
   const run = same.find((g) => g.selection === "all");
   if (!run)
@@ -120,6 +120,27 @@ export function candidates(runs, tree, { repo, ciBlob }) {
       !!r.ci_blob &&
       r.ci_blob === ciBlob,
   );
+}
+
+export function greenRuns(get, repo, sha) {
+  const base = `repos/${repo}/actions/workflows/ci.yml/runs`;
+  const lists = [
+    ...["pull_request", "merge_group"].map(
+      (e) =>
+        get(`${base}?event=${e}&status=success&per_page=100`)?.workflow_runs ??
+        [],
+    ),
+    get(`${base}?head_sha=${sha}&per_page=100`)?.workflow_runs ?? [],
+  ];
+  const seen = new Map();
+  for (const r of lists.flat())
+    if (
+      r.conclusion === "success" &&
+      (r.event === "pull_request" || r.event === "merge_group") &&
+      !seen.has(r.id)
+    )
+      seen.set(r.id, r);
+  return [...seen.values()];
 }
 
 /**
@@ -287,22 +308,22 @@ function main(version) {
   console.log(
     `${tag} (${tagTree}) is the tested candidate; this commit only sets the release's versions`,
   );
-  // A pull request's run, or the merge queue's (the base and the pull
-  // request together: the tree that lands). Each counts by what its own
-  // `tested` artifact recorded, never by its head's tree.
+  // A pull request's run, or the merge queue's: the newest 100, plus the tag's
+  // own runs by head_sha (GitHub's filtered list can leave one out). Each counts
+  // by what its own `tested` artifact recorded, never by its head's tree.
   const ciBlob = blobAt("HEAD");
   const green = [];
-  for (const event of ["pull_request", "merge_group"]) {
-    const runs = gh(
-      `repos/${repo}/actions/workflows/ci.yml/runs?event=${event}&status=success&per_page=100`,
-    ).workflow_runs;
-    // only runs whose head has the tree are worth a ci.yml lookup
-    for (const r of runs)
-      if (r.head_commit?.tree_id === tagTree) r.ci_blob = blobAt(r.head_sha);
-    for (const r of candidates(runs, tagTree, { repo, ciBlob })) {
-      const e = entryOf(r, testedOf(repo, r.id));
-      if (e) green.push(e);
-    }
+  const runs = greenRuns(
+    (p) => gh(p),
+    repo,
+    git("rev-parse", `${tag}^{commit}`),
+  );
+  // only runs whose head has the tree are worth a ci.yml lookup
+  for (const r of runs)
+    if (r.head_commit?.tree_id === tagTree) r.ci_blob = blobAt(r.head_sha);
+  for (const r of candidates(runs, tagTree, { repo, ciBlob })) {
+    const e = entryOf(r, testedOf(repo, r.id));
+    if (e) green.push(e);
   }
   const required = process.env.DEN_BED_REQUIRED === "true";
   const shas = new Set([

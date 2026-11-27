@@ -93,7 +93,7 @@ export class GateNotices {
     this.from = next;
     // Issue 1263: a slot ended: its run's throwaway containers may be left.
     // Never awaited here, so a slow docker never holds up the notices.
-    if (this.sweeper) {
+    if (this.sweeper && store.settings().throwawaySweep) {
       const ended = rows.some((r) => ENDS.has(r.event));
       if (this.sweeper.due(ended))
         this.sweeping = this.sweeper.tick(ended).catch(() => []);

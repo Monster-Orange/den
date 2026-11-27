@@ -4274,6 +4274,19 @@ export const DEN_SETTINGS = [
       }),
   },
   {
+    id: "server.gate_throwaway_sweep",
+    category: "server",
+    label: "Remove throwaway test containers",
+    description:
+      "On, Den removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
+    keywords: ["gate", "docker", "container", "throwaway", "sweep", "cleanup"],
+    scope: "user",
+    keys: ["gate_slots.throwaway_sweep"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.throwawaySweep !== false,
+    write: (v, ctx) => ctx.post({ gate_slots: { throwaway_sweep: v ? 1 : 0 } }),
+  },
+  {
     // Issue 1264: today's runs outside the gate, per agent.
     id: "server.gate_outside",
     category: "server",
@@ -4355,6 +4368,46 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
     read: (ctx) => ctx.data.sessions?.close_grace_seconds ?? 5,
     write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_size_claim_grace",
+    category: "server",
+    label: "Terminal size hold",
+    description:
+      "How long the window that last set a terminal's size keeps it after its connection drops, so a brief drop or a reload does not hand the size to another window. 0 hands it on at once. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    keywords: [
+      "terminal",
+      "size",
+      "resize",
+      "window",
+      "ipad",
+      "size_claim_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_claim_grace_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_claim_grace_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ sessions: { size_claim_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_size_leave_grace",
+    category: "server",
+    label: "Terminal size hold after a page closes",
+    description:
+      "How long the window that last set a terminal's size keeps it after its page closes or reloads, so a reload keeps the size while a closed page hands it to another window. Within the terminal size hold, that window takes the size back when it returns, unless someone typed or took over in another window meanwhile. 0 hands it on at once. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
+    keywords: [
+      "terminal",
+      "size",
+      "reload",
+      "close",
+      "window",
+      "size_leave_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_leave_grace_seconds"],
+    control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_leave_grace_seconds ?? 3,
+    write: (v, ctx) => ctx.post({ sessions: { size_leave_grace_seconds: v } }),
   },
   {
     id: "server.sessions_pty_close",

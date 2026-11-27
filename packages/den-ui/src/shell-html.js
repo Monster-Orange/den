@@ -732,25 +732,37 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
   return html + (after || "") + "</div>";
 }
 
+function hostPlaceholder(placeholder, lang) {
+  let w = placeholder;
+  if (w && typeof w === "object") {
+    const l = String(lang || "en");
+    w = w[l] ?? w[l.split("-")[0]];
+  }
+  return typeof w === "string" && w.trim() ? w : null;
+}
+
 /**
- * The search field: the kit's placeholder ("Search…"), then ⌘K inside it,
- * as a button (the host's palette or page opens on it: hydrateSearch).
- *   searchHtml({ id?, shortcut?, lang })
- * Its placeholder and its name ("Search") are the kit's words, in the
- * page's language: one search in every product, so a host can't set them.
+ * The search field: a placeholder (the kit's "Search…", or the host's, one
+ * word or words per locale), then ⌘K inside it, as a button (hydrateSearch).
+ *   searchHtml({ id?, shortcut?, lang, placeholder? })
+ * Its name is what it shows, less a trailing "…" (WCAG 2.5.3).
  * `shortcut: false`: no ⌘K.
  */
-export function searchHtml({ id, shortcut, lang } = {}) {
+export function searchHtml({ id, shortcut, lang, placeholder } = {}) {
   const keys = shortcut !== false;
+  const host = hostPlaceholder(placeholder, lang);
+  const name = host
+    ? host.trim().replace(/\s*(…|\.\.\.)$/u, "") || host.trim()
+    : kitT(lang, "kit.search.label");
   return (
     '<button type="button" class="den-search" id="' +
     esc(id || "den-search") +
     '" aria-haspopup="dialog" data-nav-kit="search"' +
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
-    esc(kitT(lang, "kit.search.label")) +
+    esc(name) +
     '"><span class="den-search-ph">' +
-    esc(kitT(lang, "kit.search.ph")) +
+    esc(host ?? kitT(lang, "kit.search.ph")) +
     "</span>" +
     (keys ? '<kbd aria-hidden="true">⌘K</kbd>' : "") +
     '<span class="den-search-ic" aria-hidden="true">⌕</span></button>'

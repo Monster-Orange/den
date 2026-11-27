@@ -507,3 +507,29 @@ describe("setting_change: a key Den reads when it starts (issue 1371)", () => {
     expect(other).toMatchObject({ ok: true, restart: false });
   });
 });
+
+describe("issue 974: which variables agents get is the person's alone", () => {
+  it.each([
+    ["agents.env_allow_agents.grants", ["north"]],
+    ["agents.env_hold.grants", ["north"]],
+    ["agents.env_guard.grants", ["north"]],
+  ])("refuses %s with a reason too: no env_* key is an agent", (key, value) => {
+    const before = readUser();
+    const r = runSettingChange(deps(), { key, value, reason: "r" });
+    expect(r.ok).toBe(false);
+    expect(readUser()).toBe(before);
+  });
+
+  it.each([
+    ["agents.env_allow", ["OP_SERVICE_ACCOUNT_TOKEN"]],
+    ["agents.env_allow_agents", { planner: ["GH_TOKEN"] }],
+    ["agents.env_hold", []],
+    ["agents.env_guard", false],
+    ["agents.env_hold_existing", false],
+  ])("setting_change refuses %s, and writes nothing", (key, value) => {
+    const before = readUser();
+    const c = checkSettingChange(deps(), { key, value }, { agent: "planner" });
+    expect(c.ok).toBe(false);
+    expect(readUser()).toBe(before);
+  });
+});

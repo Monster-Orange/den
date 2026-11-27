@@ -65,6 +65,7 @@ import {
   addressBriefLine,
   addressNotSetNote,
   agentLinks,
+  agentPagePath,
   peopleAddress,
   peopleWebUrl,
   type AgentLinks,
@@ -298,6 +299,19 @@ import {
   type Override,
 } from "../../shared/agents/records.js";
 import {
+  allowedFor as envAllowedFor,
+  checkProjectEnvAllow,
+  defaultEnvHold,
+  envHoldScript,
+  envMaskArgs,
+  ENV_HOLD_FILE,
+  type EnvHoldSettings,
+} from "../../shared/agents/env-hold.js";
+import {
+  envHoldMark,
+  holdOnAtStart,
+} from "../../shared/agents/env-hold-rollout.js";
+import {
   agentSessionEnv,
   DEFAULT_RUNTIME_ID,
   getRuntime,
@@ -309,6 +323,7 @@ import {
   type LaunchOutput,
   type Runtime,
 } from "../../shared/agents/runtimes.js";
+import { AGENT_ACTOR_ENV } from "../../shared/sessions/env.js";
 import {
   agentGitEnv,
   resolveAgentSigning,
@@ -628,6 +643,7 @@ export interface AgentsDeps extends SessionsDeps {
    * when it has none.
    */
   workspaceHubLoop?: (ws: string) => unknown;
+  workspaceEnvAllow?: (ws: string) => unknown;
   /** Issue 335: save project `ws`'s `agents.mcp_servers` (checked). */
   saveWorkspaceMcpServers?: (ws: string, servers: ProjectMcpServer[]) => void;
   /** Issue 1480: project `ws`'s `agents.event_feeds` as written. */
@@ -704,6 +720,7 @@ export interface AgentsResolved extends Resolved {
   } | null>;
   workspaceRepos: (ws: string) => string[];
   workspaceHubLoop: (ws: string) => unknown;
+  workspaceEnvAllow: (ws: string) => unknown;
   workspaceMcpServers: (ws: string) => unknown;
   saveWorkspaceMcpServers: (ws: string, servers: ProjectMcpServer[]) => void;
   workspaceEventFeeds: (ws: string) => unknown;
@@ -1232,6 +1249,7 @@ export function resolveAgentsDeps(d: AgentsDeps): AgentsResolved {
     hub: d.hub ?? defaultHub,
     workspaceRepos: d.workspaceRepos ?? ((ws) => (reposFn ? reposFn(ws) : [])),
     workspaceHubLoop: d.workspaceHubLoop ?? workspaceEntryRaw,
+    workspaceEnvAllow: d.workspaceEnvAllow ?? workspaceEnvAllowOf,
     workspaceMcpServers:
       d.workspaceMcpServers ?? ((ws) => workspaceMcpServersRaw(ws)),
     saveWorkspaceMcpServers:
@@ -3741,6 +3759,13 @@ async function startSession(
   signingWarning?: string;
 }> {
   if (old?.exited) await c.forget(old.ref.id);
+  const cfgNow = d.agentsConfig();
+  const hold = agentEnvHold(
+    d,
+    cfgNow.envHold,
+    launch.rec.id,
+    launch.rec.workspace,
+  );
   // Issue 163 (b): read before the token is minted (nothing to revoke).
   const signIn = await d.agentSignIn(
     launch.tokenEnv,
@@ -3773,11 +3798,13 @@ async function startSession(
     // the sandbox: bwrap binds only the folders that exist.
     try {
       signing = d.agentSigning(launch.rec.cwd);
+      hold.own.push(...Object.keys(agentGitEnv(signing)));
       if (signing?.made)
         signingWarning = `${launch.rec.id} signs its commits with the agents' new SSH key. GitHub shows them Verified once you add it: ${signingKeyAddLine(signing)}`;
     } catch (e) {
       signingWarning = `${launch.rec.id}'s commits can't be signed with the agents' key: ${e instanceof Error ? e.message : String(e)}`;
     }
+    rewriteEnvHold(d, launch.rec.id, hold, agentGitEnv(signing));
     // Issue 936: Den's state read-only to the session (the OS sandbox).
     // An agent from before the sandbox starts outside it until the person
     // turns it on (the rollout, sandbox-rollout.ts).
@@ -3841,6 +3868,7 @@ async function startSession(
             // agents.git (issue 1316): its commits signed with its key.
             { ...agentGitEnv(signing), ...box.env },
             signIn.env,
+            hold,
           ),
           cols: (tty && d.stdout.columns) || 80,
           rows: (tty && d.stdout.rows) || 24,
@@ -3884,6 +3912,7 @@ async function startSession(
   delete rec.trustDeclined;
   // Issue 252: it runs in `permission` now.
   delete rec.startedIn;
+  rec.envHold = envHoldMark(hold.on);
   // Issue 340: the sign-in this session runs on (its label only).
   if (signIn.account) rec.signIn = { ...signIn.account };
   else delete rec.signIn;
@@ -4106,6 +4135,11 @@ function launchInput(
       return sub.model ? { subagentModel: sub.model } : {};
     })(),
     ...(cfg.subagents?.claudeAiConnectors ? { claudeAiConnectors: true } : {}),
+    envHold: {
+      ...agentEnvHold(d, cfg.envHold, id, ws),
+      guard: cfg.envHold?.guard ?? true,
+      mask: envMaskArgs(cfg.envHold ?? defaultEnvHold()),
+    },
     // D47: services it may reach only through their API.
     ...(() => {
       try {
@@ -4156,6 +4190,58 @@ function skillPacksFor(
   } catch (e) {
     throw refused(`agent ${id}: ${(e as Error).message}`, [], 422);
   }
+}
+
+export function agentEnvHold(
+  d: Pick<AgentsResolved, "stateDir" | "env"> & {
+    workspaceEnvAllow?: (ws: string) => unknown;
+  },
+  s: EnvHoldSettings | undefined,
+  id: string,
+  ws: string,
+): { on: boolean; hold: string[]; allow: string[]; own: string[] } {
+  const settings = s ?? defaultEnvHold();
+  const on = holdOnAtStart(readRecord(d.stateDir(), id), settings);
+  let project: string[] = [];
+  try {
+    project = checkProjectEnvAllow(
+      ws,
+      (d.workspaceEnvAllow ?? workspaceEnvAllowOf)(ws),
+    );
+  } catch {
+    project = [];
+  }
+  return {
+    on,
+    hold: on ? [...settings.hold] : [],
+    allow: envAllowedFor(settings, id, project),
+    own: [
+      AGENT_ACTOR_ENV,
+      ACTOR_TOKEN_FILE_ENV,
+      ...Object.keys(installLocationEnv(d.env)),
+    ],
+  };
+}
+
+function rewriteEnvHold(
+  d: Pick<AgentsResolved, "stateDir">,
+  id: string,
+  hold: { hold: string[]; allow: string[]; own: string[] },
+  git: Record<string, string>,
+): void {
+  const filesDir = agentFilesDir(d.stateDir(), id);
+  const file = path.join(filesDir, ENV_HOLD_FILE);
+  if (!fs.existsSync(file)) return;
+  writeRuntimeFiles(filesDir, {
+    [file]: envHoldScript(hold.hold, hold.allow, hold.own, git),
+  });
+}
+
+function workspaceEnvAllowOf(ws: string): unknown {
+  const e = workspaceEntryRaw(ws) as
+    | { agents?: { env_allow?: unknown } }
+    | undefined;
+  return e?.agents?.env_allow;
 }
 
 /** The model a runtime is given: a pinned version, else the model. */
@@ -10285,7 +10371,7 @@ export async function trustTick(d: AgentsResolved): Promise<TrustEvent[]> {
       const s = sessionOf(sessions, rec);
       const name = rec.displayName || rec.persona || rec.id;
       const who = { agent: rec.id, workspace: rec.workspace };
-      const link = `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`;
+      const link = agentPagePath(rec.workspace, rec.id);
       try {
         if (s && !s.exited) {
           // Only before its conversation exists, or while it was asked.

@@ -1480,7 +1480,7 @@ export async function handleWorkspaceRoutes(
           const bad = projectCapValueError(wsName, v);
           if (bad) return send400(res, bad);
           const agents = { ...(ws.agents ?? {}) };
-          if (v === null) delete agents.max_per_project;
+          if (v === null || v === 0) delete agents.max_per_project;
           else agents.max_per_project = v;
           if (Object.keys(agents).length) ws.agents = agents;
           else delete ws.agents;

@@ -1371,6 +1371,10 @@
       "Las ejecuciones pesadas de los agentes pasan por la cola",
     "set.server.gate_route_agents.d":
       "Activado, una prueba, comprobación de tipos o prueba de navegador de un agente toma un turno de la cola como cualquier otra. Desactivado, se ejecuta tal cual y aparece en el recuento de abajo. __DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_throwaway_sweep":
+      "Quitar los contenedores de prueba desechables",
+    "set.server.gate_throwaway_sweep.d":
+      "Activado, Den quita los contenedores de prueba desechables cuya ejecución en la cola ha terminado, y detiene los conservados que están inactivos. Desactivado, Den nunca ejecuta docker para ellos: se quedan hasta que los quites, y Doctor dice que la limpieza está desactivada. __DEN_CLI__ gate settings --throwaway-sweep 1",
     "set.server.gate_route_commands": "Programas que pasan por la cola",
     "set.server.gate_route_commands.d":
       'Nombres de programas separados por comas, o npm test y npm run test* (* vale por cualquier final). Vacío: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
@@ -1471,6 +1475,14 @@
     "set.server.sessions_close_grace": "Margen al cerrar una terminal",
     "set.server.sessions_close_grace.d":
       "Cuánto tiempo tiene una terminal para terminar después de que la cierras, antes de que se detenga a la fuerza. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_size_claim_grace":
+      "Retención del tamaño de la terminal",
+    "set.server.sessions_size_claim_grace.d":
+      "Cuánto tiempo conserva el tamaño de una terminal la ventana que lo fijó por última vez después de que se corta su conexión, para que un corte breve o una recarga no pase el tamaño a otra ventana. 0 lo pasa de inmediato. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    "set.server.sessions_size_leave_grace":
+      "Retención del tamaño de la terminal al cerrar una página",
+    "set.server.sessions_size_leave_grace.d":
+      "Cuánto tiempo conserva el tamaño de una terminal la ventana que lo fijó por última vez después de que su página se cierra o se recarga, para que una recarga conserve el tamaño y una página cerrada lo pase a otra ventana. Dentro de la retención del tamaño de la terminal, esa ventana recupera el tamaño al volver, salvo que alguien haya escrito o tomado el control en otra ventana mientras tanto. 0 lo pasa de inmediato. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
     "set.server.sessions_pty_close": "Cierre de terminal tras salir",
     "set.server.sessions_pty_close.d":
       "Cuánto tiempo después de que termina el programa de una terminal se cierra su terminal. 0 la cierra al instante. Su historial sigue legible en ambos casos. Se aplica la próxima vez que arranque el host de terminales. __DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -2572,6 +2584,20 @@
       "Está en marcha: Den lo reinicia después de su turno, en la misma conversación, en {mode}.",
     "ap.det.agent_mode.stopped":
       "Está detenido: su próximo arranque es en {mode}.",
+    "ap.do.den_env_hold_on":
+      "Retener las variables que parecen secretos de {count} agentes iniciados antes (cada uno en su próximo inicio): {names}",
+    "ap.do.den_env_allow_keep":
+      "Conservar {names} para todos los agentes y retener el resto de {count} agentes iniciados antes",
+    "ap.det.den_env_hold_on.sets":
+      "Pone agents.env_hold_existing: true en config/local/user.yml.",
+    "ap.det.den_env_hold_on.next":
+      "Cada agente las pierde en su próximo inicio; uno que ya está en marcha las conserva hasta entonces.",
+    "ap.det.den_env_hold_on.allow":
+      "Los nombres que conserva por agents.env_allow se quedan.",
+    "ap.det.den_env_allow_keep.adds":
+      "Añade {names} a agents.env_allow en config/local/user.yml: todos los agentes de aquí las reciben.",
+    "ap.det.den_env_allow_keep.on":
+      "Pone agents.env_hold_existing: true: las demás variables que parecen secretos se retienen de cada agente en su próximo inicio.",
     "ap.det.agent_sandbox_set.self":
       "{agent} lo pide para sí mismo: quiere su propio sandbox en {value}.",
     "ap.det.agent_sandbox_set.on":
@@ -3333,8 +3359,12 @@
       "__DEN_TITLE__ {v}: su versión fijada está confirmada ({sha}), pero el envío falló: {why}. __DEN_TITLE__ lo intenta de nuevo en la próxima comprobación de actualizaciones",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ no pudo confirmar su versión fijada: {why}. Lo intenta de nuevo en la próxima comprobación de actualizaciones",
+    "bell.m.pinPrRenamed":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios en {branch}, porque {why}",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ se actualizó a {v}: su versión fijada está en una solicitud de cambios ({branch}), sin enviar a la rama: la rama exige commits firmados y no hay clave de firma de los agentes (doctor dice cómo)",
     "bell.m.pinPushedBehind":
       "__DEN_TITLE__ se actualizó a {v}: su versión fijada se envió ({sha}), pero la copia local está atrasada y tiene cambios locales, así que haz pull para obtener la versión fijada",
     "bell.m.pinPrAhead":

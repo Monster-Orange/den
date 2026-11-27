@@ -26,6 +26,7 @@ import { execFile, spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { readPinRecord, type PinRecord } from "../../shared/pin-record.js";
 
 /** What one command came to (exit code, the end of its output). */
 export interface Ran {
@@ -158,6 +159,7 @@ export interface UpdateDoctor {
 /** The last update, and its doctor results when doctor ran for it. */
 export type LastUpdate = UpdateState & {
   doctor?: { at: string; lines: string[] };
+  pin?: Omit<PinRecord, "noted">;
 };
 
 function readUpdateDoctor(stateDir: string): UpdateDoctor | null {
@@ -190,9 +192,15 @@ export function lastUpdate(stateDir: string): LastUpdate | null {
   const s = readUpdateState(stateDir);
   if (!s) return null;
   const d = readUpdateDoctor(stateDir);
-  return d && d.from === s.from && d.to === s.to
-    ? { ...s, doctor: { at: d.at, lines: d.lines } }
-    : s;
+  const rec = readPinRecord(stateDir);
+  const pin = rec ? (({ noted: _n, ...r }) => r)(rec) : null;
+  return {
+    ...s,
+    ...(d && d.from === s.from && d.to === s.to
+      ? { doctor: { at: d.at, lines: d.lines } }
+      : {}),
+    ...(pin ? { pin } : {}),
+  };
 }
 
 export function readUpdateState(stateDir: string): UpdateState | null {

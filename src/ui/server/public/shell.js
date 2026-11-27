@@ -2580,6 +2580,9 @@
     "set.server.gate_route_agents": "Agents' heavy runs go through the gate",
     "set.server.gate_route_agents.d":
       "On, an agent's single test, typecheck or browser run takes a gate slot like any other. Off, it runs as written and is counted below. __DEN_CLI__ gate settings --route-agents 1",
+    "set.server.gate_throwaway_sweep": "Remove throwaway test containers",
+    "set.server.gate_throwaway_sweep.d":
+      "On, Den removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
     "set.server.gate_route_commands": "Programs sent through the gate",
     "set.server.gate_route_commands.d":
       'Comma-separated program names, or npm test and npm run test* (* matches any end). Empty: jest, vitest, tsc, playwright, npm test, npm run test*. __DEN_CLI__ gate settings --route-commands "jest, vitest"',
@@ -2675,6 +2678,13 @@
     "set.server.sessions_close_grace": "Terminal close grace",
     "set.server.sessions_close_grace.d":
       "How long a terminal has to end after you close it before it is stopped by force. __DEN_CLI__ config sessions.close_grace_seconds=5",
+    "set.server.sessions_size_claim_grace": "Terminal size hold",
+    "set.server.sessions_size_claim_grace.d":
+      "How long the window that last set a terminal's size keeps it after its connection drops, so a brief drop or a reload does not hand the size to another window. 0 hands it on at once. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    "set.server.sessions_size_leave_grace":
+      "Terminal size hold after a page closes",
+    "set.server.sessions_size_leave_grace.d":
+      "How long the window that last set a terminal's size keeps it after its page closes or reloads, so a reload keeps the size while a closed page hands it to another window. Within the terminal size hold, that window takes the size back when it returns, unless someone typed or took over in another window meanwhile. 0 hands it on at once. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
     "set.server.sessions_pty_close": "Terminal close after exit",
     "set.server.sessions_pty_close.d":
       "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -3491,6 +3501,20 @@
     "ap.det.agent_mode.running":
       "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
     "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
+    "ap.do.den_env_hold_on":
+      "Hold secret-looking variables back from {count} agents started before (each at its next start): {names}",
+    "ap.do.den_env_allow_keep":
+      "Keep {names} for every agent, and hold the rest back from {count} agents started before",
+    "ap.det.den_env_hold_on.sets":
+      "Sets agents.env_hold_existing: true in config/local/user.yml.",
+    "ap.det.den_env_hold_on.next":
+      "Each agent loses them at its next start; one that runs now keeps them until then.",
+    "ap.det.den_env_hold_on.allow":
+      "Names it keeps from agents.env_allow stay.",
+    "ap.det.den_env_allow_keep.adds":
+      "Adds {names} to agents.env_allow in config/local/user.yml: every agent here gets them.",
+    "ap.det.den_env_allow_keep.on":
+      "Sets agents.env_hold_existing: true: other secret-looking variables are held back from each agent at its next start.",
     "ap.det.agent_sandbox_set.self":
       "{agent} is asking for this itself: it wants its own sandbox {value}.",
     "ap.det.agent_sandbox_set.on":
@@ -4233,8 +4257,12 @@
       "__DEN_TITLE__ {v}: its pin is committed ({sha}) but the push failed: {why}. __DEN_TITLE__ tries again at the next update check",
     "bell.m.pinCommitFailed":
       "__DEN_TITLE__ {v}: __DEN_TITLE__ couldn't commit its pin: {why}. It tries again at the next update check",
+    "bell.m.pinPrRenamed":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request on {branch}, since {why}",
     "bell.m.pinPrOpened":
       "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch})",
+    "bell.m.pinPrUnsigned":
+      "__DEN_TITLE__ updated to {v}: its pin is in a pull request ({branch}), not pushed: the branch requires signed commits and no agents' signing key is set (doctor says how)",
     "bell.m.pinPushedBehind":
       "__DEN_TITLE__ updated to {v}: its pin is pushed ({sha}), but the checkout is behind and has local changes, so pull to get the pin",
     "bell.m.pinPrAhead":
@@ -8949,6 +8977,32 @@
     var ban = BANNERS[b.getAttribute("data-bn-act")];
     if (ban && ban.action) ban.action.run();
   });
+
+  document.addEventListener(
+    "click",
+    function (e) {
+      if (!e.isTrusted) return;
+      var a = e.target && e.target.closest && e.target.closest("a[href]");
+      if (!a) return;
+      var u;
+      try {
+        u = new URL(a.href, location.href);
+      } catch (_) {
+        return;
+      }
+      if (u.origin !== location.origin) return;
+      var deep = /^\/p\/[^/]+\/agents\/[^/]+\/?$/.test(u.pathname);
+      var page = /^\/(agents|terminals)\/?$/.test(u.pathname);
+      if (
+        !deep &&
+        !(page && (u.searchParams.get("open") || u.searchParams.get("agent")))
+      )
+        return;
+      u.searchParams.set("claim", "1");
+      a.href = u.href;
+    },
+    true,
+  );
 
   // MD-2: the engine on disk is not the one this server runs: a new
   // version of Den is installed. The shared update pill (den-ui,

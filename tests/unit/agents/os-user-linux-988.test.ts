@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { beforeAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -16,6 +16,7 @@ import {
   type OsUserLayout,
   type PlanRunner,
 } from "../../../src/shared/agents/os-user.js";
+import { allowWrites } from "../../write-guard.js";
 
 const E2E =
   process.platform === "linux" &&
@@ -93,6 +94,12 @@ const rootRun: PlanRunner = (argv, stdin) => {
 };
 
 d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
+  beforeAll(() => {
+    allowWrites(`/home/${PERSON}`);
+    allowWrites(RUNTIME);
+    allowWrites(p.dir);
+  });
+
   it("setup runs, and doctor (reading as the person) finds it all as it should be", () => {
     expect(root(["useradd", "--create-home", PERSON]).status).toBe(0);
     fs.mkdirSync(STATE, { mode: 0o700 });
@@ -226,7 +233,7 @@ d("issue 988 on a real Linux machine (root, a throwaway container)", () => {
     if (!r.ok) expect(r.error).toMatch(/is a link/);
     const after = fs.statSync(STATE);
     expect([after.uid, after.mode]).toEqual([before.uid, before.mode]);
-    fs.rmSync(p.home);
+    fs.unlinkSync(p.home);
   });
 
   it("pin 5: remove leaves no login, group, rule or folder, and doctor proves it", () => {

@@ -118,6 +118,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     // Issue 1264: Den's agent hook routes agents' heavy runs.
     route_agents: true,
     route_commands: true,
+    throwaway_sweep: true,
   },
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
@@ -198,6 +199,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   sessions: {
     max_concurrent: true,
     close_grace_seconds: true,
+    size_claim_grace_seconds: true,
+    size_leave_grace_seconds: true,
     pty_close_seconds: true,
     pty_warn_above: true,
     pty_machine_warn_percent: true,
@@ -382,6 +385,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.remote_max_slots",
         "gate_slots.remote_renew_seconds",
         "gate_slots.swap_hold_gb",
+        "gate_slots.throwaway_sweep",
         "gate_slots.vm_memory_share",
         "gate_slots.waiter_return_minutes",
         // den#156: the Agents list's waits.
@@ -467,6 +471,8 @@ describe("the settings inventory (R21)", () => {
         "sessions.pty_close_seconds",
         "sessions.pty_machine_warn_percent",
         "sessions.pty_warn_above",
+        "sessions.size_claim_grace_seconds",
+        "sessions.size_leave_grace_seconds",
         // Issue 609: how agents' hooks wait for Den, and retry.
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",

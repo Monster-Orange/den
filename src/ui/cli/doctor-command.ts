@@ -21,6 +21,7 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { readEdgeWatchState } from "../../shared/edge/watch.js";
 import { MEMORY_NOT_MEASURED_WORDS } from "../../shared/gates/rules.js";
 import { fixturePersonPath } from "../../shared/fixture-person.js";
 import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
@@ -31,6 +32,11 @@ import { rankFindings, readWebUrl } from "../../shared/web/web-url.js";
 import { loopbackRefusal } from "../../shared/web/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
+import { envHoldLines, shellEnvNames } from "./doctor-env-hold.js";
+import { wouldHold } from "../../shared/agents/env-hold-rollout.js";
+import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
+import { listRecords as listAgentRecords } from "../../shared/agents/records.js";
+import { workspaceEntryRaw } from "../../shared/environment-manager/workspaces.js";
 import {
   agentsKeepRunningAfterLogout,
   readAgentsConfig,
@@ -60,8 +66,7 @@ import {
 } from "../../shared/credential-paths.js";
 import {
   checkAgentSigning,
-  existingAgentSigningKey,
-  resolveAgentSigning,
+  agentKeyInForce,
   signingKeyAddLine,
   signingReadFiles,
   type AgentGitSettings,
@@ -155,10 +160,15 @@ import {
   isEdgeAddress,
   statedAddress,
 } from "../../shared/edge/address-check.js";
-import { readEdgeProof } from "../../shared/edge/proof.js";
+import {
+  edgeTrustHeld,
+  proofIsCurrent,
+  readEdgeProof,
+} from "../../shared/edge/proof.js";
 import { getActiveWorkspaces } from "../../shared/environment-manager/workspaces.js";
 import {
   edgeProofRotation,
+  readEdgeDynamic,
   stacksWithGeneratedSecrets,
 } from "../../shared/edge/runtime.js";
 import { edgeDomains, edgeImageCheck } from "../../shared/edge/render.js";
@@ -2173,8 +2183,6 @@ function safeShownPath(rel: string): string {
 }
 
 /**
- * H1 (0.4.48): whether the edge set up here carries Den's proof (the
- * generated edge.yml has the current one). Never prints the proof: only
  * whether it is there. No edge config, or no edge set up here: nothing.
  */
 export function edgeProofLines(
@@ -2190,25 +2198,42 @@ export function edgeProofLines(
 ): { lines: string[]; check?: OnboardCheck } {
   const dir = edgeDir();
   if (!dir) return { lines: [] };
-  let yml: string;
-  try {
-    yml = fs.readFileSync(path.join(dir, "dynamic", "edge.yml"), "utf8");
-  } catch {
-    return { lines: [] };
-  }
+  const yml = readEdgeDynamic(dir);
+  if (yml === null) return { lines: [] };
   const proof = readEdgeProof(dir);
-  const carried = !!proof && yml.includes(proof);
-  const detail = carried
-    ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
-    : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
+  const stale = !!proof && !proofIsCurrent(dir);
+  const held = edgeTrustHeld(dir);
+  const carried = !!proof && !stale && !held && yml.includes(proof);
+  const detail = held
+    ? `${title} holds back the edge's trust: ${held}. So everyone signs in through it, this machine too, until \`${cli} edge up\` recreates it as ${title} renders it`
+    : carried
+      ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
+      : stale
+        ? `the edge's proof is from an older version and ${title} couldn't make a new one (can it write ${dir}?), so everyone signs in through it, this machine too. Run \`${cli} edge up --rotate-proof\``
+        : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
+  const watch = readEdgeWatchState(dir);
+  const watchDetail =
+    watch?.state === "down"
+      ? `${title} can't follow the edge container's Docker events, so an address the edge gave up could reach another container unnoticed. Until it can again, nothing read before the watch ended is believed, and ${title} reads the edge's address again every 5 s`
+      : watch?.state === "up"
+        ? `${title} follows the edge container's Docker events: an address the edge gives up stops counting as the edge at once`
+        : null;
+  const ok = carried && watch?.state !== "down";
   return {
     lines: [
       "",
       `${title} doctor: Edge proof`,
       "",
       `  edge proof  ${carried ? "✓" : "⚠"}  ${detail}`,
+      ...(watchDetail
+        ? [`  edge watch  ${watch?.state === "up" ? "✓" : "⚠"}  ${watchDetail}`]
+        : []),
     ],
-    check: { id: "edge_proof", status: carried ? "ok" : "warn", detail },
+    check: {
+      id: "edge_proof",
+      status: ok ? "ok" : "warn",
+      detail: watch?.state === "down" ? `${detail}. ${watchDetail}` : detail,
+    },
   };
 }
 
@@ -2542,23 +2567,18 @@ export function instructionSizeLines(
 }
 
 /**
- * agents.git: whether agents' commits sign and verify with their key
- * (a commit in a temp repo, checkAgentSigning), and the line that adds its
- * .pub to GitHub as a signing key. The key is agents.git.signing_key, or
- * (issue 1316) the install's own once an agent start made it. Nothing when
- * signing is off, or the person's git doesn't sign and none is set.
+ * agents.git: whether agents' commits sign and verify with the key in
+ * force (agentKeyInForce: agents.git.signing_key, else the install's own
+ * once made), a commit in a temp repo (checkAgentSigning), and the line
+ * that adds its .pub to GitHub as a signing key. No key in force:
+ * "not signed", said as information, with the fix.
  */
 export function signingLines(
   title: string,
-  readGit: () => AgentGitSettings | undefined = () => {
+  readGit: () => AgentGitSettings | { off: true } | undefined = () => {
     try {
-      return resolveAgentSigning({
-        git: readAgentsConfig().git,
-        stateDir: getStateDir(),
-        cwd: process.cwd(),
-        env: process.env,
-        ensure: existingAgentSigningKey,
-      });
+      const git = readAgentsConfig().git;
+      return git?.off ? { off: true } : agentKeyInForce(git, getStateDir());
     } catch {
       // A bad agents: block is configLines' row.
       return undefined;
@@ -2566,8 +2586,30 @@ export function signingLines(
   },
   check: (g: AgentGitSettings) => SigningCheck = signingInSandbox,
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
-  const git = readGit();
-  if (!git) return { lines: [], problem: false, checks: [] };
+  const got = readGit();
+  if (!got || !("signingKey" in got)) {
+    const off = !!got && "off" in got;
+    const detail = off
+      ? "not signed: agents.git.signing is off"
+      : "not signed: no agents' signing key";
+    const fix = off
+      ? undefined
+      : "set agents.git.signing_key in config/local/user.yml to an SSH key with no passphrase, or turn on commit signing in your git (commit.gpgsign): the next agent start makes the agents' own key";
+    return {
+      lines: [
+        "",
+        `${title} doctor: agents' commit signing`,
+        "",
+        `  signing  ℹ  ${detail} (agents' commits and ${title}'s pin commits are unsigned)`,
+        ...(fix ? [`           fix: ${fix}`] : []),
+      ],
+      problem: false,
+      checks: [
+        { id: "agents:signing", status: "ok", detail, ...(fix ? { fix } : {}) },
+      ],
+    };
+  }
+  const git = got;
   const r = check(git);
   const add = signingKeyAddLine(git);
   const lines = [
@@ -2792,6 +2834,36 @@ function collapseDoneKey(): string[] {
           "agents.helpers.collapse_done_minutes no longer does anything (0.4.29): remove it. Finished helpers stay until a person clears them (Clear done).",
         ]
       : [];
+  } catch {
+    return [];
+  }
+}
+
+function envHoldDoctorLines(): string[] {
+  try {
+    const hold = readAgentsConfig().envHold;
+    if (!hold) return [];
+    const present = shellEnvNames();
+    const legacy = wouldHold(
+      listAgentRecords(getStateDir()),
+      hold,
+      present,
+      (ws) => {
+        try {
+          return checkProjectEnvAllow(
+            ws,
+            (
+              workspaceEntryRaw(ws) as
+                | { agents?: { env_allow?: unknown } }
+                | undefined
+            )?.agents?.env_allow,
+          );
+        } catch {
+          return [];
+        }
+      },
+    );
+    return envHoldLines(readBrand().name, hold, present, legacy).lines;
   } catch {
     return [];
   }
@@ -3099,6 +3171,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
+  for (const l of envHoldDoctorLines()) console.log(l);
   const checked = await doctorAddress(product().cli);
   const edges = await edgeAddresses();
   const addr = addressLines(
@@ -3304,7 +3377,13 @@ async function throwawayRows() {
     const checkouts = new Set(
       all.flatMap((e) => (e.checkout ? [e.checkout] : [])),
     );
-    return throwawayLines(list, live, storeTag(store.dir), checkouts);
+    return throwawayLines(
+      list,
+      live,
+      storeTag(store.dir),
+      checkouts,
+      store.settings().throwawaySweep,
+    );
   } catch {
     return throwawayLines(null, new Set());
   }
