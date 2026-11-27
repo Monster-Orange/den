@@ -1,0 +1,911 @@
+/* 0.4.45 mock v6: where the project's name comes from, in words. */
+.pname-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 11.5px var(--mono);
+  color: var(--accent-text);
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+.pname-chip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+/* Issue 167 (mock v6 A2, A3): Rename asked of Hub, and waiting. */
+.pname-nm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+.pname-held {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pname-held input {
+  width: min(100%, 360px);
+}
+.pname-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* Issue 167 (mock v6 A0): the Hub project row's read-only pair, its
+   More, and the Unlink question. */
+.hubp-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0 0 6px;
+}
+.hubp-pair > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.hubp-pair small {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.hubp-pair b {
+  overflow-wrap: anywhere;
+}
+/* Issue 651: the list and its buttons (Link or Create; linked, Switch
+   and Unlink) in one row, wrapping only where the row runs out. The
+   new name, when it shows, takes a line of its own. */
+.hubp-pick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0 0 6px;
+}
+.hubp-pick select {
+  min-width: 0;
+  max-width: 100%;
+}
+.hubp-pick .hubp-new {
+  flex: 1 0 100%;
+}
+.hubp-pick .hubp-new[hidden] {
+  display: none;
+}
+.hubp-more summary {
+  cursor: pointer;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+}
+/* Issue 167 (mock v6 B): Unclear matches, one group per project;
+   40px touch targets; at 600px and under the rows stack. */
+.hubla-group {
+  margin: 0 0 12px;
+  padding: 8px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.hubla-group legend {
+  padding: 0 4px;
+}
+.hubla-choice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+}
+.hubla-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+@media (max-width: 600px) {
+  .hubla-list li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .hubla-group button,
+  .hubla-list button {
+    min-height: 40px;
+  }
+}
+/* Issue 646: Connect's review (mock v4, shape B): a row per project,
+   the picker opens in the row; at 700px and under the rows stack. */
+.hub-rv {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+}
+.hub-rv-h {
+  margin: 0;
+  font-size: 16px;
+}
+.hub-rv-rows {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.hub-rv-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr auto;
+  gap: 6px 14px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  align-items: center;
+}
+.hub-rv-row:first-child {
+  border-top: 0;
+}
+.hub-rv-row.chg {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.hub-rv-pj {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.hub-rv-key {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 12px;
+}
+.hub-rv-pp {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.hub-rv-pp:has(.hub-pick) {
+  grid-column: 2 / -1;
+}
+.hub-rv-why {
+  font-size: 12px;
+  color: var(--muted);
+}
+.hub-rv-why.new {
+  color: var(--accent-text);
+}
+.hub-rv-why.warn {
+  color: var(--warn);
+}
+.hub-rv-row button {
+  min-height: 40px;
+}
+.hub-rv-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.hub-rv-prog {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.hub-pick {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  grid-column: 1 / -1;
+}
+.hub-pick h4 {
+  margin: 0;
+  font-size: 14px;
+}
+.hub-pick-list {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: grid;
+}
+.hub-pick-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  text-align: left;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 8px 10px;
+  min-height: 40px;
+  cursor: pointer;
+}
+.hub-pick-row:first-child {
+  border-top: 0;
+}
+.hub-pick-row[hidden] {
+  display: none;
+}
+.hub-pick-row.sel {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.hub-pick-row small {
+  grid-column: 1 / -1;
+  color: var(--muted);
+}
+.hub-pick-tag {
+  font-size: 12px;
+  color: var(--ok);
+}
+.hub-pick-q {
+  padding: 6px 10px;
+  min-height: 40px;
+}
+.hub-pick-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 700px) {
+  .hub-rv-row {
+    grid-template-columns: 1fr auto;
+  }
+  .hub-rv-pj,
+  .hub-rv-pp:has(.hub-pick) {
+    grid-column: 1 / -1;
+  }
+}
+.den-sr,
+.set-row .d.den-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.den-tagx {
+  font: 10px var(--mono);
+  color: var(--faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-weight: 400;
+  vertical-align: middle;
+}
+/* .seg: segmented buttons */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  overflow: hidden;
+  flex-wrap: wrap;
+}
+.seg button {
+  background: none;
+  border: 0;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.seg button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--text);
+  font-weight: 500;
+}
+/* .row: label | control */
+.set-row + .set-row {
+  border-top: 1px solid var(--border);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+}
+.row .l {
+  width: 120px;
+  color: var(--muted);
+  font-size: 13px;
+  align-self: flex-start;
+  padding-top: 6px;
+}
+.row .ctl {
+  flex: 1 1 300px;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.set-scope {
+  font: 10px var(--mono);
+  color: var(--faint);
+  border: 1px dashed var(--border-strong);
+  border-radius: 4px;
+  padding: 0 4px;
+  align-self: flex-start;
+  margin-top: 8px;
+  white-space: nowrap;
+}
+.set-scope[data-scope="workspace"] {
+  color: var(--accent-text);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.set-row .d {
+  color: var(--muted);
+  font-size: 12.5px;
+  padding: 0 0 4px 132px;
+}
+.set-note {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+/* Issue 252: an agent's row in a project's Agents' mode opens its
+   mode on a click anywhere on it. */
+.pmode-row {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pmode-row:hover {
+  background: color-mix(in srgb, var(--border-strong) 50%, transparent);
+}
+.pmode-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+[data-pmode-list] {
+  list-style: none;
+  padding-left: 0;
+}
+.set-warn {
+  flex-basis: 100%;
+  margin: 4px 0 0 !important;
+  color: var(--warn) !important;
+}
+.set-saved {
+  display: block;
+  padding-left: 132px;
+  font-size: 12.5px;
+}
+.set-saved:empty {
+  display: none;
+}
+.set-saved.ok {
+  color: var(--ok);
+}
+.set-saved.bad {
+  color: var(--bad);
+}
+.set-ro {
+  color: var(--text);
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+}
+.set-radios {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+}
+.set-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--radius-button);
+  cursor: pointer;
+}
+.set-radio:hover {
+  background: var(--sunken);
+}
+/* Not installed: the option stays readable (WCAG AA); only its
+   radio dims. */
+.set-radio.off {
+  color: var(--muted);
+  cursor: default;
+}
+.set-radio.off:hover {
+  background: none;
+}
+.set-radio.off input {
+  opacity: 0.5;
+}
+.set-radio input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+.set-tag {
+  font: 11px var(--mono);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+/* Settings › Agents › Runtimes (AG-0.5): one row per runtime. */
+.set-custom {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+/* Issue 774: Sounds' switch, then a play button for each sound. */
+.set-sound-try {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: 10px;
+  vertical-align: middle;
+}
+.rt-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.rt-list {
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+}
+.rt {
+  display: grid;
+  grid-template-columns:
+    minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 2fr)
+    auto;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.rt + .rt {
+  border-top: 1px solid var(--border);
+}
+.rt-v {
+  color: var(--muted);
+}
+/* The tag stays in its cell: on a line of its own when the name
+   takes the room, wrapping inside it when the cell is narrow. */
+.rt-n .set-tag {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+}
+.rt-ok {
+  color: var(--ok);
+}
+.rt-bad {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.rt-w {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.rt-p {
+  font-size: 12px;
+}
+.rt-f {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.rt-f[hidden],
+.rt-err[hidden] {
+  display: none;
+}
+/* Issue 456: the other copies found, under the one used. */
+.rt-o {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+  font-size: 12.5px;
+}
+.rt-oh,
+.rt-ov {
+  color: var(--muted);
+}
+.rt-oi {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* D28: Settings › Agents › Rotation. */
+.rot-inst {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.rot-f,
+.rot-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.rot-f label {
+  flex: 0 0 150px;
+}
+.rot-f input,
+.rot-f select,
+.rot-add input,
+.rot-add select {
+  flex: 1 1 140px;
+  min-width: 0;
+  max-width: 100%;
+}
+/* A select never cuts its own words: it wraps to its own line. */
+.rot-f select {
+  min-width: min(100%, max-content);
+}
+.rot-add {
+  margin-top: 10px;
+}
+/* HUB-1.5: Settings › Hub. */
+/* Issue 646 (mock v2, 1b): the connected company first and big. */
+.hub-co {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
+.hub-co-name {
+  display: block;
+  font-size: 18px;
+  font-weight: 600;
+}
+.hub-co .set-note {
+  margin: 2px 0 0;
+}
+.hub-st {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.hub-st dt {
+  color: var(--muted);
+}
+.hub-st dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* HUB-1.7: Connect / Disconnect. */
+.hub-connect {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+}
+.hub-connect input {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.hub-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.hub-flash.ok {
+  color: var(--ok, inherit);
+}
+.hub-flash.warn {
+  color: var(--warn, inherit);
+}
+.hub-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+/* D30: the add form: each control with its label, wrapping. */
+.rot-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 200px;
+  flex-wrap: wrap;
+}
+.rot-pick[hidden] {
+  display: none;
+}
+.rot-pick input[type="number"] {
+  width: 6em;
+  flex: 0 0 auto;
+}
+.rot-never {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rot-gone {
+  color: var(--muted);
+}
+/* The shared picker (combobox.js). */
+.den-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 200px;
+  flex-wrap: wrap;
+}
+.den-combo-box {
+  position: relative;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.den-combo-box input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.den-combo-list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-menu);
+}
+.den-combo-list[hidden] {
+  display: none;
+}
+.den-combo-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.den-combo-list li[aria-selected="true"] {
+  background: var(--sunken);
+}
+.den-combo-list li[aria-disabled="true"] {
+  color: var(--muted);
+  cursor: default;
+}
+.den-combo-s {
+  color: var(--muted);
+  font-size: 12px;
+}
+.rot-ov caption {
+  text-align: left;
+  color: var(--muted);
+  font-size: 12.5px;
+  padding-bottom: 4px;
+}
+.rot-ov th,
+.rot-ov td {
+  padding: 4px 10px 4px 0;
+  text-align: left;
+  /* Break a key at its "_", never mid-word. */
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.rot-ov th {
+  word-break: keep-all;
+}
+/* Narrow: each override is a card of label/value lines, so no
+   column is squeezed into breaking words mid-letter. */
+@media (max-width: 560px) {
+  .rot-ov thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .rot-ov,
+  .rot-ov tbody,
+  .rot-ov tr,
+  .rot-ov td {
+    display: block;
+    width: 100%;
+  }
+  .rot-ov caption {
+    display: block;
+  }
+  .rot-ov tr[data-rot-row] {
+    padding: 6px 0;
+    border-top: 1px solid var(--border);
+  }
+  .rot-ov td {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+    overflow-wrap: anywhere;
+  }
+  .rot-ov td[data-l]::before {
+    content: attr(data-l);
+    flex: 0 0 64px;
+    color: var(--muted);
+    font-family: inherit;
+  }
+  .rot-ov td.rot-act {
+    padding-top: 4px;
+  }
+}
+.rt-fl {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.rt-f input {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.rt-err {
+  flex-basis: 100%;
+  color: var(--bad);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .rt {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .rt-w {
+    grid-column: 1 / -1;
+  }
+}
+.set-langs {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+}
+.set-lang {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.set-lang label {
+  width: 110px;
+  font-size: 13px;
+}
+select,
+input[type="number"],
+input[type="text"] {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-button);
+  padding: 5px 8px;
+  color: var(--text);
+}
+input[type="number"] {
+  width: 100px;
+}
+.set-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  margin: 6px 0;
+}
+.set-unit {
+  color: var(--muted);
+  font-size: 13px;
+}
+/* Buttons are the kit's .den-btn (issue 673). */
+.set-save {
+  margin-top: 6px;
+}
+/* .navlist: Navigation's pages and pins */
+.navlist {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+}
+.navlist .it {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-button);
+  background: var(--bg);
+}
+.navlist .it .nm {
+  flex: 1;
+  min-width: 0;
+}
+.navlist .it.off .nm {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+.set-grp {
+  color: var(--faint);
+  font-size: 12px;
+}
+.den-mono {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+/* .swatches */
+.swatches {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-bottom: 14px;
+  flex-basis: 100%;
+}
+.sw {
+  /* The prototype's swatch is content-box: 34px plus its border. */
+  box-sizing: content-box;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  position: relative;
+}
+.sw span {
+  position: absolute;
+  top: 38px;
+  left: 0;
+  font: 9px var(--mono);
+  color: var(--faint);
+  white-space: nowrap;
+}
+/* .empty */
+.empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 28px;
+  color: var(--muted);
+  max-width: 640px;
+}
+.empty b {
+  color: var(--text);
+}
+@media (max-width: 860px) {
+  .set-row .d,
+  .set-saved {
+    padding-left: 0;
+  }
+}
