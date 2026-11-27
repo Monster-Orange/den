@@ -1079,9 +1079,11 @@ describe("issue 1861: helpers not counted yet", () => {
       await r.fulfill({ response: res, json: j });
     });
     await polls(p, 1);
-    const mark = p.locator("#agl [data-helpers-pending]").first();
-    await mark.waitFor({ timeout: 20_000 });
-    expect(await mark.textContent()).toBe("Counting helpers…");
+    await p.waitForSelector("#agl [data-helpers-pending]", { timeout: 20_000 });
+    const marks = await p
+      .locator("#agl [data-helpers-pending]")
+      .allTextContents();
+    expect(new Set(marks)).toEqual(new Set(["Counting helpers…"]));
     await polls(p, 4);
     const gaps = at.slice(1).map((t, i) => t - at[i]);
     expect(gaps.slice(0, 3).every((g) => g < 2500)).toBe(true);
