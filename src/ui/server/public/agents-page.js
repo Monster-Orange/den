@@ -295,6 +295,7 @@ const st = {
   // D40: the pane whose terminal takes the keyboard once its socket opens,
   // and the one whose terminal last had it.
   focusOnOpen: null,
+  focusSoon: null,
   // D58: whether that focus is a link's: only for a keyboard on nothing yet.
   focusIfIdle: false,
   // D54/D58: whether that pick also sizes the PTY (a pick from the list
@@ -2305,7 +2306,10 @@ function focusTerm(id, claim = true, { ifIdle = false } = {}) {
     // over a field the person went to since (a double-click's rename).
     const idle = st.focusIfIdle;
     st.focusIfIdle = false;
+    st.focusSoon = id;
     requestAnimationFrame(() => {
+      if (st.focusSoon !== id) return;
+      st.focusSoon = null;
       if (p.closed || p.exited || inField()) return;
       // D58: a link's focus is only for a keyboard that went nowhere yet.
       if (idle && !keyboardIdle()) return;
@@ -2322,12 +2326,12 @@ function focusTerm(id, claim = true, { ifIdle = false } = {}) {
  * counts: the page moving focus back to a row it redrew does not.
  */
 function dropStalePick(e) {
-  const id = st.focusOnOpen;
+  const id = st.focusOnOpen ?? st.focusSoon;
   if (!id || !e.isTrusted) return;
   // Typing straight after a pick is for the picked agent; Tab moves away.
   if (e.type === "keydown" && e.key !== "Tab") return;
   const at = e.type === "keydown" ? document.activeElement : e.target;
-  if (!st.panes.get(id)?.el?.contains(at)) st.focusOnOpen = null;
+  if (!st.panes.get(id)?.el?.contains(at)) st.focusOnOpen = st.focusSoon = null;
 }
 document.addEventListener("pointerdown", dropStalePick, true);
 document.addEventListener("keydown", dropStalePick, true);

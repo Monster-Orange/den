@@ -14,6 +14,136 @@
         "sha": "693386dbfc9228322a7565d0409551a51da9e68b",
         "note": "No CI run on this sha passed it (a red is never re-run). On the same sha, the whole file passed 3 of 3 through this repo's browser gate (Chromium in the Playwright container, one worker). It also failed the same way on run 45816802503, job 139907006873, pr-shards (24.13.0, 13), sha 5a8fe1832b84a83a69dd89e316927d85b2a05593."
       }
+    },
+    {
+      "file": "tests/unit/agents/server-agent.test.ts",
+      "test": "the server agent running, a second start leaves it as it is; stopped, it resumes its conversation (AG-14)",
+      "issue": 1833,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45876385372,
+        "failed_job": 140106374303,
+        "job": "pr-shards (24.13.0, 15)",
+        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
+        "note": "No CI run on this sha passed it (a red is never re-run). Each failed on jest's 10 s timeout in the same shard. On this sha and its parent, the whole file passed 15 of 15 on its own through this repo's gate."
+      }
+    },
+    {
+      "file": "tests/unit/agents/server-agent.test.ts",
+      "test": "starting it fast (ON-6 gate, 0.4.19) Den's own MCP tools are pre-allowed for it alone; the org's immediate actions still ask",
+      "issue": 1833,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45876385372,
+        "failed_job": 140106374303,
+        "job": "pr-shards (24.13.0, 15)",
+        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
+        "note": "No CI run on this sha passed it (a red is never re-run). Each failed on jest's 10 s timeout in the same shard. On this sha and its parent, the whole file passed 15 of 15 on its own through this repo's gate."
+      }
+    },
+    {
+      "file": "tests/unit/agents/server-agent.test.ts",
+      "test": "starting it fast (ON-6 gate, 0.4.19) runs on Sonnet by default, or the model the person saved when the runtime offers it",
+      "issue": 1833,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45876385372,
+        "failed_job": 140106374303,
+        "job": "pr-shards (24.13.0, 15)",
+        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
+        "note": "No CI run on this sha passed it (a red is never re-run). Each failed on jest's 10 s timeout in the same shard. On this sha and its parent, the whole file passed 15 of 15 on its own through this repo's gate."
+      }
+    },
+    {
+      "file": "tests/unit/agents/server-agent.test.ts",
+      "test": "starting it fast (ON-6 gate, 0.4.19) says which runtime it runs on while it runs (its record's)",
+      "issue": 1833,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45876385372,
+        "failed_job": 140106374303,
+        "job": "pr-shards (24.13.0, 15)",
+        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
+        "note": "No CI run on this sha passed it (a red is never re-run). Each failed on jest's 10 s timeout in the same shard. On this sha and its parent, the whole file passed 15 of 15 on its own through this repo's gate."
+      }
+    },
+    {
+      "file": "tests/unit/agents/server-agent.test.ts",
+      "test": "its folder (SRV-1b) it starts in that folder; one started before keeps its own (its conversation lives there)",
+      "issue": 1833,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45876385372,
+        "failed_job": 140106374303,
+        "job": "pr-shards (24.13.0, 15)",
+        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
+        "note": "No CI run on this sha passed it (a red is never re-run). Each failed on jest's 10 s timeout in the same shard. On this sha and its parent, the whole file passed 15 of 15 on its own through this repo's gate."
+      }
+    },
+    {
+      "file": "tests/unit/server/update-pill.browser.test.ts",
+      "test": "update pill (webkit) Not now hides it, and it stays hidden for that version",
+      "issue": 1833,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45876385372,
+        "failed_job": 140106374303,
+        "job": "pr-shards (24.13.0, 15)",
+        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
+        "note": "No CI run on this sha passed it (a red is never re-run). It failed in the same shard as the server-agent timeouts, its sign-in helper timing out (timeout: GET /api/session, tests/unit/server/helpers/signed-in.ts:107). Only the WebKit case failed."
+      }
+    },
+    {
+      "file": "tests/unit/server/bell-allow-review.browser.test.ts",
+      "test": "the bell's Allow row: Review at 1440: a tap opens the lines and another closes them; Allow and Deny stay put",
+      "issue": 1332,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45878099265,
+        "failed_job": 140112164783,
+        "job": "pr-shards (24.13.0, 12)",
+        "sha": "1ef93a013b128efd333d63e927b5f9c3e9a4b5ff",
+        "note": "No CI run on this sha passed it (a red is never re-run). Review didn't keep the keyboard after the tap (Expected \"review\", Received undefined). Only the 1440 case is among the run's failures; the 390 case is not."
+      }
+    },
+    {
+      "file": "tests/unit/server/agents-terminal.browser.test.ts",
+      "test": "an agent's pane as a terminal (AG-4b) D40: picking an agent puts the keyboard in its terminal D58: a pointer on a tab puts the keyboard in its terminal; Enter on a tab keeps it on the tab",
+      "issue": 1832,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45895576358,
+        "failed_job": 140168520728,
+        "job": "repeat (24.13.0)",
+        "sha": "96e15c12d5abd4ecb9cc0d6f6ac3219c03dff366",
+        "note": "A repeat run on Chromium with the quarantine off: it failed in round 5 of 6 (Expected - 3, Received + 1), the same keyboard-focus family as the D40 cases. No passed_run on that sha is named, since a red is never re-run."
+      }
+    },
+    {
+      "file": "tests/unit/server/agents-terminal.browser.test.ts",
+      "test": "an agent's pane as a terminal (AG-4b) D40: picking an agent puts the keyboard in its terminal a pane already open: picking its row takes the keyboard there",
+      "issue": 1832,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45895576358,
+        "failed_job": 140168520728,
+        "job": "repeat (24.13.0)",
+        "sha": "96e15c12d5abd4ecb9cc0d6f6ac3219c03dff366",
+        "note": "A repeat run on Chromium with the quarantine off: it failed in round 5 of 6 (Expected - 3, Received + 1), the same keyboard-focus family as the D40 cases. No passed_run on that sha is named, since a red is never re-run."
+      }
+    },
+    {
+      "file": "tests/unit/server/bell-allow-review.browser.test.ts",
+      "test": "the bell keeps the keyboard across a refresh that drops the row (issue 1332) the window losing and getting focus back meanwhile isn't moving on: Review still gets the keyboard",
+      "issue": 1332,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45922370620,
+        "failed_job": 140256986973,
+        "job": "pr-shards (24.13.0, 12)",
+        "sha": "021463e6caf5cfbd7ad7f328ed5f526b352c2060",
+        "note": "No CI run on this sha passed it (a red is never re-run). The change on that sha touched only label and help strings, not the bell. Review didn't have the keyboard before the row dropped: the page had focus, the panel was open and the same Review button was connected, but the active element was the body. Two other cases in this file are quarantined under the same issue."
+      }
     }
   ]
 }

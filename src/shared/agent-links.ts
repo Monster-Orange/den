@@ -13,6 +13,18 @@ import type { UserConfig } from "./den-config.js";
 /** The Settings page where the address (web.url) is set. */
 export const ADDRESS_SETTING_PAGE = "/settings#server.address";
 
+export const SERVER_AGENT_PAGE = "/server-agent";
+
+export function agentPagePath(
+  project: string | undefined,
+  agent: string | undefined,
+): string {
+  if (isServerScope(project)) return SERVER_AGENT_PAGE;
+  if (!project) return "/agents";
+  const p = `/agents?project=${encodeURIComponent(project)}`;
+  return agent ? `${p}&agent=${encodeURIComponent(agent)}` : p;
+}
+
 /**
  * Where the person decides a held write: the asking agent's row, else any
  * page (the Allow opens on each). The bell's held-write item links here.
@@ -21,6 +33,7 @@ export function allowPath(
   agent: string | undefined,
   project: string | undefined,
 ): string {
+  if (isServerScope(project)) return SERVER_AGENT_PAGE;
   if (!agent) return "/agents";
   const q = new URLSearchParams();
   if (project) q.set("project", project);
@@ -88,7 +101,7 @@ export function agentLinks(
     agent: fullLink(
       at,
       server
-        ? "/server-agent"
+        ? SERVER_AGENT_PAGE
         : `/p/${encodeURIComponent(ws)}/agents/${encodeURIComponent(id)}`,
     ),
     ...(server
@@ -100,7 +113,7 @@ export function agentLinks(
           ),
         }),
     notifications: fullLink(at, "/settings#notifications"),
-    allow: fullLink(at, allowPath(id, server ? undefined : ws)),
+    allow: fullLink(at, allowPath(id, ws)),
   };
 }
 

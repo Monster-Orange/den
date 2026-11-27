@@ -163,9 +163,10 @@ describe("edge up detects the drift (the one recreate 0.4.5 needs)", () => {
     expect(edgeCommandDrift(old, edgeCommand(cfg))).toEqual([
       "forwarded-header trust",
       "upstream idle limit",
+      "API off",
     ]);
     expect(edgeUpNotices(cfg, old)[1]).toBe(
-      "acme-edge's settings changed (forwarded-header trust, upstream idle limit): recreating it once. Routes drop only while it restarts.",
+      "acme-edge's settings changed (forwarded-header trust, upstream idle limit, API off): recreating it once. Routes drop only while it restarts.",
     );
   });
 
