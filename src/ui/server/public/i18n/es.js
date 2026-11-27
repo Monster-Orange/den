@@ -4604,6 +4604,7 @@
     "setd.readOnly": "Inicia sesión para cambiarlos. Este navegador puede mirar, pero no cambiar nada.",
     "setd.toAccount.devices": "Tus dispositivos",
     "setd.toAccount.profile": "Cerrar sesión",
+    "setd.sub.more": "Más",
     "set.ui.rot.scope.agent": "Agente",
     "set.ui.rot.scope.persona-workspace": "Persona en un proyecto",
     "set.ui.rot.scope.persona": "Persona",

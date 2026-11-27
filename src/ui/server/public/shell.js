@@ -1174,6 +1174,7 @@
     "setd.readOnly": "Sign in to change these. This browser can look but change nothing.",
     "setd.toAccount.devices": "Your devices",
     "setd.toAccount.profile": "Sign out",
+    "setd.sub.more": "More",
     "set.ui.rot.scope.agent": "Agent",
     "set.ui.rot.scope.persona-workspace": "Persona in a project",
     "set.ui.rot.scope.persona": "Persona",

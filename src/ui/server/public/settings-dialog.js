@@ -37,6 +37,36 @@ export const ACCOUNT_LINKS = {
   cli: { pane: "profile", text: "setd.toAccount.profile" },
 };
 
+export const SUBS = {};
+
+export function subsOf(pane, rows) {
+  const plan = SUBS[pane];
+  if (!plan) return null;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out = Object.entries(plan).map(([key, ids]) => ({
+    key,
+    rows: ids.map((id) => byId.get(`${pane}.${id}`)).filter(Boolean),
+  }));
+  const placed = new Set(out.flatMap((g) => g.rows));
+  out.push({ key: "more", rows: rows.filter((r) => !placed.has(r)) });
+  return out.filter((g) => g.rows.length);
+}
+
+export function drawSubs(host, pane, rows, ctx, shell) {
+  for (const g of subsOf(pane, rows)) {
+    const box = document.createElement("div");
+    box.className = "setd-sub";
+    box.innerHTML = `<h4 class="setd-subh">${esc(shell.t(g.key === "more" ? "setd.sub.more" : `setd.sub.${pane}.${g.key}`))}</h4><div class="setd-subrows"></div>`;
+    host.append(box);
+    const n = drawRows(box.lastElementChild, g.rows, ctx, {
+      idPrefix: `setd-${pane}-${g.key}-`,
+    });
+    if (!n) box.hidden = true;
+  }
+}
+
+export const PANE_DRAW = {};
+
 export function paneOf(hash, rows) {
   const h = decodeURIComponent(String(hash || "").replace(/^#/, ""));
   if (!h) return { pane: null, at: null };
@@ -47,6 +77,21 @@ export function paneOf(hash, rows) {
     return { pane: null, at: null, account: "notifications" };
   const cat = h.split(".")[0];
   return PANES[cat] ? { pane: cat, at: null } : { pane: null, at: null };
+}
+
+export function settingsRedirect(loc, rows) {
+  const q = new URLSearchParams(loc.search || "");
+  const to = paneOf(loc.hash, rows);
+  const search = q.get("q");
+  q.delete("q");
+  if (to.account) {
+    q.set("account", to.account);
+    return `/?${q}`;
+  }
+  q.set("settings", to.pane ?? "");
+  if (to.at) q.set("at", to.at);
+  if (search) q.set("sq", search);
+  return `/?${q}`;
 }
 
 const esc = (s) =>
@@ -166,8 +211,13 @@ async function build(shell) {
         label.tabIndex = -1;
       }
     };
-    new MutationObserver(mark).observe(host, { childList: true });
-    drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
+    new MutationObserver(mark).observe(host, {
+      childList: true,
+      subtree: true,
+    });
+    if (PANE_DRAW[pane]) PANE_DRAW[pane](host, own, ctx, shell);
+    else if (SUBS[pane]) drawSubs(host, pane, own, ctx, shell);
+    else drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
     mark();
   };
   const nav = hydrateDialogNav(dialog, {
@@ -195,6 +245,12 @@ export async function openSettings(
     ({ pane, at } = to);
   }
   nav.open(pane, at);
+  const sq = new URLSearchParams(location.search).get("sq");
+  const box = sq && nav.element.querySelector("[data-dn-search]");
+  if (box) {
+    box.value = sq;
+    box.dispatchEvent(new Event("input"));
+  }
   nav.element
     .querySelector('a.dn-row[aria-current="true"]')
     ?.scrollIntoView({ block: "nearest" });

@@ -4459,6 +4459,7 @@
     "setd.readOnly": "変更するにはサインインしてください。このブラウザーでは表示のみできます。",
     "setd.toAccount.devices": "デバイス",
     "setd.toAccount.profile": "サインアウト",
+    "setd.sub.more": "その他",
     "set.ui.rot.scope.agent": "エージェント",
     "set.ui.rot.scope.persona-workspace": "プロジェクト内のペルソナ",
     "set.ui.rot.scope.persona": "ペルソナ",
