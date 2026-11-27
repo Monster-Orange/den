@@ -491,7 +491,7 @@ export function bellPanel(b, ui = {}) {
     per: ui.per ?? {},
   };
   const pager = (name, p, shown) =>
-    listPagerHtml(name, p, shown, u.per[name] ?? BELL_PER);
+    listPagerHtml(name, p, shown, u.per[name] ?? BELL_PER, { url: false });
   // Issue 746: what waits for the person's Allow leads Needs you.
   const allows = allowsOf(b);
   const groups = withoutAllowed(b?.groups ?? [], allows);
@@ -844,17 +844,21 @@ export function initBell(doc = document) {
     },
   });
   const pop = bell.el;
-  watchPagers(pop, (name, ask) => {
-    if (ask.kind === "per") ui.per[name] = ask.target.per;
-    const q = pageQuery(
-      sectionPage(last, name),
-      ask.target,
-      ui.per[name] ?? BELL_PER,
-    );
-    q.set("section", name);
-    ui.at = q.toString();
-    void refresh();
-  });
+  watchPagers(
+    pop,
+    (name, ask) => {
+      if (ask.kind === "per") ui.per[name] = ask.target.per;
+      const q = pageQuery(
+        sectionPage(last, name),
+        ask.target,
+        ui.per[name] ?? BELL_PER,
+      );
+      q.set("section", name);
+      ui.at = q.toString();
+      void refresh();
+    },
+    { url: false },
+  );
   // Issue 1054: the button held with the kit's dots, and how to let it go.
   let heldBtn = null;
   let letGo = null;
