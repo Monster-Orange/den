@@ -87,6 +87,17 @@ const PRINTERS = [
   "/usr/bin/env",
   ...(fs.existsSync("/bin/env") ? ["/bin/env"] : []),
   "command env",
+  "exec env",
+  "nohup env",
+  "time env",
+  "nice env",
+  "nice -n 5 env",
+  "timeout 5 env",
+  "stdbuf -o0 env",
+  "echo PLAIN_X=1 | xargs env",
+  "env PLAIN=1 env",
+  "env -u X printenv",
+  "env -S 'printenv'",
   "builtin set",
   "\\env",
   "env -0",
@@ -214,6 +225,34 @@ describe("a command that prints the environment runs, its secret-looking values 
     );
   });
 
+  it.each([
+    "xargs -J % env %",
+    "xargs -R 1 -I x env x",
+    "xargs -S 255 -I x env x",
+    "xargs -I x env x",
+    "xargs -i env",
+    "xargs -l env",
+    "xargs -e env",
+    "xargs -i env {}",
+    "xargs -i{} env {}",
+    "xargs --replace env {}",
+    "xargs --replace=R env R",
+    "xargs -l2 env",
+    "xargs -eEOF env",
+    "xargs -I env env",
+    "xargs -Ienv env",
+    "xargs -I printenv printenv",
+    "xargs -I {} {}",
+  ])("xargs options, BSD and GNU: `%s` is rewritten", (cmd) => {
+    expect(hook(cmd).rewritten).toContain("env-mask.mjs");
+  });
+
+  it("env --split-string=printenv is rewritten (GNU env only runs it)", () => {
+    expect(hook("env --split-string=printenv").rewritten).toContain(
+      "env-mask.mjs",
+    );
+  });
+
   it("a command that prints no environment is left as it is", () => {
     for (const cmd of [
       "echo $HOME",
@@ -222,6 +261,14 @@ describe("a command that prints the environment runs, its secret-looking values 
       "set -e",
       "set -euo pipefail; ls",
       "cat environment.md",
+      "nice ls",
+      "timeout 5 ls",
+      "stdbuf -o0 ls",
+      "xargs echo",
+      "xargs -I x echo x",
+      "xargs -i ls {}",
+      "env ls",
+      "env -S 'ls -l'",
     ])
       expect(hook(cmd).rewritten).toBeNull();
   });
