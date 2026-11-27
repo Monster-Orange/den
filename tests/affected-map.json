@@ -1329,6 +1329,8 @@
     },
     {
       "when": [
+        "src/ui/server/public/settings-dialog.css",
+        "src/ui/server/public/settings-dialog.js",
         "src/ui/server/public/settings-page.js",
         "src/ui/server/public/settings-rows.css",
         "src/ui/server/public/settings-rows.js",

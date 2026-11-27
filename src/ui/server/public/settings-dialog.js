@@ -542,7 +542,11 @@ async function build(shell) {
     lang,
     words: DIALOG_NAV_WORDS[lang],
     load,
-    onCross: (href) => location.assign(href),
+    onCross: (href) => {
+      const to = new URL(href, location.href).searchParams.get("account");
+      if (to === null || !shell.openAccount) location.assign(href);
+      else shell.openAccount(to || null);
+    },
     onClose: () => {
       dialog.remove();
       live = null;
@@ -559,7 +563,10 @@ export async function openSettings(
   const { nav, rows } = await live;
   if (hash) {
     const to = paneOf(hash, rows);
-    if (to.account) return location.assign(`?account=${to.account}`);
+    if (to.account)
+      return shell.openAccount
+        ? shell.openAccount(to.account)
+        : location.assign(`?account=${to.account}`);
     ({ pane, at } = to);
   }
   nav.open(pane, at);
