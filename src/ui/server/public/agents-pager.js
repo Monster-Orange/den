@@ -38,9 +38,9 @@ export function agentsPageNo() {
   return Number.isInteger(n) && n > 1 ? n : 1;
 }
 
-export function agentsViewQuery({ by, ws, seen, open }) {
+export function agentsViewQuery({ view, by, ws, seen, open, used }) {
   const q = new URLSearchParams({
-    view: "agents",
+    view: view === "terminals" ? "terminals" : "agents",
     by: by === "project" || by === "group" ? by : "need",
     page: String(agentsPageNo()),
     limit: String(agentsPer()),
@@ -51,6 +51,12 @@ export function agentsViewQuery({ by, ws, seen, open }) {
     .slice(0, SEEN_MAX)
     .map(([id, since]) => `${id}~${since}`);
   if (pairs.length) q.set("seen", pairs.join(","));
+  const recent = Object.entries(used ?? {})
+    .filter(([, at]) => Number.isSafeInteger(at) && at > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, SEEN_MAX)
+    .map(([id, at]) => `${id}~${at}`);
+  if (recent.length) q.set("used", recent.join(","));
   const ids = (open ?? []).slice(0, 20);
   if (ids.length) q.set("open", ids.join(","));
   return q;

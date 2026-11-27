@@ -15,10 +15,11 @@ const SEEN_ID = /^[A-Za-z0-9][\w.-]{0,127}$/;
 export const VIEW_LIST = "sessions.view";
 
 export interface ViewAsk {
-  by: "need" | "project" | "group";
+  by: "need" | "project" | "group" | "used";
   limit: number;
   page: number | "last";
   seen: ReadonlyMap<string, string>;
+  used?: ReadonlyMap<string, number>;
 }
 
 export interface ViewPage {
@@ -55,6 +56,46 @@ export function parseSeen(v: string | null): Map<string, string> {
     if (out.size >= SEEN_MAX) break;
   }
   return out;
+}
+
+export function parseUsed(v: string | null): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const pair of (v ?? "").split(",")) {
+    const cut = pair.indexOf("~");
+    if (cut < 1) continue;
+    const id = pair.slice(0, cut);
+    const at = Number(pair.slice(cut + 1));
+    if (!SEEN_ID.test(id) || !Number.isSafeInteger(at) || at < 0) continue;
+    out.set(id, at);
+    if (out.size >= SEEN_MAX) break;
+  }
+  return out;
+}
+
+function byUse(
+  rows: readonly ListedSession[],
+  used: ReadonlyMap<string, number>,
+): Entry[] {
+  const at = (r: ListedSession) =>
+    Math.max(
+      used.get(r.id) ?? 0,
+      Date.parse((r as { inputAt?: string }).inputAt ?? "") || 0,
+      Date.parse(r.startedAt ?? "") || 0,
+    );
+  const sorted = (xs: ListedSession[]) =>
+    xs.sort((a, b) => at(b) - at(a) || (a.id < b.id ? -1 : 1));
+  return [
+    ...sorted(rows.filter((r) => !r.exited)).map((r) => ({
+      band: "working" as const,
+      r,
+      key: "t:running",
+    })),
+    ...sorted(rows.filter((r) => r.exited)).map((r) => ({
+      band: "stopped" as const,
+      r,
+      key: "t:exited",
+    })),
+  ];
 }
 
 export function viewBand(
@@ -177,6 +218,7 @@ export function viewPage(
       ).map((x) => ({ ...x, key: "b:stopped" })),
     ];
   } else if (ask.by === "group") ordered = byGroups(rows, groups, seen);
+  else if (ask.by === "used") ordered = byUse(rows, ask.used ?? new Map());
   else
     ordered = inBandOrder(rows, seen).map((x) => ({
       ...x,
@@ -204,7 +246,7 @@ export function viewPage(
       offset < restAt.length &&
       restAt[offset - 1].key === restAt[offset].key,
     ...(perProject ? { projects: perProject } : {}),
-    ...(ask.by === "group"
+    ...(ask.by === "group" || ask.by === "used"
       ? {
           groups: {
             pinned: pinnedAt.map((x) => x.key),

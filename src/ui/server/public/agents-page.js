@@ -510,7 +510,7 @@ function paintList() {
     );
   // Issue 482: the Agents page says once where the shells went.
   if (PAGE !== "terminal") notes.push(movedNote());
-  const paged = PAGE !== "terminal" && Array.isArray(st.data.items);
+  const paged = Array.isArray(st.data.items);
   const inView = paged
     ? [...(st.data.pinned ?? []), ...st.data.items]
     : shown.flatMap((ws) =>
@@ -549,7 +549,7 @@ function paintList() {
   const byProject = PAGE !== "terminal" && st.by === "project";
   const none = `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
   let body;
-  if (PAGE === "terminal") body = terminalsBodyHtml();
+  if (PAGE === "terminal") body = terminalsBodyHtml(paged ? named : null);
   else if (byGroup)
     body = groupsViewHtml(inView, st.groupsRead.groups, {
       t,
@@ -697,9 +697,15 @@ function fitListFloor() {
  * last used, newest first; under All projects each row names its
  * project. Empty: says so, and how to open one.
  */
-function terminalsBodyHtml() {
+function terminalsBodyHtml(named = null) {
   const used = shellUsed();
-  const { running, exited } = terminalGroups(visibleRows(), used);
+  const keys = named ? st.data.groups : null;
+  const { running, exited } = keys
+    ? {
+        running: st.data.items.filter((_, i) => keys.items[i] === "t:running"),
+        exited: st.data.items.filter((_, i) => keys.items[i] === "t:exited"),
+      }
+    : terminalGroups(visibleRows(), used);
   if (!running.length && !exited.length)
     return (
       `<div class="none tmnone"><strong>${esc(t("tm.none"))}</strong>` +
@@ -716,9 +722,10 @@ function terminalsBodyHtml() {
       current: r.id === st.cur,
       used,
     });
+  const groupName = (key, text) => (named ? named(`t:${key}`, text) : text);
   const group = (key, list) =>
     list.length
-      ? `<div class="wsg tmg" data-tm="${key}"><div class="wsh"><span>${esc(t(`tm.${key}`, { n: list.length }))}</span></div>` +
+      ? `<div class="wsg tmg" data-tm="${key}"><div class="wsh"><span>${esc(groupName(key, t(`tm.${key}`, { n: keys ? (keys.totals[`t:${key}`] ?? list.length) : list.length })))}</span></div>` +
         list.map(row).join("") +
         `</div>`
       : "";
@@ -985,7 +992,11 @@ function paintSub() {
   if (count)
     count.textContent =
       PAGE === "terminal"
-        ? terminalsCountText(rows.length, st.scopeLabel, t)
+        ? terminalsCountText(
+            Array.isArray(st.data?.items) ? st.data.total : rows.length,
+            st.scopeLabel,
+            t,
+          )
         : attnSub(
             rows.filter((r) => !inStopped(r)),
             st.scopeLabel,
@@ -1065,7 +1076,6 @@ let listRun = 0;
 async function refreshOnce() {
   const run = ++listRun;
   try {
-    const ws = urlWorkspace();
     // den#156: a list that doesn't come in time is a problem the page
     // says out loud (paintList), not a wait that holds it.
     const ac = new AbortController();
@@ -1075,14 +1085,19 @@ async function refreshOnce() {
     );
     let r;
     try {
-      const paged = PAGE !== "terminal";
-      const picked = paged ? pickedWorkspace() : ws;
+      const picked =
+        pickedWorkspace() ??
+        (!st.data && st.scope && st.scope !== "all" ? st.scope : null);
       r = await fetch(
-        paged
-          ? `/api/sessions?${agentsViewQuery({ by: st.by === "group" && !groupsOffered(st.groupsRead) ? "need" : st.by, ws: picked, seen: seenMap(), open: st.open })}`
-          : ws
-            ? `/api/sessions?all=1&ws=${encodeURIComponent(ws)}`
-            : "/api/sessions?all=1",
+        `/api/sessions?${agentsViewQuery({
+          view: PAGE === "terminal" ? "terminals" : "agents",
+          by:
+            st.by === "group" && !groupsOffered(st.groupsRead) ? "need" : st.by,
+          ws: picked,
+          seen: seenMap(),
+          open: st.open,
+          used: PAGE === "terminal" ? shellUsed() : null,
+        })}`,
         { headers: { accept: "json" }, signal: ac.signal },
       );
     } catch (e) {

@@ -43,6 +43,7 @@
  */
 import {
   parseSeen,
+  parseUsed,
   VIEW_LIST,
   viewPage,
   type ViewGroup,
@@ -1170,10 +1171,16 @@ export async function handleSessionList(
     const view = viewPage(
       first,
       {
-        by: by === "project" || by === "group" ? by : "need",
+        by:
+          viewKind === "terminals"
+            ? "used"
+            : by === "project" || by === "group"
+              ? by
+              : "need",
         limit: ask.limit,
         page: ask.at === "last" ? "last" : (ask.page ?? 1),
         seen: parseSeen(params.get("seen")),
+        used: parseUsed(params.get("used")),
       },
       [...(serverWs ? [serverWs] : []), ...scope],
       by === "group" ? await ownGroups() : [],
