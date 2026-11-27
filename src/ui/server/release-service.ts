@@ -755,7 +755,6 @@ export class ReleaseService {
     const ghSlug = this.slug(repo);
     const raw = await ghSafe([
       "api",
-      "--paginate",
       `repos/${ghSlug}/branches?per_page=100`,
       "--jq",
       "[.[].name]",

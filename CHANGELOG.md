@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Fixed
+
+- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) are faster: other requests no longer wait on GitHub while it answers, and Den fetches one page of 100 instead of every page. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed
