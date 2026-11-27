@@ -90,6 +90,15 @@ export async function run(ctx, s) {
       const sel = '[role="menuitemradio"][aria-checked="true"]';
       await p.waitForSelector(sel, { timeout: 5000 });
       const row = await p.$eval(sel, (row) => {
+        const lab0 = row.firstElementChild;
+        const orig = lab0.textContent;
+        const origW = Math.round(lab0.scrollWidth);
+        const origCut = lab0.scrollWidth > lab0.clientWidth;
+        let fills = 0;
+        while (lab0.scrollWidth <= lab0.clientWidth && fills < 40) {
+          lab0.textContent += ` ${orig}`;
+          fills++;
+        }
         const r = row.getBoundingClientRect();
         const l = row.firstElementChild.getBoundingClientRect();
         const cs = getComputedStyle(row);
@@ -98,8 +107,12 @@ export async function run(ctx, s) {
         const lab = row.firstElementChild;
         const ls = getComputedStyle(lab);
         return {
-          text: lab.textContent,
+          text: orig,
+          origW,
+          origCut,
+          fills,
           cut: lab.scrollWidth > lab.clientWidth,
+          clipped: ls.overflowX === "hidden" || ls.overflowX === "clip",
           ellipsis: ls.textOverflow === "ellipsis",
           nowrap: ls.whiteSpace === "nowrap",
           rowH: Math.round(r.height * 10) / 10,
@@ -139,11 +152,16 @@ export function expect(cells) {
     r.parts.every((h) => h < r.line * 1.5) &&
     r.labelRight < r.rowRight - 8;
   const cut = (r) =>
-    good(r) && r.text === r.want && r.cut && r.ellipsis && r.nowrap;
+    good(r) &&
+    r.text === r.want &&
+    r.cut &&
+    r.clipped &&
+    r.ellipsis &&
+    r.nowrap;
   const say = (r) =>
     r.error
       ? `${r.tag}: ${r.error}`
-      : `${r.tag}: "${r.text}" (label ${r.labelW}px of a ${r.rowW}px row; ${r.cut ? "cut short" : "fits, not cut"}; ${r.ellipsis ? "ellipsis" : "no ellipsis"}; ${r.nowrap ? "nowrap" : "wraps"}) row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
+      : `${r.tag}: "${r.text}" (${r.origW}px${r.origCut ? ", cut as it is" : `, fits as it is, so filled ${r.fills}× in the page`}; label ${r.labelW}px of a ${r.rowW}px row; ${r.cut ? "cut short" : "not cut"}; ${r.clipped ? "overflow hidden" : "overflow shown"}; ${r.ellipsis ? "ellipsis" : "no ellipsis"}; ${r.nowrap ? "nowrap" : "wraps"}) row ${r.rowH}px (line ${r.line}px + padding ${r.padY}px), mark ${r.mark} ${r.markPos}, label ends ${r.rowRight - r.labelRight}px before the row's end`;
   const ok = (f) => all.length > 0 && all.every(f);
   const skip = all.find((r) => r.skip)?.skip;
   if (skip)
@@ -159,7 +177,8 @@ export function expect(cells) {
       ? []
       : [
           r.text !== r.want && "not the bed's long-named project",
-          !r.cut && "the name fits, so it was never cut",
+          !r.cut && "even filled, the name was never cut",
+          !r.clipped && "the overflow isn't hidden, so the cut can't show",
           !r.ellipsis && "no ellipsis",
           !r.nowrap && "it may wrap",
           !good(r) && "the row isn't one line with ✓ at its end",

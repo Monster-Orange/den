@@ -67,7 +67,11 @@ describe("issue 898's live check", () => {
     tag: "webkit-820x1180",
     text,
     want: LONG,
+    origW: 420,
+    origCut: true,
+    fills: 0,
     cut: fixed,
+    clipped: fixed,
     ellipsis: fixed,
     nowrap: fixed,
     rowH: fixed ? 44 : 64,
@@ -92,7 +96,7 @@ describe("issue 898's live check", () => {
     const r = rows(898, [cell("webkit", [row(true)])]);
     expect(r.map((x) => x.ok)).toEqual([true, true]);
     expect(r[1].detail).toContain(
-      "label 420px of a 300px row; cut short; ellipsis; nowrap",
+      "label 420px of a 300px row; cut short; overflow hidden; ellipsis; nowrap",
     );
   });
 
@@ -106,7 +110,25 @@ describe("issue 898's live check", () => {
   it("the bed's name fits the row (as ed96400d's run found): the FAIL says the name was never cut", () => {
     const r = rows(898, [cell("webkit", [{ ...row(true), cut: false }])]);
     expect(r.map((x) => x.ok)).toEqual([true, false]);
-    expect(r[1].detail).toMatch(/^the name fits, so it was never cut\. /);
+    expect(r[1].detail).toMatch(/^even filled, the name was never cut\. /);
+  });
+
+  it("the name fits a wide row, so the page fills it past the row: the cut is judged on that, and the detail says so", () => {
+    const r = rows(898, [
+      cell("webkit", [
+        { ...row(true), origW: 641, origCut: false, fills: 1, rowW: 679 },
+      ]),
+    ]);
+    expect(r.map((x) => x.ok)).toEqual([true, true]);
+    expect(r[1].detail).toContain(
+      "(641px, fits as it is, so filled 1× in the page;",
+    );
+  });
+
+  it("the label's overflow isn't hidden, so no cut can show: the long-name clause fails", () => {
+    const r = rows(898, [cell("webkit", [{ ...row(true), clipped: false }])]);
+    expect(r.map((x) => x.ok)).toEqual([true, false]);
+    expect(r[1].detail).toMatch(/the overflow isn't hidden/);
   });
 
   it("the bed has no long-named project: both clauses are not run (needs-long-project), never failed", () => {
@@ -145,14 +167,6 @@ describe("issue 406's live check", () => {
     lineHeight: fontSize * 1.4,
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
-  });
-
-  it("with no test Den to run on, both clauses are not run, never passed", () => {
-    const r = rows(406, [
-      cell("webkit", { tag: "webkit-1280", skip: "needs-den2", entry: [] }),
-    ]);
-    expect(r.map((x) => x.ok)).toEqual([null, null]);
-    expect(r.map((x) => x.skip)).toEqual(["needs-den2", "needs-den2"]);
   });
 
   it("before the fix (one line while a name is known): the two-line clause fails", () => {

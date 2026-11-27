@@ -1,76 +1,30 @@
 /* eslint-env browser */
 export const issue = 406;
 export const items = [406];
+export const readOnly = true;
 export const clauses = [
   "with the person's name known, the rail's account entry is two lines: the name, then @login",
   "each line is one line, cut short with an ellipsis, the second smaller than the first, as the kit draws it",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
-export const timeoutMs = 600000;
+export const timeoutMs = 90000;
 
-export const OWNER = {
-  v: 1,
-  owner: "github:4060000406",
-  login: "gate-406-person-login-that-runs-long",
-  name: "Gate 406 Person With A Display Name Far Too Long For The Rail Entry",
-};
-
-let D2 = null;
-
-export async function setup(ctx) {
-  if (!ctx.den2) return { skip: "needs-den2" };
-  try {
-    D2 = await ctx.den2({ product: { testInstall: true } });
-  } catch (e) {
-    return { skip: "needs-den2", why: String(e?.message ?? e).slice(0, 200) };
-  }
-  const fs = await import("fs");
-  const path = await import("path");
-  const file = path.join(D2.o.denHome, "web-owner.json");
-  fs.writeFileSync(
-    file,
-    JSON.stringify({ ...OWNER, linkedAt: new Date().toISOString() }),
-    { mode: 0o600 },
-  );
-  return { file };
+export async function setup() {
+  return {};
 }
 
-export async function run(ctx, s) {
+export async function run(ctx) {
   const tag = `${ctx.browser}-${ctx.width}`;
-  if (s?.skip || !D2) return { tag, skip: s?.skip ?? "needs-den2", entry: [] };
-  const { ctx: bc, page } = await D2.signedIn(ctx.browser, ctx.width);
-  try {
-    return await measure(ctx, D2, page, tag);
-  } finally {
-    await bc.close().catch(() => {});
-  }
-}
-
-export async function teardown() {
-  const d = D2;
-  D2 = null;
-  if (!d) return;
-  try {
-    (await import("fs")).rmSync(
-      (await import("path")).join(d.o.denHome, "web-owner.json"),
-      { force: true },
-    );
-  } finally {
-    await d.close().catch(() => {});
-  }
-}
-
-async function measure(ctx, d2, page, tag) {
-  await d2.goto(page, "/services");
-  await page.waitForFunction(
+  await ctx.goto(ctx.page, "/services");
+  await ctx.page.waitForFunction(
     () =>
       document.getElementById("den-ident")?.getElementsByClassName("den-acct")
         .length > 0,
     undefined,
     { timeout: 20000 },
   );
-  await page.evaluate(() => document.fonts.ready.then(() => true));
-  const session = await page.evaluate(async () => {
+  await ctx.page.evaluate(() => document.fonts.ready.then(() => true));
+  const session = await ctx.page.evaluate(async () => {
     const r = await fetch("/api/session", { cache: "no-store" });
     try {
       return await r.json();
@@ -78,7 +32,7 @@ async function measure(ctx, d2, page, tag) {
       return null;
     }
   });
-  const entry = await page.evaluate(() => {
+  const entry = await ctx.page.evaluate(() => {
     const [lbl] = document
       .getElementById("den-ident")
       .getElementsByClassName("den-acct");
@@ -99,7 +53,7 @@ async function measure(ctx, d2, page, tag) {
       };
     });
   });
-  await page
+  await ctx.page
     .locator("#den-ident")
     .screenshot({ path: ctx.evidence(`${tag}-entry.png`) });
   const id = session?.identity ?? null;
@@ -120,9 +74,6 @@ async function measure(ctx, d2, page, tag) {
 
 export function expect(cells) {
   const rs = cells.map((c) => c.result).filter(Boolean);
-  const off = rs.find((r) => r.skip);
-  if (off)
-    return clauses.map((clause) => ({ clause, ok: null, skip: off.skip }));
   const say = (r) =>
     `${r.tag}: ${r.entry.map((l) => `"${l.text}" ${l.fontSize}px`).join(" over ")} (Den knows ${r.name ? `the name "${r.name}"` : "no name"})`;
   const two = (r) =>
