@@ -485,6 +485,7 @@ export class SessionHost {
   }
 
   private persist(s: Session): void {
+    if (this.closed && !fs.existsSync(this.paths.dir)) return;
     const rec = {
       id: s.info.ref.id,
       name: s.info.name,

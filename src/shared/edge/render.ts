@@ -2,8 +2,12 @@
  * Pure renderers for the edge's Traefik configuration. No I/O, so routing is
  * unit-testable; runtime.ts writes the results.
  */
+import { createHash } from "crypto";
 import * as yaml from "yaml";
+import { API_FLAG, parseEdgeArgs } from "./edge-args.js";
 import type { EdgeConfig } from "./types.js";
+
+export { commandServesApi } from "./edge-args.js";
 
 const DOMAIN_RE =
   /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
@@ -123,8 +127,14 @@ export function webRouteNames(
     .map(([name]) => name);
 }
 
-/** H1: the middleware that adds the edge's proof (edge/proof.ts). */
-export const EDGE_PROOF_MIDDLEWARE = "den-edge-proof";
+export const EDGE_PROOF_MIDDLEWARE_PREFIX = "den-edge-proof";
+
+export function edgeProofMiddleware(proof: string): string {
+  const h = createHash("sha256")
+    .update(`den-edge-proof-name\n${proof}`)
+    .digest("hex");
+  return `${EDGE_PROOF_MIDDLEWARE_PREFIX}-${h.slice(0, 32)}`;
+}
 
 /**
  * H1 (0.4.48): what renderEdgeDynamic adds for Den: the edge's proof, as
@@ -155,7 +165,6 @@ export function certNames(cfg: EdgeConfig): string[] {
 export const UPSTREAM_TRANSPORT = "den-upstream";
 
 /**
- * Dynamic config: TLS cert, HTTP→HTTPS redirect, dashboard, routes. With
  * `tls: none` every router is on the http entrypoint, with no TLS and no
  * redirect.
  */
@@ -164,6 +173,7 @@ export function renderEdgeDynamic(
   den?: EdgeProofRender,
 ): string {
   const proved = new Set(den ? webRouteNames(cfg, den.ports) : []);
+  const proofMw = den ? edgeProofMiddleware(den.proof) : "";
   const httpsPort = cfg.ports?.https ?? 443;
   const redirectPort = httpsPort !== 443 ? { port: String(httpsPort) } : {};
   const https = edgeHttps(cfg);
@@ -182,17 +192,10 @@ export function renderEdgeDynamic(
           },
         }
       : {}),
-    dashboard: {
-      entryPoints: entryPoints(),
-      rule: hostRule("edge", cfg),
-      service: "api@internal",
-      ...routerTls(cfg),
-    },
   };
   const services: Record<string, unknown> = {};
   for (const [name, url] of Object.entries(cfg.routes).sort()) {
-    if (name === "edge")
-      throw new Error(`route name "edge" is reserved for the dashboard`);
+    if (name === "edge") throw new Error(`route name "edge" is reserved`);
     if (!/^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(name))
       throw new Error(
         `route name "${name}" must be lowercase letters, digits, dots or dashes`,
@@ -201,7 +204,7 @@ export function renderEdgeDynamic(
     routers[key] = {
       entryPoints: entryPoints(),
       rule: hostRule(name, cfg),
-      ...(proved.has(name) ? { middlewares: [EDGE_PROOF_MIDDLEWARE] } : {}),
+      ...(proved.has(name) ? { middlewares: [proofMw] } : {}),
       service: key,
       ...routerTls(cfg),
     };
@@ -238,7 +241,7 @@ export function renderEdgeDynamic(
                 // H1: set (never passed through from the client) on Den's route.
                 ...(proved.size && den
                   ? {
-                      [EDGE_PROOF_MIDDLEWARE]: {
+                      [proofMw]: {
                         headers: {
                           customRequestHeaders: {
                             "X-Den-Edge-Proof": den.proof,
@@ -310,13 +313,8 @@ export const EDGE_FORWARDED_TRUSTED_IPS: readonly string[] = [
   "192.168.65.0/24",
 ];
 
-/** An `args` entry that sets what Den owns: the entrypoints' header or PROXY trust. */
-const OWNED_ARG =
-  /^--entrypoints\.[^.=]+\.(forwardedheaders\.(insecure|trustedips)|proxyprotocol\.)/i;
-
-/** The `edge.args` entries Den drops (SEC-2a): forwarded-header or PROXY trust. */
 export function droppedEdgeArgs(cfg: Pick<EdgeConfig, "args">): string[] {
-  return cfg.args.filter((a) => OWNED_ARG.test(a));
+  return parseEdgeArgs(cfg.args).dropped;
 }
 
 /** The edge entrypoints' trust (SEC-2a): forwarded headers, and the PROXY protocol when set. */
@@ -354,11 +352,10 @@ export function edgeCommand(cfg: EdgeConfig): string[] {
           `--providers.docker.network=${labels.network}`,
         ]
       : []),
-    "--api.dashboard=true",
     "--ping=true",
     "--log.level=WARN",
     ...accessLogArgs(cfg),
-    ...cfg.args.filter((a) => !OWNED_ARG.test(a)),
+    ...parseEdgeArgs(cfg.args).keep,
   ];
 }
 
@@ -478,7 +475,9 @@ export function edgeCommandDrift(
           ? "PROXY protocol"
           : /^--serverstransport\./i.test(c)
             ? "upstream idle limit"
-            : "its command",
+            : API_FLAG.test(c)
+              ? "API off"
+              : "its command",
     );
   return [...what];
 }

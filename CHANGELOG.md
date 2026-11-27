@@ -6,6 +6,14 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.92] - unreleased
 
+### Changed
+
+- The edge runs with Traefik's API and dashboard off. `edge.args` now takes only the options Den lists: any other entry is refused, with a line naming it. `edge.include` files that sort before Den's own file or reuse its names, and `edge.mounts` into the dynamic folder, are refused too. Den makes a new edge proof at its first start after the update. See docs/distributions.md.
+
+- After you pick an agent, clicking or pressing Tab somewhere else in the moment its terminal becomes ready no longer pulls the keyboard back into that terminal. The move into the terminal waited one screen frame (about 16 ms, longer on a busy page) and didn't check whether you'd gone elsewhere, so keys you typed afterwards went to the agent. It has been there since at least 0.4.40; it's not new in 0.4.91.
+
+- A terminal host that has shut down no longer puts back a state folder that was removed. A session that ended just after the host stopped used to recreate `<state>/sessions` to save its record. While the folder is there, that record is still saved.
+
 - Agents can be kept from seeing secret-looking environment variables (`*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, `OP_SESSION_*`): set `agents.env_hold` in config/local/user.yml, or use a strict install, which holds them back by default. A name an agent needs goes in `agents.env_allow`. `env`, `printenv` and `set` in an agent's shell show those values masked. Agents started before keep theirs until you pick Keep these or Remove in the bell, and `den doctor` lists what is held back, by name only. (issue 974) It was held back from 0.4.91: on 0.4.91-dev.1 its live check (gate/974) failed because of a bug in the check itself (it sent multi-line shell probes, and read a cut-off copy of settings.json), not in the env hold. The fixed check is the proof: on that same build it passed with the hold on and with it off.
 - `nice`, `timeout`, `stdbuf` and `xargs` in front of `env` or `printenv`, and `env` running one of them (`-S` included), now show secret-looking values masked too. (issue 1837)
 
