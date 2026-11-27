@@ -6,7 +6,7 @@ import {
 import * as appearance from "/appearance.js";
 import { registerDenSettings } from "/settings-registry.js";
 import { localizeCategory, localizeRow, sections } from "/settings-page.js";
-import { drawRows, settingsCtx } from "/settings-rows.js";
+import { drawRows, helpHtml, settingsCtx } from "/settings-rows.js";
 
 export const SETTINGS_GROUPS = [
   {
@@ -401,7 +401,8 @@ async function build(shell) {
   document.body.append(dialog);
   const descOf = (pane) => {
     const d = cats.get(pane)?.description;
-    return d ? `<p class="setd-desc">${esc(d)}</p>` : "";
+    const html = d && helpHtml(d, `setd-${pane}-desc`, "", (k) => shell.t(k));
+    return d ? `<div class="setd-desc">${html}</div>` : "";
   };
   const load = (pane, body) => {
     body.innerHTML =

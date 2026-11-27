@@ -4646,6 +4646,8 @@
     "set.ui.moveDown": "Bajar {name}",
     "set.ui.unpinX": "Quitar {name}",
     "set.ui.noPins": "Nada fijado",
+    "set.ui.more": "Más",
+    "set.ui.cmd": "Línea de comandos",
     "set.ui.setByIn": "Lo define la distribución en {file}.",
     "set.ui.setBy": "Lo define la distribución en su configuración.",
     "set.ui.showX": "Mostrar {name}",
