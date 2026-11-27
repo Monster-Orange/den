@@ -18,7 +18,7 @@ const TITLES = {
 };
 
 const shell = () => window.denShell;
-const t = (k) => shell()?.t?.(k) ?? k;
+const t = (k, vars) => shell()?.t?.(k, vars) ?? k;
 const esc = (s) =>
   String(s ?? "").replace(
     /[&<>"']/g,
