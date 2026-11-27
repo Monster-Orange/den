@@ -33,9 +33,121 @@ export const inAccount = (row) =>
   row.category === "notifications";
 
 export const ACCOUNT_LINKS = {
-  notifications: { pane: "notifications", text: "setd.toAccount.notifications" },
+  notifications: {
+    pane: "notifications",
+    text: "setd.toAccount.notifications",
+  },
   access: { pane: "devices", text: "setd.toAccount.devices" },
   cli: { pane: "profile", text: "setd.toAccount.profile" },
+};
+
+const SUBS = {
+  workspace: {
+    project: ["name", "colour", "editor"],
+    hub: ["hub", "hub_delivery_loop", "hub_delivery_loop_extra"],
+    agents: [
+      "agents_max_per_project",
+      "agents_mode",
+      "approvals_policy",
+      "approvals_watch",
+      "approvals_critical",
+    ],
+    tools: ["mcp_servers", "event_feeds"],
+  },
+  agents: {
+    approvals: [
+      "approvals_policy",
+      "settings_limits",
+      "settings_look",
+      "settings_integrations",
+      "settings_network",
+      "settings_agent_powers",
+      "approvals_watch",
+      "approvals_critical",
+      "held_wait",
+      "draft_hold_max",
+    ],
+    limits: [
+      "max_concurrent",
+      "max_per_project",
+      "max_subagents",
+      "subagents_respect_load_hold",
+    ],
+    startup: [
+      "default_mode",
+      "runtimes",
+      "skill_packs",
+      "skill_packs.pstack",
+      "personas",
+    ],
+    resume: [
+      "resume_batch",
+      "resume_gap",
+      "resume_load",
+      "resume_max_wait",
+      "pane_reconnect",
+      "pane_reconnect_window",
+      "pane_reconnect_wait",
+      "keep_running",
+    ],
+    context: [
+      "compaction_loop",
+      "compaction_minutes",
+      "compaction_pause",
+      "instruction_share",
+      "context_tokens",
+      "rotation",
+    ],
+    issues: [
+      "issue_writes",
+      "issue_writes_per_hour",
+      "issue_writes_visibility_minutes",
+      "issue_writes_public",
+      "hub_github",
+    ],
+    waits: [
+      "list_host_wait",
+      "shell_path_wait",
+      "list_refresh_wait",
+      "hook_wait",
+      "hook_retries",
+      "hook_backoff",
+    ],
+    page: ["layout", "coach_counts", "helpers_shown"],
+  },
+};
+
+export function subsOf(pane, rows) {
+  const plan = SUBS[pane];
+  if (!plan) return null;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out = Object.entries(plan).map(([key, ids]) => ({
+    key,
+    rows: ids.map((id) => byId.get(`${pane}.${id}`)).filter(Boolean),
+  }));
+  const placed = new Set(out.flatMap((g) => g.rows));
+  out.push({ key: "more", rows: rows.filter((r) => !placed.has(r)) });
+  return out.filter((g) => g.rows.length);
+}
+
+function drawSubs(host, pane, rows, ctx, shell) {
+  for (const g of subsOf(pane, rows)) {
+    const box = document.createElement("div");
+    box.className = "setd-sub";
+    box.innerHTML = `<h4 class="setd-subh">${esc(shell.t(g.key === "more" ? "setd.sub.more" : `setd.sub.${pane}.${g.key}`))}</h4><div class="setd-subrows"></div>`;
+    host.append(box);
+    const n = drawRows(box.lastElementChild, g.rows, ctx, {
+      idPrefix: `setd-${pane}-${g.key}-`,
+    });
+    if (!n) box.hidden = true;
+  }
+}
+
+export const PANE_DRAW = {
+  workspace: (host, rows, ctx, shell) =>
+    drawSubs(host, "workspace", rows, ctx, shell),
+  agents: (host, rows, ctx, shell) =>
+    drawSubs(host, "agents", rows, ctx, shell),
 };
 
 export function paneOf(hash, rows) {
@@ -161,8 +273,12 @@ async function build(shell) {
         label.tabIndex = -1;
       }
     };
-    new MutationObserver(mark).observe(host, { childList: true });
-    drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
+    new MutationObserver(mark).observe(host, {
+      childList: true,
+      subtree: true,
+    });
+    if (PANE_DRAW[pane]) PANE_DRAW[pane](host, own, ctx, shell);
+    else drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
     mark();
   };
   const nav = hydrateDialogNav(dialog, {
