@@ -375,7 +375,8 @@ dialog.pe-dlg::backdrop {
 .tagx {
   font: 10px var(--mono);
   color: var(--faint);
-  border: 1px dashed var(--border-strong);
+  border: 1px solid var(--border);
+  background: var(--sunken);
   border-radius: 4px;
   padding: 0 4px;
   font-weight: 400;
@@ -395,7 +396,6 @@ dialog.pe-dlg::backdrop {
 }
 .tagx.src-project {
   color: var(--text);
-  border-style: dashed;
 }
 .tagx.src-hub {
   color: var(--remote, var(--accent-text));

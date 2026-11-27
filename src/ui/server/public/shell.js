@@ -11218,7 +11218,7 @@
     ".den-banners.den-banners-inset { margin: 0 0 16px; }",
     ".den-banners[hidden] { display: none; }",
     ".den-banner { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 12.5px;",
-    "  color: var(--muted); border: 1px dashed var(--border-strong); border-radius: var(--radius);",
+    "  color: var(--muted); border: 1px solid var(--border); background: var(--sunken); border-radius: var(--radius);",
     "  padding: 8px 12px; }",
     ".den-banner b { color: var(--text); }",
     ".den-banner.warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--border-strong)); }",
