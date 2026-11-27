@@ -4,11 +4,14 @@ import {
   type EnvHoldSettings,
 } from "../../shared/agents/env-hold.js";
 import { agentsCount } from "../../shared/agents/env-hold-rollout.js";
+import { LOGIN_SHELL_ENV } from "../../shared/agents/runtime-search.js";
 
 export function shellEnvNames(env: NodeJS.ProcessEnv = process.env): string[] {
   const names = new Set(Object.keys(env).filter((k) => env[k] !== undefined));
   const shell = env.SHELL;
-  if (shell && shell.startsWith("/")) {
+  const off =
+    (env[LOGIN_SHELL_ENV] ?? process.env[LOGIN_SHELL_ENV])?.trim() === "off";
+  if (shell && shell.startsWith("/") && !off) {
     const r = spawnSync(shell, ["-c", "env"], {
       encoding: "utf-8",
       timeout: 3000,

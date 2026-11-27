@@ -200,7 +200,7 @@ function rowHtml(n, fold) {
       ? `<a href="${esc(link)}" data-bell="open"${peek ? ` data-peek="${esc(peek.agent)}"` : ""}${long ? ' class="den-bell-tw"' : ""}>${long ? `<span class="den-bell-t long">${esc(text)}</span>` : esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</a>`
       : `<span class="den-bell-t${long ? " long" : ""}">${esc(text)}</span>`) +
     (peek
-      ? `<a href="${esc(link)}" class="den-bell-page" data-bell="page">${esc(tr("bell.openInAgents"))}</a>`
+      ? `<a href="${esc(link)}" class="den-bell-page" data-bell="page">${esc(tr(peek.workspace === "den-server" ? "bell.server" : "bell.openInAgents"))}</a>`
       : "") +
     (fold?.count > 1
       ? `<button type="button" class="den-bell-x" data-bell="fold" data-key="${esc(fold.key)}" aria-expanded="${fold.open}" aria-label="${esc(tr("bell.rep", { n: fold.count - 1 }))}">×${fold.count}</button>`

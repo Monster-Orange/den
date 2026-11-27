@@ -44,7 +44,7 @@ export const DEFAULT_POSTER = "github-actions[bot]";
  * the poster's statuses on commits with this tree, the newest decides.
  *
  * @param {{ tree: string,
- *   green: { tree: string, sha: string, run: number, event?: string }[],
+ *   green: { tree: string, sha: string, run: number, attempt?: number, event?: string }[],
  *   statuses: { tree: string, sha: string, context: string, state: string,
  *     creator: string, at: string }[],
  *   context: string, poster?: string, required?: boolean }} o
@@ -59,11 +59,17 @@ export function decide({ tree, green, statuses, context, poster, required }) {
       ok: false,
       line: `tree ${tree}: no green pull-request or merge-queue CI run recorded this tree as tested, so it was never tested (the newest 100 runs per event, and the tag's own runs, are searched)`,
     };
-  const run = same.find((g) => g.selection === "all");
-  if (!run)
+  const full = same.filter((g) => g.selection === "all");
+  if (!full.length)
     return {
       ok: false,
       line: `tree ${tree}: green CI run(s) ${same.map((g) => g.run).join(", ")} ran only the affected tests, not the full suite`,
+    };
+  const run = full.find((g) => (g.attempt ?? 1) === 1);
+  if (!run)
+    return {
+      ok: false,
+      line: `tree ${tree}: green full-suite CI ${full.map((g) => `run ${g.run} attempt ${g.attempt}`).join(", ")} came from a re-run, and a re-run's green doesn't count as tested: a red is fixed in a fresh head, never re-run to green`,
     };
   const ran = `${run.event === "merge_group" ? "merge_group" : "pull-request CI"} run ${run.run} attempt ${run.attempt ?? 1} on ${run.sha.slice(0, 8)}`;
   if (!required)
@@ -153,7 +159,10 @@ export function entryOf(run, tested) {
     tree: tested.tree,
     sha: run.head_sha,
     run: run.id,
-    attempt: Number(tested.attempt ?? run.run_attempt ?? 1),
+    attempt: Math.max(
+      Number(tested.attempt ?? 1),
+      Number(run.run_attempt ?? 1),
+    ),
     selection: tested.selection === "all" ? "all" : "affected",
     event: String(tested.event ?? ""),
   };
