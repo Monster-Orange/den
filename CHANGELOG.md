@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Added
+
+- UI kit 0.23.0: the button (DS component #7) gains `ghost`, `link` and `icon` variants, a filled danger confirm for dialogs, a `lg` size, fixed heights (28, 36 and 44px, and 44px at 600px wide or less), an icon before the label, `aria-pressed`, a menu trigger whose ▾ turns while open, disabled with a reason that stays focusable, `<summary>` buttons, long labels that truncate, and `holdButton()` for busy. Danger is a red outline on a page.
+
 ## [0.4.92] - unreleased
 
 ### Changed

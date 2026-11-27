@@ -1,86 +1,174 @@
-/* den-ui: the general button (issue 556), for any page, inside the frame or
-   not, and the one button of both products and the kit's own dialogs
-   (issue 673). Tokens only. Secondary is the base; `.primary` is the
-   accent fill; `.danger` takes something away; `.sm` is the small size.
-   A link drawn as a button is `a.den-btn`. The values are the ones Den's
-   frame drew and the second product's shipped button (its row of words
-   and icon, its danger), value for value. A held button (aria-busy,
-   issue 699) keeps its look: no hover change. */
+/* den-ui: the general button (DS component #7), for any page and both
+   products. Tokens only. Secondary is the base; .primary, .danger (with
+   .primary: a dialog's filled confirm), .ghost, .link and .icon; .sm and
+   .lg beside md. button, a and summary look the same. Fixed heights: a
+   page never sets its own. A held button (aria-busy) keeps its look. */
 .den-btn {
-  border: 1px var(--edge-style, solid) var(--border);
+  --den-btn-h: var(--tap-min);
+  border: 1px var(--edge-style, solid) var(--border-strong);
   background: var(--surface);
   border-radius: var(--radius-button);
-  padding: 6px 12px;
+  box-sizing: border-box;
+  height: var(--den-btn-h);
+  max-width: 100%;
+  padding: 0 var(--space-3);
   cursor: pointer;
   font: inherit;
+  font-size: var(--fs-s);
   font-weight: 500;
+  line-height: 1;
   white-space: nowrap;
   color: var(--text);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--space-1);
+  list-style: none;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
 }
 .den-btn[hidden] {
   display: none;
 }
-.den-btn:not([aria-busy="true"]):hover {
-  border-color: var(--border-strong);
+.den-btn::-webkit-details-marker {
+  display: none;
 }
-/* Issue 1137: one hover tint for every kind, laid over its own background
-   (none by default; the sketch theme sets it). A disabled button has none. */
+.den-btn-lbl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.den-btn-ic {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+.den-btn-ic > svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.den-btn-chev {
+  flex: none;
+  font-size: 0.85em;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.den-btn[aria-expanded="true"] > .den-btn-chev,
+details[open] > summary.den-btn > .den-btn-chev {
+  transform: rotate(180deg);
+}
 .den-btn:not([aria-busy="true"]):not(:disabled):not(
     [aria-disabled="true"]
-  ):hover {
-  background-image: linear-gradient(
-    var(--hover-tint, transparent),
-    var(--hover-tint, transparent)
-  );
+  ):hover,
+.den-btn[aria-expanded="true"],
+details[open] > summary.den-btn {
+  background: var(--sunken);
+}
+.den-btn[aria-pressed="true"] {
+  background: var(--sunken);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 .den-btn.primary {
   background: var(--primary-bg, var(--accent-fill));
   border-color: var(--primary-border, var(--accent-fill));
   color: var(--primary-text, var(--on-accent));
 }
-/* A step that takes something away: red words, a red-tinted border, kept
-   on hover (as the second product's, where danger comes after hover). */
-.den-btn.danger,
-.den-btn.danger:not([aria-busy="true"]):hover {
+.den-btn.primary:not([aria-busy="true"]):not(:disabled):not(
+    [aria-disabled="true"]
+  ):hover {
+  background: color-mix(
+    in srgb,
+    var(--text) 8%,
+    var(--primary-bg, var(--accent-fill))
+  );
+}
+.den-btn.danger {
   color: var(--bad);
-  border-color: color-mix(in srgb, var(--bad) 45%, var(--border));
-  /* Issue 1137: its edge's width and style (sketch: a solid 2px edge). */
+  border-color: var(--bad);
   border-width: var(--danger-edge-width, 1px);
   border-style: var(--danger-edge-style, var(--edge-style, solid));
 }
-.den-btn.sm {
-  padding: 2px 9px;
-  font-size: 12.5px;
+.den-btn.danger.primary {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: var(--on-accent);
 }
-/* Disabled keeps its edge; issue 1137: its label colour and opacity are
-   tokens (each kind's own colour, 0.6, by default; sketch: --faint, 1). */
+.den-btn.danger.primary:not([aria-busy="true"]):not(:disabled):not(
+    [aria-disabled="true"]
+  ):hover {
+  background: color-mix(in srgb, var(--text) 8%, var(--bad));
+}
+.den-btn.ghost,
+.den-btn.icon {
+  background: transparent;
+  border-color: transparent;
+}
+.den-btn.icon {
+  width: var(--den-btn-h);
+  padding: 0;
+}
+.den-btn.link {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font-weight: inherit;
+}
+.den-btn.link:not([aria-busy="true"]):not(:disabled):not(
+    [aria-disabled="true"]
+  ):hover,
+.den-btn.link:focus-visible {
+  background: none;
+  text-decoration: underline;
+}
+.den-btn.sm {
+  --den-btn-h: 28px;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-xs);
+}
+.den-btn.sm > .den-btn-ic {
+  width: 14px;
+  height: 14px;
+}
+.den-btn.lg {
+  --den-btn-h: var(--tap);
+  padding: 0 var(--space-4);
+  font-size: var(--fs-m);
+}
+.den-btn.icon.sm,
+.den-btn.icon.lg {
+  padding: 0;
+}
 .den-btn:disabled,
-a.den-btn[aria-disabled="true"]:not([aria-busy="true"]) {
-  opacity: var(--btn-disabled-opacity, 0.6);
-  cursor: default;
-  color: var(--btn-disabled-text, var(--text));
+.den-btn[aria-disabled="true"]:not([aria-busy="true"]) {
+  cursor: not-allowed;
+  color: var(--btn-disabled-text, var(--faint));
 }
 .den-btn.primary:disabled,
-a.den-btn.primary[aria-disabled="true"]:not([aria-busy="true"]) {
+.den-btn.primary[aria-disabled="true"]:not([aria-busy="true"]) {
+  opacity: var(--btn-disabled-opacity, 0.6);
   color: var(--btn-disabled-text, var(--primary-text, var(--on-accent)));
 }
-.den-btn.danger:disabled,
-.den-btn.danger:disabled:hover,
-a.den-btn.danger[aria-disabled="true"]:not([aria-busy="true"]),
-a.den-btn.danger[aria-disabled="true"]:not([aria-busy="true"]):hover {
-  color: var(--btn-disabled-text, var(--bad));
+.den-btn:focus {
+  outline: none;
 }
-.den-btn:focus-visible {
+.den-btn:focus-visible,
+.den-btn[data-den-force~="focus"] {
   outline: 2px solid var(--focus-ring, var(--accent));
   outline-offset: var(--focus-offset, 2px);
 }
-/* A touch screen: a 44px tap, centred on the button; its look and box
-   never change (as .den-hit). */
+.den-btn.danger:focus-visible,
+.den-btn.danger[data-den-force~="focus"] {
+  outline-color: var(--bad);
+}
 @media (pointer: coarse) {
   .den-btn {
     position: relative;
@@ -95,5 +183,16 @@ a.den-btn.danger[aria-disabled="true"]:not([aria-busy="true"]):hover {
     min-width: var(--tap);
     min-height: var(--tap);
     transform: translate(-50%, -50%);
+  }
+}
+@media (max-width: 600px) {
+  .den-btn:not(.sm):not(.link) {
+    --den-btn-h: var(--tap);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-btn,
+  .den-btn-chev {
+    transition: none;
   }
 }
