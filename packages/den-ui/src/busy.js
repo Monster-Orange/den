@@ -152,6 +152,7 @@ const hook = {
   logUrl: null,
   reconnect: null,
   dotsMs: DOTS_MS,
+  css: null,
 };
 const actions = new Map();
 
@@ -214,21 +215,28 @@ const icon = (k) =>
   `<svg class="bz-ico bz-${k}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`;
 
 /**
- * The look is busy.css, beside this file: linked once, never injected, so
- * a page under style-src 'self' takes it. A page that links it itself (in
- * its <head>, say) keeps its own link.
+ * The look is busy.css: linked, never injected (style-src 'self'). A page
+ * that links it keeps its own link; else configureBusy({ css }), or the
+ * folder of another kit stylesheet on the page, as dialog.js does.
  */
-const CSS_URL = new URL("./busy.css", import.meta.url).href;
-
+const KIT_SHEET =
+  /(^|\/)(tokens|base|fonts|button|dialog|shell|update-pill)\.css$/;
 function ensureCss() {
   if (document.getElementById("bz-css")) return;
-  for (const l of document.querySelectorAll('link[rel="stylesheet"]'))
-    if (/(^|\/)busy\.css(\?|$)/.test(new URL(l.href, location.href).pathname))
-      return;
+  let near = null;
+  for (const l of document.querySelectorAll('link[rel="stylesheet"]')) {
+    const u = new URL(l.href, location.href);
+    if (/(^|\/)busy\.css$/.test(u.pathname)) return;
+    if (!near && KIT_SHEET.test(u.pathname)) near = u;
+  }
+  const href =
+    hook.css ||
+    (near ? new URL("busy.css", near).href.replace(/\?.*$/, "") : null);
+  if (!href) return;
   const l = document.createElement("link");
   l.id = "bz-css";
   l.rel = "stylesheet";
-  l.href = CSS_URL;
+  l.href = href;
   document.head.append(l);
 }
 
