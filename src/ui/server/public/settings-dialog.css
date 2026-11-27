@@ -31,6 +31,11 @@
     grid-template-rows: none;
   }
 }
+@media (max-width: 600px) {
+  .setd .dn-pane-head:not(:has(.dn-pane-d)) :is(.dn-back, .dn-pane-x) {
+    grid-row: 1;
+  }
+}
 .setd .setd-sub + .setd-sub {
   margin-top: var(--space-5);
 }

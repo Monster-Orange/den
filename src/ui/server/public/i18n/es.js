@@ -4604,6 +4604,7 @@
     "setd.readOnly": "Inicia sesión para cambiarlos. Este navegador puede mirar, pero no cambiar nada.",
     "setd.toAccount.devices": "Tus dispositivos",
     "setd.toAccount.profile": "Cerrar sesión",
+    "setd.sub.more": "Más",
     "set.ui.rot.scope.agent": "Agente",
     "set.ui.rot.scope.persona-workspace": "Persona en un proyecto",
     "set.ui.rot.scope.persona": "Persona",
@@ -4647,7 +4648,6 @@
       "El servidor web de Den con el que habla esta página. Un reinicio mantiene en marcha los agentes y los servicios.", // words-ok: the en string's own word, translated
     "setd.sub.embed.apps": "Apps web y claves de app",
     "setd.sub.embed.feeds": "Flujos de apps",
-    "setd.sub.more": "Más",
     "setd.sub.server.restarts": "Instalación, reinicios y actualizaciones",
     "setd.sub.server.address": "Dirección y alcance",
     "setd.sub.server.terminals": "Terminales",

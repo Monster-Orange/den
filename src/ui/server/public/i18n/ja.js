@@ -4459,6 +4459,7 @@
     "setd.readOnly": "変更するにはサインインしてください。このブラウザーでは表示のみできます。",
     "setd.toAccount.devices": "デバイス",
     "setd.toAccount.profile": "サインアウト",
+    "setd.sub.more": "その他",
     "set.ui.rot.scope.agent": "エージェント",
     "set.ui.rot.scope.persona-workspace": "プロジェクト内のペルソナ",
     "set.ui.rot.scope.persona": "ペルソナ",
@@ -4502,7 +4503,6 @@
       "このページが通信している Den の Web サーバーです。再起動してもエージェントとサービスは動き続けます。", // words-ok: the en string's own word, translated
     "setd.sub.embed.apps": "Web アプリとアプリキー",
     "setd.sub.embed.feeds": "アプリフィード",
-    "setd.sub.more": "その他",
     "setd.sub.server.restarts": "インストール、再起動と更新",
     "setd.sub.server.address": "アドレスと到達性",
     "setd.sub.server.terminals": "ターミナル",

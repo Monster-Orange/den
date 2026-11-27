@@ -1174,6 +1174,7 @@
     "setd.readOnly": "Sign in to change these. This browser can look but change nothing.",
     "setd.toAccount.devices": "Your devices",
     "setd.toAccount.profile": "Sign out",
+    "setd.sub.more": "More",
     "set.ui.rot.scope.agent": "Agent",
     "set.ui.rot.scope.persona-workspace": "Persona in a project",
     "set.ui.rot.scope.persona": "Persona",
@@ -1217,7 +1218,6 @@
       "The Den web server this page talks to. A restart keeps agents and services running.", // words-ok: the Settings row's text, moved word for word
     "setd.sub.embed.apps": "Web apps and app keys",
     "setd.sub.embed.feeds": "App feeds",
-    "setd.sub.more": "More",
     "setd.sub.server.restarts": "Install, restarts and updates",
     "setd.sub.server.address": "Address and reach",
     "setd.sub.server.terminals": "Terminals",

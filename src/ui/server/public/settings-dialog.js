@@ -37,137 +37,138 @@ export const ACCOUNT_LINKS = {
   cli: { pane: "profile", text: "setd.toAccount.profile" },
 };
 
-const SUBS = {
-  embed: {
-    apps: [
-      "app_keys",
-      "origins",
-      "context_max_kb",
-      "key_minutes",
-      "app_key_audit",
-      "paste_max_kb",
-      "url_max",
-    ],
-    feeds: [
-      "feed_max_streams",
-      "feed_event_max_kb",
-      "feed_events_per_minute",
-      "feed_keep_events",
-      "feed_read_max_kb",
-      "feed_list_timeout",
-      "feed_list_max_mb",
-    ],
-  },
-  server: {
-    restarts: [
-      "crash_loop",
-      "crash_loop_minutes",
-      "crash_loop_wait",
-      "self_update",
-      "update_check",
-      "restart",
-      "install_mode",
-      "restore_services",
-    ],
-    address: [
-      "address_check_timeout",
-      "address_check_retries",
-      "address_check_cache",
-      "address_check_drop_after",
-      "address_unknown_keep",
-      "bridge_listen",
-      "bridge_probe",
-      "address",
-    ],
-    terminals: [
-      "sessions_max",
-      "sessions_close_grace",
-      "sessions_size_claim_grace",
-      "sessions_size_leave_grace",
-      "sessions_pty_close",
-      "sessions_pty_warn",
-      "sessions_pty_machine",
-    ],
-    logs: [
-      "report_screenshot_days",
-      "server_log_max",
-      "slow_request_ms",
-      "event_loop_lag_ms",
-      "report_screenshot_max",
-      "report_screenshot_hub_max",
-      "report_screenshot_hub_wait",
-      "report_visibility_cache",
-      "report_visibility_wait",
-      "report_visibility_retry",
-    ],
-    checks: [
-      "lookup_first",
-      "lookup_retry",
-      "menu_load_timeout",
-      "owner_name_timeout",
-      "ready_probe",
-      "start_wait",
-      "tools_probe",
-      "health_poll",
-      "health_poll_hidden",
-      "git_reads",
-    ],
-    github: [
-      "github_watch_interval",
-      "github_watch_max_interval",
-      "github_api_budget_floor",
-      "github_watches_max",
-      "github_watch_stale",
-      "github_watch_max_open",
-      "github_rerun_look",
-    ],
-    gate: [
-      "gate_cpu",
-      "gate_cpu_beside",
-      "gate_cpu_beside_release",
-      "gate_load_hold_per_core",
-      "gate_memory_free_min_percent",
-      "gate_swap_hold_gb",
-      "gate_memory_reading_keep_seconds",
-      "gate_vm_memory_share",
-      "gate_cpu_hold_load",
-      "gate_max_start_load",
-      "gate_max_start_wait_minutes",
-      "gate_reap_grace_seconds",
-      "gate_local_browser",
-      "gate_overrun",
-      "gate_overrun_bell",
-      "gate_remote_renew",
-      "gate_remote_lapse",
-      "gate_remote_slots",
-      "gate_remote_asks",
-      "gate_priority_max",
-      "gate_priority_pass",
-      "gate_release_pass_other",
-      "gate_priority_agents",
-      "gate_priority_runners",
-      "gate_browser_container",
-      "gate_claim",
-      "gate_mcp_renew",
-      "gate_mcp_lapse",
-      "gate_mcp_grace",
-      "gate_waiter_return",
-      "gate_class_order",
-      "gate_class_map",
-      "gate_class_windows",
-      "gate_runners",
-      "gate_boxes",
-      "gate_runner_entries",
-      "gate_box_check",
-      "gate_box_recheck",
-      "gate_box_default",
-      "gate_host_only",
-      "gate_route_agents",
-      "gate_route_commands",
-      "gate_throwaway_sweep",
-      "gate_outside",
-    ],
-  },
+export const SUBS = {};
+
+SUBS.embed = {
+  apps: [
+    "app_keys",
+    "origins",
+    "context_max_kb",
+    "key_minutes",
+    "app_key_audit",
+    "paste_max_kb",
+    "url_max",
+  ],
+  feeds: [
+    "feed_max_streams",
+    "feed_event_max_kb",
+    "feed_events_per_minute",
+    "feed_keep_events",
+    "feed_read_max_kb",
+    "feed_list_timeout",
+    "feed_list_max_mb",
+  ],
+};
+
+SUBS.server = {
+  restarts: [
+    "crash_loop",
+    "crash_loop_minutes",
+    "crash_loop_wait",
+    "self_update",
+    "update_check",
+    "restart",
+    "install_mode",
+    "restore_services",
+  ],
+  address: [
+    "address_check_timeout",
+    "address_check_retries",
+    "address_check_cache",
+    "address_check_drop_after",
+    "address_unknown_keep",
+    "bridge_listen",
+    "bridge_probe",
+    "address",
+  ],
+  terminals: [
+    "sessions_max",
+    "sessions_close_grace",
+    "sessions_size_claim_grace",
+    "sessions_size_leave_grace",
+    "sessions_pty_close",
+    "sessions_pty_warn",
+    "sessions_pty_machine",
+  ],
+  logs: [
+    "report_screenshot_days",
+    "server_log_max",
+    "slow_request_ms",
+    "event_loop_lag_ms",
+    "report_screenshot_max",
+    "report_screenshot_hub_max",
+    "report_screenshot_hub_wait",
+    "report_visibility_cache",
+    "report_visibility_wait",
+    "report_visibility_retry",
+  ],
+  checks: [
+    "lookup_first",
+    "lookup_retry",
+    "menu_load_timeout",
+    "owner_name_timeout",
+    "ready_probe",
+    "start_wait",
+    "tools_probe",
+    "health_poll",
+    "health_poll_hidden",
+    "git_reads",
+  ],
+  github: [
+    "github_watch_interval",
+    "github_watch_max_interval",
+    "github_api_budget_floor",
+    "github_watches_max",
+    "github_watch_stale",
+    "github_watch_max_open",
+    "github_rerun_look",
+  ],
+  gate: [
+    "gate_cpu",
+    "gate_cpu_beside",
+    "gate_cpu_beside_release",
+    "gate_load_hold_per_core",
+    "gate_memory_free_min_percent",
+    "gate_swap_hold_gb",
+    "gate_memory_reading_keep_seconds",
+    "gate_vm_memory_share",
+    "gate_cpu_hold_load",
+    "gate_max_start_load",
+    "gate_max_start_wait_minutes",
+    "gate_reap_grace_seconds",
+    "gate_local_browser",
+    "gate_overrun",
+    "gate_overrun_bell",
+    "gate_remote_renew",
+    "gate_remote_lapse",
+    "gate_remote_slots",
+    "gate_remote_asks",
+    "gate_priority_max",
+    "gate_priority_pass",
+    "gate_release_pass_other",
+    "gate_priority_agents",
+    "gate_priority_runners",
+    "gate_browser_container",
+    "gate_claim",
+    "gate_mcp_renew",
+    "gate_mcp_lapse",
+    "gate_mcp_grace",
+    "gate_waiter_return",
+    "gate_class_order",
+    "gate_class_map",
+    "gate_class_windows",
+    "gate_runners",
+    "gate_boxes",
+    "gate_runner_entries",
+    "gate_box_check",
+    "gate_box_recheck",
+    "gate_box_default",
+    "gate_host_only",
+    "gate_route_agents",
+    "gate_route_commands",
+    "gate_throwaway_sweep",
+    "gate_outside",
+  ],
 };
 
 export function subsOf(pane, rows) {
@@ -183,7 +184,7 @@ export function subsOf(pane, rows) {
   return out.filter((g) => g.rows.length);
 }
 
-function drawSubs(host, pane, rows, ctx, shell) {
+export function drawSubs(host, pane, rows, ctx, shell) {
   for (const g of subsOf(pane, rows)) {
     const box = document.createElement("div");
     box.className = "setd-sub";
@@ -196,12 +197,7 @@ function drawSubs(host, pane, rows, ctx, shell) {
   }
 }
 
-export const PANE_DRAW = {
-  embed: (host, rows, ctx, shell) =>
-    drawSubs(host, "embed", rows, ctx, shell),
-  server: (host, rows, ctx, shell) =>
-    drawSubs(host, "server", rows, ctx, shell),
-};
+export const PANE_DRAW = {};
 
 export function paneOf(hash, rows) {
   const h = decodeURIComponent(String(hash || "").replace(/^#/, ""));
@@ -213,6 +209,21 @@ export function paneOf(hash, rows) {
     return { pane: null, at: null, account: "notifications" };
   const cat = h.split(".")[0];
   return PANES[cat] ? { pane: cat, at: null } : { pane: null, at: null };
+}
+
+export function settingsRedirect(loc, rows) {
+  const q = new URLSearchParams(loc.search || "");
+  const to = paneOf(loc.hash, rows);
+  const search = q.get("q");
+  q.delete("q");
+  if (to.account) {
+    q.set("account", to.account);
+    return `/?${q}`;
+  }
+  q.set("settings", to.pane ?? "");
+  if (to.at) q.set("at", to.at);
+  if (search) q.set("sq", search);
+  return `/?${q}`;
 }
 
 const esc = (s) =>
@@ -337,6 +348,7 @@ async function build(shell) {
       subtree: true,
     });
     if (PANE_DRAW[pane]) PANE_DRAW[pane](host, own, ctx, shell);
+    else if (SUBS[pane]) drawSubs(host, pane, own, ctx, shell);
     else drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
     mark();
   };
@@ -365,6 +377,12 @@ export async function openSettings(
     ({ pane, at } = to);
   }
   nav.open(pane, at);
+  const sq = new URLSearchParams(location.search).get("sq");
+  const box = sq && nav.element.querySelector("[data-dn-search]");
+  if (box) {
+    box.value = sq;
+    box.dispatchEvent(new Event("input"));
+  }
   nav.element
     .querySelector('a.dn-row[aria-current="true"]')
     ?.scrollIntoView({ block: "nearest" });
