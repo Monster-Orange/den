@@ -212,7 +212,6 @@ const running = (s) =>
  * project is its workspace until H5's projects.
  */
 const AGENTS_STEP = 20;
-const AGENTS_CAP = 200;
 function agentsAsk(s, limit = AGENTS_STEP) {
   const q = new URLSearchParams({ kind: "agent", limit: String(limit) });
   if (s.workspaces.length) q.set("projects", s.workspaces.join(","));
@@ -456,11 +455,7 @@ async function refresh() {
       .then((r) => (r.ok ? r.json() : d))
       .catch(() => d);
   const svc = S.open ? serviceOf(S.open.id) : null;
-  const loaded = Math.min(
-    AGENTS_CAP,
-    Math.max(AGENTS_STEP, S.agentsLoaded ?? 0),
-  );
-  S.agentsAsked = svc ? String(agentsAsk(svc, loaded)) : "";
+  S.agentsAsked = svc ? String(agentsAsk(svc)) : "";
   const [last, daemons, sess] = await Promise.all([
     get("/api/runs/last", null),
     get("/api/service/daemons", []),
@@ -476,8 +471,25 @@ async function refresh() {
       if (cur === undefined || at < cur) S.upSince.set(d.repoName, at);
     }
   }
-  if (Array.isArray(sess?.sessions) && !S.agentsBusy) gotAgents(sess, false);
+  if (Array.isArray(sess?.sessions) && !S.agentsBusy) firstAgents(sess);
   sync();
+}
+
+function firstAgents(reply) {
+  const head = reply.sessions;
+  if (!S.agentsLoaded || S.agentsLoaded <= (S.agentsHead ?? 0)) {
+    gotAgents(reply, false);
+    S.agentsHead = head.length;
+    return;
+  }
+  const ids = new Set(head.map((a) => a.id));
+  const below = S.sessions
+    .slice(S.agentsHead ?? 0)
+    .filter((a) => !ids.has(a.id));
+  S.sessions = [...head, ...below];
+  S.agentsHead = head.length;
+  S.agentsLoaded = S.sessions.length;
+  if (typeof reply.total === "number") S.agentsTotal = reply.total;
 }
 
 function gotAgents(reply, append) {
@@ -550,6 +562,7 @@ export function openPanel(id, opener, opts = {}) {
   Object.assign(S, {
     sessions: [],
     agentsLoaded: 0,
+    agentsHead: 0,
     agentsNext: null,
     agentsTotal: 0,
   });
