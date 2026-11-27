@@ -214,6 +214,9 @@
       "src/ui/cli/service-command.ts",
       "src/ui/cli/web-service.ts"
     ],
+    "tests/unit/cli/edge-up-one-inspect.integration.test.ts": [
+      "src/shared/edge/runtime.ts"
+    ],
     "tests/unit/cli/relocate-register-w.integration.test.ts": [
       "src/ui/cli/repo-command.ts",
       "src/shared/environment-manager/register-local.ts"
@@ -2441,6 +2444,7 @@
         "tests/unit/test-infra/gate-142-runner.test.ts",
         "tests/unit/test-infra/gate-142-stubs.test.ts",
         "tests/unit/test-infra/gate-143-runner.test.ts",
+        "tests/unit/test-infra/gate-1668-clauses.test.ts",
         "tests/unit/test-infra/gate-252-runner.test.ts",
         "tests/unit/test-infra/gate-380-runner.test.ts",
         "tests/unit/test-infra/gate-402-clauses.test.ts",
@@ -2953,6 +2957,15 @@
     },
     {
       "when": [
+        "gate/1668.mjs"
+      ],
+      "run": [
+        "tests/unit/test-infra/gate-1668-clauses.test.ts"
+      ],
+      "why": "tests that load gate/1668.mjs"
+    },
+    {
+      "when": [
         "gate/252.mjs"
       ],
       "run": [
@@ -3255,6 +3268,15 @@
       ],
       "run": [
         "tests/unit/cli/edge-route-cli.integration.test.ts"
+      ],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/shared/edge/runtime.ts"
+      ],
+      "run": [
+        "tests/unit/cli/edge-up-one-inspect.integration.test.ts"
       ],
       "why": "starts Den as a process: its subject"
     },
@@ -4880,8 +4902,12 @@
       "why": "starts Den as a process: its subject"
     },
     {
-      "when": ["src/ui/server/workspace-routes.ts"],
-      "run": ["tests/unit/server/project-agent-cap-1634.integration.test.ts"],
+      "when": [
+        "src/ui/server/workspace-routes.ts"
+      ],
+      "run": [
+        "tests/unit/server/project-agent-cap-1634.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5517,7 +5543,9 @@
         "src/ui/server/public/agents-page.js",
         "src/ui/server/term-size-lead.ts"
       ],
-      "run": ["tests/unit/server/size-claim-1724.browser.test.ts"],
+      "run": [
+        "tests/unit/server/size-claim-1724.browser.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -5525,7 +5553,9 @@
         "src/ui/server/session-routes.ts",
         "src/ui/server/term-size-lead.ts"
       ],
-      "run": ["tests/unit/server/size-claim-1724.integration.test.ts"],
+      "run": [
+        "tests/unit/server/size-claim-1724.integration.test.ts"
+      ],
       "why": "starts Den as a process: its subject"
     },
     {

@@ -16,6 +16,15 @@
 import { execFile } from "child_process";
 import { promises as dns } from "dns";
 import * as net from "net";
+import * as fs from "fs";
+import {
+  commandServesApi,
+  EDGE_ORG_LABEL,
+  EDGE_ROOT_LABEL,
+  edgeNames,
+} from "./render.js";
+import { parseEdgeInspect } from "./spec.js";
+import type { EdgeConfig } from "./types.js";
 
 /** A loopback IP (127/8, ::1, or either IPv4-mapped); request-guard.ts has the same. */
 function isLoopbackAddress(addr: string): boolean {
@@ -165,4 +174,129 @@ function inspectNetworkIpam(name: string): Promise<unknown> {
       },
     );
   });
+}
+
+export function networkAddresses(json: string): string[] {
+  let v: unknown;
+  try {
+    v = JSON.parse(json);
+  } catch {
+    return [];
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const n of Object.values(v as Record<string, unknown>)) {
+    const o = (n ?? {}) as { IPAddress?: unknown; GlobalIPv6Address?: unknown };
+    for (const a of [o.IPAddress, o.GlobalIPv6Address])
+      if (typeof a === "string" && net.isIP(a)) out.push(a);
+  }
+  return [...new Set(out)];
+}
+
+export type DockerRun = (args: string[]) => Promise<string>;
+
+const dockerRun: DockerRun = (args) =>
+  new Promise((resolve, reject) =>
+    execFile("docker", args, { timeout: 5000 }, (err, stdout) =>
+      err ? reject(err) : resolve(String(stdout)),
+    ),
+  );
+
+export async function edgeContainerAddresses(
+  edge: { root: string; org: string },
+  run: DockerRun = dockerRun,
+): Promise<string[]> {
+  return (await edgeContainer(edge, run))?.addresses ?? [];
+}
+
+export async function edgeContainer(
+  edge: { root: string; org: string },
+  run: DockerRun = dockerRun,
+): Promise<{ id: string; addresses: string[] } | null> {
+  const name = `/${edgeNames(edge.org).container}`;
+  try {
+    const ids = (
+      await run([
+        "ps",
+        "--filter",
+        `label=${EDGE_ROOT_LABEL}=${edge.root}`,
+        "--format",
+        "{{.ID}}",
+      ])
+    )
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => /^[0-9a-f]+$/i.test(l));
+    for (const id of ids) {
+      const line = (
+        await run([
+          "inspect",
+          "--type",
+          "container",
+          "--format",
+          `{{.Id}}|{{.Name}}|{{index .Config.Labels "${EDGE_ORG_LABEL}"}}|{{index .Config.Labels "${EDGE_ROOT_LABEL}"}}|{{json .NetworkSettings.Networks}}`,
+          id,
+        ])
+      ).trim();
+      const [full, n, org, root, ...nets] = line.split("|");
+      if (n === name && org === edge.org && root === edge.root)
+        return { id: full, addresses: networkAddresses(nets.join("|")) };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function realOrSelf(p: string): string {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+export async function runningEdgeServesApi(
+  cfg: Pick<EdgeConfig, "org" | "stateDir">,
+  run: DockerRun = dockerRun,
+): Promise<boolean> {
+  try {
+    const out = await run([
+      "inspect",
+      "--type",
+      "container",
+      edgeNames(cfg.org).container,
+    ]);
+    const e = parseEdgeInspect(out);
+    if (!e?.running) return false;
+    const v = JSON.parse(out) as unknown;
+    const c = (Array.isArray(v) ? v[0] : v) as {
+      Config?: { Labels?: Record<string, string> };
+    };
+    const root = c?.Config?.Labels?.[EDGE_ROOT_LABEL];
+    if (!root || realOrSelf(root) !== realOrSelf(cfg.stateDir)) return false;
+    return commandServesApi(e.spec.command);
+  } catch (err) {
+    const m = String((err as Error)?.message ?? err);
+    if (
+      (err as NodeJS.ErrnoException)?.code === "ENOENT" ||
+      /No such (container|object)/i.test(m)
+    )
+      return false;
+    throw err;
+  }
+}
+
+const dockerStop: DockerRun = (args) =>
+  new Promise((resolve, reject) =>
+    execFile("docker", args, { timeout: 30_000 }, (err, stdout) =>
+      err ? reject(err) : resolve(String(stdout)),
+    ),
+  );
+
+export async function stopEdgeContainer(
+  cfg: Pick<EdgeConfig, "org">,
+  run: DockerRun = dockerStop,
+): Promise<void> {
+  await run(["stop", "--time", "5", edgeNames(cfg.org).container]);
 }
