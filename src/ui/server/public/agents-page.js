@@ -229,6 +229,12 @@ import {
   visibleIds,
 } from "/agents-url.js";
 import {
+  agentsPagerHtml,
+  agentsViewQuery,
+  hydrateAgentsPager,
+  keepServedPage,
+} from "/agents-pager.js";
+import {
   compactingHtml,
   compactingTag,
   cwdText,
@@ -504,9 +510,29 @@ function paintList() {
     );
   // Issue 482: the Agents page says once where the shells went.
   if (PAGE !== "terminal") notes.push(movedNote());
-  const inView = shown.flatMap((ws) =>
-    st.data.sessions.filter((s) => s.workspace === ws && belongsOn(PAGE, s)),
-  );
+  const paged = PAGE !== "terminal" && Array.isArray(st.data.items);
+  const inView = paged
+    ? [...(st.data.pinned ?? []), ...st.data.items]
+    : shown.flatMap((ws) =>
+        st.data.sessions.filter(
+          (s) => s.workspace === ws && belongsOn(PAGE, s),
+        ),
+      );
+  const firstItem = paged ? st.data.items[0] : null;
+  const goesOn = (key) =>
+    !!(paged && st.data.continues && firstItem) &&
+    key ===
+      (inStopped(firstItem)
+        ? "stopped"
+        : st.by === "project"
+          ? `p:${firstItem.workspace}`
+          : `b:${bandsOf([firstItem], { seenNow: seenMap() })[0]?.state}`);
+  const named = (key, text) =>
+    goesOn(key) ? t("ag.continued", { group: text }) : text;
+  const runningCount = (ws, n) => {
+    const c = paged ? st.data.projects?.[ws] : null;
+    return c ? c.needs + c.done + c.working + c.idle : n;
+  };
   const stopped = inView.filter(inStopped);
   if (PAGE !== "terminal") {
     const bar = toolsBarHtml(inView);
@@ -541,11 +567,15 @@ function paintList() {
         ? groups
             .map(
               (g, i) =>
-                `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)} role="group" aria-labelledby="agp-${i}"><div class="wsh"><span id="agp-${i}">${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
+                `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)} role="group" aria-labelledby="agp-${i}"><div class="wsh"><span id="agp-${i}">${wsLinkHtml(g.ws)}${goesOn(`p:${g.ws}`) ? ` ${esc(t("ag.continuedTag"))}` : ""}</span><span>${esc(runningCount(g.ws, g.rows.length))}</span></div>` +
                 g.rows.map((r) => rowHtml(r)).join("") +
                 `</div>`,
             )
-            .join("") + stoppedGroupHtml(stopped)
+            .join("") +
+          stoppedGroupHtml(stopped, {
+            n: paged ? st.data.bands?.stopped : undefined,
+            goesOn: goesOn("stopped"),
+          })
         : none;
   } else {
     const bands = bandsOf(running, { seenNow: seenMap() });
@@ -554,7 +584,7 @@ function paintList() {
         ? bands
             .map(
               (b) =>
-                `<div class="wsg agband" data-band="${b.state}" role="group" aria-labelledby="agb-${b.state}"><div class="wsh"><span id="agb-${b.state}">${esc(t(`ag.band.${b.state}`))}</span><span class="n" data-count>${esc(b.rows.length)}</span></div>` +
+                `<div class="wsg agband" data-band="${b.state}" role="group" aria-labelledby="agb-${b.state}"><div class="wsh"><span id="agb-${b.state}">${esc(named(`b:${b.state}`, t(`ag.band.${b.state}`)))}</span><span class="n" data-count>${esc(paged ? (st.data.bands?.[b.state] ?? b.rows.length) : b.rows.length)}</span></div>` +
                 reorderBandHtml(b) +
                 b.rows
                   .map((r) =>
@@ -569,7 +599,11 @@ function paintList() {
                   .join("") +
                 `</div>`,
             )
-            .join("") + stoppedGroupHtml(stopped)
+            .join("") +
+          stoppedGroupHtml(stopped, {
+            n: paged ? st.data.bands?.stopped : undefined,
+            goesOn: goesOn("stopped"),
+          })
         : none;
   }
   setList(
@@ -577,6 +611,9 @@ function paintList() {
     notes.join("") +
       viewSwitchHtml(st.groupsRead, st.by, t) +
       body +
+      (paged
+        ? agentsPagerHtml(st.data, t, window.denShell?.lang?.() ?? "en")
+        : "") +
       `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
   );
   const clear = st.root.querySelector("#ag-clear");
@@ -585,6 +622,7 @@ function paintList() {
   // No such workspace: nothing to start an agent in.
   const start = st.root.querySelector("#ag-start");
   if (start) start.hidden = st.data.requested?.known === false;
+  if (paged) hydrateAgentsPager(el, () => void refreshOnce());
   fitListFloor();
 }
 
@@ -774,13 +812,13 @@ function saveStoppedOpen(open) {
 }
 
 /** D37: the agents that aren't running, one line each, in one group. */
-function stoppedGroupHtml(rows) {
+function stoppedGroupHtml(rows, { n = rows.length, goesOn = false } = {}) {
   if (!rows.length) return "";
   // More than one workspace among them: each row names its own.
   const wsTag = new Set(rows.map((r) => r.workspace)).size > 1;
   return (
     `<details class="wsg agstg" data-stopped${stoppedOpen(rows.length) ? " open" : ""}>` +
-    `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span></summary>` +
+    `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(goesOn ? t("ag.continued", { group: t("ag.stoppedGroup", { n }) }) : t("ag.stoppedGroup", { n }))}</span></summary>` +
     reorderStoppedHtml(rows) +
     rows
       .map((r) =>
@@ -1012,7 +1050,10 @@ async function refresh() {
 /** den#156: until a list says otherwise (agents_list.refresh_timeout_seconds). */
 const LIST_WAIT_S = 15;
 
+let listRun = 0;
+
 async function refreshOnce() {
+  const run = ++listRun;
   try {
     const ws = urlWorkspace();
     // den#156: a list that doesn't come in time is a problem the page
@@ -1024,10 +1065,14 @@ async function refreshOnce() {
     );
     let r;
     try {
+      const paged = PAGE !== "terminal" && st.by !== "group";
+      const picked = paged ? pickedWorkspace() : ws;
       r = await fetch(
-        ws
-          ? `/api/sessions?all=1&ws=${encodeURIComponent(ws)}`
-          : "/api/sessions?all=1",
+        paged
+          ? `/api/sessions?${agentsViewQuery({ by: st.by, ws: picked, seen: seenMap(), open: st.open })}`
+          : ws
+            ? `/api/sessions?all=1&ws=${encodeURIComponent(ws)}`
+            : "/api/sessions?all=1",
         { headers: { accept: "json" }, signal: ac.signal },
       );
     } catch (e) {
@@ -1072,7 +1117,10 @@ async function refreshOnce() {
     if (r.status === 401) {
       st.signedOut = true;
     } else if (r.ok) {
-      st.data = await r.json();
+      const got = await r.json();
+      if (run !== listRun) return;
+      st.data = got;
+      keepServedPage(st.data);
       st.signedOut = false;
       // den#156: the host didn't answer (or couldn't be reached): say so.
       st.hostDown = !!st.data?.hostError;
@@ -1111,6 +1159,8 @@ async function refreshOnce() {
   const strip = st.root.querySelector("#agr > .agtabs");
   if (strip) paintTabs(strip);
 }
+
+window.addEventListener("popstate", () => void refreshOnce());
 
 function nextRefresh(listed) {
   if (!st.root?.isConnected) return;

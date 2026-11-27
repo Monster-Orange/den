@@ -3080,6 +3080,8 @@
     "ag.waiting.asked": "te preguntó",
     "ag.waiting.trust": "En espera: ¿confiar en esta carpeta?",
     "ag.band.needs": "Te necesitan",
+    "ag.continued": "{group} (continuación)",
+    "ag.continuedTag": "(continuación)",
     "ag.band.done": "Terminado, sin ver",
     "ag.band.working": "Trabajando",
     "ag.band.idle": "Inactivo",
