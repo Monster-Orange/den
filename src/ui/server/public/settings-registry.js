@@ -857,11 +857,15 @@ export function deviceLine(d, now = Date.now()) {
                 agent: d.agent || "",
               })
             : L("set.ui.viaLink", "signed in with a one-time link");
-  const name = deviceWords(d.name);
+  const unnamed = d.current && (!d.name || d.name === "Unknown browser");
+  const name = unnamed
+    ? L("set.ui.thisBrowser", "This browser")
+    : deviceWords(d.name);
   const from = d.client || d.host;
   return {
     title: name,
     current: !!d.current,
+    unnamed,
     // issue 206: the full local date-times, on hover.
     tip: [
       d.createdAt
@@ -1017,7 +1021,7 @@ function drawDevices(host, ctx) {
               return (
                 `<div class="set-device" data-id="${escHtml(d.id)}" style="${ROW_STYLE}">` +
                 `<div style="flex:1 1 220px;min-width:0"><div>${escHtml(l.title)}` +
-                (l.current
+                (l.current && !l.unnamed
                   ? ` <b class="set-this-device" style="font-weight:600">· ${escHtml(L("set.ui.thisDevice", "This device"))}</b>`
                   : "") +
                 `</div>` +
@@ -1311,11 +1315,14 @@ function drawPair(host, ctx) {
     .then((b) => {
       const hosts = b.hosts || [];
       if (!hosts.length) {
-        host.innerHTML = `<output class="set-ro" id="set-pair">${L(
-          "set.ui.noPairHost",
-          "No edge hostname routes to __DEN_TITLE__, so there is no address another device could open. Add one to the config's edge block (edge.aliases for a VPN name), then use the button below: it starts the edge, or applies the change to the one running. {cmd}",
-          { cmd: "<code>__DEN_CLI__ edge up</code>" },
-        )}</output>`;
+        host.innerHTML =
+          `<output class="set-note" id="set-pair">${escHtml(
+            L(
+              "set.ui.noPairHost",
+              "No address reaches __DEN_TITLE__ from another device yet. Add an edge hostname to the config, then start the edge.",
+            ),
+          )}</output>` +
+          `<details class="set-more"><summary>${escHtml(L("set.ui.cmd", "Command line"))}</summary><code>__DEN_CLI__ edge up</code></details>`;
         drawEdgeUp(host, ctx);
         return;
       }
@@ -2399,8 +2406,7 @@ const ACCESS_ROWS = [
     id: "access.devices",
     category: "access",
     label: "Linked devices",
-    description:
-      "The browsers signed in to this Den. Revoke ends one at once. __DEN_CLI__ web logout --all ends them all.",
+    description: "The browsers signed in to this Den; Revoke signs one out.",
     keywords: ["devices", "sessions", "revoke", "browsers", "signed in"],
     scope: "user",
     control: { type: "custom", render: drawDevices },
@@ -2532,7 +2538,7 @@ const ACCESS_ROWS = [
     category: "access",
     label: "Pair a device",
     description:
-      "Without GitHub, or offline: a one-time link and QR code for one edge hostname (__DEN_CLI__ web login --host <name>).",
+      "A one-time link and QR code, for a device without GitHub. __DEN_CLI__ web login --host <name>",
     keywords: ["pair", "qr", "device", "link", "phone", "edge"],
     scope: "user",
     control: { type: "custom", render: drawPair },
