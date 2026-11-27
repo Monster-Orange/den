@@ -150,6 +150,35 @@ describe("gate/1668 rows", () => {
     expect(r[CP].detail).toContain("during the cold list 6 ms");
   });
 
+  it("the skip has a ceiling: within COLD_KNOWN_MAX a slow cold row is NOT_RUN, above it the row FAILs, and the detail names the ceiling", () => {
+    const max = JSON.parse(
+      run(
+        `const g = await import("./gate/1668.mjs"); console.log(JSON.stringify(g.COLD_KNOWN_MAX));`,
+      ),
+    ) as { listMs: number; probeMs: number };
+    expect(max).toEqual({ listMs: 15000, probeMs: 6000 });
+    const at = (coldMs: number, probeMs: number) =>
+      rows({
+        ...fast,
+        coldMs,
+        coldProbe: { ms: probeMs, status: 200, inFlight: true },
+      });
+    const under = at(max.listMs, max.probeMs);
+    expect([under[C].ok, under[CP].ok]).toEqual([null, null]);
+    expect(under[C].detail).toContain(`ceiling ${max.listMs} ms`);
+    expect(under[CP].detail).toContain(`ceiling ${max.probeMs} ms`);
+    const overList = at(max.listMs + 1, 100);
+    expect([overList[C].ok, overList[CP].ok]).toEqual([false, true]);
+    expect(overList[C].detail).toContain(
+      `over the known stall's ceiling ${max.listMs} ms`,
+    );
+    const overProbe = at(100, max.probeMs + 1);
+    expect([overProbe[C].ok, overProbe[CP].ok]).toEqual([true, false]);
+    expect(overProbe[CP].detail).toContain(
+      `over the known stall's ceiling ${max.probeMs} ms`,
+    );
+  });
+
   it("a cold list that didn't answer 200 FAILs, mask or not", () => {
     const r = rows({ ...fast, coldStatus: 500 });
     expect(r[C].ok).toBe(false);
