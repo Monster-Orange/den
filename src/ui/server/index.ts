@@ -1839,6 +1839,7 @@ import {
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { pageMax } from "./paging.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -6763,6 +6764,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
             : 10,
       };
     })(),
+    web_lists: { pageMax: pageMax() },
     // Issue 796: agents' read-only page views (web.agent_view*).
     web_agent_view: (() => {
       const c = webAuthNow();
@@ -11153,6 +11155,7 @@ async function handleRequest(
           crash_loop?: unknown;
           web_bridge?: unknown;
           web_github?: unknown;
+          web_lists?: unknown;
           web_ready?: unknown;
           web_pairing?: unknown;
           web_agent_view?: unknown;
@@ -11231,6 +11234,7 @@ async function handleRequest(
             crash_loop: body.crash_loop,
             web_bridge: body.web_bridge,
             web_github: body.web_github,
+            web_lists: body.web_lists,
             web_ready: body.web_ready,
             web_pairing: body.web_pairing,
             web_agent_view: body.web_agent_view,
