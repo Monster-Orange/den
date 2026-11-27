@@ -50,7 +50,9 @@ const skip = () => !browser;
 const PAGE = (lang: string) => `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/tokens.css"></head>
+<link rel="stylesheet" href="/tokens.css">
+<!-- The page links button.css beside busy.css (den-ui README). -->
+<link rel="stylesheet" href="/button.css"></head>
 <body><button id="go">Go</button>
 <script type="module">
 import * as kit from "/busy.js";
@@ -150,6 +152,11 @@ async function open(
       return r.fulfill({
         contentType: "text/javascript",
         body: fs.readFileSync(path.join(SRC, u.pathname.slice(1)), "utf-8"),
+      });
+    if (u.pathname === "/button.css")
+      return r.fulfill({
+        contentType: "text/css",
+        body: fs.readFileSync(path.join(SRC, "button.css"), "utf-8"),
       });
     if (u.pathname === "/dialog.css")
       return r.fulfill({
@@ -259,9 +266,8 @@ describe("issue 699: the held button in a browser", () => {
     expect(
       await b
         .locator(".bz-dots > i")
-        .first()
-        .evaluate((i) => getComputedStyle(i).animationName),
-    ).toBe("none");
+        .evaluateAll((is) => is.map((i) => getComputedStyle(i).animationName)),
+    ).toEqual(["none", "none", "none"]);
     expect(await out(p)).toEqual({ ok: { ok: true } });
     expect(await b.locator(".bz-dots").count()).toBe(0);
     expect(await b.textContent()).toBe("Go");
@@ -269,7 +275,7 @@ describe("issue 699: the held button in a browser", () => {
     await p.context().close();
   });
 
-  it("inside the kit's dialog frame: the dots stay behind the pop-up, Try again holds again, and the frame's Report still opens", async () => {
+  it("inside the kit's dialog frame: the dots hold with no pop-up, a failure opens over the frame, Try again holds again, and the frame's Report still opens", async () => {
     if (skip()) return;
     const { p, probe } = await open([
       [1000, 500],
@@ -308,16 +314,16 @@ describe("issue 699: the held button in a browser", () => {
     const inner = p.locator("#inner");
     expect(await inner.getAttribute("aria-busy")).toBe("true");
     expect(await inner.locator(".bz-dots > i").count()).toBe(3);
-    // The pop-up (dotsMs is 300 ms in this suite) opens over the frame;
-    // both are open, the dots still on the button behind it.
-    await dlg(p).waitFor({ state: "visible", timeout: 2000 });
+    // Issue 1054: one request waits on its button alone, no pop-up.
+    expect(await p.locator("den-busy dialog[open]").count()).toBe(0);
+    // The failure opens its pop-up over the frame; both are open, and the
+    // button's label is back behind it (issue 699: the button never shows
+    // an error).
+    await dlg(p).locator('[data-bz="retry"]').waitFor({ timeout: 5000 });
     expect(
       await p.locator("#frame").evaluate((d) => (d as HTMLDialogElement).open),
     ).toBe(true);
-    expect(await inner.locator(".bz-dots").count()).toBe(1);
-    // The failure shows in the pop-up; the button stays held behind it.
-    await dlg(p).locator('[data-bz="retry"]').waitFor({ timeout: 5000 });
-    expect(await inner.getAttribute("aria-busy")).toBe("true");
+    expect(await inner.getAttribute("aria-busy")).toBeNull();
     await dlg(p).locator('[data-bz="retry"]').click();
     // Try again holds it again, then the answer gives the label back.
     expect(await inner.getAttribute("aria-busy")).toBe("true");
@@ -356,25 +362,17 @@ describe("UK-2 kit: the working pop-up", () => {
     await p.context().close();
   });
 
-  it("a slow action opens at 300 ms, holds the button, has no buttons and ignores Esc while working", async () => {
+  // Issue 1054: one request shows its wait on its button, never a pop-up.
+  it("a slow action holds the button with no pop-up, then says Saved in a toast", async () => {
     if (skip()) return;
     const { p } = await open([[1500, 200]]);
     await go(p, "save");
     expect(await p.locator("#go").isDisabled()).toBe(true);
-    await p.waitForTimeout(150);
+    // Past dotsMs (300 ms here): still no pop-up, the button still held.
+    await p.waitForTimeout(800);
     expect(await dlg(p).count()).toBe(0);
-    await dlg(p).waitFor({ state: "visible", timeout: 1000 });
-    await expect(dlg(p).locator("h2").textContent()).resolves.toContain(
-      "Saving",
-    );
-    expect(await dlg(p).locator("button").count()).toBe(0);
-    expect(await dlg(p).locator(".bz-live").textContent()).toBe(
-      "Waiting for Probe…",
-    );
-    await p.keyboard.press("Escape");
-    expect(await dlg(p).isVisible()).toBe(true);
-    // Success (Ward, UK-2): it closes at once and says so in the toast,
-    // as for a fast action; never a Done to click.
+    expect(await p.locator("#go").getAttribute("aria-busy")).toBe("true");
+    // Success (Ward, UK-2): the toast says it; never a Done to click.
     expect(await out(p)).toEqual({ ok: { ok: true } });
     expect(await dlg(p).count()).toBe(0);
     expect((await seen(p)).toasts).toEqual(["Saved"]);
@@ -529,6 +527,7 @@ describe("UK-2 kit: the working pop-up", () => {
       `{ extra: () => { const s = document.createElement("span"); s.id = "x"; s.textContent = "more"; return s; } }`,
     );
     await dlg(b.p).locator("#x").waitFor();
+    // Kept on purpose: it proves the pop-up does NOT close by itself.
     await b.p.waitForTimeout(1500);
     expect(await dlg(b.p).isVisible()).toBe(true);
     expect(await dlg(b.p).locator('[data-bz="done"]').count()).toBe(0);
@@ -545,6 +544,8 @@ describe("UK-2 kit: the working pop-up", () => {
     expect(await dlg(p).locator(".bz-live").textContent()).toBe(
       "Waiting for it to come back…",
     );
+    // Kept on purpose: it proves it does NOT say Back while the pid is the
+    // old one.
     await p.waitForTimeout(1500);
     expect(await dlg(p).locator("h2").textContent()).toContain("Restarting");
     probe.infoPid = 200;
@@ -565,6 +566,8 @@ describe("UK-2 kit: the working pop-up", () => {
     // before: pid 300 is the old run, so the answer it has now is not back.
     await go(p, "restart", "{ before: { pid: 300 } }");
     await dlg(p).locator("h2", { hasText: "Restarting" }).waitFor();
+    // Kept on purpose: it proves it does NOT say Back while the pid is the
+    // old one.
     await p.waitForTimeout(1500);
     expect(await dlg(p).locator("h2").textContent()).toContain("Restarting");
     probe.infoPid = 301;
@@ -593,10 +596,14 @@ describe("UK-2 kit: the working pop-up", () => {
     if (skip()) return;
     const { p, probe } = await open([[0, 202]]);
     probe.infoHang = 1;
+    // The request answered (the route has counted it by then).
+    const sent = p
+      .waitForResponse((r) => new URL(r.url()).pathname === "/probe", {
+        timeout: 10_000,
+      })
+      .catch(() => undefined);
     await go(p, "restart");
-    const until = Date.now() + 10_000;
-    while (probe.ids.length === 0 && Date.now() < until)
-      await p.waitForTimeout(100);
+    await sent;
     expect(probe.ids.length).toBe(1);
     await p.context().close();
   });

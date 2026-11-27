@@ -11,8 +11,10 @@
 import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../atomic-write.js";
 
-export type ResultState = "passed" | "failed" | "error" | "blocked";
+/** "notrun": an imported check where nothing ran (issue 441, clause 3). */
+export type ResultState = "passed" | "failed" | "error" | "blocked" | "notrun";
 
 /** A module's latest result on one environment. */
 export interface LatestResult {
@@ -60,9 +62,7 @@ export function writeLatest(
   const all = readLatest(stateDir, project);
   all[env] = { ...(all[env] ?? {}), ...results };
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(all, null, 2) + "\n");
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify(all, null, 2) + "\n");
 }
 
 /** What Den asks git about a repo. */

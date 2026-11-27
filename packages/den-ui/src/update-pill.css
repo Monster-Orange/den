@@ -12,7 +12,7 @@
 .den-upd[hidden] { display: none; }
 .den-upd .upd-pill { pointer-events: auto; display: flex; align-items: center; gap: 16px; width: fit-content; max-width: 100%; box-sizing: border-box;
   padding: var(--upd-pad-y) 12px var(--upd-pad-y) 24px;
-  border: 1px solid var(--border-strong); border-radius: 999px; color: var(--text); font-size: 14px; line-height: 1.5;
+  border: 1px var(--edge-style, solid) var(--border-strong); border-radius: 999px; color: var(--text); font-size: 14px; line-height: 1.5;
   background: var(--surface);
   background: color-mix(in srgb, var(--surface) 20%, transparent);
   background-image: linear-gradient(color-mix(in srgb, var(--text) 7%, transparent), color-mix(in srgb, var(--text) 3%, transparent));
@@ -25,8 +25,14 @@
 .den-upd .upd-dismiss { flex: none; display: flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; padding: 0; border: 0; border-radius: 999px; background: none; color: var(--muted); font-family: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
 .den-upd .upd-dismiss.is-text { width: auto; padding: 0 8px; font-weight: 500; font-size: 14px; line-height: 1.2; white-space: nowrap; }
 .den-upd .upd-dismiss:hover { background: color-mix(in srgb, var(--border-strong) 50%, transparent); color: var(--text); }
-.den-upd .upd-go:focus-visible, .den-upd .upd-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.den-upd .upd-go:focus-visible, .den-upd .upd-dismiss:focus-visible { outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: var(--focus-offset, 2px); }
 .den-upd .upd-pill.card { flex-wrap: wrap; gap: 8px; padding: 8px 8px 8px 16px; border-radius: 20px; }
 .den-upd .upd-pill.card .upd-msg { flex: 1 0 100%; line-height: 1.35; }
 .den-upd .upd-pill.card .upd-acts { margin-left: auto; }
 .den-upd .upd-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* Issue 286: a browser that can't blur (a WebKit build without
+   backdrop-filter) would show the bar's search box through the pill: there
+   the pill is the opaque surface. Where the blur works, nothing changes. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .den-upd .upd-pill { background: var(--surface); background-image: none; }
+}

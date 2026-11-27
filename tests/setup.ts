@@ -16,9 +16,36 @@ import {
   configLocalSnapshot,
   tripwireCalls,
 } from "./tripwire";
+import {
+  armWriteGuard,
+  linkedModulesEntry,
+  writeGuardRoots,
+} from "./write-guard";
+import tmpLeaks from "./tmp-leaks.cjs";
 
 // No real credentials reach a test, or its failure output (scrub-env.ts).
 scrubSecretEnv();
+
+tmpLeaks.armTmpLeaks();
+tmpLeaks.setTestFile(
+  path.relative(process.cwd(), expect.getState().testPath ?? "") || "unknown",
+);
+tmpLeaks.record(
+  tmpLeaks.listFile(),
+  path.join(os.tmpdir(), `den-test-${process.pid}`),
+  "setup",
+);
+
+// Issue 1048: the gate reads this machine's load to hold new cpu slots. A
+// test that wants a load passes its own; every other test reads 0, so a busy
+// machine never holds an unrelated test's slot. Den processes tests start
+// inherit it.
+process.env.DEN_GATE_LOAD5 = "0";
+// Issue 1274: the same for free memory: every test reads 100%.
+process.env.DEN_GATE_FREE_MEM = "100";
+process.env.DEN_GATE_SWAP_GB = "0";
+// ...and doctor never reads this machine's VMs (doctor-vms.ts).
+process.env.DEN_GATE_VMS = "0";
 
 // No test reads the developer's own state dir: its web.secret would put a
 // real person token on a test server's request (SEC-1a). A suite that needs
@@ -40,6 +67,14 @@ if (!process.env.DEN_GATE_DIR)
     "gate-slots",
   );
 
+// Issue 728: nor registers in, or reads, this user's real install registry.
+if (!process.env.DEN_INSTALLS_DIR)
+  process.env.DEN_INSTALLS_DIR = path.join(
+    os.tmpdir(),
+    `den-test-${process.pid}`,
+    "installs",
+  );
+
 // No test asks this machine's login shell for its PATH (its startup files
 // are the developer's), and no test finds a runtime CLI installed here
 // (~/.local/bin/claude) by its install directories: AG-0.1's search is the
@@ -55,6 +90,17 @@ process.env.DEN_QUARANTINE_CHECK ??= "off";
 // sign-in tabs from test runs). `web up` and every opener honour it; the
 // opener refuses under JEST_WORKER_ID besides (browser-open.ts).
 process.env.DEN_NO_OPEN = "1";
+
+// Issue 1356: no test writes a real install's config/local or state folder
+// (write-guard.ts): such a write throws at the call, and the file fails at
+// its end should the writer swallow it. Installed once per worker, on the
+// fs every module of the test shares.
+const guardRoots = writeGuardRoots();
+armWriteGuard(afterAll, guardRoots);
+// Issue 1356: Den's roots come from the checkout under test, never from
+// where node_modules resolves, and no Den marker is set here.
+const entry = linkedModulesEntry(guardRoots.checkout);
+if (entry) process.argv[1] = entry;
 
 // 0.4.48 tripwires (tripwire.ts): no test reaches a person's browser or
 // Terminal (open, osascript, xdg-open, x-www-browser are failing shims
@@ -87,7 +133,7 @@ afterAll(() => {
 process.env.DEN_RUNTIME_DIRS ??= "";
 
 // No test runs a vendor's CLI installed on this machine's PATH (AG-0.5's
-// catalog: claude, codex, gemini, grok), not even its --version: inert
+// catalog: claude, codex, gemini, grok, agy), not even its --version: inert
 // stand-ins come first on the PATH every test and every server a test
 // spawns inherits. They print nothing and exit 127. A suite that tests a
 // runtime builds its own env with its own fakes.
@@ -101,7 +147,15 @@ if (!(process.env.PATH ?? "").split(path.delimiter).includes(stubs)) {
   // D17: and gh (`web up` asks it who is signed in): never the real one.
   // And launchctl: no test may reach this machine's real launchd (a
   // bootout there stops real services); tests that need it shim their own.
-  for (const bin of ["claude", "codex", "gemini", "grok", "gh", "launchctl"])
+  for (const bin of [
+    "claude",
+    "codex",
+    "gemini",
+    "grok",
+    "agy",
+    "gh",
+    "launchctl",
+  ])
     fs.writeFileSync(path.join(stubs, bin), "#!/bin/sh\nexit 127\n", {
       mode: 0o755,
     });

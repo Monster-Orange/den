@@ -26,6 +26,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { isAgentTokenEnv } from "./actor-token.js";
 import { AGENT_ACTOR_ENV } from "./sessions/env.js";
+import { writeFileAtomic } from "./atomic-write.js";
 
 export const CLAIM_CODE_TTL_MS = 30 * 60_000;
 const SKEW_MS = 5_000;
@@ -95,9 +96,13 @@ export function claimLink(origin: string, code: string): string {
  */
 export function personGrantRefusal(env: NodeJS.ProcessEnv): string | null {
   if (env[AGENT_ACTOR_ENV] !== undefined || isAgentTokenEnv(env))
-    return "An agent can't do this: it lets a browser in as you. Run it in your own terminal.";
+    return AGENT_REFUSAL;
   return null;
 }
+
+/** personGrantRefusal's words (person-here.ts says them too). */
+export const AGENT_REFUSAL =
+  "This command can't let a browser in from here. Run it in your own terminal. Already signed in in a browser? Open Settings › Access there to add another device.";
 
 /** Why the CLI won't mint a claim code here, or null when it may. */
 export function claimRefusalForAgent(env: NodeJS.ProcessEnv): string | null {
@@ -141,10 +146,7 @@ export class ClaimNonces {
 
   private write(used: Record<string, number>): void {
     fs.mkdirSync(this.stateDir, { recursive: true });
-    const tmp = `${this.file()}.${process.pid}.${randomBytes(4).toString("hex")}`;
-    fs.writeFileSync(tmp, JSON.stringify(used) + "\n", { mode: 0o600 });
-    fs.chmodSync(tmp, 0o600);
-    fs.renameSync(tmp, this.file());
+    writeFileAtomic(this.file(), JSON.stringify(used) + "\n", { mode: 0o600 });
   }
 
   /**

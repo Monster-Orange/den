@@ -23,12 +23,13 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { spawnServer, stopServer } from "../../child-servers.js";
+import { inTerminal, linkIn } from "./helpers/in-terminal.js";
 import {
   checkWebUrl,
   migrateWebUrl,
   readWebUrl,
   setWebUrl,
-} from "../../../src/shared/web-url.js";
+} from "../../../src/shared/web/web-url.js";
 import type { UserConfig } from "../../../src/shared/den-config.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
@@ -107,6 +108,16 @@ function cli(i: Install, args: string[]) {
   return { code: r.status, out: r.stdout ?? "", err: r.stderr ?? "" };
 }
 
+/** Sign-in: the CLI in a terminal (a link is printed only there). */
+async function cliTerm(i: Install, args: string[]) {
+  const r = await inTerminal(
+    TSX,
+    [path.join(ENGINE, "src", "ui", "cli", "index.ts"), ...args],
+    { cwd: i.dist, env: env(i) },
+  ).done;
+  return { code: r.status, text: r.text, link: linkIn(r.text) };
+}
+
 const bannerLine = (i: Install) =>
   i.out.split("\n").find((l) => /Web UI\s+→/.test(l)) ?? "";
 
@@ -134,14 +145,20 @@ describe("D80: web.url set", () => {
     expect(bannerLine(set)).not.toMatch(/localhost/);
   });
 
-  it("web login's and web claim-link's links start with it", () => {
-    const login = cli(set, ["web", "login", "--no-wait"]);
+  it("web login's and web claim-link's links start with it", async () => {
+    const login = await cliTerm(set, ["web", "login", "--no-wait"]);
     expect(login.code).toBe(0);
-    expect(login.out.trim().startsWith(`${ADDRESS}/auth?c=`)).toBe(true);
-    const claim = cli(set, ["web", "claim-link"]);
+    expect(login.link.startsWith(`${ADDRESS}/auth?c=`)).toBe(true);
+    const claim = await cliTerm(set, ["web", "claim-link"]);
     expect(claim.code).toBe(0);
-    expect(claim.out.trim().startsWith(`${ADDRESS}/auth?claim=`)).toBe(true);
-    expect(`${login.out}${claim.out}`).not.toMatch(/localhost/);
+    expect(claim.link.startsWith(`${ADDRESS}/auth?claim=`)).toBe(true);
+    expect(`${login.link}${claim.link}`).not.toMatch(/localhost/);
+  }, 90_000);
+
+  it("Sign-in: not in a terminal, no link", () => {
+    const login = cli(set, ["web", "login", "--no-wait"]);
+    expect([login.code, login.out]).toEqual([1, ""]);
+    expect(login.err).toMatch(/only in a terminal/);
   }, 90_000);
 
   it("web up --json's url is it; doctor's Address row is ok", () => {
@@ -165,18 +182,18 @@ describe("D80: web.url unset", () => {
     expect(bannerLine(unset)).not.toMatch(/localhost/);
   });
 
-  it("no sign-in link: it says how to set it", () => {
-    const r = cli(unset, ["web", "login", "--no-wait"]);
-    expect([r.code, r.out]).toEqual([1, ""]);
-    expect(r.err).toMatch(/address not set: run `den web url <address>`/);
-    expect(r.err).not.toMatch(/localhost/);
+  it("no sign-in link: it says how to set it", async () => {
+    const r = await cliTerm(unset, ["web", "login", "--no-wait"]);
+    expect([r.code, r.link]).toEqual([1, ""]);
+    expect(r.text).toMatch(/address not set: run `den web url <address>`/);
+    expect(r.text).not.toMatch(/localhost/);
   }, 90_000);
 
-  it("issue 666, D80's one exception: claim-link is for this machine's browser, so it gives this machine's link and says the address isn't set", () => {
-    const r = cli(unset, ["web", "claim-link"]);
+  it("issue 666, D80's one exception: claim-link is for this machine's browser, so it gives this machine's link and says the address isn't set", async () => {
+    const r = await cliTerm(unset, ["web", "claim-link"]);
     expect(r.code).toBe(0);
-    expect(new URL(r.out.trim()).hostname).toBe("localhost");
-    expect(r.err).toMatch(/address not set: run `den web url <address>`/);
+    expect(new URL(r.link).hostname).toBe("localhost");
+    expect(r.text).toMatch(/address not set: run `den web url <address>`/);
   }, 90_000);
 
   it("doctor fails, with the fix; web up --json has no url", () => {

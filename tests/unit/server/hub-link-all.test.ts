@@ -15,7 +15,7 @@ import {
   type HubLinkAllDeps,
 } from "../../../src/ui/server/hub-link-all-routes.js";
 import { AUDIT_HEADERS } from "../../../src/shared/agent-actor.js";
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 
 const BACK = { id: "proj_back", slug: "back-office", name: "Back Office" };
 const SITE = { id: "proj_site", slug: "site", name: "Site" };
@@ -199,6 +199,22 @@ describe("#68: /api/hub/link-suggestions", () => {
     expect(picks).toEqual([]);
   });
 
+  it("issue 1334: an empty project is never offered, and a pick of it links nothing", async () => {
+    const { url, store, sent } = await serve({
+      empty: (ws) => ws === "back-office",
+    });
+    const j = (await (await fetch(url)).json()) as {
+      projects: { project: string }[];
+    };
+    expect(j.projects.map((p) => p.project)).not.toContain("back-office");
+    const r = await post(url, {
+      links: [{ project: "back-office", hub: BACK.id }],
+    });
+    expect(await r.json()).toMatchObject({ ok: true, linked: [] });
+    expect(store.get("back-office")).toBeUndefined();
+    expect(sent.n).toBe(0);
+  });
+
   it("POST nothing to link: no sync", async () => {
     const { url, sent } = await serve();
     expect((await post(url, { links: [] })).status).toBe(200);
@@ -254,6 +270,13 @@ describe("the pick in the bell", () => {
       // No pick waiting: nothing happens.
       pickDone(store, 1);
       expect(store.list()).toEqual([]);
+      // Issue 646: an item that opens Connect's review keeps that link.
+      store.add({ ...pickNote(3), link: "/settings#agents.hub" });
+      pickDone(store, 1);
+      expect(pick()[0]).toMatchObject({
+        link: "/settings#agents.hub",
+        msg: { vars: { n: 2 } },
+      });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

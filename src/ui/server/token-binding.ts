@@ -20,13 +20,25 @@
  */
 import type * as http from "http";
 import type { Socket } from "net";
-import { isLoopbackAddress } from "./request-guard.js";
+import {
+  hostAllowed,
+  isLoopbackAddress,
+  type GuardContext,
+} from "./request-guard.js";
+import { EDGE_PROOF_HEADER } from "../../shared/edge/proof.js";
 import {
   descendsFrom,
   loopbackPeerFind,
+  parentLine,
   type LookupMiss,
 } from "../../shared/peer-process.js";
 import { ACTOR_TOKEN_PREFIX } from "../../shared/actor-token.js";
+import {
+  IN_A_SESSION,
+  IN_DEN,
+  NOT_CHECKED,
+  NOT_LOOPBACK,
+} from "../../shared/person-here.js";
 
 /** ok: from the agent's own processes; elsewhere: proved not; unknown: couldn't tell. */
 export type TokenCaller = "ok" | "elsewhere" | "unknown";
@@ -38,7 +50,11 @@ export type TokenCaller = "ok" | "elsewhere" | "unknown";
  */
 export type PeerMiss = LookupMiss | "waiting" | "gone";
 
-type PeerAnswer = number | null | { miss: LookupMiss };
+/**
+ * Issue 1131: several, with each process's line of parents when the lookup
+ * had them (two processes on one connection: a helper and its parent).
+ */
+type PeerAnswer = number | null | { miss: LookupMiss; lines?: number[][] };
 
 export interface BindingDeps {
   /**
@@ -58,6 +74,10 @@ interface Peer {
   miss?: LookupMiss;
   /** Issue 609: the caller closed its end. */
   gone?: boolean;
+  /** Issue 1131: several processes on the connection, each one's line. */
+  several?: number[][];
+  /** Issue 1131: one more try of the lookup (peerSettled's retry). */
+  again?: () => Promise<void>;
   done: Promise<void>;
 }
 
@@ -87,8 +107,32 @@ export function watchPeer(sock: Socket, d: BindingDeps = {}): void {
     else {
       peer.pid = null;
       peer.miss = v?.miss ?? "none";
+      if (v?.miss === "several" && Array.isArray(v.lines) && v.lines.length)
+        peer.several = v.lines;
     }
   };
+  // One try: the fake's answer, or the real lookup's (with its line).
+  const once = async (): Promise<PeerAnswer> => {
+    if (d.peer) {
+      try {
+        return await d.peer(from, to);
+      } catch {
+        return { miss: "failed" };
+      }
+    }
+    try {
+      const f = await loopbackPeerFind(from, to);
+      if ("line" in f) {
+        peer.line = f.line;
+        return f.line[0];
+      }
+      return f;
+    } catch {
+      return { miss: "failed" };
+    }
+  };
+  // Issue 1131: an agent's request may ask for another try (peerSettled).
+  peer.again = async () => answer(await once());
   if (d.peer) {
     let v: PeerAnswer | Promise<PeerAnswer>;
     try {
@@ -101,15 +145,7 @@ export function watchPeer(sock: Socket, d: BindingDeps = {}): void {
     else answer(v);
     return;
   }
-  peer.done = loopbackPeerFind(from, to).then(
-    (f) => {
-      if ("line" in f) {
-        peer.pid = f.line[0];
-        peer.line = f.line;
-      } else answer(f);
-    },
-    () => answer({ miss: "failed" }),
-  );
+  peer.done = once().then(answer, () => answer({ miss: "failed" }));
 }
 
 /**
@@ -141,16 +177,44 @@ export async function peerSettled(
   if (!sock || !isLoopbackAddress(sock.remoteAddress)) return;
   watchPeer(sock, d);
   const peer = PEERS.get(sock);
-  if (!peer || peer.pid !== undefined) return;
-  let timer: NodeJS.Timeout | undefined;
-  await Promise.race([
-    peer.done,
-    new Promise<void>((r) => {
-      timer = setTimeout(r, Math.max(0, waitMs));
-      timer.unref?.();
-    }),
-  ]);
-  clearTimeout(timer);
+  if (!peer || typeof peer.pid === "number") return;
+  const until = Date.now() + Math.max(0, waitMs);
+  const within = (p: Promise<void>, ms: number) => {
+    let timer: NodeJS.Timeout | undefined;
+    return Promise.race([
+      p,
+      new Promise<void>((r) => {
+        timer = setTimeout(r, Math.max(0, ms));
+        timer.unref?.();
+      }),
+    ]).finally(() => clearTimeout(timer));
+  };
+  if (peer.pid === undefined) await within(peer.done, until - Date.now());
+  // Issue 1131: no connection found yet (a busy machine's lookup): try
+  // again within the same wait, backing off. Only an agent's request
+  // waits here, so other callers cost no extra lookups. A later answer is
+  // judged as a first one would be; a timeout, a failure or several is
+  // final.
+  let pause = 50;
+  while (
+    peer.pid === null &&
+    peer.miss === "none" &&
+    peer.again &&
+    !peer.gone &&
+    Date.now() + pause < until
+  ) {
+    await new Promise<void>((r) => setTimeout(r, pause).unref?.());
+    pause = Math.min(pause * 2, 1_000);
+    peer.miss = undefined;
+    peer.pid = undefined;
+    await within(peer.again(), until - Date.now());
+    if (peer.pid === undefined) {
+      // The try outlived the wait: unplaced, as before.
+      peer.pid = null;
+      peer.miss = "none";
+      break;
+    }
+  }
 }
 
 /** The pid on the other end of this request's connection, once found. */
@@ -175,13 +239,33 @@ export function tokenCaller(
   d: BindingDeps = {},
 ): TokenCaller {
   if (!isLoopbackAddress(req.socket?.remoteAddress)) return "elsewhere";
-  if (!root || root <= 0) return "unknown";
+  // A root of init (1) would hold every line on the machine (a bad or
+  // stale record): it places nothing.
+  if (!root || root <= 1) return "unknown";
   const pid = callerPid(req, d);
-  if (pid === null) return "unknown";
+  if (pid === null) return severalCaller(req, root, d);
   const line = PEERS.get(req.socket)?.line;
   // Its parents as they were when it connected (it may be gone now).
   if (line && !d.descends && line.includes(root)) return "ok";
   return (d.descends ?? descendsFrom)(pid, root) ? "ok" : "elsewhere";
+}
+
+/**
+ * Issue 1131: several processes on the agent's connection. Accepted only
+ * when every one of them runs inside the agent's session (its root on each
+ * line, or `descends` for each); one outside, or no lines: unknown, and
+ * refused as before. Never wider than a single caller's check.
+ */
+function severalCaller(
+  req: http.IncomingMessage,
+  root: number,
+  d: BindingDeps,
+): TokenCaller {
+  const lines = PEERS.get(req.socket)?.several;
+  if (!lines || lines.length < 2) return "unknown";
+  const inside = (l: number[]) =>
+    l.length > 0 && (d.descends ? d.descends(l[0], root) : l.includes(root));
+  return lines.every(inside) ? "ok" : "unknown";
 }
 
 /**
@@ -229,4 +313,69 @@ export function refusalDetail(o: {
       : "outside the agent's own processes";
   const why = o.from === "unknown" && o.why ? `${MISS_WORDS[o.why]}; ` : "";
   return `${o.actor}'s token from ${where} (${why}pid ${o.caller ?? "?"}, agent pid ${o.root ?? "?"}): ${o.method} ${o.path}`;
+}
+
+/**
+ * Sign-in: this request's caller and its parents up to init, whole: as
+ * found when it connected when that line reached init, else read now.
+ * Null when the caller wasn't placed or a parent can't be read.
+ */
+export function callerLine(
+  req: http.IncomingMessage,
+  d: { line?: (pid: number) => number[] | null } = {},
+): number[] | null {
+  const pid = callerPid(req);
+  if (pid === null) return null;
+  const seen = PEERS.get(req.socket)?.line;
+  if (!d.line && seen && seen[0] === pid && seen[seen.length - 1] === 1)
+    return seen;
+  return (d.line ?? ((p: number) => parentLine(p)))(pid);
+}
+
+/**
+ * Sign-in: why the server won't register a sign-in link or let a browser
+ * in for this caller (the CLI's bearer), or null when it may. It must be
+ * on loopback, placed, with a whole line that holds no running session's
+ * root. Anything it can't tell refuses.
+ */
+export function personCallerRefusal(o: {
+  loopback: boolean;
+  /** It came through the edge, or Den can't tell (forwardedRequest). */
+  forwarded?: boolean;
+  line: number[] | null;
+  roots: number[] | null;
+  /** Den's own processes (this server among them); null when unreadable. */
+  den?: number[] | null;
+}): string | null {
+  if (!o.loopback || o.forwarded) return NOT_LOOPBACK;
+  if (!o.line || o.line.length === 0 || !o.roots) return NOT_CHECKED;
+  if (o.line.some((p) => o.roots!.includes(p))) return IN_A_SESSION;
+  if (o.den === null) return NOT_CHECKED;
+  return o.line.some((p) => (o.den ?? []).includes(p)) ? IN_DEN : null;
+}
+
+/** Headers a proxy in front of Den adds: any of them, and it was forwarded. */
+const FORWARD_HEADERS = [
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "forwarded",
+  EDGE_PROOF_HEADER,
+];
+
+/**
+ * Sign-in: whether this request came through the edge (or any proxy), or
+ * Den can't tell: its Host isn't one of this server's loopback names, or it
+ * carries a forwarding header. The loopback peer is then the proxy, never
+ * the caller.
+ */
+export function forwardedRequest(
+  req: http.IncomingMessage,
+  ctx: Pick<GuardContext, "port" | "loopbackNames" | "edgeHosts" | "lanHosts">,
+): boolean {
+  const h = req.headers ?? {};
+  const host = Array.isArray(h.host) ? h.host[0] : h.host;
+  if (hostAllowed(host, ctx) !== "loopback") return true;
+  return FORWARD_HEADERS.some((k) => h[k] !== undefined);
 }

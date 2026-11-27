@@ -5,9 +5,9 @@
  *
  *  - Navigated away: WebKit drops the keepalive DELETE its pagehide sends,
  *    so the page also sends a beacon (POST …/withdraw). Within a second
- *    the code has ended: `web approve` (POST /api/web/approve with the
- *    CLI's bearer) answers 410 ended, and the page's poll id claims no
- *    session.
+ *    the code has ended: Approve from a person's signed-in browser (POST
+ *    /api/web/approve; issue 819) answers 410 ended, and the page's poll
+ *    id claims no session.
  *  - Closed with no pagehide at all (Playwright's page.close() fires
  *    none): the server ends a request it hasn't heard from within its
  *    unseen bound (DEN_PAIR_UNSEEN_MS, short here). Same answer.
@@ -26,7 +26,7 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page, Route } from "playwright";
 import { startDenServer } from "../../child-servers.js";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { signedIn, type SignedIn } from "./helpers/signed-in.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
 
@@ -97,6 +97,7 @@ beforeAll(async () => {
   );
   server = started.server;
   port = started.port;
+  person = await signedIn(stateDir, local());
 }, 120_000);
 
 afterAll(async () => {
@@ -133,6 +134,11 @@ async function signedOut(
   });
   const r = await page.goto(`${edge()}/settings`);
   expect(r?.status()).toBe(401);
+  // Issue 1333: the page asks for a code only on its button.
+
+  await page.waitForSelector("#den-pair-start, #den-pair-code");
+
+  if (await page.$("#den-pair-start")) await page.click("#den-pair-start");
   await page.waitForSelector("#den-pair-code", { timeout: 15_000 });
   const code = ((await page.textContent("#den-pair-code")) ?? "").trim();
   expect(code).toMatch(/^[0-9A-Z]{3}-[0-9A-Z]{3}$/);
@@ -141,14 +147,17 @@ async function signedOut(
   return { page, pollId: () => id, code };
 }
 
-/** `web approve <code>`: the CLI's bearer, on the Den machine. */
+/** Issue 819: a person's signed-in browser on the Den machine. */
+let person: SignedIn | null = null;
+/** Approve in Settings › Access, from that browser. */
 async function approve(
   code: string,
 ): Promise<{ status: number; code: string }> {
   const r = await fetch(`${local()}/api/web/approve`, {
     method: "POST",
     headers: {
-      authorization: cliAuthHeaders(stateDir).Authorization ?? "",
+      ...person!.headers,
+      "x-den-approve-key": person!.approveKey,
       "content-type": "application/json",
     },
     body: JSON.stringify({ code }),
@@ -200,7 +209,7 @@ describe.each(ENGINES)("issue 320 in %s", (name) => {
     expect(await claimed(pollId())).toEqual([404, false]);
   }, 60_000);
 
-  it("a page whose polls stall past the bound (a background tab) shows a fresh code by itself", async () => {
+  it("a page whose polls stall past the bound (a background tab) offers the button again, and its click gives a fresh code (issue 1333: never by itself)", async () => {
     if (skip()) return;
     const { page, code } = await signedOut(name);
     let release: () => void = () => {};
@@ -212,6 +221,8 @@ describe.each(ENGINES)("issue 320 in %s", (name) => {
     });
     await sleep(UNSEEN_MS + 1000);
     release();
+    await page.waitForSelector("#den-pair-start", { timeout: 15_000 });
+    await page.click("#den-pair-start");
     await page.waitForFunction(
       (old) => {
         const el = document.getElementById("den-pair-code");

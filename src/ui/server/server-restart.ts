@@ -19,6 +19,64 @@ import * as path from "path";
 import { recordAction, type AuditEntry } from "./audit.js";
 import type { Actor } from "../../shared/agent-actor.js";
 import type { LastUpdate } from "./den-update.js";
+import {
+  SERVER_AGENT_ID,
+  isServerScope,
+} from "../../shared/agents/server-agent.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { safeLine } from "../../shared/redact.js";
+
+/**
+ * SRV-1a/1b: the setting that runs an agent's den_restart or den_update
+ * without the person's Allow ("server_agent.self_update: auto"), or null.
+ * It covers Den's own agent only: its id AND its token's scope (the
+ * server scope), so a project's agent created with the id "server" is
+ * still held. A project's agent's ask always waits for a person. `auto` is
+ * read only when it could apply.
+ */
+export function selfUpdateAutoAllow(
+  action: string,
+  agent: string,
+  workspace: string | undefined,
+  auto: () => boolean,
+): string | null {
+  return (action === "den_restart" || action === "den_update") &&
+    agent === SERVER_AGENT_ID &&
+    isServerScope(workspace) &&
+    auto()
+    ? "server_agent.self_update: auto"
+    : null;
+}
+
+/**
+ * Den Builder's call (issue 1391): an explicit server_agent.self_update:
+ * ask (in user.yml, or the org's not yet copied) is the person's own say:
+ * a restart asks on a personal install too. Unset, personal restarts
+ * routinely.
+ */
+export function explicitRestartAsk(c: {
+  selfUpdate: "ask" | "auto";
+  selfUpdateFrom: "user" | "org" | "default";
+}): boolean {
+  return c.selfUpdate === "ask" && c.selfUpdateFrom !== "default";
+}
+
+/**
+ * Issue 1403 (Den Builder): den_update follows server_agent.self_update as
+ * den_restart does. For either, an explicit ask (or a config that can't
+ * be read) asks on a personal install too; other writes never.
+ */
+export function selfUpdateAsks(
+  action: string,
+  read: () => Parameters<typeof explicitRestartAsk>[0],
+): boolean {
+  if (action !== "den_restart" && action !== "den_update") return false;
+  try {
+    return explicitRestartAsk(read());
+  } catch {
+    return true;
+  }
+}
 
 export interface RestartMarker {
   /** The approval it ran for. */
@@ -51,9 +109,7 @@ export function restartMarkerPath(stateDir: string): string {
 export function writeRestartMarker(stateDir: string, m: RestartMarker): void {
   const p = restartMarkerPath(stateDir);
   fs.mkdirSync(path.dirname(p), { recursive: true, mode: 0o700 });
-  const tmp = `${p}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(m) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, p);
+  writeFileAtomic(p, JSON.stringify(m) + "\n", { mode: 0o600 });
 }
 
 /**
@@ -106,6 +162,19 @@ export function takeRestartMarker(
 
 /** At most this many doctor lines go into the line Den types. */
 const DOCTOR_LINES_MAX = 8;
+
+const UNPUSHED_PIN = new Set(["push_failed", "commit_failed", "branch_pushed"]);
+
+function pinNews(version: string, update?: LastUpdate | null): string {
+  const p = update?.pin;
+  if (!p || p.version === version || !UNPUSHED_PIN.has(p.state)) return "";
+  return ` Den ${p.version}'s pin was not pushed: ${safeLine(p.why ?? p.state)
+    .trim()
+    .slice(
+      0,
+      300,
+    )}. Only the latest pin is kept and tried again: ${version}'s pin replaces it.`;
+}
 
 /**
  * #384: what the new Den's doctor found for the update this restart is
@@ -160,6 +229,7 @@ export function backMessage(
           doctorNews(m, version, update)
       : `Den is back on ${version} (pid ${pid}) (it was ${m.fromVersion}). ` +
           `Den updated itself: ${m.reason}. Den commits and pushes the new pin itself (server_agent.pin_commit); commit it yourself only when that is off.` +
+          pinNews(version, update) +
           doctorNews(m, version, update) +
           TOOLS_LINE;
   if (m.rolledBack)
@@ -175,7 +245,7 @@ export function backMessage(
     m.fromVersion !== version &&
     update?.from === m.fromVersion &&
     update.to === version
-      ? doctorNews(m, version, update) + TOOLS_LINE
+      ? pinNews(version, update) + doctorNews(m, version, update) + TOOLS_LINE
       : "";
   return (
     `Server is back on ${version} (pid ${pid})${was}. ` + // words-ok: SRV-1 spec's own line, typed to the agent
@@ -233,7 +303,7 @@ export async function tellBack(
     // A dialog for its person: never typed into, however long it stays.
     const dialog = d.dialog ? await d.dialog().catch(() => true) : false;
     if (!dialog && (s === "idle" || now() >= until)) {
-      if (await d.type(text)) {
+      if (await d.type(safeLine(text))) {
         clear();
         return "told";
       }

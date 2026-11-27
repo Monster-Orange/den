@@ -24,6 +24,7 @@
  */
 import { rankCommands } from "/topbar.js";
 import { timeHtml } from "/kit/time.js";
+import { buttonHtml } from "/kit/button.js";
 
 // Its words are the shell's catalog (shell.js MESSAGES, R19: the err.*
 // keys), so the page is in the page's language. "Copy details" is a
@@ -165,39 +166,11 @@ function cmdLine(id, cmd, t, extra = "") {
   return (
     `<div class="den-cmd" data-cmd="${esc(id)}">` +
     `<pre class="code" id="${esc(id)}">${esc(cmd)}</pre>` +
-    `<button type="button" class="btn den-copy" data-copy-for="${esc(id)}" aria-label="${esc(t("err.signin.copy"))}" title="${esc(t("err.signin.copy"))}">` +
+    `<button type="button" class="den-btn den-copy" data-copy-for="${esc(id)}" aria-label="${esc(t("err.signin.copy"))}" title="${esc(t("err.signin.copy"))}">` +
     `${COPY_ICON}<span class="den-copied" aria-live="polite"></span></button>` +
     extra +
     `</div>`
   );
-}
-
-/** Whether this browser runs on Windows (no ssh:// app by default). */
-function onWindows() {
-  const nav = globalThis.navigator;
-  const platform = nav?.userAgentData?.platform || nav?.platform || "";
-  return /^win/i.test(platform) || /Windows/i.test(nav?.userAgent || "");
-}
-
-/** How long a click on Open Terminal waits for an app to take the page's focus. */
-const NOTHING_OPENED_MS = 2000;
-
-/**
- * SEC-2a-UX.2: after a click on Open Terminal, if this page still has
- * focus 2 s later, no app took the ssh:// link; say so under the button.
- */
-function wireNothingOpened(root) {
-  const term = root.querySelector("#den-pair-term");
-  const note = root.querySelector("#den-pair-nothing");
-  if (!term || !note) return;
-  let timer = null;
-  term.addEventListener("click", () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (!document.hidden && document.hasFocus() && note.isConnected)
-        note.hidden = false;
-    }, window.__denNothingOpenedMs || NOTHING_OPENED_MS);
-  });
 }
 
 /** Wire every copy button under `root` (each once). */
@@ -278,12 +251,37 @@ function goSignedIn(url) {
   left.then(go, go);
 }
 
-export function landingAfterSignIn(loc) {
-  if (loc.pathname !== "/signin") return loc.pathname + loc.search + loc.hash;
-  const n = new URLSearchParams(loc.search).get("next") || "/";
-  return n.startsWith("/") && !n.startsWith("//") && !n.includes("\\")
-    ? n
-    : "/";
+/**
+ * Where a sign-in may land: a path on this page's own origin, by the
+ * server's own rules (web-session.ts safeNext): no control characters,
+ * never another origin, never a sign-in link (/auth). Anything else: "/".
+ */
+export function safeLanding(raw, origin) {
+  const v = String(raw ?? "");
+  for (const c of v) {
+    const n = c.charCodeAt(0);
+    if (n < 0x20 || n === 0x7f) return "/";
+  }
+  if (!v.startsWith("/") || v.startsWith("//") || v.includes("\\")) return "/";
+  let u;
+  try {
+    u = new URL(v, origin);
+  } catch {
+    return "/";
+  }
+  if (u.origin !== origin || u.pathname === "/auth") return "/";
+  return u.pathname + u.search + u.hash;
+}
+
+export function landingAfterSignIn(loc, origin = loc.origin) {
+  // Issue 819: a sign-in link's pairing screen (/auth) goes on to its
+  // next, never back to the spent link.
+  if (loc.pathname !== "/signin" && loc.pathname !== "/auth")
+    return loc.pathname + loc.search + loc.hash;
+  return safeLanding(
+    new URLSearchParams(loc.search).get("next") || "/",
+    origin,
+  );
 }
 
 /**
@@ -322,7 +320,7 @@ function githubBlock(s, t) {
     `</ol>` +
     (ready
       ? `<div class="acts" style="margin-top:0">` +
-        `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
+        `<button type="button" class="den-btn primary" id="den-gh-start">${esc(t("err.signin.github"))}</button>` +
         `</div><div id="den-gh-flow" aria-live="polite"></div>`
       : "") +
     (!ready && g.message
@@ -357,10 +355,10 @@ function claimBlock(s, t) {
   const back = location.origin + location.pathname + location.search;
   const here = g.attest ? `${g.attest}?return=${encodeURIComponent(back)}` : "";
   const as = g.ownerGithub
-    ? `<button type="button" class="btn primary" id="den-gh-start">${esc(t("err.signin.claimAs", { login: g.ownerGithub }))}</button>`
+    ? `<button type="button" class="den-btn primary" id="den-gh-start">${esc(t("err.signin.claimAs", { login: g.ownerGithub }))}</button>`
     : "";
   const hereBtn = here
-    ? `<a class="btn${as ? "" : " primary"}" id="den-claim-here" href="${esc(here)}">${
+    ? `<a class="den-btn${as ? "" : " primary"}" id="den-claim-here" href="${esc(here)}">${
         host
           ? withHost(t, "err.signin.claimHereOn", { host })
           : esc(t("err.signin.claimHere"))
@@ -493,6 +491,13 @@ function wireGithub(root, t, s, attest = "") {
   };
   const begin = (body) => {
     clearTimeout(timer);
+    // Issue 1054: the button shows the kit's dots until the answer (a page
+    // without the shell holds it the plain way).
+    const release =
+      window.denShell?.holdDots?.(start) ??
+      (async () => {
+        if (start) start.disabled = false;
+      });
     if (start) start.disabled = true;
     fetch("/api/github/signin", {
       method: "POST",
@@ -501,6 +506,7 @@ function wireGithub(root, t, s, attest = "") {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
+      .finally(release)
       .then((r) =>
         r
           .json()
@@ -537,7 +543,7 @@ function wireGithub(root, t, s, attest = "") {
               'class="den-cmd den-gh-coderow"',
             ) +
             `<div class="acts" style="margin-top:0">` +
-            `<a class="btn primary" id="den-gh-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.githubOpen"))}</a></div>` +
+            `<a class="den-btn primary" id="den-gh-open" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(t("err.signin.githubOpen"))}</a></div>` +
             `<p class="den-gh-wait" style="margin-top:12px">${esc(t("err.signin.githubWaiting"))}</p>`,
         );
         wireCopy(box, t);
@@ -558,22 +564,23 @@ function wireGithub(root, t, s, attest = "") {
 }
 
 /**
- * Approve this computer with a code (SEC-2a, the main fallback). The page
- * asks the server for a request: a short code to approve it with, on the
- * server (`<cli> web approve <code>`) or in a signed-in Settings › Access ›
- * Waiting devices, and a poll id only this page holds. It polls; once
+ * Approve this computer with a code (SEC-2a, the main fallback; issue
+ * 819). The page asks the server for a request: a short code a signed-in
+ * browser approves in Settings › Access (or its "Allow this computer?"),
+ * and a poll id only this page holds. A sign-in link opened here brings its
+ * own request (`s.pair`) and why it is here (`s.pairLead`). It polls; once
  * approved, the poll sets the cookie and the page goes on by itself. A
  * live countdown runs out at 10 minutes: "This code expired", and a new
  * one is a click away. Denied, likewise.
  */
-function wirePair(root, t, s) {
+export function wirePair(root, t, s) {
   const box = root.querySelector("#den-pair");
   if (!box) return;
   const host = s.machine || "";
-  const target = s.ssh?.target || "";
-  // SEC-2a-UX: the account to log in as, so the SSH app doesn't guess one.
-  const user = s.ssh?.user || "";
-  const login = user ? `${user}@${target}` : target;
+  // Issue 819: the request a sign-in link opened, used once (a new code
+  // is this page's own).
+  let given = s.pair && s.pair.id ? s.pair : null;
+  const fromLink = !!given;
   let poll = null;
   let tick = null;
   let gen = 0;
@@ -588,6 +595,7 @@ function wirePair(root, t, s) {
     mine = null;
     if (!id) return Promise.resolve();
     try {
+      // busy-ok: withdrawn in the background as the page goes or starts again
       return fetch(`/api/signin/code/${encodeURIComponent(id)}`, {
         method: "DELETE",
         keepalive: true,
@@ -636,89 +644,76 @@ function wirePair(root, t, s) {
     stop();
     return withdraw();
   };
-  // Back from the back-forward cache: its request is gone, so a new one.
+  // Issue 1333: back from the back-forward cache, its request is gone,
+  // and no new one is asked for by itself: the button again.
   window.addEventListener("pageshow", (e) => {
-    if (e.persisted) begin();
+    if (!e.persisted) return;
+    stop();
+    withdraw();
+    offer();
   });
+  // Issue 1333: no request until the person asks for one. A signed-out
+  // tab nobody is looking at (restored, reloaded, in the background) never
+  // raises "Allow this computer?" on a signed-in browser.
+  function offer() {
+    box.innerHTML =
+      `<p id="den-pair-start-lead">${withHost(t, "err.signin.pairStartLead", { host, name: s.name })}</p>` +
+      `<div class="acts" style="margin-top:0"><button type="button" class="den-btn primary" id="den-pair-start">${esc(t("err.signin.pairStart"))}</button></div>`;
+    box.querySelector("#den-pair-start").addEventListener("click", begin);
+  }
   const ended = (key) => {
     stop();
     box.innerHTML =
-      `<p class="den-pair-end" role="alert" id="den-pair-ended">${withHost(t, key, { host })}</p>` +
-      `<div class="acts" style="margin-top:0"><button type="button" class="btn primary" id="den-pair-new">${esc(t("err.signin.newCode"))}</button></div>`;
+      `<p class="den-pair-end" role="alert" id="den-pair-ended">${withHost(t, key, { host, name: s.name })}</p>` +
+      `<div class="acts" style="margin-top:0"><button type="button" class="den-btn primary" id="den-pair-new">${esc(t("err.signin.newCode"))}</button></div>`;
     box.querySelector("#den-pair-new").addEventListener("click", begin);
   };
   const failed = () => {
     stop();
     box.innerHTML =
       `<p class="den-pair-end" role="alert">${esc(t("err.signin.codeFailed", { name: s.name }))}</p>` +
-      `<div class="acts" style="margin-top:0"><button type="button" class="btn" id="den-pair-new">${esc(t("err.retry"))}</button></div>`;
+      `<div class="acts" style="margin-top:0"><button type="button" class="den-btn" id="den-pair-new">${esc(t("err.retry"))}</button></div>`;
     box.querySelector("#den-pair-new").addEventListener("click", begin);
   };
-  // SEC-2a-UX.2: Windows has no ssh:// app by default, so the link would
-  // do nothing. There the command itself is the step.
-  const windows = onWindows();
   const show = (b) => {
-    const term =
-      s.ssh?.name && target && !windows
-        ? `<a class="btn" id="den-pair-term" href="ssh://${esc(login)}">${esc(t("err.signin.openTerminal"))}</a>`
-        : "";
-    // D67: first the way a person at a browser has: a browser already
-    // signed in to Den (on the Den machine or another) asks "Allow this
-    // computer?" with this code. The commands are Other ways.
+    // Issue 819: a person approves this computer from a browser already
+    // signed in to Den (on the Den machine or another): it asks "Allow
+    // this computer?" with this code, and Settings › Access lists it.
+    // No command approves it.
     box.innerHTML =
+      (fromLink && s.pairLead
+        ? `<p class="lead" id="den-pair-lead">${withHost(t, s.pairLead, { name: s.name, host })}</p>`
+        : "") +
       `<p id="den-pair-browser">${withHost(t, "err.signin.allowFrom", { name: s.name, host })}</p>` +
       `<p class="den-pair-code mono" id="den-pair-code">${esc(b.code || "")}</p>` +
       `<p>${esc(t("err.signin.step2"))}</p>` +
-      `<p class="den-pair-wait" id="den-pair-status">${esc(t("err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p>` +
-      `<details class="den-other" id="den-pair-other"><summary>${esc(t("err.signin.pairOther"))}</summary>` +
-      `<ol class="den-steps">` +
-      `<li><p>${s.local ? esc(t("err.signin.step1Local")) : withHost(t, "err.signin.step1", { host })}</p>` +
-      cmdLine("den-pair-cmd", b.approve, t) +
-      `<p>${withHost(t, "err.signin.step1Or", { name: s.name, host })}</p></li>` +
-      `</ol>` +
-      // 0.4.71: on this machine there is no other machine to ssh from.
-      (s.local ? "" : sshWay(b, term)) +
-      `</details>`;
-    wireCopy(box, t);
-    wireNothingOpened(box);
+      `<p class="den-pair-wait" id="den-pair-status">${esc(t(fromLink ? "err.signin.pairLinkWaiting" : "err.signin.waiting"))} <span class="mono" id="den-pair-left"></span></p>`;
   };
-  // The ssh way in, from another machine (SEC-2a-UX).
-  const sshWay = (b, term) =>
-    `<p>${withHost(t, "err.signin.noTerminal", { host })}</p>` +
-    (windows && b.ssh
-      ? `<p class="den-pair-win" id="den-pair-win">${esc(t("err.signin.windowsSteps"))}</p>`
-      : "") +
-    cmdLine("den-pair-ssh", b.ssh, t, term) +
-    (term
-      ? `<p class="den-pair-nothing" id="den-pair-nothing" role="status" hidden>${esc(t("err.signin.nothingOpened"))}</p>`
-      : "") +
-    (term || (windows && b.ssh && target)
-      ? `<p class="den-pair-note" id="den-pair-note">${
-          user
-            ? withHost(t, "err.signin.sshUserNote", { host, user })
-            : withHost(t, "err.signin.sshNote", { target })
-        }</p>`
-      : "");
   function begin() {
     stop();
     withdraw();
     const now = gen;
-    fetch("/api/signin/code", {
-      method: "POST",
-      cache: "no-store",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    })
-      .then((r) => r.json().catch(() => ({})))
+    const first = given;
+    given = null;
+    (first
+      ? Promise.resolve({ ok: true, ...first })
+      : // busy-ok: the page asks for its own code as it opens; no button
+        fetch("/api/signin/code", {
+          method: "POST",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        }).then((r) => r.json().catch(() => ({})))
+    )
       .then((b) => {
         if (now !== gen) return;
-        if (!b.ok || !b.id || !b.approve) return failed();
+        if (!b.ok || !b.id || !b.code) return failed();
         mine = b.id;
         // D67: this browser's own code, so once it is in (another way),
         // its pop-up never asks to let itself in.
         try {
-          sessionStorage.setItem("den-pair-mine", String(b.code || ""));
+          sessionStorage.setItem("den-pair-mine", String(b.ref || ""));
         } catch {
           /* no storage */
         }
@@ -762,14 +757,23 @@ function wirePair(root, t, s) {
               // Issue 320: gone (the server ended it: this page went
               // unheard, as a background tab may) is no dead end: a fresh
               // code, by itself.
+              // Issue 1333: the server ended it (its page went unheard,
+              // or the server restarted): the button again, never a new
+              // request by itself, even with the page in front and nobody
+              // at it.
               if (p.state === "gone") {
                 mine = null;
-                return begin();
+                stop();
+                return offer();
               }
               ended(
                 p.state === "denied"
-                  ? "err.signin.codeDenied"
-                  : "err.signin.codeExpired",
+                  ? fromLink
+                    ? "err.signin.pairLinkDenied"
+                    : "err.signin.codeDenied"
+                  : fromLink
+                    ? "err.signin.pairLinkEnded"
+                    : "err.signin.codeExpired",
               );
             })
             .catch(() => {
@@ -784,7 +788,10 @@ function wirePair(root, t, s) {
         if (now === gen) failed();
       });
   }
-  begin();
+  // Issue 1333: a sign-in link's own request opens at once; otherwise
+  // the button.
+  if (given) begin();
+  else offer();
 }
 
 /**
@@ -841,6 +848,126 @@ export function offerBlock(s, t, name) {
   );
 }
 
+/**
+ * `t(key, vars)` escaped: `{host}` in bold, `{setting}`, `{file}`, `{cmd}`
+ * and `{restart}` as code (issue 868's lines name a setting, a file and
+ * commands).
+ */
+function withMarks(t, key, vars) {
+  const v = { ...vars };
+  const marks = {};
+  for (const k of ["host", "setting", "file", "cmd", "restart"])
+    if (k in v) {
+      marks[k] = v[k];
+      v[k] = `\u0001${k}\u0001`;
+    }
+  let out = esc(t(key, v));
+  for (const [k, val] of Object.entries(marks))
+    out = out
+      .split(`\u0001${k}\u0001`)
+      .join(
+        k === "host"
+          ? `<b>${esc(val)}</b>`
+          : `<code class="mono">${esc(val)}</code>`,
+      );
+  return out;
+}
+
+/**
+ * Issue 868: the ways in this install has set up, each with whether it is
+ * set up here: Sign in with GitHub, asking from this device (a signed-in
+ * browser types the code; issue 819), and a link from a terminal on the
+ * host. From another computer with none that works, it says so plainly,
+ * and the fix. Pure (a string), for tests; "" when the server sent none.
+ */
+export function methodsBlock(s, t) {
+  const m = s && s.methods;
+  if (!m) return "";
+  const name = s.name || "Den";
+  const host = s.machine || "";
+  const v = {
+    name,
+    host,
+    setting: m.setting,
+    file: m.file,
+    restart: m.restart,
+    cmd: m.terminal,
+  };
+  const state = (
+    ok,
+    key = ok ? "err.signin.methods.ready" : "err.signin.methods.notReady",
+  ) =>
+    `<span class="den-method-state${ok ? " ok" : ""}">${withMarks(t, key, v)}</span>`;
+  const row = (id, ok, title, status, body) =>
+    `<li data-method="${id}" data-ready="${ok ? "1" : "0"}">` +
+    `<div class="den-method-head"><b>${esc(title)}</b> ${status}</div>` +
+    body +
+    `</li>`;
+  const gh = m.github === "ready";
+  const github = row(
+    "github",
+    gh,
+    t("err.signin.methods.github"),
+    state(gh),
+    `<p>${withMarks(
+      t,
+      gh
+        ? "err.signin.methods.githubReady"
+        : m.github === "no_client_id"
+          ? "err.signin.methods.githubNoClient"
+          : "err.signin.methods.githubNoOwner",
+      v,
+    )}</p>`,
+  );
+  const pair = row(
+    "pair",
+    m.browser,
+    t("err.signin.methods.pair"),
+    state(m.browser),
+    `<p>${withMarks(
+      t,
+      m.browser
+        ? "err.signin.methods.pairReady"
+        : "err.signin.methods.pairNone",
+      v,
+    )}</p>` +
+      (m.browser
+        ? `<div class="acts" style="margin-top:0">${buttonHtml({
+            label: t("err.signin.methods.ask"),
+            href: "#den-pair",
+            id: "den-signin-ask",
+            size: "sm",
+          })}</div>`
+        : ""),
+  );
+  const terminal = row(
+    "terminal",
+    !m.remote,
+    t("err.signin.methods.terminal", { host }),
+    state(!m.remote, m.remote ? "err.signin.methods.hostOnly" : undefined),
+    `<p>${withMarks(t, "err.signin.methods.terminalHow", v)}</p>`,
+  );
+  const fix = m.stuck
+    ? `<p class="lead" role="alert" id="den-signin-stuck">${withMarks(t, "err.signin.methods.stuck", v)}</p>` +
+      `<p id="den-signin-fix">${withMarks(
+        t,
+        m.github === "no_client_id"
+          ? "err.signin.methods.fixClient"
+          : "err.signin.methods.fixOwner",
+        { ...v, cmd: (s.github && s.github.owner) || m.terminal },
+      )}` +
+      (m.firstRun ? ` ${withMarks(t, "err.signin.methods.fixFirst", v)}` : "") +
+      `</p>`
+    : "";
+  return (
+    `<div id="den-signin-methods">` +
+    fix +
+    `<h2 class="den-h" id="den-methods-title">${esc(t("err.signin.methods.title", { name }))}</h2>` +
+    `<ul class="den-methods">${github}${pair}${terminal}</ul>` +
+    `</div>`
+  );
+}
+
 /** Where a sign-in lands instead of its own next (issue 666's offer). */
 let landingOverride = null;
 
@@ -863,7 +990,8 @@ function mountSignedOut(root, sh, d) {
     `<div class="ph"><div><h1>${esc(title)}</h1>` +
     `<div class="sub">${esc(t("err.signin.sub"))}</div></div></div>`;
   if (s.confirm) {
-    // SEC-2a: a link `web login` waits on: the code it printed, first.
+    // SEC-2a; issue 819: first run, a link `web login` printed opened away
+    // from the Den computer: the code it printed in that terminal, first.
     // D17: a plain sign-in page, no shell frame and no error wording.
     document.body.classList.add("den-plain");
     root.innerHTML =
@@ -875,7 +1003,7 @@ function mountSignedOut(root, sh, d) {
       `<div class="acts" style="margin-top:0">` +
       `<input id="den-confirm-code" class="mono" name="code" required maxlength="12" spellcheck="false" autocapitalize="characters" placeholder="ABCD-EFGH" ` +
       `style="font:16px/1.45 var(--mono);letter-spacing:0.08em;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-button);background:var(--sunken);color:var(--text);width:12ch">` +
-      `<button type="submit" class="btn primary" id="den-confirm-go">${esc(t("err.signin.confirmGo"))}</button></div>` +
+      `<button type="submit" class="den-btn primary" id="den-confirm-go">${esc(t("err.signin.confirmGo"))}</button></div>` +
       `<p class="den-confirm-err" id="den-confirm-err" role="alert" style="margin-top:12px"></p>` +
       `</form>` +
       `<p class="den-signin-why">${withHost(t, "err.signin.confirmWhy", { host })}</p>` +
@@ -887,6 +1015,8 @@ function mountSignedOut(root, sh, d) {
     input?.focus();
     form?.addEventListener("submit", (e) => {
       e.preventDefault();
+      // Issue 1054: Confirm shows the kit's dots until the answer.
+      const release = window.denShell?.holdDots?.(go) ?? (async () => {});
       go.disabled = true;
       err.textContent = "";
       fetch(location.pathname + location.search, {
@@ -896,6 +1026,7 @@ function mountSignedOut(root, sh, d) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: input.value }),
       })
+        .finally(release)
         .then((r) => r.json().catch(() => ({})))
         .then((b) => {
           go.disabled = false;
@@ -903,7 +1034,7 @@ function mountSignedOut(root, sh, d) {
             keepApproveKey(b);
             err.textContent = "";
             form.innerHTML = `<p class="lead" id="den-confirm-in">${esc(t("err.signin.youreIn"))}</p>`;
-            goSignedIn(typeof b.next === "string" ? b.next : "/");
+            goSignedIn(safeLanding(b.next, location.origin));
             return;
           }
           err.textContent =
@@ -923,6 +1054,17 @@ function mountSignedOut(root, sh, d) {
     });
     return;
   }
+  if (s.lead) {
+    // Issue 819: nothing to approve here (first run, away from the Den
+    // computer): what to do next, and the link stays unspent.
+    root.innerHTML =
+      head +
+      `<div class="empty" id="den-signin">` +
+      `<p class="lead" role="alert" id="den-signin-lead">${withHost(t, s.lead, { name, host })}</p>` +
+      facts +
+      `</div>`;
+    return;
+  }
   if (s.localhost) {
     // 127.0.0.1 or [::1]: the cookie is on localhost. Nothing to approve.
     root.innerHTML =
@@ -930,7 +1072,7 @@ function mountSignedOut(root, sh, d) {
       `<div class="empty" id="den-signin">` +
       `<p class="lead">${esc(t("err.signin.local", { host: location.host }))}</p>` +
       facts +
-      `<div class="acts"><a class="btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a></div></div>`;
+      `<div class="acts"><a class="den-btn primary" id="den-signin-local" href="${esc(s.localhost)}">${esc(t("err.421.open"))}</a></div></div>`;
     return;
   }
   const claim = claimBlock(s, t);
@@ -945,7 +1087,9 @@ function mountSignedOut(root, sh, d) {
     (s.expired
       ? `<p class="lead" role="alert">${esc(t("err.signin.expiredLead"))}</p>`
       : "") +
+    // D17: a claim leads; issue 868's list of ways in comes next.
     claim +
+    methodsBlock(s, t) +
     // D17: with the claim first, "from another computer" may not be true.
     (claim
       ? ""
@@ -1035,7 +1179,7 @@ export function mountErrorPage(root) {
       `<dl class="facts">` +
       `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
       `</dl><div class="acts">` +
-      `<a class="btn primary" id="den-err-agents" href="${esc(back)}">${esc(t("err.link.agents"))}</a>` +
+      `<a class="den-btn primary" id="den-err-agents" href="${esc(back)}">${esc(t("err.link.agents"))}</a>` +
       `</div></div>`;
     return;
   }
@@ -1078,8 +1222,8 @@ export function mountErrorPage(root) {
         ),
       ) +
       `<div class="empty">${lines.join("")}` +
-      `<div class="acts"><a class="btn primary" href="/local-dev">${esc(t("err.404.workspaces"))}</a>` +
-      `<button type="button" class="btn" id="den-err-search">${esc(t("err.404.search"))} <kbd>⌘K</kbd></button></div>` +
+      `<div class="acts"><a class="den-btn primary" href="/local-dev">${esc(t("err.404.workspaces"))}</a>` +
+      `<button type="button" class="den-btn" id="den-err-search">${esc(t("err.404.search"))} <kbd>⌘K</kbd></button></div>` +
       `<h2 class="sec">${esc(t("err.404.pages"))}</h2><ul class="pages">` +
       items
         .map((i) => `<li><a href="${esc(i.href)}">${esc(i.label)}</a></li>`)
@@ -1119,9 +1263,9 @@ export function mountErrorPage(root) {
       `<dl class="facts">` +
       `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
       `</dl><div class="acts">` +
-      `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.422.reload"))}</button>` +
-      `<a class="btn" href="/logs">${esc(t("err.422.logs"))}</a>` +
-      `<a class="btn" href="/settings">${esc(t("err.422.settings"))}</a>` +
+      `<button type="button" class="den-btn primary" id="den-err-retry">${esc(t("err.422.reload"))}</button>` +
+      `<a class="den-btn" href="/logs">${esc(t("err.422.logs"))}</a>` +
+      `<a class="den-btn" href="/settings">${esc(t("err.422.settings"))}</a>` +
       `</div></div>`;
     root
       .querySelector("#den-err-retry")
@@ -1131,6 +1275,20 @@ export function mountErrorPage(root) {
 
   if (d.status === 401 && d.code === "signin_required" && d.signin) {
     mountSignedOut(root, sh, d);
+    return;
+  }
+
+  if (d.status === 503 && d.code === "edge_starting") {
+    const title = t("err.starting.title");
+    document.title = document.title.replace(/Error$/, title);
+    root.innerHTML =
+      header(title, `<span class="mono">${esc(d.code)}</span>`) +
+      `<div class="empty"><p class="lead">${esc(t("err.starting.lead"))}</p>` +
+      `<div class="acts"><button type="button" class="den-btn primary" id="den-err-retry">${esc(t("err.retry"))}</button></div></div>`;
+    root
+      .querySelector("#den-err-retry")
+      ?.addEventListener("click", () => location.reload());
+    setTimeout(() => location.reload(), 2000);
     return;
   }
 
@@ -1157,8 +1315,8 @@ export function mountErrorPage(root) {
       `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
       `</dl><div class="acts">` +
       (here
-        ? `<a class="btn primary" id="den-err-local" href="${esc(here)}">${esc(t("err.421.open"))}</a>`
-        : `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>`) +
+        ? `<a class="den-btn primary" id="den-err-local" href="${esc(here)}">${esc(t("err.421.open"))}</a>`
+        : `<button type="button" class="den-btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>`) +
       `</div></div>`;
     root
       .querySelector("#den-err-retry")
@@ -1180,8 +1338,8 @@ export function mountErrorPage(root) {
     `<dt>${esc(t("err.500.id"))}</dt><dd class="mono" id="den-err-id">${esc(d.requestId)}</dd>` +
     `<dt>${esc(t("err.500.version"))}</dt><dd class="mono">${esc(d.version ?? "unknown")}</dd>` +
     `</dl><div class="acts">` +
-    `<button type="button" class="btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>` +
-    `<button type="button" class="btn" id="den-err-copy">${esc(t("err.copy"))}</button>` +
+    `<button type="button" class="den-btn primary" id="den-err-retry">${esc(t("err.retry"))}</button>` +
+    `<button type="button" class="den-btn" id="den-err-copy">${esc(t("err.copy"))}</button>` +
     `</div></div>`;
   root
     .querySelector("#den-err-retry")

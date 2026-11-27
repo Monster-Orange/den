@@ -77,9 +77,13 @@ beforeAll(async () => {
   stub = http.createServer((_q, r) => r.end("ok"));
   await new Promise<void>((r) => stub!.listen(0, "localhost", r));
   stubUrl = `http://localhost:${(stub.address() as AddressInfo).port}`;
+  // Issue 191: blog's port and its dev server are on 127.0.0.1, by
+  // number. A box run pins this process's localhost to 127.0.0.1, but the
+  // dev server is a child that isn't pinned: its listen on "localhost"
+  // took ::1 on macOS, and this file's fetch and /quit were refused.
   const closed = net.createServer();
-  await new Promise<void>((r) => closed.listen(0, "localhost", r));
-  deadUrl = `http://localhost:${(closed.address() as AddressInfo).port}`;
+  await new Promise<void>((r) => closed.listen(0, "127.0.0.1", r));
+  deadUrl = `http://127.0.0.1:${(closed.address() as AddressInfo).port}`;
   await new Promise<void>((r) => closed.close(() => r()));
   // blog's up: a dev server on blog's health port that never exits (GET
   // /quit stops it; it gives up by itself after 5 minutes). It listens 2 s
@@ -89,7 +93,7 @@ beforeAll(async () => {
   const port = new URL(deadUrl).port;
   const code =
     `const s=require("http").createServer((q,r)=>{if(q.url==="/quit"){r.end("ok");process.exit(0)}setTimeout(()=>r.end("ok"),1000)});` +
-    `setTimeout(()=>s.listen(${port},"localhost"),2000);setTimeout(()=>process.exit(0),300000)`;
+    `setTimeout(()=>s.listen(${port},"127.0.0.1"),2000);setTimeout(()=>process.exit(0),300000)`;
   devUp = `${JSON.stringify(process.execPath)} -e '${code}'`;
   s = await startAgentsPageServer({
     health: { notes: `${stubUrl}/health`, blog: `${deadUrl}/health` },
@@ -531,7 +535,8 @@ describe("the panel", () => {
     const [tab] = await Promise.all([
       p.context().waitForEvent("page"),
       p.click('.den-rail [data-pin="notes"]', {
-        modifiers: [process.platform === "darwin" ? "Meta" : "Control"],
+        // The browser's own OS picks it (a remote browser runs on another).
+        modifiers: ["ControlOrMeta"],
       }),
     ]);
     await tab.waitForURL(/\/services/);

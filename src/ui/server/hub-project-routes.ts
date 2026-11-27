@@ -23,9 +23,9 @@ import {
   setHubProject,
   type HubProjectChoice,
   type HubProjectLink,
-} from "../../shared/hub-project-link.js";
-import type { Uncovered } from "../../shared/hub-project-sync.js";
-import type { HubCreate } from "../../shared/hub-project-create.js";
+} from "../../shared/hub/hub-project-link.js";
+import type { Uncovered } from "../../shared/hub/hub-project-sync.js";
+import type { HubCreate } from "../../shared/hub/hub-project-create.js";
 import { readBody, sendJson } from "./http-helpers.js";
 import { hubMatchOf } from "./hub-link-all-routes.js";
 import {
@@ -68,6 +68,42 @@ export interface HubProjectRouteDeps {
    * became of it (an allowed one is linked by then); null: none.
    */
   create?: (ws: string) => Promise<HubCreate | null>;
+  /**
+   * Issue 646 (mock v2, 3b): the link when it points at another Hub or
+   * company, with the one connected now; null: none (or on this Hub).
+   */
+  elsewhere?: (ws: string) => LinkElsewhere | null;
+}
+
+export interface LinkElsewhere {
+  name: string;
+  origin: string;
+  company?: string;
+  now?: { origin: string; company?: string };
+}
+
+async function defaultElsewhere(ws: string): Promise<LinkElsewhere | null> {
+  const [link, binding, paths] = await Promise.all([
+    import("../../shared/hub/hub-project-link.js"),
+    import("../../shared/hub/hub-binding.js"),
+    import("../../shared/paths.js"),
+  ]);
+  const away = link.hubLinkElsewhere(ws);
+  if (!away?.hub) return null;
+  const b = binding.readHubBinding(paths.getStateDir());
+  return {
+    name: away.name,
+    origin: away.hub.origin,
+    ...(away.hub.company ? { company: away.hub.company } : {}),
+    ...(b?.origin
+      ? {
+          now: {
+            origin: b.origin,
+            ...(b.company ? { company: b.company } : {}),
+          },
+        }
+      : {}),
+  };
 }
 
 async function defaultName(ws: string): Promise<string> {
@@ -100,7 +136,7 @@ async function defaultWhoami(): Promise<{
 async function defaultCreate(ws: string): Promise<HubCreate | null> {
   const [{ defaultHubCreateDeps }, c] = await Promise.all([
     import("./hub-create-routes.js"),
-    import("../../shared/hub-project-create.js"),
+    import("../../shared/hub/hub-project-create.js"),
   ]);
   const d = await defaultHubCreateDeps();
   if (!d.asked(ws)) return null;
@@ -189,7 +225,13 @@ export async function hubProjectRoute(
       ? over.name(ws)
       : await defaultName(ws).catch(() => ws);
     const who = await (over.whoami ?? defaultWhoami)().catch(() => null);
+    const away = hub
+      ? null
+      : await Promise.resolve(
+          over.elsewhere ? over.elsewhere(ws) : defaultElsewhere(ws),
+        ).catch(() => null);
     const more = {
+      ...(away ? { elsewhere: away } : {}),
       name: shown,
       owner: who?.role ? who.role === "owner" : null,
       company: who?.company ?? null,

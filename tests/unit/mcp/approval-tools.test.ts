@@ -333,11 +333,59 @@ describe("SRV-1b: den_update", () => {
     });
   });
 
-  it("a project's agent can't update Den: refused before anything is asked", async () => {
-    const { api, calls } = fakeApi([]);
+  it("a project's agent asks too: a held write, and the answer says it waits for a person's Allow and where", async () => {
+    const { api, calls } = fakeApi([{ state: "pending" }]);
+    const r = await callTool(
+      "den_update",
+      { reason: "a fix we need", version: "0.4.44" },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "den_update",
+      args: { version: "0.4.44", reason: "a fix we need" },
+    });
+    // Asked and read back; never decided from here.
+    expect(calls.some((c) => /\/decide$/.test(c.path))).toBe(false);
+    expect(r.text).toMatch(/Den is not updated until a person Allows it/);
+    expect(r.text).toMatch(/Den's browser/);
+    expect(r.text).toMatch(/Needs you/);
+    expect(r.text).toContain(`request ${ID}`);
+    expect(r.text).toMatch(/approval_check/);
+  });
+
+  it("a project's agent's update, once a person Allows it: the server's result, and to end the turn", async () => {
+    const { api } = fakeApi([
+      { state: "pending" },
+      { state: "done", result: { ok: true, to: "0.4.44", restarting: true } },
+    ]);
+    const r = await callTool(
+      "den_update",
+      { reason: "a fix we need", version: "0.4.44" },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(JSON.parse(r.text)).toMatchObject({
+      approved: true,
+      result: { to: "0.4.44", restarting: true },
+      next: expect.stringMatching(/End your turn now/),
+    });
+  });
+
+  it("a project's agent's update the person denies: refused, nothing ran", async () => {
+    const { api } = fakeApi([{ state: "denied" }]);
     const r = await callTool("den_update", { reason: "x" }, ctx(api, true));
     expect(r.isError).toBe(true);
-    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+    expect(r.text).toMatch(/denied it .*nothing ran/);
+  });
+
+  it("Den's own agent's pending update reads as before", async () => {
+    const { api } = fakeApi([{ state: "pending" }]);
+    const r = await callTool("den_update", { reason: "x" }, ctx(api));
+    expect(r.isError).toBe(false);
+    expect(r.text).toBe(
+      `Waiting for the person to approve in Den (request ${ID}); call approval_check with this id later.`,
+    );
   });
 });
 
@@ -669,6 +717,80 @@ describe("issue 199: agent_mode", () => {
   });
 });
 
+describe("issue 1328: agent_sandbox_set", () => {
+  it("asks with the agent, on and the reason; a project's agent's ask names its project", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, agent: "ana", sandbox: "off", restarts: true },
+    }));
+    const r = await callTool(
+      "agent_sandbox_set",
+      { agent: "ana", on: false, reason: "it needs Docker" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "agent_sandbox_set",
+      args: { agent: "ana", on: false, reason: "it needs Docker" },
+    });
+    const n = calls.length;
+    await callTool(
+      "agent_sandbox_set",
+      { agent: "ana", on: true },
+      ctx(api, true),
+    );
+    expect(
+      calls.slice(n).find((c) => c.path === "/api/approvals")?.body,
+    ).toEqual({
+      action: "agent_sandbox_set",
+      args: { agent: "ana", on: true, project: "north" },
+    });
+    const none = await callTool("agent_sandbox_set", { on: false }, ctx(api));
+    expect(none.isError).toBe(true);
+    expect(none.text).toMatch(/agent/);
+  });
+});
+
+describe("issue 1371: setting_change", () => {
+  it("asks with the key, the value and the reason; null is Den's default", async () => {
+    const { api, calls } = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, key: "sessions.max_concurrent", value: 14 },
+    }));
+    const r = await callTool(
+      "setting_change",
+      { key: "sessions.max_concurrent", value: 14, reason: "more terminals" },
+      ctx(api),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "setting_change",
+      args: {
+        key: "sessions.max_concurrent",
+        value: 14,
+        reason: "more terminals",
+      },
+    });
+    const n = calls.length;
+    await callTool(
+      "setting_change",
+      { key: "web.agent_view", value: null, reason: "the default" },
+      ctx(api),
+    );
+    expect(
+      calls.slice(n).find((c) => c.path === "/api/approvals")?.body,
+    ).toEqual({
+      action: "setting_change",
+      args: { key: "web.agent_view", value: null, reason: "the default" },
+    });
+    const none = await callTool("setting_change", { value: 1 }, ctx(api));
+    expect(none.isError).toBe(true);
+    expect(none.text).toMatch(/key/);
+  });
+});
+
 describe("issue 271: hub_project_create", () => {
   it("asks with the project and the name; the name may be left to Den", async () => {
     const { api, calls } = fakeApi([], () => ({
@@ -787,5 +909,128 @@ describe("issue 647: hub_link", () => {
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/project "north".*not project "elsewhere"/);
     expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+});
+
+describe("issue 565: report", () => {
+  const PNG = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(16),
+  ]);
+  const DESTS = {
+    ok: true,
+    repos: [
+      { repo: "acme-eng/engine", visibility: "public" },
+      { repo: "acme-eng/inside", visibility: "private" },
+    ],
+  };
+  /** The fake, plus Report's own routes: destinations and drafts. */
+  function reportApi() {
+    const f = fakeApi([], () => ({
+      id: ID,
+      state: "done",
+      result: { ok: true, url: "https://github.com/acme-eng/inside/issues/9" },
+    }));
+    const inner = f.api.get.bind(f.api);
+    f.api.get = async (p, query, method, body, headers) => {
+      if (p === "/api/report" && (method ?? "GET") === "GET") {
+        f.calls.push({ path: p, method: "GET" });
+        return DESTS;
+      }
+      if (p === "/api/report/drafts" && method === "POST") {
+        f.calls.push({ path: p, method, body });
+        return { ok: true, draft: { id: "0123456789abcdef" } };
+      }
+      return inner(p, query, method, body, headers);
+    };
+    return f;
+  }
+
+  it("is a held write with no mcp.actions; the API client reaches only Report's list and drafts", () => {
+    expect(toolsFor(cfg()).map((t) => t.name)).toContain("report");
+    expect(toolsFor(cfg()).find((t) => t.name === "report")?.action).toBe(true);
+    expect(() => assertAllowedRequest("GET", "/api/report", {})).not.toThrow();
+    expect(() =>
+      assertAllowedRequest("POST", "/api/report/drafts", {}),
+    ).not.toThrow();
+    // Never the person's own send.
+    expect(() => assertAllowedRequest("POST", "/api/report/send", {})).toThrow(
+      Refusal,
+    );
+  });
+
+  it("with no title it lists the destinations with the page's labels, and asks nothing", async () => {
+    const { api, calls } = reportApi();
+    const r = await callTool("report", {}, ctx(api, true));
+    expect(r.isError).toBe(false);
+    expect(r.text).toMatch(/acme-eng\/engine.*Public repository/);
+    expect(r.text).toMatch(/acme-eng\/inside.*Private repository/);
+    expect(calls.some((c) => c.path === "/api/approvals")).toBe(false);
+  });
+
+  it("asks the person with the page, the form and the destination", async () => {
+    const { api, calls } = reportApi();
+    const r = await callTool(
+      "report",
+      {
+        kind: "bug",
+        title: "Agents page blank",
+        description: "Nothing renders",
+        page: "/agents",
+        repo: "acme-eng/inside",
+      },
+      ctx(api, true),
+    );
+    expect(r.isError).toBe(false);
+    expect(calls.find((c) => c.path === "/api/approvals")?.body).toEqual({
+      action: "report",
+      args: {
+        kind: "bug",
+        title: "Agents page blank",
+        description: "Nothing renders",
+        page: "/agents",
+        repo: "acme-eng/inside",
+      },
+    });
+  });
+
+  it("a screenshot path is read here and kept as the agent's own draft; its id goes with the ask", async () => {
+    const fs = await import("fs");
+    const os = await import("os");
+    const pth = await import("path");
+    const dir = fs.mkdtempSync(pth.join(os.tmpdir(), "den-report-mcp-"));
+    try {
+      const shot = pth.join(dir, "shot.png");
+      fs.writeFileSync(shot, PNG);
+      const { api, calls } = reportApi();
+      const r = await callTool(
+        "report",
+        { title: "Blank", repo: "acme-eng/inside", screenshot: shot },
+        ctx(api, true),
+      );
+      expect(r.isError).toBe(false);
+      const draft = calls.find((c) => c.path === "/api/report/drafts");
+      expect((draft?.body as { shot?: string }).shot).toBe(
+        `data:image/png;base64,${PNG.toString("base64")}`,
+      );
+      const asked = calls.find((c) => c.path === "/api/approvals")?.body as {
+        args: Record<string, unknown>;
+      };
+      expect(asked.args.draftId).toBe("0123456789abcdef");
+      // Not a PNG: refused before anything is kept or asked.
+      const txt = pth.join(dir, "notes.txt");
+      fs.writeFileSync(txt, "not an image");
+      const b = reportApi();
+      const n = await callTool(
+        "report",
+        { title: "Blank", screenshot: txt },
+        ctx(b.api, true),
+      );
+      expect(n.isError).toBe(true);
+      expect(b.calls.some((c) => c.path === "/api/report/drafts")).toBe(false);
+      expect(b.calls.some((c) => c.path === "/api/approvals")).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

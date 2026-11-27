@@ -11,7 +11,7 @@ import * as yaml from "yaml";
 let tmp: string;
 let wsPath: string;
 let ws: typeof import("../../../src/shared/environment-manager/workspaces.js");
-let hub: typeof import("../../../src/shared/hub-project-link.js");
+let hub: typeof import("../../../src/shared/hub/hub-project-link.js");
 
 const A = { id: "proj_abc", slug: "abc", name: "Abc" };
 const B = { id: "proj_def", slug: "def", name: "Def" };
@@ -49,7 +49,7 @@ beforeAll(async () => {
   process.env.DEN_ROOT = tmp;
   wsPath = path.join(tmp, "config/local/workspaces.yml");
   ws = await import("../../../src/shared/environment-manager/workspaces.js");
-  hub = await import("../../../src/shared/hub-project-link.js");
+  hub = await import("../../../src/shared/hub/hub-project-link.js");
 });
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 beforeEach(() => seed());

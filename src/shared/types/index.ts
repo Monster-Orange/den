@@ -679,6 +679,13 @@ export interface WorkspaceServiceEntry {
 
 export interface WorkspaceConfig {
   /**
+   * Issue 1215: true only on a project a test install's fixture person
+   * made through the server; the only projects it may activate, deactivate
+   * or delete. Written only by createWorkspace's fixtureMade option; a
+   * seed, a person's create, the CLI or a hand edit never carries it.
+   */
+  fixture_made?: true;
+  /**
    * D70: the name the person typed ("back office"), when it isn't the key.
    * The key is its slug ("back-office"): paths, URLs and the CLI use it.
    */
@@ -696,12 +703,19 @@ export interface WorkspaceConfig {
     runtimes?: Record<string, { bin?: unknown } | null>;
     permission?: unknown;
     hub_tools_restart?: unknown;
+    max_per_project?: unknown;
     /**
      * Issue 335: extra HTTP MCP servers for this project's agents:
      * `[{ name, url, bearer? }]`, bearer the name of a secrets.refs entry
      * (shared/agents/project-mcp.ts).
      */
     mcp_servers?: unknown;
+    /**
+     * Issue 459: app event feeds, each to one of this project's agents:
+     * `[{ name, agent, url, bearer?, list_url? }]`, bearer the name of a
+     * secrets.refs entry (shared/agents/app-feeds.ts).
+     */
+    event_feeds?: unknown;
   };
   /**
    * Issue 160: this project's approval policy, over the install's
@@ -757,18 +771,18 @@ export interface WorkspaceConfig {
   /**
    * H5: the Hub project this project works on, as the person linked it
    * (`hub link`, Settings › Project setup): {id, slug, name}. Den sends the
-   * id on every Hub call (X-Den-Project). See shared/hub-project-link.ts.
+   * id on every Hub call (X-Den-Project). See shared/hub/hub-project-link.ts.
    */
   hub_project?: unknown;
   /**
    * Issue 167: a rename asked of Hub, waiting for a person there:
-   * {to, held, url?, askedAt}. See shared/hub-project-link.ts.
+   * {to, held, url?, askedAt}. See shared/hub/hub-project-link.ts.
    */
   hub_rename?: unknown;
   /**
    * Issue 271: a new Hub project asked of Hub for this project, waiting for
    * an owner there (or declined): {held, name, slug, url?, askedAt, by,
-   * agent?, outcome?}. See shared/hub-project-create.ts.
+   * agent?, outcome?}. See shared/hub/hub-project-create.ts.
    */
   hub_create?: unknown;
 }

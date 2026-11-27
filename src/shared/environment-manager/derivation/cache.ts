@@ -15,6 +15,8 @@ import * as path from "path";
 import { getDistRoot } from "../../paths.js";
 import type { DerivedEdge } from "./types.js";
 import { repoInputFiles } from "./scan.js";
+import { writeFileAtomic } from "../../atomic-write.js";
+import { statSettled } from "../../stat-settled.js";
 
 // Bump whenever derivation RULES change (signals, alias handling, edge
 // classification) — the fingerprint only tracks repo inputs, so without a
@@ -38,13 +40,21 @@ interface CacheFile {
   repos: Record<string, CacheEntry>;
 }
 
-/** Stable fingerprint of a repo's input files (`mtime+size`, no content read). */
+/**
+ * Stable fingerprint of a repo's input files (`mtime+size`, no content
+ * read). A file written within a clock tick of now (statSettled)
+ * may yet change with the same stamps, so the fingerprint then names this
+ * moment and matches no cache: the edges are derived again until it settles.
+ */
 export function repoFingerprint(repoPath: string): string {
   const hash = crypto.createHash("sha1");
+  const now = Date.now();
   for (const abs of repoInputFiles(repoPath)) {
     try {
       const s = fs.statSync(abs);
       hash.update(`${abs}:${s.mtimeMs}:${s.size}\n`);
+      if (!statSettled({ mtimeMs: s.mtimeMs }, now))
+        hash.update(`unsettled:${now}:${crypto.randomUUID()}\n`);
     } catch {
       /* file vanished between listing and stat — ignore */
     }
@@ -68,25 +78,9 @@ export function writeGraphCache(cache: CacheFile): void {
   try {
     const dir = path.dirname(cachePath());
     fs.mkdirSync(dir, { recursive: true });
-    // Temp-then-rename so a concurrent reader (another den up/graph) never
-    // observes a half-written cache file. Unique temp name avoids writer
-    // collisions; rename is atomic within the same directory/filesystem.
-    const tmp = path.join(
-      dir,
-      `.graph-cache.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`,
-    );
-    try {
-      fs.writeFileSync(tmp, JSON.stringify(cache), "utf-8");
-      fs.renameSync(tmp, cachePath());
-    } catch (err) {
-      // Don't leave an orphaned temp file behind when the write/rename fails.
-      try {
-        fs.unlinkSync(tmp);
-      } catch {
-        /* ignore cleanup failure */
-      }
-      throw err;
-    }
+    // Written whole (atomic-write), so a concurrent reader (another den
+    // up/graph) never observes a half-written cache file.
+    writeFileAtomic(cachePath(), JSON.stringify(cache));
   } catch {
     /* cache is best-effort — never fail a command because it couldn't write */
   }

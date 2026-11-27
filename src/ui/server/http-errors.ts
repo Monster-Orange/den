@@ -21,6 +21,7 @@ import * as http from "http";
 import * as path from "path";
 import { PLUGIN_FILE, PLUGIN_ID } from "../../shared/plugins/manifest.js";
 import { PLUGINS_DIR, readLock } from "../../shared/plugins/store.js";
+import type { SigninMethods } from "./signin-methods.js";
 
 /** A short request id: 8 hex characters. */
 export function newRequestId(): string {
@@ -267,7 +268,7 @@ export interface ErrorPageData {
    * request checks refused it (SEC-1a): `message` says why, `code` names it.
    * 400: a request Den can't take as asked (/attest's return), the same.
    */
-  status: 400 | 401 | 403 | 404 | 421 | 422 | 500;
+  status: 400 | 401 | 403 | 404 | 421 | 422 | 500 | 503;
   /** 401, 403, 421: the refusal's code (misdirected, origin_rejected, …). */
   code?: string;
   /** 404 and 422: the path asked for (no query). */
@@ -348,6 +349,11 @@ export interface ErrorPageData {
       /** D17 claim: "This is my computer"'s start, on localhost. */
       attest?: string;
     };
+    /**
+     * Issue 868: the ways in this install has set up, and whether none of
+     * them works from the computer asking (signin-methods.ts).
+     */
+    methods?: SigninMethods;
   };
 }
 

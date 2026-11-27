@@ -17,7 +17,6 @@
 import { describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as strings from "../../../packages/den-ui/src/strings.js";
 import {
@@ -29,6 +28,9 @@ import {
   topBarHtml,
 } from "../../../packages/den-ui/src/shell-html.js";
 import { KIT_FILES, KIT_PAGE_CSS } from "../../../src/ui/server/ui-assets.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 const PKG = path.join(process.cwd(), "packages", "den-ui");
 const GATE = path.join(PKG, "bin", "den-ui-parity.mjs");
@@ -127,26 +129,53 @@ describe("shellHtml (shell-html.js), in Node", () => {
     expect(html).toContain(ja["kit.report.word"]);
   });
 
-  it("the search's placeholder and name are the kit's words, in en, es and ja; a host can't change them", () => {
-    const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
-    const ph = (h: string) => /class="den-search-ph"[^>]*>([^<]*)</.exec(h)![1];
+  const label = (h: string) => /aria-label="([^"]*)"/.exec(h)![1];
+  const ph = (h: string) => /class="den-search-ph"[^>]*>([^<]*)</.exec(h)![1];
+
+  it("the search's placeholder and name are the kit's words by default, in en, es and ja", () => {
     for (const [lang, word, name] of [
       ["en", "Search…", "Search"],
       ["es", "Buscar…", "Buscar"],
       ["ja", "検索…", "検索"],
     ] as const) {
-      // A host's own words are ignored: one search in every product.
-      const h = searchHtml({
-        lang,
-        placeholder: "Find anything…",
-        label: "Search pages",
-      } as Parameters<typeof searchHtml>[0]);
+      const h = searchHtml({ lang });
       expect(ph(h)).toBe(word);
       expect(label(h)).toBe(name);
     }
     // They are the kit's words: the nav inventory compares them.
     expect(searchHtml({})).not.toContain("data-nav-name");
     expect(searchHtml({})).not.toContain("data-nav-role");
+  });
+
+  it("issue 560: a host's placeholder shows, per locale, and names the search", () => {
+    const one = searchHtml({ lang: "es", placeholder: "Buscar agentes…" });
+    expect(ph(one)).toBe("Buscar agentes…");
+    expect(label(one)).toBe("Buscar agentes");
+    const per = { en: "Find work…", es: "Buscar trabajo…", ja: "仕事を探す…" };
+    const ja = searchHtml({ lang: "ja", placeholder: per });
+    expect(ph(ja)).toBe("仕事を探す…");
+    expect(label(ja)).toBe("仕事を探す");
+    expect(ph(searchHtml({ lang: "es-MX", placeholder: per }))).toBe(
+      "Buscar trabajo…",
+    );
+    expect(label(searchHtml({ placeholder: "Find work..." }))).toBe(
+      "Find work",
+    );
+    expect(label(searchHtml({ placeholder: "Jump to" }))).toBe("Jump to");
+    const none = searchHtml({ lang: "ja", placeholder: { en: "Find…" } });
+    expect(ph(none)).toBe("検索…");
+    expect(label(none)).toBe("検索");
+    expect(ph(searchHtml({ lang: "en", placeholder: "  " }))).toBe("Search…");
+    expect(searchHtml({ placeholder: '<b>"x"</b>' })).toContain(
+      "&lt;b&gt;&quot;x&quot;&lt;/b&gt;",
+    );
+    expect(
+      label(
+        searchHtml({ lang: "en", label: "Mine" } as Parameters<
+          typeof searchHtml
+        >[0]),
+      ),
+    ).toBe("Search");
   });
 
   // 0.7.1: the account is data ({ name?, login, role? }); the kit owns
@@ -356,7 +385,7 @@ describe("den-ui-parity (bin)", () => {
     spawnSync(process.execPath, [GATE, "--root", root, "--src", "src"], {
       encoding: "utf-8",
     });
-  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "den-ui-parity-"));
+  const tmp = () => tempDir("den-ui-parity-");
 
   it("fails on a product's own copy of a kit component", () => {
     const root = tmp();
@@ -442,6 +471,41 @@ describe("den-ui-parity (bin)", () => {
       expect(r.stdout).toMatch(new RegExp(`${c}: .*1 copy`));
   });
 
+  // Issue 673: a product's own button (.btn) is a copy of the kit's.
+  it("fails on a product's own .btn button, its look or its markup", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "own.css"),
+      ".btn { padding: 6px 12px; }\n.btn.primary:hover { color: red; }\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "own.js"),
+      "el.innerHTML = '<button class=\"btn primary\">Go</button>';\n",
+    );
+    const r = run(root);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/button: .*2 copies/);
+  });
+
+  it("the kit's .den-btn, a host's layout of it, and other -btn names are not copies", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "ok.js"),
+      [
+        "const a = '<button class=\"den-btn primary sm\">Go</button>';",
+        "const b = '<button class=\"appearance-btn-x copy-btn\">x</button>';",
+        "row.querySelector('.btn');",
+      ].join("\n") + "\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "ok.css"),
+      ".acts .den-btn { margin-left: 8px; }\n.copy-btn { color: red; }\n",
+    );
+    expect(run(root).status).toBe(0);
+  });
+
   it("a product's own words in the kit's options, or its rows in the bell, are not copies", () => {
     const root = tmp();
     fs.mkdirSync(path.join(root, "src"));
@@ -466,7 +530,7 @@ describe("den-ui-parity (bin)", () => {
     expect(fs.existsSync(path.join(process.cwd(), "DIVERGE.md"))).toBe(false);
     expect([r.status, r.stdout.trim()]).toEqual([
       0,
-      "den-ui-parity: ok, no copies of the kit's 11 components in src",
+      "den-ui-parity: ok, no copies of the kit's 12 components in src",
     ]);
   });
 });

@@ -18,15 +18,16 @@ import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
   AgentError,
   agentInputState,
+  busyAgentHolds,
   busyAgentIds,
   resolveAgentsDeps,
   restartAgent,
 } from "../../../src/ui/cli/agent-ops.js";
-import { SeenDeliveries } from "../../../src/shared/hub-delivery.js";
+import { SeenDeliveries } from "../../../src/shared/hub/hub-delivery.js";
 import {
   DeliveryLoop,
   type DeliveryHub,
-} from "../../../src/shared/hub-delivery-loop.js";
+} from "../../../src/shared/hub/hub-delivery-loop.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 let tmp = "";
@@ -247,5 +248,14 @@ describe("issue 732: restarts still count the job", () => {
     expect(await busyAgentIds(d(), ["planner"])).toEqual(["planner"]);
     job.on = false;
     expect(await busyAgentIds(d(), ["planner"])).toEqual([]);
+  }, 30_000);
+
+  it("the wait knows it is the job, with its minutes, not a turn (doctor says so)", async () => {
+    const { job, d } = await withShell(10);
+    expect(await busyAgentHolds(d(), ["planner"])).toEqual([
+      { agent: "planner", job: { minutes: expect.any(Number) } },
+    ]);
+    job.on = false;
+    expect(await busyAgentHolds(d(), ["planner"])).toEqual([]);
   }, 30_000);
 });

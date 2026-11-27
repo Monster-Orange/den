@@ -10,12 +10,13 @@
  * every tool says whose server it is instead of serving its data.
  */
 import { product } from "../../shared/product.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
 import {
   foreignServerMessage,
   identifyServer,
   type OwnServer,
   type ServerIdentity,
+  webReadyWaits,
 } from "../cli/server-identity.js";
 import { LIFECYCLE_CMDS, Refusal } from "./guards.js";
 
@@ -48,10 +49,25 @@ export class ForeignWebServer extends Error {
 
 /** Something answers on the port but would not say whose server it is. */
 export class UnidentifiedWebServer extends Error {
-  constructor(readonly port: number) {
+  constructor(
+    readonly port: number,
+    readonly id: Extract<ServerIdentity, { kind: "unresponsive" }> = {
+      kind: "unresponsive",
+    },
+    readonly waitMs?: number,
+  ) {
+    const after = id.waitedMs !== undefined ? ` after ${id.waitedMs} ms` : "";
+    const what =
+      id.why === "timeout"
+        ? `no answer to /api/server-info within ${(waitMs ?? id.waitedMs ?? 0) / 1000} s (web.tools_probe_seconds)`
+        : id.why === "error"
+          ? `/api/server-info failed with ${id.code ?? "an unknown error"}${after}`
+          : id.why === "empty"
+            ? `an empty answer to /api/server-info${after}, as from a Den still starting`
+            : "no answer to /api/server-info";
     super(
-      `the server on port ${port} did not answer /api/server-info in time, ` +
-        `so it is not known to be this distribution's; nothing was read from it. Try again.`,
+      `port ${port}: ${what}. What answers there is not known to be this distribution's, ` +
+        `so nothing was read from it. The next call checks again.`,
     );
     this.name = "UnidentifiedWebServer";
   }
@@ -59,8 +75,6 @@ export class UnidentifiedWebServer extends Error {
 
 /** How long a positive identity check is trusted. */
 export const IDENTITY_TTL_MS = 30_000;
-/** The identity probe's budget: longer than the CLI's, a busy server is ours too. */
-export const IDENTITY_TIMEOUT_MS = 5_000;
 
 export interface IdentityCheck {
   /** This distribution: its root and product. */
@@ -69,6 +83,7 @@ export interface IdentityCheck {
   identify?: (port: number, own: OwnServer) => Promise<ServerIdentity>;
   /** Default IDENTITY_TTL_MS. */
   ttlMs?: number;
+  timeoutMs?: () => number;
   /** Default Date.now. */
   now?: () => number;
 }
@@ -140,6 +155,10 @@ const READ_ROUTES = new Set([
   "/api/onboard/manifest",
   // NT (MCP notifications_list): the bell, read as the agent sees it.
   "/api/notifications",
+  // Issue 565 (MCP report): Report's destinations, each with its visibility.
+  "/api/report",
+  // Issue 459 (MCP app_feed_read): the agent's own app feeds. A read.
+  "/api/agents/self/app-feeds",
 ]);
 
 /** Action routes and their method. Anything else is never reached. */
@@ -153,10 +172,21 @@ const ACTION_ROUTES: Record<string, string> = {
   "/api/approvals": "POST",
   // NT-1 (MCP ask_human): the agent's own waiting mark, nothing more.
   "/api/agents/self/attention": "POST",
+  // Issue 1008 (MCP ask_withdraw): withdraw the agent's own question; the
+  // server refuses another agent's and records it.
+  "/api/notifications/withdraw": "POST",
+  // Issue 796 (MCP page_view): a one-time link to a read-only view.
+  "/api/agents/self/view": "POST",
+  // issue_write: one GitHub issue write in the agent's own project's repos
+  // (the server checks the role, the repo and the limit, and audits it).
+  "/api/agents/self/issue-write": "POST",
   // Issue 208 (MCP verify_run): the plan (runs nothing), and a run on
   // local only (the route refuses any other: those are held).
   "/api/verify/plan": "POST",
   "/api/verify/run": "POST",
+  // Issue 565 (MCP report): the agent's own draft, holding its screenshot
+  // until the held `report` files it. Saves on this computer only.
+  "/api/report/drafts": "POST",
 };
 
 /**
@@ -167,6 +197,7 @@ const ACTION_ROUTES: Record<string, string> = {
 const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
   // One held request's state (its own, the server checks). Never /decide.
   { re: /^\/api\/approvals\/[A-Za-z0-9_-]{16}$/, method: "GET" },
+  { re: /^\/api\/approvals\/[A-Za-z0-9_-]{16}\/withdraw$/, method: "POST" },
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/resume$/,
     method: "POST",
@@ -180,9 +211,20 @@ const ACTION_ROUTE_PATTERNS: { re: RegExp; method: string }[] = [
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/helpers(?:\/[A-Za-z0-9_-]{1,128})?$/,
     method: "GET",
   },
+  // MCP github_watch, github_watch_list, github_watch_cancel: the agent's
+  // own watches in Den's one shared GitHub watcher (the server checks scope).
+  { re: /^\/api\/agents\/self\/github-watches$/, method: "GET" },
+  { re: /^\/api\/agents\/self\/github-watches$/, method: "POST" },
+  { re: /^\/api\/agents\/self\/github-watches\/cancel$/, method: "POST" },
   // Issue 403 (MCP report_screenshot): a filed report's kept screenshot.
   // A read; the route itself answers only the person or the server agent.
   { re: /^\/api\/report\/shots\/[a-f0-9]{16}$/, method: "GET" },
+  // Issue 459 (MCP app_feed_read): one of the agent's own feeds. A read
+  // (it moves only the agent's own read mark on that feed).
+  {
+    re: /^\/api\/agents\/self\/app-feeds\/[a-z0-9][a-z0-9_-]{0,39}$/,
+    method: "GET",
+  },
   // D44 (MCP whoami): whether an agent's own tools are current. A read.
   {
     re: /^\/api\/workspaces\/[A-Za-z0-9._-]{1,64}\/agents\/[A-Za-z0-9._-]{1,64}\/tools$/,
@@ -314,10 +356,12 @@ export function createDenApi(opts: {
     )
       return;
     checking ??= (async () => {
+      const waitMs = (
+        check.timeoutMs ?? (() => webReadyWaits().toolsProbeMs)
+      )();
       const id = await (
         check.identify ??
-        ((p: number, o: OwnServer) =>
-          identifyServer(p, o, IDENTITY_TIMEOUT_MS, hostname))
+        ((p: number, o: OwnServer) => identifyServer(p, o, waitMs, hostname))
       )(port, check.own);
       if (id.kind === "ours") {
         vouchedAt = now();
@@ -326,7 +370,7 @@ export function createDenApi(opts: {
       vouchedAt = null;
       if (id.kind === "foreign") throw new ForeignWebServer(port, id.who);
       if (id.kind === "none") throw new DenWebDown(baseUrl, cli);
-      throw new UnidentifiedWebServer(port);
+      throw new UnidentifiedWebServer(port, id, waitMs);
     })().finally(() => {
       checking = null;
     });

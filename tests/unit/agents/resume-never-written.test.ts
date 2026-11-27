@@ -26,7 +26,7 @@
  * A real host on a temp socket and a scripted PTY: nothing runs. Claude
  * Code's projects folder is a temp dir. Invented names only.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
@@ -47,6 +47,25 @@ import {
   newRequestId,
 } from "../../../src/ui/server/http-errors.js";
 import { GOOD_HANDOFF } from "./helpers/handoff.js";
+
+const mockZone: { value: string | null } = { value: null };
+jest.mock("../../../src/shared/den-config.js", () => {
+  const actual = jest.requireActual(
+    "../../../src/shared/den-config.js",
+  ) as Record<string, unknown>;
+  const read = actual.readUserConfig as () => Record<string, unknown>;
+  return {
+    ...actual,
+    readUserConfig: () => ({
+      ...read(),
+      ...(mockZone.value ? { time_zone: mockZone.value } : {}),
+    }),
+  };
+});
+const OTHER_ZONE =
+  Intl.DateTimeFormat().resolvedOptions().timeZone === "Asia/Tokyo"
+    ? "Europe/Berlin"
+    : "Asia/Tokyo";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
 
 const servers: http.Server[] = [];
@@ -212,6 +231,32 @@ async function route(r: Rig) {
     };
   };
 }
+
+describe("issue 1318: a fresh start from a handoff says the time in the install's zone", () => {
+  it("names user.yml's time_zone, not the process's zone", async () => {
+    mockZone.value = OTHER_ZONE;
+    try {
+      const r = await base();
+      r.deps.exitWatchMs = 300;
+      await started(r);
+      fs.writeFileSync(handoffMd(r), GOOD_HANDOFF);
+      fs.rmSync(path.join(r.dir, "claude-config"), { recursive: true });
+      await stop(r);
+      const done = claudeAnswers(r);
+      const code = await agents(r, "resume", ID);
+      done();
+      expect(code).toBe(0);
+      expect(lastArg(r)).toContain("Den started you fresh");
+      expect(lastArg(r)).toMatch(
+        new RegExp(
+          `It is now .+ \\(UTC[+-]\\d\\d:\\d\\d, ${OTHER_ZONE.replace("/", "\\/")}\\)\\.`,
+        ),
+      );
+    } finally {
+      mockZone.value = null;
+    }
+  }, 30_000);
+});
 
 describe("issue 658, clause 1: a relaunch that never began, then Resume", () => {
   it("Resume starts it with the handoff as its first prompt: never --resume of the unwritten conversation", async () => {

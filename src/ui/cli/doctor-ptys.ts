@@ -23,7 +23,7 @@ import {
   HOST_RESTART_TITLE,
   readHostRefreshState,
 } from "../../shared/sessions/host-refresh-state.js";
-import { readUserConfig } from "../../shared/den-config.js";
+import { personTimeZone } from "../../shared/time-zone.js";
 import { localDateTime } from "../../shared/local-time.js";
 
 export interface PtySettings {
@@ -215,18 +215,7 @@ export function defaultHostModuleDeps(stateDir: string): HostModuleDeps {
       pty: installedPtyModule(),
     }),
     refresh: () => readHostRefreshState(stateDir),
-    zone: () => {
-      try {
-        // user.yml time_zone, as time-zone-pref.ts reads it (the CLI
-        // imports no server module): a zone Intl can't use is the machine's.
-        const z = readUserConfig().time_zone;
-        if (typeof z !== "string" || !z || z.length > 64) return undefined;
-        new Intl.DateTimeFormat("en", { timeZone: z });
-        return z;
-      } catch {
-        return undefined; // the machine's own zone
-      }
-    },
+    zone: () => personTimeZone(),
   };
 }
 
@@ -271,11 +260,17 @@ export async function hostModuleLines(
           zone = undefined;
         }
         const min = Math.max(1, Math.ceil(r.waitSeconds / 60));
-        detail = `${head}; Den restarts it when agents are idle (waiting since ${localDateTime(r.startedAt, zone)}, at most ${min} min)`;
+        // Issue 732: a job an agent started holds it, not a turn: said so.
+        const jobs = r.jobs ?? [];
+        const jobWait = jobs.length
+          ? `; it waits for ${jobs.map((j) => `agent ${j.agent}: a background job it started is still running (${j.minutes} min)`).join("; ")}`
+          : "";
+        detail = `${head}; Den restarts it when agents are idle (waiting since ${localDateTime(r.startedAt, zone)}, at most ${min} min)${jobWait}`;
         refresh = {
           state: "waiting",
           since: r.startedAt,
           waitSeconds: r.waitSeconds,
+          ...(jobs.length ? { jobs } : {}),
         };
       } else {
         status = "fail";

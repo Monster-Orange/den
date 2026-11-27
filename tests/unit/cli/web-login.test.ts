@@ -39,8 +39,8 @@ import {
   ownsSubcommandHelp,
 } from "../../../src/ui/cli/flag-parser.js";
 import { MCP_CONNECT_SUBCOMMANDS } from "../../../src/ui/cli/mcp-connect.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
-import { checkLoginCode } from "../../../src/shared/web-session.js";
+import { readWebSecret } from "../../../src/shared/web/web-secret.js";
+import { checkLoginCode } from "../../../src/shared/web/web-session.js";
 
 let tmp = "";
 beforeEach(() => {
@@ -58,6 +58,8 @@ async function login(args: string[], webUrl: string | null = ADDRESS) {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    // Sign-in: the person's own terminal.
+    person: { tty: true, line: () => [process.pid, 1] },
     webUrl: () => (webUrl ? { url: webUrl, confirmed: true } : null),
   });
   return { code, out, err };
@@ -138,6 +140,8 @@ describe("web sessions --help", () => {
       out: (x) => (out += x),
       err: () => undefined,
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
     });
     expect(code).toBe(0);
     expect(out).toMatch(
@@ -163,6 +167,8 @@ const io = () => {
       out: (x: string) => (o.out += x),
       err: (x: string) => (o.err += x),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
     },
   };
 };

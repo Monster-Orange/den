@@ -53,18 +53,24 @@
  *
  * `gh` runs through `deps.gh` (tests pass a fake: never the real one).
  */
+import type { FiledHit, FiledText } from "../../shared/filed-text-check.js";
 import * as http from "http";
 import * as os from "os";
 import { spawn } from "child_process";
 import {
   issueBody,
   issueTitle,
+  redactReport,
   type RedactNames,
   type ReportForm,
   type ReportKind,
 } from "../../shared/feedback.js";
 import type { Decision, FlowView } from "./device-flows.js";
-import { repoVisibilities, type PublicLookup } from "./report-visibility.js";
+import {
+  repoVisibilities,
+  type PublicLookup,
+  type RepoVisibility,
+} from "./report-visibility.js";
 import {
   draftStore,
   sentLog,
@@ -88,7 +94,39 @@ export interface GhResult {
   stderr: string;
 }
 
+/**
+ * Issue 565: who a report request comes from, as drafts are matched
+ * (`agent:<id>`, the bare agent id): an agent's token gives its id; a
+ * claim with no agent token (the fixture person, a header) is never the
+ * person, so it is named by its client; null is the person.
+ */
+export function reportAgentOf(
+  principal: { actor: string } | null,
+  actor: { client?: string; agent?: string } | null,
+): string | null {
+  if (principal) return principal.actor.replace(/^agent:/, "");
+  if (!actor) return null;
+  return (actor.agent ?? actor.client ?? "unverified").replace(/^agent:/, "");
+}
+
 export interface ReportRouteDeps {
+  /**
+   * Issue 1127: the listed-names check (shared/filed-text-check.ts) for the
+   * person's own text (the title and description) in its destination: the
+   * refusal (its hits and a plain line), or null to file it. The server
+   * checks public destinations and those whose visibility isn't known;
+   * none given, nothing is checked.
+   */
+  wordsCheck?: (
+    repo: string,
+    texts: FiledText[],
+  ) => Promise<{ error: string; hits: FiledHit[] } | null>;
+  /**
+   * Issue 1127: the sections Den adds (the page, the version…) with each
+   * listed name masked, so what Den writes never holds one and the person
+   * is never asked to rewrite it. None given: as they are.
+   */
+  maskListed?: (text: string) => string;
   settings: () => FeedbackSettings;
   stateDir: () => string;
   /** Runs `gh` with `args` (stdin: the body), as the person. */
@@ -124,11 +162,26 @@ export interface ReportRouteDeps {
    */
   shotReader?: (req: http.IncomingMessage) => ShotReader;
   /**
+   * Issue 946: whether this filing comes from the fixture person's session
+   * (its kept screenshot is marked so). Absent: never.
+   */
+  filedByFixture?: (req: http.IncomingMessage) => boolean;
+  /**
    * Issue 415: GitHub's tokenless answer for a repo's visibility, the
    * fallback when the person's `gh` can't say ("public" or null). None:
    * not asked.
    */
   publicRepo?: PublicLookup;
+  /**
+   * Issue 565: the activity trail's line for a filed report: who filed it
+   * (the person, or `agent:<id>` through the held `report`) and where.
+   */
+  audit?: (e: {
+    by: string;
+    repo: string;
+    url: string;
+    added: boolean;
+  }) => void;
   /** An open issue with this title, read without a token (F5), or null. */
   searchOpen?: (
     repo: string,
@@ -138,8 +191,8 @@ export interface ReportRouteDeps {
 
 /** Who may read a kept screenshot (issue 403), or why not. */
 export type ShotReader =
-  | { ok: true }
-  | { ok: false; status: 401 | 403; who?: string };
+  /** fixture: the fixture person, who reads only what a fixture session filed (issue 946). */
+  { ok: true; fixture?: true } | { ok: false; status: 401 | 403; who?: string };
 
 /**
  * Issue 403: whether this request may read a kept screenshot. The route is
@@ -148,8 +201,9 @@ export type ShotReader =
  * and report ids are in public issues). The person proves it as approvals
  * ask: their command-line token, or a signed-in browser with its CSRF
  * token and approval key (approverAllowed, "read"). This install's own
- * agent reads with its token; a project agent's token gets 403. Anything
- * else: 401.
+ * agent reads with its token; a project agent's token gets 403. The
+ * fixture person (a test install, issue 810) reads with its session and
+ * CSRF token. Anything else: 401.
  */
 export function shotReaderOf(
   req: http.IncomingMessage,
@@ -162,7 +216,13 @@ export function shotReaderOf(
       ? { ok: true }
       : { ok: false, status: 403, who: p.actor };
   if (p?.kind === "person") return { ok: true };
-  if (approverAllowed(req, guard, "read").ok) return { ok: true };
+  const browser = approverAllowed(req, guard, "read");
+  if (browser.ok) return { ok: true };
+  // The fixture person (a test install's live checks, issue 810) never
+  // decides what waits for a person, but a read decides nothing: once its
+  // session and CSRF token are proven, it is the person who runs the install.
+  if (browser.code === "fixture_cannot_approve")
+    return { ok: true, fixture: true };
   return { ok: false, status: 401 };
 }
 
@@ -300,6 +360,8 @@ interface PendingShot {
   id: string;
   png: Buffer;
   share: boolean;
+  /** Issue 946: filed by the fixture person's session. */
+  byFixture: boolean;
 }
 
 /** The page's view of it: Hub's recipient, or why it stayed here. */
@@ -321,6 +383,9 @@ export function shotLine(o: ShotOutcome): string {
     : `Screenshot: kept on the reporting install; its agent can read it with report_screenshot(${o.id})`;
 }
 
+/** Issue 957: the filed line when this send's screenshot wasn't kept. */
+export const NOT_KEPT_LINE = "Screenshot: not kept on the reporting install";
+
 /** Hub's id goes in a public issue: its own shape only. */
 const HUB_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -332,7 +397,9 @@ const HUB_ID = /^[A-Za-z0-9_-]{1,64}$/;
 function pendingShot(
   b: Record<string, unknown>,
   maxBytes: number,
-): PendingShot | null | string {
+  byFixture = false,
+  stateDir?: string,
+): PendingShot | null | string | { conflict: string } {
   if (b.shot === undefined || b.shot === null) return null;
   const png = pngOfDataUrl(b.shot, maxBytes);
   if (!png)
@@ -341,7 +408,15 @@ function pendingShot(
     typeof b.draftId === "string" && REPORT_ID.test(b.draftId)
       ? b.draftId
       : newReportId();
-  return { id, png, share: b.shareShot === true };
+  // Issue 957: a filing never replaces a kept screenshot of another kind of
+  // filer (the fixture person's, or anyone else's): nothing is filed.
+  const kept = stateDir ? shotStore(stateDir).get(id) : null;
+  if (kept && (kept.record.byFixture === true) !== byFixture)
+    return {
+      conflict:
+        "that report id holds another filer's screenshot: send it as a new report",
+    };
+  return { id, png, share: b.shareShot === true, byFixture };
 }
 
 /** The line a body is filed with: kept here (true once it is filed). */
@@ -362,9 +437,19 @@ async function afterFiling(
   hub: ReportRouteDeps["shotHub"],
   now: number,
   update: (line: string) => Promise<void>,
-): Promise<ShotOutcome> {
+): Promise<ShotOutcome | null> {
   const store = shotStore(stateDir);
-  store.save(p.id, p.png, repo, now);
+  // Issue 957: checked again here, at the save. A held filing saves only
+  // after the person's approval, and another kind of filer may have kept
+  // a screenshot under this id meanwhile: that one stays, nothing kept.
+  const kept = store.get(p.id);
+  if (kept && (kept.record.byFixture === true) !== p.byFixture) {
+    // The filed line named this id: it says now that none was kept, so no
+    // filed issue names an id that holds another filer's screenshot.
+    await update(`\n\n${NOT_KEPT_LINE}`).catch(() => undefined);
+    return null;
+  }
+  store.save(p.id, p.png, repo, now, { byFixture: p.byFixture });
   const local = (why?: UploadWhy): ShotOutcome => ({
     where: "local",
     id: p.id,
@@ -409,7 +494,7 @@ const DRAFT_PATH = /^\/api\/report\/drafts\/([a-f0-9]{16})$/;
 const KINDS: readonly ReportKind[] = ["bug", "idea", "question"];
 
 /** What the client sends for a preview or a send. */
-interface Draftish {
+export interface Draftish {
   kind?: unknown;
   title?: unknown;
   description?: unknown;
@@ -450,11 +535,19 @@ export function newIssueUrl(repo: string, title: string, body: string): string {
 }
 
 /** The exact title and body that would be posted. */
-async function compose(
+export async function compose(
   b: Draftish,
   d: ReportRouteDeps,
 ): Promise<
-  { title: string; body: string; repo: string; label: string } | string
+  | {
+      title: string;
+      body: string;
+      repo: string;
+      label: string;
+      /** Issue 1127: the person's own text, redacted as filed. */
+      own: FiledText[];
+    }
+  | string
 > {
   const form = formOf(b);
   if (typeof form === "string") return form;
@@ -469,6 +562,10 @@ async function compose(
   const diag: Record<string, unknown> = { ...server };
   for (const [k, v] of Object.entries(client))
     if (typeof v === "string") diag[k] = v.slice(0, 20_000);
+  // Issue 1127: Den's sections never carry a listed name.
+  const mask = d.maskListed;
+  if (mask)
+    for (const [k, v] of Object.entries(diag)) diag[k] = maskDeep(v, mask);
   const opts = { names: b.redact !== false };
   const names = d.names();
   return {
@@ -476,6 +573,41 @@ async function compose(
     body: issueBody(form, diag, names, opts),
     repo,
     label: KIND_LABEL[form.kind],
+    own: [
+      { field: "title", text: issueTitle(form, names, opts) },
+      {
+        field: "description",
+        text: redactReport(form.description, names, opts),
+      },
+    ],
+  };
+}
+
+/** Issue 1127: every string inside `v` (objects, lists) through `mask`. */
+function maskDeep(v: unknown, mask: (s: string) => string): unknown {
+  if (typeof v === "string") return mask(v);
+  if (Array.isArray(v)) return v.map((x) => maskDeep(x, mask));
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, maskDeep(x, mask)]),
+    );
+  return v;
+}
+
+/**
+ * Issue 1127: the listed-names refusal for a composed report: 400 with
+ * code "words", the hits (the page says them in the person's language)
+ * and a plain line (for den report and the tool); or null to go on.
+ */
+async function wordsRefusal(
+  d: ReportRouteDeps,
+  c: { repo: string; own: FiledText[] },
+): Promise<FiledReport | null> {
+  const r = await d.wordsCheck?.(c.repo, c.own);
+  if (!r) return null;
+  return {
+    status: 400,
+    body: { ok: false, code: "words", hits: r.hits, error: r.error },
   };
 }
 
@@ -488,6 +620,193 @@ async function ghSignedIn(d: ReportRouteDeps): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** A destination's visibility as the form shows it (issue 415). */
+export type DestinationVisibility = RepoVisibility | "unknown";
+
+/**
+ * Issue 415: each destination's visibility, so the form says who can see
+ * it: the person's `gh` first, GitHub's tokenless answer after. Still not
+ * known: "unknown", never "public" (the form then says not known, with the
+ * caution). The wait is short and bounded. Issue 565: `den report` and the
+ * agents' `report` show the same list and labels.
+ */
+export async function reportDestinations(d: ReportRouteDeps): Promise<{
+  signedIn: boolean;
+  repos: { repo: string; visibility: DestinationVisibility }[];
+}> {
+  const s = d.settings();
+  const signedIn = await ghSignedIn(d);
+  const vis =
+    signedIn || d.publicRepo
+      ? await repoVisibilities(d.stateDir(), s.repos, {
+          gh: signedIn ? (a) => d.gh(a) : null,
+          anon: d.publicRepo,
+          ttlMs: s.visibilityCacheHours * 3_600_000,
+          timeoutMs: s.visibilityTimeoutSeconds * 1000,
+          retryMs: s.visibilityRetrySeconds * 1000,
+          now: d.now ?? Date.now,
+        })
+      : {};
+  return {
+    signedIn,
+    repos: s.repos.map((repo) => ({
+      repo,
+      visibility: vis[repo] ?? "unknown",
+    })),
+  };
+}
+
+/** What a send answers: the route's status and body. */
+export interface FiledReport {
+  status: number;
+  body: Record<string, unknown>;
+}
+
+/**
+ * The send, as the person on GitHub (their `gh`): the page's Send and the
+ * command line's (POST /api/report/send), and issue 565's held `report`
+ * once the person (or the approval policy) allowed it. `who` counts for
+ * the hour's limit; `by` is who filed it, for the audit.
+ */
+export async function fileReport(
+  d: ReportRouteDeps,
+  b: Draftish & Record<string, unknown>,
+  who: string,
+  by: string,
+  // Issue 946: filed by the fixture person's session (its kept screenshot
+  // is marked so, and only such a one is the fixture person's to read).
+  opts: { byFixture?: boolean } = {},
+): Promise<FiledReport> {
+  const now = d.now ?? Date.now;
+  const c = await compose(b, d);
+  if (typeof c === "string")
+    return { status: 400, body: { ok: false, error: c } };
+  // Issue 1127: listed names, before anything is counted or sent.
+  const words = await wordsRefusal(d, c);
+  if (words) return words;
+  const s = d.settings();
+  const log = sentLog(d.stateDir());
+  if (log.recent(who, now()) >= s.maxPerHour)
+    return {
+      status: 429,
+      body: {
+        ok: false,
+        limit: s.maxPerHour,
+        nextAt: new Date(log.nextAt(who, now())).toISOString(),
+        error: `at most ${s.maxPerHour} reports an hour`,
+      },
+    };
+  if (!(await ghSignedIn(d)))
+    return {
+      status: 409,
+      body: {
+        ok: false,
+        need: "github",
+        error: "sending needs a GitHub sign-in: nothing was sent",
+        deviceFlow: !!d.flows,
+        newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
+      },
+    };
+  const addTo = Number.isInteger(b.addTo) ? (b.addTo as number) : null;
+  if (addTo === null && b.fileNew !== true) {
+    const dup = await sameTitle(d, c.repo, c.title);
+    if (dup) return { status: 409, body: { ok: false, duplicate: dup } };
+  }
+  const pending = pendingShot(
+    b,
+    d.shotMaxBytes?.() ?? MAX_KEPT_BYTES,
+    opts.byFixture === true,
+    d.stateDir(),
+  );
+  if (typeof pending === "string")
+    return { status: 400, body: { ok: false, error: pending } };
+  if (pending && "conflict" in pending)
+    return { status: 409, body: { ok: false, error: pending.conflict } };
+  const body = c.body + filedLine(pending);
+  const r =
+    addTo !== null
+      ? await d.gh(
+          ["issue", "comment", String(addTo), "-R", c.repo, "--body-file", "-"],
+          body,
+        )
+      : await d.gh(
+          [
+            "issue",
+            "create",
+            "-R",
+            c.repo,
+            "--title",
+            c.title,
+            ...((await hasLabel(d, c.repo, c.label))
+              ? ["--label", c.label]
+              : []),
+            "--body-file",
+            "-",
+          ],
+          body,
+        );
+  if (r.code !== 0)
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: `GitHub refused it: ${(r.stderr || r.stdout).trim().split("\n")[0] || `gh exited ${r.code}`}`,
+        // Nothing was kept or sent: the tab's issue has no screenshot line.
+        newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
+      },
+    };
+  log.add(who, now());
+  if (typeof b.draftId === "string") draftStore(d.stateDir()).remove(b.draftId);
+  const url = r.stdout.trim().split("\n").pop() ?? "";
+  // Issue 565: who filed it and where it went, in the activity trail.
+  try {
+    d.audit?.({ by, repo: c.repo, url, added: addTo !== null });
+  } catch {
+    /* the trail is best effort: the issue is filed */
+  }
+  // Issue 403: filed, so now the screenshot (kept, to Hub, line updated).
+  const shot = pending
+    ? await afterFiling(
+        pending,
+        c.repo,
+        d.stateDir(),
+        d.shotHub,
+        now(),
+        async (line) => {
+          const issue = /\/issues\/(\d+)$/.exec(url)?.[1];
+          const comment = /#issuecomment-(\d+)$/.exec(url)?.[1];
+          if (addTo !== null && comment)
+            await d.gh(
+              [
+                "api",
+                "-X",
+                "PATCH",
+                `repos/${c.repo}/issues/comments/${comment}`,
+                "--input",
+                "-",
+              ],
+              JSON.stringify({ body: c.body + line }),
+            );
+          else if (addTo === null && issue)
+            await d.gh(
+              ["issue", "edit", issue, "-R", c.repo, "--body-file", "-"],
+              c.body + line,
+            );
+        },
+      )
+    : null;
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      url,
+      repo: c.repo,
+      added: addTo !== null,
+      ...(shot ? { shot: pageOutcome(shot) } : {}),
+    },
+  };
 }
 
 /** My reports' one search: the person's issues, each with its last reply. */
@@ -629,29 +948,11 @@ export function handleReportRoutes(
     return run(async () => {
       const s = d.settings();
       const who = d.personOf(req);
-      const signedIn = await ghSignedIn(d);
-      // Issue 415: each destination's visibility, so the form says who can
-      // see it: the person's `gh` first, GitHub's tokenless answer after.
-      // Still not known: "unknown", never "public" (the form then says not
-      // known, with the caution). The wait is short and bounded.
-      const vis =
-        signedIn || d.publicRepo
-          ? await repoVisibilities(d.stateDir(), s.repos, {
-              gh: signedIn ? (a) => d.gh(a) : null,
-              anon: d.publicRepo,
-              ttlMs: s.visibilityCacheHours * 3_600_000,
-              timeoutMs: s.visibilityTimeoutSeconds * 1000,
-              retryMs: s.visibilityRetrySeconds * 1000,
-              now,
-            })
-          : {};
+      const { signedIn, repos } = await reportDestinations(d);
       d.sendJson(res, {
         ok: true,
         enabled: s.enabled,
-        repos: s.repos.map((repo) => ({
-          repo,
-          visibility: vis[repo] ?? "unknown",
-        })),
+        repos,
         github: { signedIn, deviceFlow: !!d.flows },
         maxPerHour: s.maxPerHour,
         captureSeconds: s.captureSeconds,
@@ -682,132 +983,18 @@ export function handleReportRoutes(
           res,
           {
             ok: false,
-            error: "only a person sends a report; an agent's stays a draft",
+            error:
+              "only a person sends a report here; an agent asks with `report` (a held write the person allows)",
           },
           403,
         );
       const b = await json();
-      const c = await compose(b, d);
-      if (typeof c === "string")
-        return d.sendJson(res, { ok: false, error: c }, 400);
-      const s = d.settings();
-      const who = d.personOf(req);
-      const log = sentLog(d.stateDir());
-      if (log.recent(who, now()) >= s.maxPerHour)
-        return d.sendJson(
-          res,
-          {
-            ok: false,
-            limit: s.maxPerHour,
-            nextAt: new Date(log.nextAt(who, now())).toISOString(),
-            error: `at most ${s.maxPerHour} reports an hour`,
-          },
-          429,
-        );
-      if (!(await ghSignedIn(d)))
-        return d.sendJson(
-          res,
-          {
-            ok: false,
-            need: "github",
-            error: "sending needs a GitHub sign-in: nothing was sent",
-            deviceFlow: !!d.flows,
-            newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
-          },
-          409,
-        );
-      const addTo = Number.isInteger(b.addTo) ? (b.addTo as number) : null;
-      if (addTo === null && b.fileNew !== true) {
-        const dup = await sameTitle(d, c.repo, c.title);
-        if (dup) return d.sendJson(res, { ok: false, duplicate: dup }, 409);
-      }
-      const pending = pendingShot(b, d.shotMaxBytes?.() ?? MAX_KEPT_BYTES);
-      if (typeof pending === "string")
-        return d.sendJson(res, { ok: false, error: pending }, 400);
-      const body = c.body + filedLine(pending);
-      const r =
-        addTo !== null
-          ? await d.gh(
-              [
-                "issue",
-                "comment",
-                String(addTo),
-                "-R",
-                c.repo,
-                "--body-file",
-                "-",
-              ],
-              body,
-            )
-          : await d.gh(
-              [
-                "issue",
-                "create",
-                "-R",
-                c.repo,
-                "--title",
-                c.title,
-                ...((await hasLabel(d, c.repo, c.label))
-                  ? ["--label", c.label]
-                  : []),
-                "--body-file",
-                "-",
-              ],
-              body,
-            );
-      if (r.code !== 0)
-        return d.sendJson(
-          res,
-          {
-            ok: false,
-            error: `GitHub refused it: ${(r.stderr || r.stdout).trim().split("\n")[0] || `gh exited ${r.code}`}`,
-            // Nothing was kept or sent: the tab's issue has no screenshot line.
-            newIssueUrl: newIssueUrl(c.repo, c.title, c.body),
-          },
-          502,
-        );
-      log.add(who, now());
-      if (typeof b.draftId === "string")
-        draftStore(d.stateDir()).remove(b.draftId);
-      const url = r.stdout.trim().split("\n").pop() ?? "";
-      // Issue 403: filed, so now the screenshot (kept, to Hub, line updated).
-      const shot = pending
-        ? await afterFiling(
-            pending,
-            c.repo,
-            d.stateDir(),
-            d.shotHub,
-            now(),
-            async (line) => {
-              const issue = /\/issues\/(\d+)$/.exec(url)?.[1];
-              const comment = /#issuecomment-(\d+)$/.exec(url)?.[1];
-              if (addTo !== null && comment)
-                await d.gh(
-                  [
-                    "api",
-                    "-X",
-                    "PATCH",
-                    `repos/${c.repo}/issues/comments/${comment}`,
-                    "--input",
-                    "-",
-                  ],
-                  JSON.stringify({ body: c.body + line }),
-                );
-              else if (addTo === null && issue)
-                await d.gh(
-                  ["issue", "edit", issue, "-R", c.repo, "--body-file", "-"],
-                  c.body + line,
-                );
-            },
-          )
-        : null;
-      d.sendJson(res, {
-        ok: true,
-        url,
-        repo: c.repo,
-        added: addTo !== null,
-        ...(shot ? { shot: pageOutcome(shot) } : {}),
+      // Issue 565: one send for the page, the command line and the held
+      // `report` an agent asks for.
+      const r = await fileReport(d, b, d.personOf(req), "person", {
+        byFixture: d.filedByFixture?.(req) === true,
       });
+      d.sendJson(res, r.body, r.status);
     });
 
   if (pathname === "/api/report/github-send" && req.method === "POST")
@@ -823,12 +1010,22 @@ export function handleReportRoutes(
       const c = await compose(b, d);
       if (typeof c === "string")
         return d.sendJson(res, { ok: false, error: c }, 400);
+      // Issue 1127: listed names, as the send through `gh` checks them.
+      const words = await wordsRefusal(d, c);
+      if (words) return d.sendJson(res, words.body, words.status);
       const link = newIssueUrl(c.repo, c.title, c.body);
       // Issue 403: held with the report; nothing kept or sent before the
       // person approves and GitHub files it (decideReport).
-      const pending = pendingShot(b, d.shotMaxBytes?.() ?? MAX_KEPT_BYTES);
+      const pending = pendingShot(
+        b,
+        d.shotMaxBytes?.() ?? MAX_KEPT_BYTES,
+        d.filedByFixture?.(req) === true,
+        d.stateDir(),
+      );
       if (typeof pending === "string")
         return d.sendJson(res, { ok: false, error: pending }, 400);
+      if (pending && "conflict" in pending)
+        return d.sendJson(res, { ok: false, error: pending.conflict }, 409);
       const s = d.settings();
       const who = d.personOf(req);
       const log = sentLog(d.stateDir());
@@ -930,7 +1127,10 @@ export function handleReportRoutes(
           },
           who.status,
         );
-      const got = shotStore(d.stateDir()).get(sm[1]!);
+      const kept = shotStore(d.stateDir()).get(sm[1]!);
+      // Issue 946: the fixture person sees only what a fixture session
+      // filed; anything else answers as if none were kept.
+      const got = kept && (!who.fixture || kept.record.byFixture) ? kept : null;
       if (!got)
         return d.sendJson(
           res,
@@ -1034,7 +1234,8 @@ export function handleReportRoutes(
         title: form.title,
         description: form.description,
         sections: form.sections,
-        redact: b.redact !== false,
+        // An agent's draft is always scrubbed: it can't turn that off.
+        redact: agent ? true : b.redact !== false,
         ...(typeof b.repo === "string" ? { repo: b.repo } : {}),
         ...(shot ? { shot } : {}),
       });

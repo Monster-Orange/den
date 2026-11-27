@@ -2,6 +2,7 @@
 // Live check for #335: a project's extra HTTP MCP servers are listed in Settings › Project and in doctor,
 // by name and url only. Adding one is a held write that waits on the person's Allow, so on a bed with none
 // the clauses that need a server are not run. Read only.
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 335;
 export const clauses = [
   "the servers are listed in Settings (names and urls only)",
@@ -13,12 +14,15 @@ export const clauses = [
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280] };
 export const timeoutMs = 120000;
 
+// Read only (issue 845): reads doctor and Settings › Project's MCP server list.
+export const readOnly = true;
+
 export async function setup(ctx) {
-  const d = ctx.cli(["doctor"]);
-  const lines = String(d.out + d.err)
-    .split("\n")
-    .filter((l) => /^\s*mcp server\s/.test(l))
-    .map((l) => l.trim());
+  const d = ctx.cli(["doctor", "--json"]);
+  const checks = doctorChecks(d);
+  const lines = checks
+    .filter((c) => String(c?.id ?? "").startsWith("mcp:server:"))
+    .map((c) => `${c.status}: ${c.detail}`);
   return { doctorCode: d.code, doctor: lines };
 }
 

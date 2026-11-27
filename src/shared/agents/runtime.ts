@@ -84,6 +84,11 @@ export interface AgentMcp {
     /** hub.allow_tools: its tools run without asking (default on). */
     allowTools?: boolean;
     /**
+     * Issue 158: the Hub delivery loop's text for its instructions (Den's
+     * copy, then the project's addition); absent when it is off.
+     */
+    loop?: string;
+    /**
      * D41: Den's proxy to Hub (<den>/hub) for the Stop hook's inbox check;
      * absent when hub.inbox_on_stop is off. No token: the hook sends the
      * agent's own Den token, from its env.
@@ -122,6 +127,42 @@ export interface LaunchInput {
    */
   personConfigDir?: string;
   /**
+   * Issue 728: the folders holding the edge's private keys (its CA's and
+   * its TLS key), from the resolved edge config; denied like stateDir's
+   * credential files.
+   */
+  edgeKeyDirs?: string[];
+  /**
+   * Issue 816: the state folders of test installs announced on this
+   * computer. Their web.secret mints the setup grant, so they are denied
+   * as stateDir is (a cooperating agent only).
+   */
+  otherStateDirs?: string[];
+  /** Repos of the agent's project and its grants, and the cached sign-ins folder. */
+  repoDirs?: string[];
+  playwrightAuthDir?: string;
+  /**
+   * Issue 1391: a personal install's agent may read its own activity
+   * trail (never edit it); unset, as on a strict install, it may not.
+   */
+  trailReadable?: boolean;
+  /**
+   * Issue 816 review: the folder where test installs announce themselves
+   * (~/.<cli>/test-installs). Denied too, so an agent can't find the
+   * state folder of a test install announced after it started.
+   */
+  testAnnounceDir?: string;
+  /**
+   * Issue 728: the install registry (install-registry.ts), whose entries
+   * name the other installs' state folders. Denied like testAnnounceDir.
+   */
+  installRegistryDir?: string;
+  /**
+   * Issue 810: the distribution config file (it holds the test-install
+   * mark), denied to the agent's edits with personConfigDir.
+   */
+  distConfigFile?: string;
+  /**
    * NT-1: Den's web server as the agent reaches it, for the attention
    * hooks (Notification: waiting; Stop: finished). No token: the hook
    * sends the agent's own, from its env.
@@ -156,6 +197,14 @@ export interface LaunchInput {
    * API, and the audit file; absent: none is declared.
    */
   apiOnly?: { rules: string; audit: string };
+  envHold?: {
+    on: boolean;
+    hold: string[];
+    allow: string[];
+    own: string[];
+    guard: boolean;
+    mask?: string[];
+  };
   /**
    * Session rotation (den#4): the compactions after which this agent's
    * session rotates (0: never). Den's hooks count them. Default 3.
@@ -180,6 +229,11 @@ export interface LaunchInput {
    */
   denToolsAllowed?: boolean;
   /**
+   * Issue 1016: the install's address for people (web.url), for the role
+   * prompt's address line; absent or null: not set.
+   */
+  webUrl?: string | null;
+  /**
    * The new conversation's first prompt (a relaunch from handoff.md).
    * Only a runtime with `firstPrompt: true` is given one.
    */
@@ -190,6 +244,7 @@ export interface LaunchInput {
    * `--name`) does, at launch and at resume.
    */
   sessionLabel?: string;
+  skillPacks?: { name: string; dir: string }[];
 }
 
 export interface LaunchOutput {
@@ -402,6 +457,7 @@ export interface Runtime {
    * running first. Read-only. None: the runtime can't tell. Never throws.
    */
   helpers?(rec: AgentRecord, opts?: HelperReadOptions): Helper[];
+  helpersStamp?(rec: AgentRecord, env?: NodeJS.ProcessEnv): string;
   /** D32: one helper's transcript, tool calls summarized; null if none. Never throws. */
   helperTranscript?(
     rec: AgentRecord,

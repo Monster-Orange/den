@@ -207,12 +207,15 @@ afterAll(async () => {
 /** A page on /settings that records every POST it sends. */
 async function open(
   url = "/settings",
+  /** Runs once the browser is signed in, before the page loads. */
+  signedIn?: () => void,
 ): Promise<{ p: Page; posts: { url: string; body: unknown }[] }> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
   });
   // The person's browser, signed in as `web up` does (0.4.71).
   await signIn(ctx, path.join(tmp, "home", ".den"), BASE);
+  signedIn?.();
   const p = await ctx.newPage();
   const posts: { url: string; body: unknown }[] = [];
   p.on("request", (r) => {
@@ -267,8 +270,13 @@ describe("the Settings page writes only what you change (R21)", () => {
     // state included), and changedSince leaves Den's state aside. The
     // 500 ms sleep here predates that filter. A late start-up write to a
     // config file would show as a change, never be hidden.
-    const before = snapshot();
-    const { p, posts } = await open();
+    // Taken once the browser is signed in: the sign-in's own audit rows
+    // (the grant, the request, its approval) are this test's setup, not
+    // what loading the page writes.
+    let before: Record<string, string> = {};
+    const { p, posts } = await open("/settings", () => {
+      before = snapshot();
+    });
 
     // The page header, the labelled search, the category nav.
     expect(await p.textContent(".ph h1")).toBe("Settings");
@@ -304,9 +312,13 @@ describe("the Settings page writes only what you change (R21)", () => {
     expect(await p.getAttribute("#set-count", "aria-live")).toBe("polite");
     await q.fill("terminal");
     // 0.4.46: Agents › the terminals' three reconnect limits match too,
-    // and (den#156) the Agents list's wait for the terminal host.
-    expect(await sectionIds(p)).toEqual(["editor", "agents", "cli"]);
-    expect(await p.textContent("#set-count")).toBe("6 settings match");
+    // and (den#156) the Agents list's wait for the terminal host. Issue
+    // 532: Server › the five terminal limits. Issue 1311: Agents › the
+    // draft hold (an agent's terminal). Issue 1373: Agents › Agents at
+    // once (plain terminals never count against it). Issue 1371 Part 2:
+    // Agents › Agents changing settings: Integrations (editors, terminals).
+    expect(await sectionIds(p)).toEqual(["editor", "agents", "server", "cli"]);
+    expect(await p.textContent("#set-count")).toBe("16 settings match");
     expect(new URL(p.url()).searchParams.get("q")).toBe("terminal");
     expect(
       await p.$$eval("#cat-editor .set-row", (r) =>

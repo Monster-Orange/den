@@ -17,11 +17,7 @@
  */
 import * as fs from "fs";
 import { execFile, spawnSync } from "child_process";
-import {
-  lookup,
-  lookupTimeouts,
-  LookupTimeoutError,
-} from "../ui/cli/proc-lookup.js";
+import { lookup, lookupTimeouts, LookupTimeoutError } from "./proc-lookup.js";
 
 /**
  * By path: a service's PATH (launchd's, a test server's) may not have
@@ -251,6 +247,36 @@ export function descendsFrom(
   }
 }
 
+/**
+ * `pid` and every parent up to init, or null when any of them can't be
+ * read (or this platform can't tell): a line that is whole or nothing.
+ */
+export function parentLine(pid: number, d: PeerDeps = {}): number[] | null {
+  if (!(pid > 0)) return null;
+  const o = defaults(d);
+  try {
+    let parent: (p: number) => number | null;
+    if (o.platform === "linux") parent = procParent(o);
+    else if (o.platform === "darwin") {
+      const table = psTable(o.run(DARWIN_PS, PS_ARGS));
+      if (!table.has(pid)) return null;
+      parent = (p) => table.get(p) ?? null;
+    } else return null;
+    const line = [pid];
+    let p = pid;
+    for (let i = 0; i < 64; i++) {
+      if (p <= 1) return line;
+      const q = parent(p);
+      if (q === null || !(q >= 0)) return null;
+      if (q > 0) line.push(q);
+      p = q;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** A pid's parent from /proc/<pid>/stat. */
 const procParent =
   (o: { read: (p: string) => string }) =>
@@ -369,8 +395,25 @@ export async function runAsyncStrict(
  */
 export type LookupMiss = "timeout" | "failed" | "none" | "several";
 
-/** A caller's line of parents, or why there is none. */
-export type PeerFind = { line: number[] } | { miss: LookupMiss };
+/**
+ * A caller's line of parents, or why there is none. Issue 1131: several,
+ * with each process's whole line (up to init) when every one was read.
+ */
+export type PeerFind =
+  | { line: number[] }
+  | { miss: LookupMiss; lines?: number[][] };
+
+/**
+ * Issue 1131: several processes' lines, only when each reaches init (a
+ * line cut short can't show whose session it runs in).
+ */
+function wholeLines(
+  pids: Set<number>,
+  parent: (p: number) => number | null,
+): { lines?: number[][] } {
+  const lines = [...pids].sort((a, b) => a - b).map((p) => lineOf(p, parent));
+  return lines.every((l) => l[l.length - 1] === 1) ? { lines } : {};
+}
 
 const missOf = (e: unknown): LookupMiss =>
   e instanceof LookupTimeoutError ? "timeout" : "failed";
@@ -400,17 +443,21 @@ export async function loopbackPeerFind(
     } catch (e) {
       return { miss: missOf(e) };
     }
-    if (pids.size !== 1) return { miss: pids.size ? "several" : "none" };
-    const pid = [...pids][0];
+    if (!pids.size) return { miss: "none" };
+    let table: Map<number, number> | null = null;
     try {
-      const table = psTable(
+      table = psTable(
         await (d.run ? run(DARWIN_PS, PS_ARGS) : sharedPs(asked)),
       );
-      return { line: lineOf(pid, (p) => table.get(p) ?? null) };
     } catch {
-      // The caller is known; its parents are checked when judged.
-      return { line: [pid] };
+      table = null;
     }
+    const parent = (p: number) => table?.get(p) ?? null;
+    if (pids.size > 1)
+      return { miss: "several", ...(table ? wholeLines(pids, parent) : {}) };
+    const pid = [...pids][0];
+    // No table: the caller is known; its parents are checked when judged.
+    return { line: table ? lineOf(pid, parent) : [pid] };
   }
   if (platform === "linux") {
     try {
@@ -418,7 +465,11 @@ export async function loopbackPeerFind(
       const o = defaults({ ...d, run: () => "" });
       const f = linuxPids(port, to, o);
       if (f.miss) return { miss: f.miss };
-      if (f.pids.size !== 1) return { miss: f.pids.size ? "several" : "none" };
+      if (!f.pids.size) return { miss: "none" };
+      // Issue 1131: one socket held by several processes (a helper and
+      // its parent): each one's line, judged together.
+      if (f.pids.size > 1)
+        return { miss: "several", ...wholeLines(f.pids, procParent(o)) };
       return { line: lineOf([...f.pids][0], procParent(o)) };
     } catch {
       return { miss: "failed" };

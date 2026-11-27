@@ -21,16 +21,22 @@
  * 600 times in an hour: an agent polling it. A warning, never a failure;
  * nothing is sent.
  */
+import { readEdgeWatchState } from "../../shared/edge/watch.js";
+import { MEMORY_NOT_MEASURED_WORDS } from "../../shared/gates/rules.js";
+import { fixturePersonPath } from "../../shared/fixture-person.js";
+import { readFixtureMadeBy } from "../../shared/fixture-setup-secret.js";
 import { parseProjectMcpServers } from "../../shared/agents/project-mcp.js";
 import * as fs from "fs";
 import * as path from "path";
-import { readWebUrl } from "../../shared/web-url.js";
-import {
-  aliasCandidates,
-  loopbackRefusal,
-} from "../../shared/web-url-check.js";
+import { rankFindings, readWebUrl } from "../../shared/web/web-url.js";
+import { loopbackRefusal } from "../../shared/web/web-url-check.js";
 import { pushContact } from "../../shared/push-contact.js";
 import chalk from "chalk";
+import { envHoldLines, shellEnvNames } from "./doctor-env-hold.js";
+import { wouldHold } from "../../shared/agents/env-hold-rollout.js";
+import { checkProjectEnvAllow } from "../../shared/agents/env-hold.js";
+import { listRecords as listAgentRecords } from "../../shared/agents/records.js";
+import { workspaceEntryRaw } from "../../shared/environment-manager/workspaces.js";
 import {
   agentsKeepRunningAfterLogout,
   readAgentsConfig,
@@ -40,22 +46,90 @@ import {
   type UserConfig,
   readMcpConfig,
   sectionConfigError,
+  agentsUserDrift,
   type DenConfig,
 } from "../../shared/den-config.js";
 import type { ConfigError } from "../../shared/config-error.js";
 import {
+  pinNotes,
+  pinProjectsOf,
+  type PinProjects,
+} from "../../shared/shell-pins.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
+import {
+  projectRepoDirs,
+  projectRepoDirsOf,
+} from "../../shared/project-repo-dirs.js";
+import {
+  PLAYWRIGHT_AUTH_DIR,
+  REPO_SECRETS_FILE,
+} from "../../shared/credential-paths.js";
+import {
   checkAgentSigning,
+  agentKeyInForce,
   signingKeyAddLine,
+  signingReadFiles,
   type AgentGitSettings,
   type SigningCheck,
 } from "../../shared/agents/git-signing.js";
 import { approvalsState } from "../mcp/tools.js";
-import { getStateDir } from "../../shared/paths.js";
+import { getDistRoot, getStateDir } from "../../shared/paths.js";
+import {
+  ownStateDirProblem,
+  stateDirShared,
+} from "../../shared/state-folder.js";
+import {
+  bothSpellings,
+  readRulesCover,
+  repoSecretDenyRules,
+  stateDirDenyRules,
+} from "../../shared/agents/den-claude.js";
+import {
+  isRegistered,
+  listOtherInstalls,
+  registryDir,
+} from "../../shared/install-registry.js";
+import { AUDIT_FILE } from "../../shared/audit-file.js";
+import {
+  AUDIT_INTAKE_DIR,
+  AUDIT_PERSON_QUEUE_DIR,
+  QUEUE_DROPPED_VERB,
+  readAuditRows,
+} from "../../shared/audit-queue.js";
+import { DEN_PROCS_DIR, pidAlive } from "../../shared/den-procs.js";
+import {
+  SIGNIN_REQUEST_VERB,
+  signinRequestCounts,
+} from "../../shared/signin-request-count.js";
+import {
+  SESSION_SIGNING_DIR,
+  sandboxFor,
+  sandboxHidesFile,
+  sandboxSetting,
+} from "../../shared/agents/sandbox.js";
+import { agentSandboxInput, agentsMayReadTrail } from "./agent-ops.js";
+import { localDateTime } from "../../shared/local-time.js";
+import {
+  readRestartsWaiting,
+  type RestartsWaiting,
+} from "../../shared/agents/restarts-waiting.js";
+import {
+  readTestResolveState,
+  testResolveDoctorLine,
+} from "../../shared/test-resolve.js";
+import { listDaemons } from "../../shared/environment-manager/service-runner.js";
+import {
+  containerRuntimeOnPath,
+  readLastRestore,
+  restoreDoctorLine,
+  runtimeMissingDoctorLine,
+  servicesRestoreOnBoot,
+} from "../../shared/environment-manager/restore-on-boot.js";
 import {
   deliveryAlert,
   readDeliveryHealth,
   TROUBLE_TEXT,
-} from "../../shared/hub-delivery.js";
+} from "../../shared/hub/hub-delivery.js";
 import {
   lostFiles,
   lostMarkLines,
@@ -86,7 +160,17 @@ import {
   isEdgeAddress,
   statedAddress,
 } from "../../shared/edge/address-check.js";
-import { readEdgeProof } from "../../shared/edge/proof.js";
+import {
+  edgeTrustHeld,
+  proofIsCurrent,
+  readEdgeProof,
+} from "../../shared/edge/proof.js";
+import { getActiveWorkspaces } from "../../shared/environment-manager/workspaces.js";
+import {
+  edgeProofRotation,
+  readEdgeDynamic,
+  stacksWithGeneratedSecrets,
+} from "../../shared/edge/runtime.js";
 import { edgeDomains, edgeImageCheck } from "../../shared/edge/render.js";
 import {
   bridgeLine,
@@ -128,7 +212,13 @@ import {
   type OnboardDeps,
 } from "./doctor-onboard.js";
 import { printJson } from "./json-out.js";
+import {
+  pinDoctorText,
+  readPinRecord,
+  type PinRecord,
+} from "../../shared/pin-record.js";
 import { ownerCheck, ownerLine } from "./doctor-owner.js";
+import { skillPackLines } from "./doctor-skill-packs.js";
 import {
   formatWhere,
   launchdJobPid,
@@ -138,7 +228,7 @@ import {
   type WhereRow,
 } from "./doctor-where.js";
 import { hostLabel } from "./service-command.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 
 export interface DoctorRow {
   kind: string;
@@ -152,9 +242,26 @@ export interface DoctorRow {
   warnings: string[];
   /** #63: what's healthy and worth saying (a ✓ line each). */
   notes?: string[];
+  /**
+   * Issue 1334: nothing uses it yet (an implicit default no one chose,
+   * no source found, no agents). Unavailable then is "not in use yet",
+   * ok, never a ⚠ an agent would turn into a question.
+   */
+  idle?: true;
 }
 
-type Selector = (env: NodeJS.ProcessEnv) => DoctorRow;
+/** What a row may need beyond the env (issue 1334). */
+export interface DoctorRowsOpts {
+  /** How many agents this install has (records); default: read them. */
+  agents?: () => number;
+}
+
+type Selector = (
+  env: NodeJS.ProcessEnv,
+  o: Required<DoctorRowsOpts>,
+) => DoctorRow;
+
+const idleIf = (b: boolean): { idle?: true } => (b ? { idle: true } : {});
 
 const SELECTORS: Record<string, Selector> = {
   secrets(env) {
@@ -183,6 +290,7 @@ const SELECTORS: Record<string, Selector> = {
       // The implicit default is used only when a secret is asked for.
       problem: !st.detect.available && !st.implicit,
       warnings: [],
+      ...idleIf(st.implicit && !st.detect.available),
     };
   },
   tls(env) {
@@ -232,7 +340,7 @@ const SELECTORS: Record<string, Selector> = {
   // Agents' terminals (AG-3a). Only den-pty exists, so it is the implicit
   // choice; unavailable is never a problem (nothing needs a session until
   // one is started, and `sessions start` says why).
-  [SESSION_BACKEND_KIND](env) {
+  [SESSION_BACKEND_KIND](env, o) {
     const d = getStrategy(SESSION_BACKEND_KIND, DEN_PTY_ID)?.detect(env) ?? {
       available: false,
       reason: "not registered",
@@ -245,12 +353,14 @@ const SELECTORS: Record<string, Selector> = {
       reason: d.reason,
       problem: false,
       warnings: [],
+      // Issue 1334: no agents yet, so no terminal is needed yet.
+      ...idleIf(!d.available && o.agents() === 0),
     };
   },
   // Agents' CLIs (AG-2a): the default runtime, chosen per persona or agent,
   // so it is implicit and its absence is never a problem (`agents start`
   // says why it can't run).
-  [RUNTIME_KIND](env) {
+  [RUNTIME_KIND](env, o) {
     const d = getStrategy(RUNTIME_KIND, DEFAULT_RUNTIME_ID)?.detect(env) ?? {
       available: false,
       reason: "not registered",
@@ -263,6 +373,8 @@ const SELECTORS: Record<string, Selector> = {
       reason: d.reason,
       problem: false,
       warnings: [],
+      // Issue 1334: no agents yet, so no agent CLI is needed yet.
+      ...idleIf(!d.available && o.agents() === 0),
     };
   },
 };
@@ -271,14 +383,32 @@ const SELECTORS: Record<string, Selector> = {
  * One row per registered kind (secrets, then tls, then any other kind in
  * registration order). Never spawns, never throws.
  */
-export function doctorRows(env: NodeJS.ProcessEnv = process.env): DoctorRow[] {
+export function doctorRows(
+  env: NodeJS.ProcessEnv = process.env,
+  opts: DoctorRowsOpts = {},
+): DoctorRow[] {
+  let counted: number | undefined;
+  const o: Required<DoctorRowsOpts> = {
+    agents:
+      opts.agents ??
+      (() => {
+        if (counted === undefined)
+          try {
+            counted = listRecords(getStateDir()).length;
+          } catch {
+            // Can't tell: count one, so nothing hides behind an error.
+            counted = 1;
+          }
+        return counted;
+      }),
+  };
   const kinds = strategyKinds();
   const ordered = [
     ...Object.keys(SELECTORS).filter((k) => kinds.includes(k)),
     ...kinds.filter((k) => !(k in SELECTORS)),
   ];
   const rows = ordered.map(
-    (kind) => SELECTORS[kind]?.(env) ?? everyStrategyRow(kind, env),
+    (kind) => SELECTORS[kind]?.(env, o) ?? everyStrategyRow(kind, env),
   );
   const op = onePasswordTokenRow(env);
   if (op) rows.splice(rows.findIndex((r) => r.kind === "secrets") + 1, 0, op);
@@ -293,13 +423,18 @@ export function doctorRows(env: NodeJS.ProcessEnv = process.env): DoctorRow[] {
  */
 function everyStrategyRow(kind: string, env: NodeJS.ProcessEnv): DoctorRow {
   const ids = strategyIds(kind);
-  const found = ids.map((id) => {
-    try {
-      return getStrategy(kind, id)?.detect(env) ?? { available: false };
-    } catch (e) {
-      return { available: false, reason: (e as Error).message };
-    }
-  });
+  const found: { available: boolean; reason?: string; threw?: true }[] =
+    ids.map((id) => {
+      try {
+        return getStrategy(kind, id)?.detect(env) ?? { available: false };
+      } catch (e) {
+        return {
+          available: false,
+          reason: (e as Error).message,
+          threw: true as const,
+        };
+      }
+    });
   const available = found.some((d) => d.available);
   return {
     kind,
@@ -314,6 +449,9 @@ function everyStrategyRow(kind: string, env: NodeJS.ProcessEnv): DoctorRow {
           .join("; ") || undefined,
     problem: false,
     warnings: [],
+    // Issue 1334: no source found yet (no transcripts): nothing to fix.
+    // A detect that threw is broken, not idle: it still warns.
+    ...idleIf(!available && !found.some((d) => d.threw)),
   };
 }
 
@@ -359,7 +497,9 @@ export function formatDoctor(rows: DoctorRow[], title: string): string[] {
     const sel = selOf(r);
     const state = r.available
       ? chalk.green("✓ available")
-      : (r.problem ? chalk.red : chalk.yellow)("✗ unavailable");
+      : r.idle
+        ? chalk.dim("– not in use yet")
+        : (r.problem ? chalk.red : chalk.yellow)("✗ unavailable");
     lines.push(
       `  ${r.kind.padEnd(width)}  ${sel.padEnd(selWidth)} ${state}${r.reason ? `: ${r.reason}` : ""}`,
     );
@@ -405,6 +545,23 @@ export function approvalsLines(read: () => boolean): {
   }
 }
 
+/**
+ * Issue 1129: agents waiting in the restart queue, as doctor prints them.
+ * Informational: the queue starts them a few at a time on its own.
+ */
+export function restartsWaitingLines(
+  read: () => RestartsWaiting | null,
+): string[] {
+  const w = read();
+  if (!w || w.waiting <= 0) return [];
+  const names = w.ids.slice(0, 5).join(", ");
+  const more = w.ids.length > 5 ? ` and ${w.ids.length - 5} more` : "";
+  return [
+    "",
+    `  ℹ ${w.waiting} agent${w.waiting === 1 ? "" : "s"} waiting to restart, a few at a time (as of ${localDateTime(w.at)}): ${names}${more}`,
+  ];
+}
+
 /** Informational lines after the rows: never a failure. */
 export function doctorNotes(cli: string, configured: boolean): string[] {
   return configured
@@ -445,10 +602,11 @@ export function strategyCheck(r: DoctorRow): OnboardCheck {
     id: `strategy:${r.kind}`,
     status: r.problem
       ? "fail"
-      : !r.available || r.warnings.length
+      : (!r.available && !r.idle) || r.warnings.length
         ? "warn"
         : "ok",
-    detail: `${sel} ${r.available ? "available" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+    detail: `${sel} ${r.available ? "available" : r.idle ? "not in use yet, unavailable" : "unavailable"}${why}${r.warnings.length ? ` (${r.warnings.join("; ")})` : ""}`,
+    ...(r.notes?.length ? { notes: [...r.notes] } : {}),
   };
 }
 
@@ -634,6 +792,47 @@ export function whereCheck(r: WhereRow): OnboardCheck {
  * HUB-1.5: doctor's Hub row, or none when hub.url isn't set. Never the
  * token: hubStatus doesn't have it to give.
  */
+/** The stacks' project clashes; none when the stacks can't be read. */
+async function safeStackClashes(): Promise<
+  import("../../shared/stacks/status.js").ProjectClash[]
+> {
+  try {
+    const { stackProjectClashes } =
+      await import("../../shared/stacks/status.js");
+    return stackProjectClashes();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * D53: Compose projects Den's stacks can't call their own: a name two
+ * stacks render to, or one already running containers Den didn't start
+ * (its up, down and restart are refused). A warning: nothing is broken
+ * until one of them is acted on.
+ */
+export function stackClashLines(
+  clashes: import("../../shared/stacks/status.js").ProjectClash[],
+  title: string,
+  cli: string,
+): { lines: string[]; check?: OnboardCheck } {
+  if (!clashes.length) return { lines: [] };
+  const each = clashes.map((c) =>
+    c.stacks.length > 1
+      ? `Compose project "${c.project}" is the name of ${c.stacks.length} stacks: ${c.stacks.join(", ")}. Give each a compose.name of its own in its repo's .den.yml.`
+      : `Compose project "${c.project}" (stack ${c.stacks[0]}) is running containers ${cli} didn't start: ${c.foreign.slice(0, 5).join(", ")}${c.foreign.length > 5 ? ` and ${c.foreign.length - 5} more` : ""}. Its up, down and restart are refused. Give the stack a compose.name of its own in its repo's .den.yml.`,
+  );
+  return {
+    lines: [
+      "",
+      `${title} doctor: stacks`,
+      "",
+      ...each.map((l) => `  stacks  ⚠  ${l}`),
+    ],
+    check: { id: "stacks:projects", status: "warn", detail: each.join(" ") },
+  };
+}
+
 export function hubLines(
   st: import("../../shared/hub.js").HubStatus,
   title: string,
@@ -666,6 +865,10 @@ export function hubLines(
       `${title} doctor: Hub`,
       "",
       `  hub  ${good ? "✓" : "⚠"}  ${detail}`,
+      // Issue 158: a bad hub.delivery_loop is ignored, and said here.
+      ...("deliveryLoopIgnored" in st && st.deliveryLoopIgnored
+        ? [`  hub loop  ⚠  ${st.deliveryLoopIgnored}`]
+        : []),
     ],
     problem: false, // a Hub that is down never fails doctor: agents still run
     check: { id: "hub", status: good ? "ok" : "warn", detail },
@@ -688,9 +891,13 @@ function agoText(ms: number): string {
  * None when the server hasn't written it.
  */
 export function hubDeliveryLines(
-  h: import("../../shared/hub-delivery.js").DeliveryHealth | null,
+  h: import("../../shared/hub/hub-delivery.js").DeliveryHealth | null,
   now: number,
   minutes: number,
+  /** P0-D4: the delivery log's last 24 h (journalSummary), when there is one. */
+  journal:
+    | import("../../shared/hub/hub-delivery-journal.js").JournalSummary
+    | null = null,
 ): { lines: string[]; problem: boolean; check?: OnboardCheck } {
   if (!h) return { lines: [], problem: false };
   const alert = deliveryAlert(h, now, minutes);
@@ -703,6 +910,37 @@ export function hubDeliveryLines(
       ? "no comment yet"
       : `last comment ${agoText(now - h.lastDeliveryAt)}`,
   ];
+  // The cursor's age, the last list read, and a stall.
+  if (h.cursorAt != null)
+    parts.push(`cursor moved ${agoText(now - h.cursorAt)}`);
+  if (h.lastPoll)
+    parts.push(
+      `last list read ${agoText(now - h.lastPoll.at)}: ${
+        h.lastPoll.ok ? `${h.lastPoll.count ?? 0} waiting` : h.lastPoll.error
+      }`,
+    );
+  if (h.stale) parts.push(`${h.stale.waiting} waiting in Hub`);
+  if (journal) {
+    const words: [keyof typeof journal.counts, string][] = [
+      ["typed", "typed"],
+      ["done", "done"],
+      ["held", "held"],
+      ["passed", "passed over"],
+      ["refused", "refused"],
+      ["failed", "failed"],
+      ["no-answer", "no answer"],
+    ];
+    const said = words
+      .filter(([k]) => journal.counts[k])
+      .map(([k, w]) => `${journal.counts[k]} ${w}`);
+    parts.push(
+      `last 24 h: ${said.length ? said.join(", ") : "none"}` +
+        (journal.lastTypedAt !== null
+          ? `, last typed ${agoText(now - journal.lastTypedAt)}`
+          : "") +
+        ` (log: ${journal.file})`,
+    );
+  }
   const detail = alert
     ? `Hub comments aren't arriving: ${TROUBLE_TEXT[alert]} (${parts.join("; ")})`
     : parts.join("; ");
@@ -710,6 +948,26 @@ export function hubDeliveryLines(
     lines: [`  hub comments  ${alert ? "⚠" : "✓"}  ${detail}`],
     problem: false, // like the Hub row: agents still run
     check: { id: "hub:comments", status: alert ? "warn" : "ok", detail },
+  };
+}
+
+/**
+ * The shared GitHub watcher's row (MCP github_watch): GitHub calls left,
+ * the reset, the active watches and the interval, from the server's
+ * github/watch-status.json. Warns while paused (never a failure: agents
+ * still run). None before the server wrote it.
+ */
+async function githubWatchRow(): Promise<{
+  lines: string[];
+  check?: OnboardCheck;
+}> {
+  const { githubWatchLine, readWatchStatus } =
+    await import("../../shared/github-watch/status-line.js");
+  const l = githubWatchLine(readWatchStatus(getStateDir()));
+  if (!l) return { lines: [] };
+  return {
+    lines: [`  github watch  ${l.ok ? "✓" : "⚠"}  ${l.text}`],
+    check: { id: "github:watch", status: l.ok ? "ok" : "warn", detail: l.text },
   };
 }
 
@@ -724,13 +982,47 @@ async function hubDeliveryDoctor(): Promise<
   } catch {
     /* the Hub row says what's wrong with the hub block */
   }
+  const { journalSummary } =
+    await import("../../shared/hub/hub-delivery-journal.js");
   return hubDeliveryLines(
     readDeliveryHealth(
       path.join(getStateDir(), "hub", "deliveries-health.json"),
     ),
     Date.now(),
     minutes,
+    journalSummary(
+      path.join(getStateDir(), "hub", "deliveries.jsonl"),
+      Date.now(),
+    ),
   );
+}
+
+export function hubAgentTokenLines(
+  problems: readonly import("../../shared/hub-agent-tokens.js").AgentTokenProblem[],
+): { lines: string[]; checks: OnboardCheck[] } {
+  const lines: string[] = [];
+  const checks: OnboardCheck[] = [];
+  for (const p of problems) {
+    const when = Number.isFinite(Date.parse(p.at))
+      ? new Date(p.at).toLocaleString()
+      : p.at;
+    const reconnect =
+      p.code === "agents_not_covered" || p.code === "agents_manage_missing";
+    const fix = reconnect
+      ? "Settings › Hub: Reconnect"
+      : p.what === "mint"
+        ? "Den asks Hub again after hub.agent_token_retry_seconds; the agent uses the install's token meanwhile"
+        : undefined;
+    const detail = `agent ${p.agentId}: ${p.detail} (${when})`;
+    lines.push(`  hub agent  ✗  ${detail}${fix ? `. ${fix}` : ""}`);
+    checks.push({
+      id: `hub:agent-token:${p.agentId}`,
+      status: "fail",
+      detail,
+      ...(reconnect ? { ask: "Reconnect to Hub in Settings › Hub" } : {}),
+    });
+  }
+  return { lines, checks };
 }
 
 /**
@@ -739,7 +1031,32 @@ async function hubDeliveryDoctor(): Promise<
  * the command that shows Hub's suggestions and links one; with two or
  * more unlinked, one more line names `hub link --suggested`. Doctor doesn't
  * ask Hub for the suggestions itself: one call per project is too slow.
+ * Issue 1334: an empty project (no repos, services or agents, often the
+ * built-in `default`) is ✓ "nothing to link", never a warning: an agent
+ * reading Doctor would ask the person for a link nobody needs.
  */
+async function hubAddressRows(
+  st: import("../../shared/hub.js").HubStatus,
+): Promise<{ lines: string[]; checks: OnboardCheck[] }> {
+  if (!st.configured || !st.connected) return { lines: [], checks: [] };
+  const [{ readDenUrlTell, denUrlTellRow }, { readWebUrl }] = await Promise.all(
+    [
+      import("../../shared/hub/hub-den-url.js"),
+      import("../../shared/web/web-url.js"),
+    ],
+  );
+  const row = denUrlTellRow(
+    readDenUrlTell(getStateDir()),
+    readWebUrl()?.url,
+    st.url,
+  );
+  if (!row) return { lines: [], checks: [] };
+  return {
+    lines: [`  hub address  ⚠  ${row.detail}`],
+    checks: [{ id: "hub:den-url", status: "warn", detail: row.detail }],
+  };
+}
+
 export function hubProjectLines(
   connected: boolean,
   projects: {
@@ -747,11 +1064,29 @@ export function hubProjectLines(
     link: { slug: string; name: string } | null;
     /** 0.4.44: the link it had, when it lost it with no unlink asked. */
     lost?: { slug: string; at: string };
+    /** Issue 646: its link points at another Hub or company. */
+    elsewhere?: {
+      slug: string;
+      name: string;
+      origin: string;
+      company?: string;
+    };
+    /** Issue 1334: no repos, no services, no agents. */
+    empty?: boolean;
   }[],
   cli: string,
 ): { lines: string[]; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
+  // Issue 646: a link to another Hub fails, connected or not.
+  for (const { ws, link, elsewhere: e } of projects) {
+    if (link || !e) continue;
+    const where = `${e.origin.replace(/^https?:\/\//, "")}${e.company ? ` (company ${e.company})` : ""}`;
+    const detail = `${ws}: linked to Hub project ${e.name} on ${where}, not the connected Hub, so Den sends Hub no project for it. Link it again: Settings › Hub, Connect's project review`;
+    lines.push(`  hub project  ✗  ${detail}`);
+    checks.push({ id: `hub:project:${ws}`, status: "fail", detail });
+  }
+  projects = projects.filter((p) => p.link || !p.elsewhere);
   // 0.4.44: a lost link warns even with Hub down: the config lost it.
   for (const { ws, link, lost } of projects) {
     if (link || !lost) continue;
@@ -762,7 +1097,13 @@ export function hubProjectLines(
   }
   if (!connected || !projects.length) return { lines, checks };
   projects = projects.filter((p) => p.link || !p.lost);
-  for (const { ws, link } of projects) {
+  for (const { ws, link, empty } of projects) {
+    if (!link && empty) {
+      const detail = `${ws}: empty, nothing to link`;
+      lines.push(`  hub project  ✓  ${detail}`);
+      checks.push({ id: `hub:project:${ws}`, status: "ok", detail });
+      continue;
+    }
     const name = link
       ? link.name === link.slug
         ? link.slug
@@ -783,7 +1124,7 @@ export function hubProjectLines(
     });
   }
   // #68: two or more unlinked: one place links every suggestion at once.
-  const unlinked = projects.filter((p) => !p.link).length;
+  const unlinked = projects.filter((p) => !p.link && !p.empty).length;
   if (unlinked > 1)
     lines.push(
       `  hub project  ⚠  ${unlinked} projects aren't linked. See what Hub suggests for each, and link them in one go: \`${cli} hub link --suggested\``,
@@ -859,7 +1200,7 @@ async function projectMcpDoctor(): Promise<{
  */
 export function hubGithubLines(
   cov:
-    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { orgs: import("../../shared/hub/hub-project-sync.js").OrgCoverage[] }
     | { error: string }
     | null,
 ): { lines: string[]; checks: OnboardCheck[] } {
@@ -927,22 +1268,50 @@ async function projectsWithHubProject(): Promise<
     ws: string;
     link: { slug: string; name: string } | null;
     lost?: { slug: string; at: string };
+    elsewhere?: {
+      slug: string;
+      name: string;
+      origin: string;
+      company?: string;
+    };
+    empty: boolean;
   }[]
 > {
   const { readWorkspacesFile } =
     await import("../../shared/environment-manager/workspaces.js");
-  const { parseHubProjectLink } =
-    await import("../../shared/hub-project-link.js");
-  const { lostHubLinks } = await import("../../shared/hub-links-seen.js");
+  const { emptyProjectTest } = await import("../../shared/empty-project.js");
+  const { listRecords } = await import("../../shared/agents/records.js");
+  const { hubProjectOf, hubLinkElsewhere } =
+    await import("../../shared/hub/hub-project-link.js");
+  const { lostHubLinks } = await import("../../shared/hub/hub-links-seen.js");
   try {
-    const all = readWorkspacesFile().workspaces;
+    const file = readWorkspacesFile();
+    const all = file.workspaces;
     const lost = new Map(lostHubLinks(all).map((l) => [l.ws, l.was]));
-    return Object.entries(all).map(([ws, c]) => {
+    // Issue 1334: an empty project has nothing to link.
+    const isEmpty = emptyProjectTest(
+      () => file,
+      () => listRecords(getStateDir()),
+    );
+    return Object.keys(all).map((ws) => {
       const was = lost.get(ws);
+      // Issue 646: a link to another Hub or company isn't this one's.
+      const e = hubLinkElsewhere(ws, () => file);
       return {
         ws,
-        link: parseHubProjectLink(c?.hub_project),
+        link: hubProjectOf(ws, () => file),
+        empty: isEmpty(ws),
         ...(was ? { lost: { slug: was.slug, at: was.at } } : {}),
+        ...(e?.hub
+          ? {
+              elsewhere: {
+                slug: e.slug,
+                name: e.name,
+                origin: e.hub.origin,
+                ...(e.hub.company ? { company: e.hub.company } : {}),
+              },
+            }
+          : {}),
       };
     });
   } catch {
@@ -969,12 +1338,14 @@ export interface DoctorAddress {
  * one isn't checked yet. It is never offered to confirm.
  */
 export function addressLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   title: string,
   cli: string,
   checked: DoctorAddress | null = null,
-  /** Issue 666: this install's edge alias (aliasCandidates), if any. */
+  /** Issue 666: this install's edge alias (edgeAddresses' first), if any. */
   alias: string | null = null,
+  /** The install's other edge addresses, named when web.url is unconfirmed. */
+  others: readonly string[] = [],
 ): { lines: string[]; problem: boolean; check: OnboardCheck } {
   // Issue 666: a loopback address is a problem, never ✓ and never one to
   // confirm: other devices can't open it. The fix is the alias, if any.
@@ -1051,9 +1422,11 @@ export function addressLines(
       };
     }
   }
+  const rest = others.filter((u) => u !== w.url);
   const detail = w.confirmed
     ? w.url
-    : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\``;
+    : `${w.url}, taken from ${w.from ?? "what this install had"}: confirm it with \`${cli} web url ${w.url}\`` +
+      (rest.length ? `. Other edge addresses: ${rest.join(", ")}` : "");
   return {
     lines: [
       "",
@@ -1122,23 +1495,64 @@ function addressLastAnswered(): string | null {
 }
 
 /**
+ * Issue 1018: doctor's Sign-in row for a test install's fixture person:
+ * how its key was made (the launcher's setup value, Set up test person,
+ * or at creation). Null when there's no key.
+ */
+export function fixtureMadeByLine(
+  hasKey: boolean,
+  how: import("../../shared/fixture-setup-secret.js").FixtureMadeBy | null,
+): string | null {
+  if (!hasKey) return null;
+  const words =
+    how === "setup-secret"
+      ? "made from the setup secret"
+      : how === "settings"
+        ? "made by Settings › Access › Set up test person"
+        : how === "creation"
+          ? "made at creation (a new test install)"
+          : "set up (how isn't recorded)";
+  return `  test person  ✓  ${words}`;
+}
+
+function fixtureLineNow(): string | null {
+  try {
+    return fixtureMadeByLine(
+      fs.existsSync(fixturePersonPath(getStateDir())),
+      readFixtureMadeBy(getStateDir()),
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Where the browser sign-in lives. With a working https address (web.url,
  * through the edge) the session cookie lives only there, host-only and
  * Secure. Without one it lives on the host the person uses (localhost
  * here), and browsers share a host's cookies across its ports: other apps
  * opened on that host could see it. A warning, with what to set.
+ * Issue 1334: with no address at all, the Address row already asks for
+ * one; this row says so (ℹ, ok) instead of a second ⚠ to ask about.
  */
 export function sessionHostLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   works: boolean,
   title: string,
   cli: string,
   lastAnswered: string | null = null,
 ): { lines: string[]; check: OnboardCheck } {
-  const named = w && w.url.startsWith("https:") && works ? w.url : null;
+  if (!w) {
+    const detail = `no address yet: the Address row says what to set. Until one is set, the sign-in lives on localhost here`;
+    return {
+      lines: ["", `${title} doctor: Sign-in`, "", `  sign-in  ℹ  ${detail}`],
+      check: { id: "signin_host", status: "ok", detail },
+    };
+  }
+  const named = w.url.startsWith("https:") && works ? w.url : null;
   // When an https address stopped answering as this Den, say when.
   const since =
-    !named && w?.url.startsWith("https:") && lastAnswered
+    !named && w.url.startsWith("https:") && lastAnswered
       ? `${w.url} last answered as this ${title} at ${new Date(lastAnswered).toLocaleString()}; `
       : "";
   const detail = named
@@ -1151,7 +1565,7 @@ export function sessionHostLines(
       "",
       // An https address that doesn't reach this Den yet: "!", as the
       // address check beside it says it (not an install-wide ⚠).
-      `  sign-in  ${named ? "✓" : w?.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
+      `  sign-in  ${named ? "✓" : w.url.startsWith("https:") ? "!" : "⚠"}  ${detail}`,
     ],
     check: {
       id: "signin_host",
@@ -1167,21 +1581,24 @@ export function sessionHostLines(
  * web.url isn't set or the web port can't be read.
  */
 /**
- * Issue 666: this install's edge alias, the address doctor offers when
- * web.url names this machine only: the first edge route to Den's web port
- * that isn't loopback (https first), or null.
+ * Issue 666: the edge routes to Den's web port that can be its address,
+ * best first (doctor offers the first when web.url names this machine
+ * only, and lists the rest while web.url is unconfirmed):
+ * a route edge.routes names before the brand's, https first, never
+ * loopback (rankFindings, the migration's order). Empty with no edge.
  */
-export async function edgeAlias(): Promise<string | null> {
+export async function edgeAddresses(): Promise<string[]> {
   try {
     const { readWebPort } = await import("../../shared/edge/config.js");
-    const { webRouteHosts } = await import("../../shared/edge/render.js");
-    if (!hasEdgeBlock()) return null;
-    const urls = webRouteHosts(readEdgeConfig(), new Set([readWebPort()])).map(
-      (r) => r.url,
-    );
-    return aliasCandidates(urls)[0] ?? null;
+    const { webRouteFindings } = await import("../../shared/edge/render.js");
+    if (!hasEdgeBlock()) return [];
+    const hits = webRouteFindings(
+      readEdgeConfig(),
+      new Set([readWebPort()]),
+    ).map((r) => ({ url: r.url, from: "", named: r.named }));
+    return rankFindings(hits).map((r) => r.url);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -1216,17 +1633,38 @@ export async function doctorAddress(
   return { state, edge: isEdgeAddress(w.url, domains) };
 }
 
+/** Issue 1334: phones and browsers with push on; unknown on an error. */
+async function pushSubscriptionCount(): Promise<number | undefined> {
+  try {
+    const { pushSubscriptionCount: count } =
+      await import("../../shared/push-subscription-count.js");
+    return count(getStateDir());
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Issue 367: the contact push alerts give the push services. With an
  * https address (web.url) they get it; without one, a mailto fallback
  * some refuse, so a phone may get no push: warn, and say what to set.
+ * Issue 1334: `subscriptions` is how many phones or browsers have push
+ * on. None: nothing is lost yet, so ℹ and ok. Unknown (left out): warn.
  */
 export function pushContactLines(
-  w: import("../../shared/web-url.js").WebUrl | null,
+  w: import("../../shared/web/web-url.js").WebUrl | null,
   title: string,
   cli: string,
+  subscriptions?: number,
 ): { lines: string[]; check: OnboardCheck } {
   const c = pushContact(w?.url);
+  if (!c.accepted && subscriptions === 0) {
+    const detail = `no phone has push alerts on yet. When one does, it needs an https address: Settings › Den's address (${ADDRESS_SETTINGS_LINK})`;
+    return {
+      lines: ["", `${title} doctor: Push alerts`, "", `  push  ℹ  ${detail}`],
+      check: { id: "push_contact", status: "ok", detail },
+    };
+  }
   const detail = c.accepted
     ? `push services are given ${c.subject} as the contact`
     : `push alerts may not reach phones: with no https address, push services are given ${c.subject} as the contact, and some refuse it. Set one in Settings › Den's address (${ADDRESS_SETTINGS_LINK}), or run \`${cli} web url https://<address>\``;
@@ -1247,8 +1685,526 @@ export function pushContactLines(
 }
 
 /**
- * H1 (0.4.48): whether the edge set up here carries Den's proof (the
- * generated edge.yml has the current one). Never prints the proof: only
+ * Issue 728: whether the edge's proof was rotated once since agents lost
+ * read access to the edge's state folder, and each stack whose generated
+ * secrets they could read before, named with its owning project so that
+ * project's agent rotates them (the stack's own way; Den never regenerates
+ * them, which would lock a stack out of its data). A stack whose
+ * generated.env changed after the rotation is done. Never a value.
+ */
+export function edgeRotationLines(
+  title: string,
+  o: {
+    edgeDir?: () => string | null;
+    /** Den's projects, to tell a stack's project from its name. */
+    projects?: () => string[];
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const dir = (
+    o.edgeDir ??
+    (() => {
+      try {
+        return readEdgeConfig().stateDir;
+      } catch {
+        return null;
+      }
+    })
+  )();
+  if (!dir || !fs.existsSync(dir)) return { lines: [], checks: [] };
+  const at = edgeProofRotation({ stateDir: dir }).rotatedAt;
+  const none = !at && readEdgeProof(dir) === null;
+  const rotate = none
+    ? "the edge has no proof yet, nothing to rotate"
+    : at
+      ? `the edge's proof was rotated once, at ${at}, after agents lost read access to the edge's state folder`
+      : `the edge's proof hasn't been rotated since agents lost read access to the edge's state folder: ${title} rotates it once at its next start (people stay signed in)`;
+  const checks: OnboardCheck[] = [
+    { id: "edge_rotate", status: at || none ? "ok" : "warn", detail: rotate },
+  ];
+  const since = at ? Date.parse(at) : Infinity;
+  const projects = (
+    o.projects ??
+    (() => {
+      try {
+        return getActiveWorkspaces();
+      } catch {
+        return [];
+      }
+    })
+  )();
+  const stale = stacksWithGeneratedSecrets({ stateDir: dir }).filter((f) => {
+    try {
+      const m = fs.statSync(path.join(dir, "stacks", f, "generated.env"));
+      return !(m.mtimeMs > since);
+    } catch {
+      return false;
+    }
+  });
+  const named = stale.map((f) => {
+    const p = projects
+      .filter((w) => f.endsWith(`-${w}`))
+      .sort((a, b) => b.length - a.length)[0];
+    return p
+      ? { stack: f.slice(0, -p.length - 1), project: p }
+      : { stack: f, project: null };
+  });
+  const stacks = named.length
+    ? `agents could read these stacks' generated secrets before: ${named
+        .map((n) =>
+          n.project
+            ? `${n.stack} (project ${n.project}): ${n.project}'s agent rotates them the stack's own way`
+            : `${n.stack}: its project's agent rotates them the stack's own way`,
+        )
+        .join(
+          "; ",
+        )}. ${title} never makes new values, which would lock a stack out of its data`
+    : "no stack's generated secrets wait on a rotation";
+  checks.push({
+    id: "edge_stack_secrets",
+    status: named.length ? "warn" : "ok",
+    detail: stacks,
+  });
+  return {
+    lines: [
+      "",
+      `${title} doctor: Edge secrets`,
+      "",
+      `  edge rotate  ${at || none ? "✓" : "⚠"}  ${rotate}`,
+      `  stack secrets  ${named.length ? "⚠" : "✓"}  ${stacks}`,
+    ],
+    checks,
+  };
+}
+
+/**
+ * Issue 728 (part C): installs running as this login. Whether others do (by
+ * count: another install's path stays out, as its registry entry does),
+ * whether this install is in the install registry (their agents are denied
+ * its files only once it is), and the 0600 files in its state folder that
+ * agents' deny rules don't cover. Paths only, relative to the state
+ * folder; never a file's contents. Links are never followed.
+ */
+export function sharedUserLines(
+  title: string,
+  o: {
+    stateDir?: string;
+    registry?: string;
+    home?: string;
+    /** The walk's caps (default 20,000 entries, 8 folders deep). */
+    maxEntries?: number;
+    maxDepth?: number;
+    /** Whether this install's server runs now (its den-procs record). */
+    serverRunning?: () => boolean;
+    /**
+     * Issue 1391: agents may read the trail (a personal install). Default:
+     * from install_mode; a config that can't be read counts as strict.
+     */
+    trailReadable?: boolean;
+    installMode?: "personal" | "strict";
+    /** Agents whose last start was outside the OS sandbox, and their projects. */
+    unsandboxed?: () => { id: string; projects: string[] }[];
+    /** A project's repo folders. */
+    reposOf?: (project: string) => string[];
+    distRoot?: string;
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const stateDir = o.stateDir ?? getStateDir();
+  let folderShared = false;
+  try {
+    folderShared = stateDirShared(stateDir, o.distRoot ?? getDistRoot());
+  } catch {
+    folderShared = false;
+  }
+  let folderIgnored: string | null = null;
+  try {
+    folderIgnored = ownStateDirProblem(o.distRoot ?? getDistRoot());
+  } catch {
+    folderIgnored = null;
+  }
+  if (folderIgnored) folderShared = true;
+  const folderDetail =
+    folderIgnored ??
+    (folderShared
+      ? `another copy of ${title} on this computer uses this state folder too; Settings › Hub's Connect offers to give this one its own`
+      : "this install's state folder is its own");
+  const reg = o.registry ?? registryDir();
+  const home = o.home ?? process.env.HOME;
+  const others = listOtherInstalls(reg, {
+    ownStateDir: stateDir,
+    ...(home ? { home } : {}),
+  }).length;
+  const shared = others
+    ? `${others} other install${others === 1 ? " runs" : "s run"} as this login on this computer. Their agents are kept out of ${title}'s credentials by deny rules, which bind an agent that follows them; a separate login for each install keeps them apart for certain`
+    : "no other install runs as this login on this computer";
+  const registered = isRegistered(reg, stateDir);
+  // A fresh install (its server not started yet) is registered at its
+  // start: only a running server that isn't registered is a warning.
+  const running = (o.serverRunning ?? (() => serverRecorded(stateDir)))();
+  const regOk = registered || !running;
+  const regDetail = registered
+    ? "this install is in the install registry, so other installs' agents on this login are denied its files"
+    : running
+      ? `this install isn't in the install registry, though ${title} is running, so other installs' agents on this login aren't denied its files. Restart ${title} to add it`
+      : `this install isn't in the install registry yet: ${title} adds it at its next start`;
+  const installMode =
+    o.installMode ??
+    (() => {
+      try {
+        return readAgentsConfig().mode;
+      } catch {
+        return "strict" as const;
+      }
+    })();
+  const trailSetAside = agentsMayReadTrail({ mode: installMode }, stateDir);
+  const trailReadable = o.trailReadable ?? trailSetAside;
+  const trailOk = trailSetAside || !running;
+  const trailDetail = trailSetAside
+    ? "agents can read the activity trail"
+    : running
+      ? `agents can't read the activity trail, because the older trail isn't set aside yet. Restart ${title}; if it fails again, ${title}'s log says why`
+      : `agents read the activity trail once ${title} sets the older trail aside, at its next start`;
+  const trailShown = installMode === "personal";
+  const rules = bothSpellings(stateDir).flatMap((d) =>
+    stateDirDenyRules(d, home, { trailReadable }),
+  );
+  const maxEntries = o.maxEntries ?? 20000;
+  const maxDepth = o.maxDepth ?? 8;
+  const walked = uncoveredSecretFiles(
+    stateDir,
+    rules,
+    maxEntries,
+    maxDepth,
+    trailReadable,
+  );
+  const loose = walked.files.map(safeShownPath);
+  const partial = walked.capped
+    ? `checked the first ${maxEntries} entries only`
+    : walked.deep
+      ? `checked ${maxDepth} folders deep only`
+      : "";
+  const outside = (o.unsandboxed ?? (() => unsandboxedAgents(stateDir)))();
+  const looseWarn = (loose.length > 0 || !!partial) && outside.length > 0;
+  const SHOWN = 10;
+  const listed =
+    loose.length && !outside.length
+      ? `${loose.length} 0600 file${loose.length === 1 ? "" : "s"} in the state folder ha${loose.length === 1 ? "s" : "ve"} no Claude Read rule; the OS sandbox keeps every agent out of the state folder`
+      : loose.length
+        ? `agents' deny rules don't cover these 0600 files in the state folder: ${loose
+            .slice(0, SHOWN)
+            .join(
+              ", ",
+            )}${loose.length > SHOWN ? `, and ${loose.length - SHOWN} more` : ""}`
+        : partial
+          ? "agents' deny rules cover every 0600 file the walk reached in the state folder"
+          : "agents' deny rules cover every 0600 file in the state folder";
+  const reposOf = o.reposOf ?? projectRepoDirsOf;
+  const readable = stateCredentialsPresent(stateDir);
+  const more = walked.files.filter(
+    (f) => f.split(path.sep)[0] !== SESSION_SIGNING_DIR,
+  ).length;
+  const agentRows = outside.map((a) => {
+    const repoFiles = [
+      ...new Set(
+        a.projects.flatMap((p) => reposOf(p).map((d) => path.resolve(d))),
+      ),
+    ].filter((d) => {
+      try {
+        return fs.lstatSync(path.join(d, REPO_SECRETS_FILE)).isFile();
+      } catch {
+        return false;
+      }
+    }).length;
+    const what = [
+      ...readable,
+      ...(repoFiles
+        ? [
+            `${repoFiles} project stack secrets file${repoFiles === 1 ? "" : "s"}`,
+          ]
+        : []),
+      ...(more ? [`and ${more} more 0600 file${more === 1 ? "" : "s"}`] : []),
+    ];
+    const detail = `${safeShownPath(a.id)} runs outside the OS sandbox (by its last start's record), so its shell can read ${what.length ? what.join(", ") : "the state folder"}. A person turns its sandbox on with agents.sandbox in user.yml`;
+    return { id: `agent_unsandboxed:${a.id}`, detail };
+  });
+  const looseDetail = partial ? `${listed} (${partial})` : listed;
+  const mark = (ok: boolean) => (ok ? "✓" : "⚠");
+  return {
+    lines: [
+      "",
+      `${title} doctor: Installs on this login`,
+      "",
+      `  same login  ${mark(!others)}  ${shared}`,
+      `  registry  ${mark(regOk)}  ${regDetail}`,
+      `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
+      `  state folder  ${mark(!folderShared)}  ${folderDetail}`,
+      ...(trailShown
+        ? [`  activity trail  ${mark(trailOk)}  ${trailDetail}`]
+        : []),
+      ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
+    ],
+    checks: [
+      { id: "shared_user", status: others ? "warn" : "ok", detail: shared },
+      {
+        id: "install_registry",
+        status: regOk ? "ok" : "warn",
+        detail: regDetail,
+      },
+      {
+        id: "uncovered_files",
+        status: looseWarn ? "warn" : "ok",
+        detail: looseDetail,
+      },
+      {
+        id: "state_folder",
+        status: folderShared ? "warn" : "ok",
+        detail: folderDetail,
+      },
+      ...(trailShown
+        ? [
+            {
+              id: "trail_set_aside",
+              status: trailOk ? ("ok" as const) : ("warn" as const),
+              detail: trailDetail,
+            },
+          ]
+        : []),
+      ...agentRows.map((r) => ({
+        id: r.id,
+        status: "warn" as const,
+        detail: r.detail,
+      })),
+    ],
+  };
+}
+
+/** Agents whose last start was outside the OS sandbox, from their records. */
+function unsandboxedAgents(
+  stateDir: string,
+): { id: string; projects: string[] }[] {
+  try {
+    return listRecords(stateDir)
+      .filter((r) => r.sandbox?.applied !== true)
+      .map((r) => ({ id: r.id, projects: [r.workspace, ...(r.grants ?? [])] }));
+  } catch {
+    return [];
+  }
+}
+
+function hubTokenFiles(stateDir: string): boolean {
+  try {
+    return fs
+      .readdirSync(path.join(stateDir, "hub"))
+      .some((n) => n === "token" || /^token-[0-9a-f]{10}$/.test(n));
+  } catch {
+    return false;
+  }
+}
+
+/** The state folder's credentials that exist, by what they are. */
+function stateCredentialsPresent(stateDir: string): string[] {
+  const has = (rel: string) => fs.existsSync(path.join(stateDir, rel));
+  return [
+    ...(has("web.secret") ? ["web.secret"] : []),
+    ...(has("web-sessions.json") ? ["the browser sign-ins"] : []),
+    ...(has("actor-token") ? ["the agents' tokens"] : []),
+    ...(hubTokenFiles(stateDir) ? ["the Hub token"] : []),
+    ...(has("push-vapid.json") ? ["the push key"] : []),
+    ...(has("fixture-person.key") ? ["the test person's key"] : []),
+    ...(has(SESSION_SIGNING_DIR) ? ["the agents' signing key"] : []),
+  ];
+}
+
+/** Repos' stack secrets files and the cached sign-ins, by name only, and whether agents' rules deny them. */
+export function repoSecretLines(
+  o: {
+    repoDirs?: string[];
+    distRoot?: string;
+    home?: string;
+    /** The rules to check against (default: the ones agents start with). */
+    rules?: (repoDirs: string[], authDirs: string[]) => string[];
+    /** Agents whose last start was outside the OS sandbox, and their projects. */
+    unsandboxed?: () => { id: string; projects: string[] }[];
+    /** A project's repo folders. */
+    reposOf?: (project: string) => string[];
+  } = {},
+): { lines: string[]; checks: OnboardCheck[] } {
+  const repoDirs = o.repoDirs ?? projectRepoDirs();
+  const authDir = path.join(o.distRoot ?? getDistRoot(), PLAYWRIGHT_AUTH_DIR);
+  const home = o.home ?? process.env.HOME;
+  const isFile = (f: string) => {
+    try {
+      return fs.lstatSync(f).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const secrets = [...new Set(repoDirs.map((d) => path.resolve(d)))]
+    .map((d) => path.join(d, REPO_SECRETS_FILE))
+    .filter(isFile);
+  const signIns = (() => {
+    try {
+      return fs
+        .readdirSync(authDir)
+        .map((n) => path.join(authDir, n))
+        .filter(isFile);
+    } catch {
+      return [];
+    }
+  })();
+  const rules = (
+    o.rules ??
+    ((r, a) =>
+      repoSecretDenyRules(
+        r.flatMap(bothSpellings),
+        a.flatMap(bothSpellings),
+        home,
+      ))
+  )(repoDirs, [authDir]);
+  const shown = (f: string) =>
+    safeShownPath(path.join(path.basename(path.dirname(f)), path.basename(f)));
+  const loose = [...secrets, ...signIns].filter(
+    (f) => !readRulesCover(rules, f),
+  );
+  const signInsShown = (n: number) =>
+    n ? [`${n} cached sign-in${n === 1 ? "" : "s"}`] : [];
+  const parts = [
+    ...(secrets.length ? [secrets.map(shown).join(", ")] : []),
+    ...signInsShown(signIns.length),
+  ];
+  const reposOf = o.reposOf ?? projectRepoDirsOf;
+  const exposed = (
+    o.unsandboxed ??
+    (() =>
+      listRecords(getStateDir())
+        .filter((r) => r.sandbox?.applied !== true)
+        .map((r) => ({
+          id: r.id,
+          projects: [r.workspace, ...(r.grants ?? [])],
+        })))
+  )()
+    .map((a) => {
+      const reach = new Set(
+        a.projects.flatMap((p) => reposOf(p).map((d) => path.resolve(d))),
+      );
+      const mine = secrets.filter((f) => reach.has(path.dirname(f)));
+      const what = [...mine.map(shown), ...signInsShown(signIns.length)];
+      return what.length ? `${a.id}: ${what.join(", ")}` : "";
+    })
+    .filter(Boolean);
+  const detail = !parts.length
+    ? "no stack secrets file in a project repo and no cached sign-ins"
+    : loose.length
+      ? `not covered by agents' rules: ${loose.map(shown).join(", ")}`
+      : exposed.length
+        ? `readable by agents whose sandbox is off (agents.sandbox): ${exposed.join("; ")}`
+        : `the OS sandbox keeps agents out of ${parts.join(" and ")}; agents' rules deny them too`;
+  const warn = loose.length > 0 || exposed.length > 0;
+  return {
+    lines: [`  repo secrets  ${warn ? "⚠" : "✓"}  ${detail}`],
+    checks: [{ id: "repo_secret_files", status: warn ? "warn" : "ok", detail }],
+  };
+}
+
+/**
+ * Issue 728: state folders of 0600 files that hold no credential, left out
+ * of the walk: the process records (pids only), a session's own writable
+ * folder (its guardrail log, its audit queue: issue 1369), the person's
+ * CLI's audit queue and the server's intake of both.
+ */
+/**
+ * Issue 1391: state files of 0600 that hold no credential, left out of
+ * the walk: the activity trail, which agents may read (only the server
+ * writes it), and the copies beside it a compaction leaves.
+ */
+const NOT_CREDENTIAL_FILE = (name: string) =>
+  name === AUDIT_FILE || name.startsWith(`${AUDIT_FILE}.`);
+
+const NOT_CREDENTIAL_DIRS: readonly string[] = [
+  DEN_PROCS_DIR,
+  "audit",
+  AUDIT_PERSON_QUEUE_DIR,
+  AUDIT_INTAKE_DIR,
+];
+
+/** Whether a server of this install records itself as running. */
+function serverRecorded(stateDir: string): boolean {
+  try {
+    return fs
+      .readdirSync(path.join(stateDir, DEN_PROCS_DIR))
+      .map((n) => /^server-(\d+)\.json$/.exec(n))
+      .some((m) => !!m && pidAlive(Number(m[1])));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The 0600 regular files under `stateDir` no Read rule covers, relative to
+ * it and sorted. Never follows a link; a bounded walk, which says whether
+ * it stopped at its entry cap (`capped`) or skipped deeper folders (`deep`).
+ */
+function uncoveredSecretFiles(
+  stateDir: string,
+  rules: string[],
+  maxEntries: number,
+  maxDepth: number,
+  /** Issue 1391: the trail is readable by design, so it isn't listed. */
+  trailReadable: boolean,
+): { files: string[]; capped: boolean; deep: boolean } {
+  const out: string[] = [];
+  let seen = 0;
+  let capped = false;
+  let deep = false;
+  const walk = (dir: string, depth: number): void => {
+    let names: fs.Dirent[] = [];
+    try {
+      names = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of names) {
+      if (++seen > maxEntries) {
+        capped = true;
+        return;
+      }
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (depth === 0 && NOT_CREDENTIAL_DIRS.includes(e.name)) continue;
+        if (depth >= maxDepth) deep = true;
+        else walk(p, depth + 1);
+      } else if (e.isFile()) {
+        if (trailReadable && depth === 0 && NOT_CREDENTIAL_FILE(e.name))
+          continue;
+        try {
+          if ((fs.lstatSync(p).mode & 0o777) !== 0o600) continue;
+        } catch {
+          continue;
+        }
+        if (!readRulesCover(rules, p)) out.push(path.relative(stateDir, p));
+      }
+      if (capped) return;
+    }
+  };
+  walk(path.resolve(stateDir), 0);
+  return { files: out.sort(), capped, deep };
+}
+
+/**
+ * A state-folder path as doctor may print it (its output gets pasted into
+ * reports): a run of over 32 hex characters becomes <id>, and a segment
+ * not of [A-Za-z0-9._-]{1,64} becomes <name>, so no token in a name shows.
+ */
+function safeShownPath(rel: string): string {
+  return rel
+    .split(path.sep)
+    .map((seg) => {
+      const s = seg.replace(/[0-9A-Fa-f]{33,}/g, "<id>");
+      return /^(?:[A-Za-z0-9._-]|<id>){1,64}$/.test(s) ? s : "<name>";
+    })
+    .join("/");
+}
+
+/**
  * whether it is there. No edge config, or no edge set up here: nothing.
  */
 export function edgeProofLines(
@@ -1264,25 +2220,42 @@ export function edgeProofLines(
 ): { lines: string[]; check?: OnboardCheck } {
   const dir = edgeDir();
   if (!dir) return { lines: [] };
-  let yml: string;
-  try {
-    yml = fs.readFileSync(path.join(dir, "dynamic", "edge.yml"), "utf8");
-  } catch {
-    return { lines: [] };
-  }
+  const yml = readEdgeDynamic(dir);
+  if (yml === null) return { lines: [] };
   const proof = readEdgeProof(dir);
-  const carried = !!proof && yml.includes(proof);
-  const detail = carried
-    ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
-    : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
+  const stale = !!proof && !proofIsCurrent(dir);
+  const held = edgeTrustHeld(dir);
+  const carried = !!proof && !stale && !held && yml.includes(proof);
+  const detail = held
+    ? `${title} holds back the edge's trust: ${held}. So everyone signs in through it, this machine too, until \`${cli} edge up\` recreates it as ${title} renders it`
+    : carried
+      ? `the edge carries ${title}'s proof on its route; requests through it are believed only with it. A new one: \`${cli} edge up --rotate-proof\``
+      : stale
+        ? `the edge's proof is from an older version and ${title} couldn't make a new one (can it write ${dir}?), so everyone signs in through it, this machine too. Run \`${cli} edge up --rotate-proof\``
+        : `the edge doesn't carry ${title}'s proof yet, so everyone signs in through it, this machine too. ${title} adds it at its next start, or run \`${cli} edge up\``;
+  const watch = readEdgeWatchState(dir);
+  const watchDetail =
+    watch?.state === "down"
+      ? `${title} can't follow the edge container's Docker events, so an address the edge gave up could reach another container unnoticed. Until it can again, nothing read before the watch ended is believed, and ${title} reads the edge's address again every 5 s`
+      : watch?.state === "up"
+        ? `${title} follows the edge container's Docker events: an address the edge gives up stops counting as the edge at once`
+        : null;
+  const ok = carried && watch?.state !== "down";
   return {
     lines: [
       "",
       `${title} doctor: Edge proof`,
       "",
       `  edge proof  ${carried ? "✓" : "⚠"}  ${detail}`,
+      ...(watchDetail
+        ? [`  edge watch  ${watch?.state === "up" ? "✓" : "⚠"}  ${watchDetail}`]
+        : []),
     ],
-    check: { id: "edge_proof", status: carried ? "ok" : "warn", detail },
+    check: {
+      id: "edge_proof",
+      status: ok ? "ok" : "warn",
+      detail: watch?.state === "down" ? `${detail}. ${watchDetail}` : detail,
+    },
   };
 }
 
@@ -1325,6 +2298,8 @@ export function selfUpdateLines(
     >;
     state: () => CheckState | null;
     orgFile: string;
+    /** Issue 1189: the pin step's record (pin.json); default the state dir's. */
+    pin?: () => PinRecord | null;
   } = {
     config: () => readServerAgentConfig(),
     state: () => readCheckState(getStateDir()),
@@ -1340,12 +2315,21 @@ export function selfUpdateLines(
       detail: `self_update: unknown, the config can't be read: ${(e as Error).message}`,
     };
   }
+  // Issue 1189: what the self-update's pin step did last, when it says
+  // something (a pull request it fell back to, a push that waits).
+  let pin: string | null = null;
+  try {
+    pin = pinDoctorText((d.pin ?? (() => readPinRecord(getStateDir())))());
+  } catch {
+    pin = null;
+  }
   return {
     lines: [
       "",
       `${title} doctor: New versions`,
       "",
       `  self_update  ${r.status === "ok" ? "✓" : "⚠"}  ${r.detail}`,
+      ...(pin ? [`  pin          ·  ${pin}`] : []),
     ],
     check: { id: "self_update", status: r.status, detail: r.detail },
   };
@@ -1370,6 +2354,51 @@ export function attentionLostLines(
     lang,
     title,
   });
+}
+
+/**
+ * Issue 1217: the rail's pins in user.yml that need a word. An old id-only
+ * pin no project holds is kept, shown under All; an entry that isn't a pin
+ * is skipped (it stays in user.yml, not shown), never the whole list.
+ * Shown only when there is one of either.
+ */
+export function oldPinsLines(
+  title: string,
+  read: () => { shell?: unknown } = readUserConfig,
+  projectsOf?: PinProjects,
+): { lines: string[]; check: OnboardCheck | null } {
+  let shell: unknown;
+  try {
+    shell = read().shell;
+  } catch {
+    return { lines: [], check: null };
+  }
+  let of = projectsOf;
+  if (!of)
+    try {
+      of = pinProjectsOf(readWorkspacesFile().workspaces ?? {});
+    } catch {
+      of = undefined;
+    }
+  const { kept, skipped } = pinNotes(shell, of);
+  if (!kept.length && !skipped.length) return { lines: [], check: null };
+  const lines = ["", `${title} doctor: Pins`, ""];
+  for (const k of kept)
+    lines.push(`  kept, no project  ·  ${k} (shown under All)`);
+  for (const k of skipped)
+    lines.push(
+      `  skipped          ⚠  ${k} (not a pin; left in user.yml, not shown)`,
+    );
+  const detail = [
+    kept.length ? `${kept.length} kept with no project` : "",
+    skipped.length ? `${skipped.length} skipped, not a pin` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+  return {
+    lines,
+    check: { id: "pins", status: skipped.length ? "warn" : "ok", detail },
+  };
 }
 
 /**
@@ -1402,6 +2431,98 @@ export function requestKeepLines(
       `  keep time  ⚠  ${detail}`,
     ],
     check: { id: "request_keep", status: "warn", detail },
+  };
+}
+
+/**
+ * Issue 1333: "Allow this computer?" requests in the last day, from the
+ * activity trail (audit.jsonl, verb signin-request), and how many nobody
+ * approved. Requests are named by count only here; the trail has each
+ * one's address. Never a code.
+ */
+export function signinRequestLines(
+  title: string,
+  o: { stateDir?: () => string; now?: number } = {},
+): { lines: string[]; check?: OnboardCheck } {
+  let text = "";
+  try {
+    text = fs.readFileSync(
+      path.join((o.stateDir ?? getStateDir)(), AUDIT_FILE),
+      "utf-8",
+    );
+  } catch {
+    /* no trail yet: none */
+  }
+  const entries: { ts: string; verb: string; detail: string }[] = [];
+  for (const l of text.split("\n")) {
+    if (!l.includes(SIGNIN_REQUEST_VERB)) continue;
+    try {
+      const e = JSON.parse(l) as {
+        ts?: unknown;
+        verb?: unknown;
+        detail?: unknown;
+      };
+      if (typeof e.ts === "string" && typeof e.verb === "string")
+        entries.push({
+          ts: e.ts,
+          verb: e.verb,
+          detail: String(e.detail ?? ""),
+        });
+    } catch {
+      /* a torn line */
+    }
+  }
+  const c = signinRequestCounts(entries, o.now);
+  const detail = c.requests
+    ? `${c.requests} sign-in request${c.requests === 1 ? "" : "s"} in the last day, ${c.notApproved} nobody approved. The activity trail (verb signin-request) says where each came from`
+    : "no sign-in requests in the last day";
+  const status = c.notApproved ? "warn" : "ok";
+  return {
+    lines: [
+      "",
+      `${title} doctor: Sign-in requests`,
+      "",
+      `  sign-in requests  ${status === "ok" ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: { id: "signin_requests", status, detail },
+  };
+}
+
+/**
+ * Issue 1369: the audit entries in the last day that came in as reports
+ * (a process queued them, unverified, no one's word: written while the
+ * server was down, by a process that exited before its send, or by
+ * something writing the queue itself), and how often the intake dropped
+ * queued entries. Counts only, never an entry's words.
+ */
+export function auditReportLines(
+  title: string,
+  o: { stateDir?: string; now?: Date } = {},
+): { lines: string[]; check: OnboardCheck } {
+  const since = (o.now ?? new Date()).getTime() - 24 * 3_600_000;
+  let reports = 0;
+  let drops = 0;
+  for (const e of readAuditRows(o.stateDir ?? getStateDir())) {
+    const at = Date.parse(String(e.ts ?? ""));
+    if (!(at >= since)) continue;
+    if (e.queued === true && e.unverified === true) reports++;
+    else if (e.verb === QUEUE_DROPPED_VERB) drops++;
+  }
+  const said = reports
+    ? `${reports} audit entr${reports === 1 ? "y" : "ies"} in the last day came in as reports: queued by a process, unverified, no one's word (the activity trail marks each)`
+    : "no audit entry in the last day came in as a report";
+  const detail = drops
+    ? `${said}. The intake dropped queued entries ${drops} time${drops === 1 ? "" : "s"} (verb ${QUEUE_DROPPED_VERB} says why)`
+    : said;
+  const status = drops ? "warn" : "ok";
+  return {
+    lines: [
+      "",
+      `${title} doctor: Audit reports`,
+      "",
+      `  audit reports  ${status === "ok" ? "✓" : "⚠"}  ${detail}`,
+    ],
+    check: { id: "audit_reports", status, detail },
   };
 }
 
@@ -1468,24 +2589,49 @@ export function instructionSizeLines(
 }
 
 /**
- * agents.git.signing_key: whether agents' commits sign and verify with the
- * key (a commit in a temp repo, checkAgentSigning), and the line that adds
- * its .pub to GitHub as a signing key. Nothing when unset.
+ * agents.git: whether agents' commits sign and verify with the key in
+ * force (agentKeyInForce: agents.git.signing_key, else the install's own
+ * once made), a commit in a temp repo (checkAgentSigning), and the line
+ * that adds its .pub to GitHub as a signing key. No key in force:
+ * "not signed", said as information, with the fix.
  */
 export function signingLines(
   title: string,
-  readGit: () => AgentGitSettings | undefined = () => {
+  readGit: () => AgentGitSettings | { off: true } | undefined = () => {
     try {
-      return readAgentsConfig().git;
+      const git = readAgentsConfig().git;
+      return git?.off ? { off: true } : agentKeyInForce(git, getStateDir());
     } catch {
       // A bad agents: block is configLines' row.
       return undefined;
     }
   },
-  check: (g: AgentGitSettings) => SigningCheck = (g) => checkAgentSigning(g),
+  check: (g: AgentGitSettings) => SigningCheck = signingInSandbox,
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
-  const git = readGit();
-  if (!git) return { lines: [], problem: false, checks: [] };
+  const got = readGit();
+  if (!got || !("signingKey" in got)) {
+    const off = !!got && "off" in got;
+    const detail = off
+      ? "not signed: agents.git.signing is off"
+      : "not signed: no agents' signing key";
+    const fix = off
+      ? undefined
+      : "set agents.git.signing_key in config/local/user.yml to an SSH key with no passphrase, or turn on commit signing in your git (commit.gpgsign): the next agent start makes the agents' own key";
+    return {
+      lines: [
+        "",
+        `${title} doctor: agents' commit signing`,
+        "",
+        `  signing  ℹ  ${detail} (agents' commits and ${title}'s pin commits are unsigned)`,
+        ...(fix ? [`           fix: ${fix}`] : []),
+      ],
+      problem: false,
+      checks: [
+        { id: "agents:signing", status: "ok", detail, ...(fix ? { fix } : {}) },
+      ],
+    };
+  }
+  const git = got;
   const r = check(git);
   const add = signingKeyAddLine(git);
   const lines = [
@@ -1511,6 +2657,58 @@ export function signingLines(
 }
 
 /**
+ * Issue 1316: doctor's signing check as an agent's session runs it: git
+ * inside the agent sandbox (when it is on), with the key's files read
+ * back as a session's are. A key the sandbox hides fails, saying why.
+ */
+export function signingInSandbox(
+  g: AgentGitSettings,
+  o: {
+    stateDir?: string;
+    distRoot?: string;
+    env?: NodeJS.ProcessEnv;
+    on?: boolean;
+    tmp?: string;
+  } = {},
+): SigningCheck {
+  const env = o.env ?? process.env;
+  const on =
+    o.on ??
+    (() => {
+      try {
+        return sandboxSetting(readAgentsConfig(), "den-doctor-signing");
+      } catch {
+        return true;
+      }
+    })();
+  if (!on) return checkAgentSigning(g, { ...(o.tmp ? { tmp: o.tmp } : {}) });
+  const input = agentSandboxInput({
+    stateDir: o.stateDir ?? getStateDir(),
+    distRoot: o.distRoot ?? getDistRoot(),
+    env,
+    // Never an agent's own id: its folder isn't one a check writes.
+    agentId: "den-doctor-signing",
+    readableFiles: signingReadFiles(g),
+  });
+  for (const f of [g.signingKey, `${g.signingKey}.pub`])
+    if (fs.existsSync(f)) {
+      const why = sandboxHidesFile(f, input);
+      if (why)
+        return {
+          ok: false,
+          detail: `agents can't read their signing key: ${why}`,
+        };
+    }
+  return checkAgentSigning(g, {
+    ...(o.tmp ? { tmp: o.tmp } : {}),
+    wrap: (argv) => {
+      const w = sandboxFor(argv, input, { on: true });
+      return { argv: w.argv, env: w.env };
+    },
+  });
+}
+
+/**
  * `agents:` and `sessions:` (0.4.29): a bad key there stops only the agent
  * and session commands, so doctor names it, with its file and key path,
  * and carries on with every other row. Nothing is shown when both are fine.
@@ -1521,11 +2719,19 @@ export function configLines(
     s: "agents" | "sessions" | "web",
   ) => ConfigError | null = sectionConfigError,
   deprecated: () => string[] = () => deprecatedKeys(),
+  /** Issue 1373: agent limits both files set, to different values. */
+  drift: () => { key: string; mine: unknown; theirs: unknown }[] = () =>
+    agentsUserDrift(),
 ): { lines: string[]; problem: boolean; checks: OnboardCheck[] } {
   const lines: string[] = [];
   const checks: OnboardCheck[] = [];
   // Keys still accepted that no longer do anything: a note, not a problem.
   for (const l of deprecated()) lines.push(`  agents  ℹ  ${l}`);
+  // Issue 1373: user.yml's limit wins; a note, so the person knows which.
+  for (const d of drift())
+    lines.push(
+      `  agents  ℹ  agents.${d.key}: user.yml's ${JSON.stringify(d.mine)} wins over the distribution's ${JSON.stringify(d.theirs)}`,
+    );
   for (const section of ["agents", "sessions", "web"] as const) {
     const e = errorOf(section);
     const issues = e
@@ -1556,7 +2762,31 @@ export function deprecatedKeys(
     ...userYmlOrgKeys(readUser),
     ...collapseDoneKey(),
     ...teamSelfUpdateKey(),
+    ...teamJudgeKey(),
   ];
+}
+
+/**
+ * Issue 52: agents.coach.judge.enabled is the person's, read only from
+ * config/local/user.yml. Judging sends samples, the person's prompts among
+ * them, to the model provider, so an agent working beside the
+ * distribution's config can't switch it on there. Set there, doctor says
+ * it does nothing and where it belongs.
+ */
+export function teamJudgeKey(
+  read: () => { agents?: unknown } = readDenConfig,
+): string[] {
+  try {
+    const coach = (read().agents as { coach?: unknown } | undefined)?.coach;
+    const judge = (coach as { judge?: unknown } | null | undefined)?.judge;
+    if (!judge || typeof judge !== "object" || !("enabled" in judge)) return [];
+    const file = product().configFile;
+    return [
+      `${file}: agents.coach.judge.enabled does nothing there: it is the person's, set in config/local/user.yml, so an agent working beside that file can't switch on sending samples to the model provider`,
+    ];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -1631,6 +2861,36 @@ function collapseDoneKey(): string[] {
   }
 }
 
+function envHoldDoctorLines(): string[] {
+  try {
+    const hold = readAgentsConfig().envHold;
+    if (!hold) return [];
+    const present = shellEnvNames();
+    const legacy = wouldHold(
+      listAgentRecords(getStateDir()),
+      hold,
+      present,
+      (ws) => {
+        try {
+          return checkProjectEnvAllow(
+            ws,
+            (
+              workspaceEntryRaw(ws) as
+                | { agents?: { env_allow?: unknown } }
+                | undefined
+            )?.agents?.env_allow,
+          );
+        } catch {
+          return [];
+        }
+      },
+    );
+    return envHoldLines(readBrand().name, hold, present, legacy).lines;
+  } catch {
+    return [];
+  }
+}
+
 export async function cmdDoctor(args: string[]): Promise<number> {
   const probe = args.includes("--probe");
   const json = args.includes("--json");
@@ -1680,8 +2940,37 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
       r.checks.push(hm.check);
       if (hm.problem) r.ok = false;
+      // Issue 583: a far too broad repo root, and why Validate refuses it.
+      const rr = await repoRootRows();
+      r.checks.push(rr.check);
+      if (rr.problem) r.ok = false;
+      {
+        const { osUserDoctorRow } = await import("./os-user-command.js");
+        const ou = osUserDoctorRow(product().cli);
+        if (ou) {
+          r.checks.push(ou.check);
+          if (ou.problem) r.ok = false;
+        }
+      }
       // Issue 701: the Hub comments this install holds.
       r.checks.push((await heldHubLines()).check);
+      // Issue 1131: agents' refused calls in the last hour.
+      r.checks.push((await tokenRefusalRow()).check);
+      // Issue 707: the server's warning lines on disk.
+      r.checks.push((await serverLogRow()).check);
+      // Issue 625: the test boxes, and why one is skipped.
+      const bx = await gateBoxRows();
+      if (bx.lines.length) r.checks.push(bx.check);
+      // Issue 1274: memory VMs promise, against the machine's RAM.
+      const vm = await gateVmRows();
+      if (vm.lines.length) r.checks.push(vm.check);
+      // Issue 1263: throwaway containers left over from gate runs.
+      r.checks.push((await throwawayRows()).check);
+      const ra = await routeAgentsRows();
+      if (ra.check) r.checks.push(ra.check);
+      // The shared GitHub watcher: calls left, reset, watches, interval.
+      const gw = await githubWatchRow();
+      if (gw.check) r.checks.push(gw.check);
     }
     {
       const { hubStatus } = await import("../../shared/hub.js");
@@ -1691,7 +2980,13 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (st.configured) {
         const dl = await hubDeliveryDoctor();
         if (dl.check) r.checks.push(dl.check);
+        const { readAgentTokenProblems } =
+          await import("../../shared/hub-agent-tokens.js");
+        r.checks.push(
+          ...hubAgentTokenLines(readAgentTokenProblems(getStateDir())).checks,
+        );
       }
+      r.checks.push(...(await hubAddressRows(st)).checks);
       // Issue 726: state and tokens from an earlier Hub.
       r.checks.push(...(await previousHubRows()).checks);
       r.checks.push(
@@ -1702,11 +2997,21 @@ export async function cmdDoctor(args: string[]): Promise<number> {
         ).checks,
       );
       if (st.configured && st.connected) {
-        const { githubCoverage } = await import("../../shared/hub-github.js");
+        const { githubCoverage } =
+          await import("../../shared/hub/hub-github.js");
         r.checks.push(...hubGithubLines(await githubCoverage()).checks);
       }
     }
     r.checks.push(...(await projectMcpDoctor()).checks);
+    {
+      // D53 (issue 39): Compose projects Den's stacks can't call their own.
+      const sc = stackClashLines(
+        await safeStackClashes(),
+        readBrand().name,
+        product().cli,
+      );
+      if (sc.check) r.checks.push(sc.check);
+    }
     const cfg = configLines(readBrand().name);
     r.checks.push(...cfg.checks);
     if (cfg.problem) r.ok = false;
@@ -1714,12 +3019,14 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     r.checks.push(...sign.checks);
     if (sign.problem) r.ok = false;
     const checked = await doctorAddress(product().cli);
+    const edges = await edgeAddresses();
     const addr = addressLines(
       readWebUrl(),
       readBrand().name,
       product().cli,
       checked,
-      await edgeAlias(),
+      edges[0] ?? null,
+      edges,
     );
     r.checks.push(addr.check);
     if (addr.problem) r.ok = false;
@@ -1742,7 +3049,12 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       );
     }
     r.checks.push(
-      pushContactLines(readWebUrl(), readBrand().name, product().cli).check,
+      pushContactLines(
+        readWebUrl(),
+        readBrand().name,
+        product().cli,
+        await pushSubscriptionCount(),
+      ).check,
     );
     r.checks.push(selfUpdateLines(readBrand().name).check);
     {
@@ -1753,14 +3065,35 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       const ep = edgeProofLines(readBrand().name, product().cli);
       if (ep.check) r.checks.push(ep.check);
     }
+    // Issue 728: the edge's once-only rotation, and stacks' secrets.
+    r.checks.push(...edgeRotationLines(readBrand().name).checks);
+    // Issue 728: installs running as this login.
+    r.checks.push(...sharedUserLines(readBrand().name).checks);
+    r.checks.push(...repoSecretLines().checks);
     {
       const bl = bridgeListenLines(readBrand().name);
       if (bl.check) r.checks.push(bl.check);
     }
     // Issue 278: instruction files over the share of the context.
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
+    r.checks.push(...skillPackLines(readBrand().name).checks);
+    // Issue 1333: sign-in requests in the last day.
+    r.checks.push(signinRequestLines(readBrand().name).check!);
+    // Issue 1369: audit entries that came in as reports.
+    r.checks.push(auditReportLines(readBrand().name).check);
     // Issue 609: attention marks Den never took, per agent.
     r.checks.push(...attentionLostLines(readBrand().name).checks);
+    const pinsCheck = oldPinsLines(readBrand().name).check;
+    if (pinsCheck) r.checks.push(pinsCheck);
+    // Issue 636: whether this install is a test bed.
+    r.checks.push(
+      (await import("./test-person.js")).testBedLines(readBrand().name).check,
+    );
+    // Issue 1407: an install holding the test-install claim, never hidden.
+    const claim = (await import("./test-person.js")).testInstallClaimLines(
+      readBrand().name,
+    ).check;
+    if (claim) r.checks.push(claim);
     printJson(r);
     return r.ok ? 0 : 1;
   }
@@ -1768,6 +3101,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of formatDoctor(rows, readBrand().name)) console.log(l);
   const held = approvalsLines(() => readMcpConfig().approvals);
   for (const l of held.lines) console.log(l);
+  // Issue 1129: agents the restart queue still holds.
+  for (const l of restartsWaitingLines(() =>
+    readRestartsWaiting(getStateDir()),
+  ))
+    console.log(l);
   // D17: who can connect GitHub to this instance from the browser.
   const owner = await ownerCheck();
   console.log("");
@@ -1791,15 +3129,45 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     defaultHostModuleDeps(getStateDir()),
   );
   for (const l of hm.lines) console.log(l);
+  // Issue 583: a far too broad repo root, and why Validate refuses it.
+  const roots = await repoRootRows();
+  for (const l of roots.lines) console.log(l);
+  const { osUserDoctorRow } = await import("./os-user-command.js");
+  const osUser = osUserDoctorRow(product().cli);
+  if (osUser) console.log(osUser.line);
   // Issue 701: the Hub comments this install holds.
   for (const l of (await heldHubLines()).lines) console.log(l);
+  for (const l of (await tokenRefusalRow()).lines) console.log(l);
+  for (const l of (await serverLogRow()).lines) console.log(l);
+  // Issue 625: the test boxes, and why one is skipped.
+  for (const l of (await gateBoxRows()).lines) console.log(l);
+  // Issue 1274: memory VMs promise, against the machine's RAM.
+  for (const l of (await gateVmRows()).lines) console.log(l);
+  for (const l of (await routeAgentsRows()).lines) console.log(l);
+  // Issue 1263: throwaway containers left over from gate runs.
+  {
+    const tw = await throwawayRows();
+    if (tw.lines.length) {
+      console.log(`Throwaway containers: ${tw.check.detail}`);
+      for (const l of tw.lines) console.log(l);
+    }
+  }
+  // The shared GitHub watcher: calls left, reset, watches, interval.
+  for (const l of (await githubWatchRow()).lines) console.log(l);
   {
     // HUB-1.5: only when hub.url is set.
     const { hubStatus } = await import("../../shared/hub.js");
     const st = await hubStatus();
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
-    if (st.configured)
+    if (st.configured) {
       for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
+      const { readAgentTokenProblems } =
+        await import("../../shared/hub-agent-tokens.js");
+      for (const l of hubAgentTokenLines(readAgentTokenProblems(getStateDir()))
+        .lines)
+        console.log(l);
+    }
+    for (const l of (await hubAddressRows(st)).lines) console.log(l);
     // Issue 726: state and tokens from an earlier Hub.
     for (const l of (await previousHubRows()).lines) console.log(l);
     for (const l of hubProjectLines(
@@ -1809,23 +3177,32 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ).lines)
       console.log(l);
     if (st.configured && st.connected) {
-      const { githubCoverage } = await import("../../shared/hub-github.js");
+      const { githubCoverage } = await import("../../shared/hub/hub-github.js");
       for (const l of hubGithubLines(await githubCoverage()).lines)
         console.log(l);
     }
   }
   for (const l of (await projectMcpDoctor()).lines) console.log(l);
+  for (const l of stackClashLines(
+    await safeStackClashes(),
+    readBrand().name,
+    product().cli,
+  ).lines)
+    console.log(l);
   const cfg = configLines(readBrand().name);
   for (const l of cfg.lines) console.log(l);
   const sign = signingLines(readBrand().name);
   for (const l of sign.lines) console.log(l);
+  for (const l of envHoldDoctorLines()) console.log(l);
   const checked = await doctorAddress(product().cli);
+  const edges = await edgeAddresses();
   const addr = addressLines(
     readWebUrl(),
     readBrand().name,
     product().cli,
     checked,
-    await edgeAlias(),
+    edges[0] ?? null,
+    edges,
   );
   for (const l of addr.lines) console.log(l);
   {
@@ -1844,20 +3221,74 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       addressLastAnswered(),
     ).lines)
       console.log(l);
+    const fx = fixtureLineNow();
+    if (fx) console.log(fx);
+  }
+  // Issue 1073: the test install's name map, used or ignored.
+  {
+    const tr = testResolveDoctorLine(readTestResolveState(getStateDir()));
+    if (tr) console.log(tr);
+  }
+  // Issue 1225: what the last restore after a restart brought back, or that
+  // the setting is off.
+  {
+    let enabled = true;
+    try {
+      enabled = servicesRestoreOnBoot();
+    } catch {
+      /* a bad value: doctor's config check says so */
+    }
+    const rl = restoreDoctorLine({
+      enabled,
+      last: readLastRestore(getStateDir()),
+    });
+    if (rl) console.log(rl);
+    try {
+      const rm = runtimeMissingDoctorLine({
+        runtime: await containerRuntimeOnPath(),
+        records: listDaemons(),
+      });
+      if (rm) console.log(rm);
+    } catch {
+      /* no service records to read: nothing to say */
+    }
   }
   for (const l of pushContactLines(
     readWebUrl(),
     readBrand().name,
     product().cli,
+    await pushSubscriptionCount(),
   ).lines)
     console.log(l);
   for (const l of selfUpdateLines(readBrand().name).lines) console.log(l);
+  // Issue 1349: the gate's memory guard is off on a platform it can't read.
+  {
+    const g = await import("../../shared/gates/store.js");
+    for (const l of memoryMeasureLines(g.realFreeMemory(), g.realSwapUsedGb()))
+      console.log(l);
+  }
   for (const l of requestKeepLines(readBrand().name).lines) console.log(l);
+  for (const l of oldPinsLines(readBrand().name).lines) console.log(l);
   for (const l of edgeProofLines(readBrand().name, product().cli).lines)
     console.log(l);
+  for (const l of edgeRotationLines(readBrand().name).lines) console.log(l);
+  for (const l of sharedUserLines(readBrand().name).lines) console.log(l);
+  for (const l of repoSecretLines().lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
+  for (const l of skillPackLines(readBrand().name).lines) console.log(l);
+  for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
+  for (const l of auditReportLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);
+  // Issue 636: whether this install is a test bed.
+  for (const l of (await import("./test-person.js")).testBedLines(
+    readBrand().name,
+  ).lines)
+    console.log(l);
+  for (const l of (await import("./test-person.js")).testInstallClaimLines(
+    readBrand().name,
+  ).lines)
+    console.log(l);
   for (const l of pollingLines(eventsFile(), readBrand().name)) console.log(l);
   const cli = product().cli;
   if (!probe) {
@@ -1871,9 +3302,11 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       ownerProblem ||
       pty.problem ||
       hm.problem ||
+      roots.problem ||
       cfg.problem ||
       sign.problem ||
-      addr.problem
+      addr.problem ||
+      !!osUser?.problem
       ? 1
       : 0;
   }
@@ -1899,13 +3332,85 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     ownerProblem ||
     pty.problem ||
     hm.problem ||
+    roots.problem ||
     cfg.problem ||
+    !!osUser?.problem ||
     found
     ? 1
     : 0;
 }
 
 /** Issue 726: doctor's rows for state from an earlier Hub. */
+/** Issue 625: the machine's test boxes (never checked from here). */
+/**
+ * Issue 1274: the VMs here and what they promise. DEN_GATE_VMS=0 skips the
+ * reading (the test setup sets it: a test never reads this machine's VMs).
+ */
+async function routeAgentsRows() {
+  try {
+    const { routeAgentsRow } = await import("./doctor-route-agents.js");
+    const { GateStore } = await import("../../shared/gates/store.js");
+    return routeAgentsRow(new GateStore(), product().cli);
+  } catch {
+    return { lines: [] as string[], check: null };
+  }
+}
+
+async function gateVmRows() {
+  const none = {
+    lines: [] as string[],
+    check: { id: "gate_vms", status: "ok" as const, detail: "" },
+  };
+  if (process.env.DEN_GATE_VMS === "0") return none;
+  try {
+    const { vmLines } = await import("./doctor-vms.js");
+    const { readVms } = await import("../../shared/gates/vms.js");
+    const { GateStore } = await import("../../shared/gates/store.js");
+    return vmLines(readVms(new GateStore().settings().vmMemoryShare));
+  } catch {
+    return none;
+  }
+}
+
+async function gateBoxRows() {
+  const { boxLines } = await import("./doctor-boxes.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  try {
+    return boxLines(new GateStore());
+  } catch {
+    return {
+      lines: [] as string[],
+      check: { id: "gate_boxes", status: "ok" as const, detail: "" },
+    };
+  }
+}
+
+/** Issue 1263: doctor reads docker's throwaway containers; removes none. */
+async function throwawayRows() {
+  const { throwawayLines } = await import("./doctor-throwaway.js");
+  const { listThrowaway, realDocker, storeTag } =
+    await import("../../shared/gates/ephemeral.js");
+  const { GateStore } = await import("../../shared/gates/store.js");
+  try {
+    const store = new GateStore();
+    const list = await listThrowaway(realDocker(10_000));
+    const all = store.list();
+    const live = new Set(all.map((e) => e.id));
+    const checkouts = new Set(
+      all.flatMap((e) => (e.checkout ? [e.checkout] : [])),
+    );
+    return throwawayLines(
+      list,
+      live,
+      storeTag(store.dir),
+      checkouts,
+      store.settings().throwawaySweep,
+    );
+  } catch {
+    return throwawayLines(null, new Set());
+  }
+}
+
 async function previousHubRows(): Promise<
   ReturnType<typeof import("./doctor-hub-previous.js").previousHubLines>
 > {
@@ -1918,6 +3423,16 @@ async function previousHubRows(): Promise<
     /* a bad hub block: its own row says so */
   }
   return previousHubDoctor(getStateDir(), url);
+}
+
+/** Issue 1131: agents' refused calls in the last hour, from the audit. */
+async function tokenRefusalRow(): Promise<{
+  lines: string[];
+  check: OnboardCheck;
+}> {
+  const { tokenRefusalLines, readRefusalTrail } =
+    await import("./doctor-token-refusals.js");
+  return tokenRefusalLines(readBrand().name, readRefusalTrail(getStateDir()));
 }
 
 /** Issue 701: doctor's held Hub comments, from Den's held file. */
@@ -1936,4 +3451,48 @@ async function heldHubLines(): Promise<
     now: Date.now(),
     bellMinutes,
   });
+}
+
+/** Issue 707: doctor's row for the server's warning lines on disk. */
+async function serverLogRow() {
+  const { serverLogLines, serverLogFacts } =
+    await import("./doctor-server-log.js");
+  const { serverLogPath, serverLogMaxBytes } =
+    await import("../../shared/server-log-file.js");
+  let user: unknown = null;
+  try {
+    const { readUserConfig } = await import("../../shared/den-config.js");
+    user = readUserConfig();
+  } catch {
+    /* a bad user.yml: its own row says so; the default here */
+  }
+  return serverLogLines(
+    readBrand().name,
+    serverLogFacts(
+      serverLogPath(getStateDir()),
+      serverLogMaxBytes(user),
+      product().cli,
+    ),
+  );
+}
+
+/** Issue 583: doctor's repo roots row, for this install's projects. */
+async function repoRootRows() {
+  const { repoRootLines, defaultRepoRoots } =
+    await import("./doctor-repo-roots.js");
+  return repoRootLines(await defaultRepoRoots(), { stateDir: getStateDir() });
+}
+
+/**
+ * Issue 1349: doctor's line when this platform has no free-memory or swap
+ * reading: the gate's memory holds are off here, and the person should see
+ * that, not a healthy-looking number.
+ */
+export function memoryMeasureLines(
+  free: number | null,
+  swap: number | null,
+): string[] {
+  return free === null && swap === null
+    ? [`Gate slots: ${MEMORY_NOT_MEASURED_WORDS}.`]
+    : [];
 }

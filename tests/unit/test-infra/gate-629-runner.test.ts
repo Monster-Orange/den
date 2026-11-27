@@ -3,8 +3,8 @@
  * bed: a Den that holds its note after a restart while the server agent
  * shows a dialog for its person, and refuses a message from the page with
  * 409 dialog_open, passes; a Den that types the note once its wait runs
- * out, and types the message, fails; a restart held for an Allow fails
- * clause 1 (never skipped). The Hub clauses skip with their reason.
+ * out, and types the message, fails; a restart held for the person's Allow
+ * is not run (skip person). The Hub clauses skip with their reason.
  *
  * Clause 2's fake Den holds a Hub comment on its hook-set waiting mark,
  * as Den does: the screen clearing doesn't clear it; a hook a real agent
@@ -21,7 +21,14 @@ import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 
-type Kind = "fixed" | "unfixed" | "held-for-allow";
+type Kind =
+  | "fixed"
+  | "unfixed"
+  | "held-for-allow"
+  | "fixture-say"
+  | "unmarked-say"
+  | "marked-say"
+  | "unread-say";
 
 function runGate(
   kind: Kind,
@@ -57,7 +64,12 @@ function runGate(
     const hooks = [];
     const yml = { closed: false, set: null };
     let started = "2026-11-19T00:00:00.000Z";
-    let selfUpdate = "ask";
+    // The person's own setting: auto lets the restart go at once; ask holds
+    // it for their Allow. The check only reads it.
+    let selfUpdate = kind === "held-for-allow" ? "ask" : "auto";
+    let settingsPosts = 0;
+    // "unread-say": the say stub's record reads once (its workspace), then not.
+    let sayReads = 0;
     let restartAt = null, upAt = null, held = false, told = false, auditAt = null;
     const audit = [];
     const WAIT = 10_000;
@@ -144,7 +156,7 @@ function runGate(
       stubLog() { return []; },
       cli() { return { code: 0, out: "", err: "" }; },
       readBed(rel) {
-        if (rel === "state:agents/gate-629-say.json") return JSON.stringify({ workspace: "gate-ws", runtime: "den-claude" });
+        if (rel === "state:agents/gate-629-say.json") return kind === "unread-say" && sayReads++ > 0 ? null : JSON.stringify({ workspace: "gate-ws", runtime: "den-claude", ...(kind === "marked-say" ? { testBed: true } : {}) });
         if (rel === "state:agents/server.json") return JSON.stringify({ workspace: "den-server", runtime: "den-claude" });
         if (rel === "state:audit.jsonl") return audit.join("\\n");
         return null;
@@ -153,7 +165,7 @@ function runGate(
         if (p === "/api/notifications") return bell();
         if (p === "/api/server-info") { tick(); return { startedAt: started, restartWaitSeconds: 10 }; }
         if (p === "/api/settings") {
-          if (init?.method === "POST") selfUpdate = JSON.parse(init.body).server_agent_self_update ?? "ask";
+          if (init?.method === "POST") { settingsPosts++; selfUpdate = JSON.parse(init.body).server_agent_self_update ?? "ask"; }
           return { server_agent_self_update: selfUpdate };
         }
         return {};
@@ -161,6 +173,10 @@ function runGate(
       async fetch(p, init) {
         if (p === "/api/settings") { await ctx.api(p, init); return { status: 200, body: "{}" }; }
         if (/\\/agents\\/gate-629-say\\/say$/.test(p)) {
+          if (kind === "unmarked-say" || kind === "marked-say" || kind === "unread-say")
+            return { status: 403, body: JSON.stringify({ ok: false, error: "only a person can send an agent a message" }) };
+          if (kind === "fixture-say")
+            return { status: 403, body: JSON.stringify({ ok: false, code: "fixture_scope", error: "The fixture person can only use the pages and the few writes live checks need: not this." }) };
           if (kind !== "unfixed" && dialog["gate-629-say"])
             return { status: 409, body: JSON.stringify({ ok: false, code: "dialog_open", error: "waiting on you" }) };
           typed["gate-629-say"].push({ t: clock, text: JSON.parse(init.body).text, enter: true });
@@ -187,7 +203,7 @@ function runGate(
         },
       };
     const out = await runLikeBed("629.mjs", g, ctx);
-    console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate, serverAfter: states.server, stops, hooks, hubIds, comments: hubQueue.length }));`;
+    console.log(JSON.stringify({ clauses: g.clauses, ...out, yml, selfUpdate, settingsPosts, serverAfter: states.server, stops, hooks, hubIds, comments: hubQueue.length }));`;
   const r = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
     cwd: ROOT,
     encoding: "utf-8",
@@ -205,6 +221,7 @@ function runGate(
     error?: string;
     yml: { closed: boolean; set: unknown };
     selfUpdate: string;
+    settingsPosts: number;
     serverAfter: string | null;
     stops: string[];
     hooks: { id: string; event: string; input: Record<string, unknown> }[];
@@ -231,12 +248,46 @@ describe("gate/629.mjs as the bed runs it", () => {
     expect(row(r, 3)?.ok).toBe(false);
   });
 
-  it("a restart held for an Allow fails clause 1, never skips it", () => {
+  it("a restart that waits for the person's Allow: clause 1 is not run (skip person), never a FAIL", () => {
     const r = runGate("held-for-allow");
     expect(r.error).toBeUndefined();
-    expect(row(r, 0)?.ok).toBe(false);
-    expect(row(r, 0)?.skip).toBeUndefined();
+    expect(row(r, 0)).toMatchObject({ ok: null, skip: "person" });
     expect(row(r, 0)?.detail).toMatch(/Allow/);
+    expect(r.settingsPosts).toBe(0);
+  });
+
+  it("the test operator's say refused for a stub with no testBed mark (issue 956): clause 4 is not run, never a FAIL", () => {
+    const r = runGate("unmarked-say");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 3)).toMatchObject({ ok: null, skip: "needs-fixture-say" });
+    expect(row(r, 3)?.detail).toMatch(
+      /only a person can send an agent a message/,
+    );
+    expect(row(r, 3)?.detail).toMatch(/has no testBed mark/);
+  });
+
+  it("the test operator's say refused for a stub Den marked testBed: clause 4 FAILs, naming the refusal", () => {
+    const r = runGate("marked-say");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 3)?.ok).toBe(false);
+    expect(row(r, 3)?.skip).toBeUndefined();
+    expect(row(r, 3)?.detail).toMatch(
+      /marked testBed: 403 \(no code\): only a person can send an agent a message/,
+    );
+  });
+
+  it("a plain 403 when the stub's record can't be read: not run, and the detail says the mark is unknown", () => {
+    const r = runGate("unread-say");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 3)).toMatchObject({ ok: null, skip: "needs-fixture-say" });
+    expect(row(r, 3)?.detail).toMatch(/testBed mark is unknown/);
+  });
+
+  it("the page's say refused to the fixture person: clause 4 is not run, never a FAIL", () => {
+    const r = runGate("fixture-say");
+    expect(r.error).toBeUndefined();
+    expect(row(r, 3)).toMatchObject({ ok: null, skip: "needs-fixture-say" });
+    expect(row(r, 0)?.ok).toBe(true);
   });
 
   it("with Hub, a comment for an agent showing a dialog waits, then is typed once (clause 2)", () => {
@@ -292,19 +343,21 @@ describe("gate/629.mjs as the bed runs it", () => {
     expect(a.hubIds[0]).not.toBe(b.hubIds[0]);
   });
 
-  it("the Hub clauses skip with their reason when the bed has no Hub", () => {
+  it("each skipped clause names its own reason: no Hub, and no tool-list change", () => {
     const r = runGate("fixed");
-    for (const i of [1, 2]) {
-      expect(row(r, i)?.ok).toBeNull();
-      expect(row(r, i)?.skip).toBe("needs-hub");
-    }
+    expect(row(r, 1)).toMatchObject({ ok: null, skip: "needs-hub" });
+    expect(row(r, 2)).toMatchObject({
+      ok: null,
+      skip: "needs-tool-list-change",
+    });
   });
 
-  it("puts back the restart wait and the self-update setting", () => {
+  it("puts back the restart wait, and never writes the person's self-update setting", () => {
     const r = runGate("fixed");
     expect(r.yml.set).toEqual({ ui: { restart_wait_seconds: 10 } });
     expect(r.yml.closed).toBe(true);
-    expect(r.selfUpdate).toBe("ask");
+    expect(r.selfUpdate).toBe("auto");
+    expect(r.settingsPosts).toBe(0);
   });
 
   it("leaves the bed's server agent as it found it: stopped stays stopped", () => {

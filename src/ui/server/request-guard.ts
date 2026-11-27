@@ -62,7 +62,10 @@
  */
 import { timingSafeEqual, createHash } from "crypto";
 import type * as http from "http";
-import { readMcpConfig } from "../../shared/den-config.js";
+import { readMcpConfig, type InstallMode } from "../../shared/den-config.js";
+import { installModeNow } from "../../shared/gates/browser-container.js";
+import { scopeReaches, scopeWords } from "../../shared/agents/scope-rule.js";
+import { isServerScope } from "../../shared/agents/server-agent.js";
 import { LIFECYCLE_CMDS } from "../mcp/guards.js";
 import {
   AGENT_IMPORT_HELD,
@@ -78,13 +81,29 @@ import {
   type Actor,
   type AgentActor,
 } from "../../shared/agent-actor.js";
-import { osUser } from "../../shared/web-secret.js";
+import { osUser } from "../../shared/web/web-secret.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
+import {
+  OPERATOR_PRINCIPAL,
+  type OperatorAct,
+} from "../../shared/test-operator.js";
+import {
+  notTestBedRefusal,
+  TEST_PERSON_HEADER,
+  testPersonCredentialRefusal,
+} from "../../shared/test-person.js";
+
+/** Issue 796: the audit client of an agent's read-only view. */
+export const AGENT_VIEW_CLIENT = "page view (read-only)";
 import { RUNNER_TOKEN_PREFIX } from "../../shared/gates/runner-tokens.js";
+import { isDockerBridgeAddress } from "../../shared/edge/docker-bridge.js";
+export { isDockerBridgeAddress };
 import {
   EMBED_KEY_ROUTES,
   RUNNER_ROUTES,
   isMutatingGet,
   pathMatches,
+  ROUTES,
   routeClass,
   SIGNIN_CSRF_FREE,
   SIGNIN_ID_BEACONS,
@@ -124,9 +143,21 @@ export interface RunnerPrincipal {
 
 /** Who a request proved itself to be. */
 export type Principal =
-  | { kind: "person"; actor: `person:${string}` }
+  | {
+      kind: "person";
+      actor: `person:${string}`;
+      /** Issue 636: a test bed's CLI, on the test-person path. */
+      testPerson?: true;
+    }
   | AgentPrincipal
-  | { kind: "person-browser"; session?: string }
+  | {
+      kind: "person-browser";
+      session?: string;
+      /** Issue 810: the fixture person's session (a test install's live checks). */
+      fixture?: true;
+      /** Issue 796: an agent's read-only view: the agent and its project. */
+      view?: { agent: string; workspace: string };
+    }
   | RunnerPrincipal;
 
 /** What the request checks need of a signed-in browser session. */
@@ -143,6 +174,11 @@ export interface GuardSession {
    * session counts (loopbackSessions).
    */
   secure?: boolean;
+  /** How it signed in (web-session.ts); "fixture": the fixture person (issue 810). */
+  via?: string;
+  /** Issue 796: an agent's view (via "agent-view"): whose, and its project. */
+  agent?: string;
+  agentWorkspace?: string;
 }
 
 /** How a request reached Den. `edge` and `lan` are beyond loopback. */
@@ -196,8 +232,6 @@ export interface GuardContext {
    */
   peerIsLoopback?: (req: http.IncomingMessage) => boolean;
   /**
-   * Whether the request's peer is one the edge's proxy runs on (isEdgePeer:
-   * loopback or a Docker network). The edge hostname is believed only from
    * one: a LAN client that sends `Host: <edge hostname>` straight to this
    * server's port gets 421. Unset: taken as yes (a unit test).
    */
@@ -226,6 +260,12 @@ export interface GuardContext {
    * whatever web.edge_unattested says. Unset: no proof (fails closed).
    */
   edgeProved?: (req: http.IncomingMessage) => boolean;
+  edgeStarting?: () => boolean;
+  /**
+   * Issue 636: whether this install is a test bed right now (issue 810's
+   * test install binding). Unset: never (the test-person path is refused).
+   */
+  testBed?: () => boolean;
 }
 
 export type GuardResult =
@@ -236,6 +276,13 @@ export type GuardResult =
       via: Via;
       /** Beyond loopback: the edge, a LAN name, or a non-loopback peer. */
       beyond: boolean;
+      /**
+       * Via the edge, with the install's own edge's proof (H1), and the edge
+       * attests the client is this machine (edgeClient "local"): never an
+       * unattested client, even where web.edge_unattested counts it local.
+       * Issue 1034: the test operator's own shell through the edge.
+       */
+      edgeLocal: boolean;
       /** The signed-in session, when the cookie names a live one. */
       session: GuardSession | null;
       /**
@@ -248,7 +295,7 @@ export type GuardResult =
     }
   | {
       ok: false;
-      status: 401 | 403 | 421;
+      status: 401 | 403 | 421 | 503;
       code:
         | "misdirected"
         | "unauthorized"
@@ -260,13 +307,16 @@ export type GuardResult =
         | "cross_site"
         | "agent_forbidden"
         | "embed_key_scope"
-        | "runner_scope";
+        | "runner_scope"
+        | "test_person_refused"
+        | "not_test_bed"
+        | "edge_starting";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
       via?: Via;
       beyond?: boolean;
-      /** agent_forbidden: the agent refused, for the audit. */
+      /** agent_forbidden: the agent refused; not_test_bed: the person. For the audit. */
       principal?: Principal;
     };
 
@@ -354,13 +404,7 @@ export function isLoopbackAddress(addr: string | undefined): boolean {
   return net.isIPv4(a) && a.startsWith("127.");
 }
 
-/**
- * A peer the edge's X-Forwarded-Proto is believed from: loopback, or a
- * Docker network (172.16.0.0/12, Docker Desktop's 192.168.65.0/24), where
- * the edge's Traefik runs.
- */
-export function isEdgePeer(addr: string | undefined): boolean {
-  if (isLoopbackAddress(addr)) return true;
+export function isDockerRangeAddress(addr: string | undefined): boolean {
   const a = String(addr ?? "")
     .toLowerCase()
     .replace(/^::ffff:/, "");
@@ -369,6 +413,23 @@ export function isEdgePeer(addr: string | undefined): boolean {
   return (
     (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168 && z === 65)
   );
+}
+
+let EDGE_ADDRESSES: ReadonlySet<string> | null = null;
+
+export function setEdgeAddresses(addrs: readonly string[] | null): void {
+  EDGE_ADDRESSES = addrs?.length ? new Set(addrs.map(normAddress)) : null;
+}
+
+/** The edge: loopback, or the addresses of this install's labelled edge
+ * container. No other Docker-range peer. */
+export function isEdgePeer(
+  addr: string | undefined,
+  edge: ReadonlySet<string> | null = EDGE_ADDRESSES,
+): boolean {
+  if (isLoopbackAddress(addr)) return true;
+  if (!addr || !edge) return false;
+  return edge.has(normAddress(addr));
 }
 
 /** An address without its zone, IPv4-mapped prefix or brackets, lowercase. */
@@ -452,7 +513,6 @@ export type EdgeClient = "local" | "unattested" | "foreign";
  *  - loopback, or one of this machine's own interface addresses (its LAN
  *    or VPN address, a Tailscale 100.x one included): `local`;
  *  - missing, unreadable, or a container/VM network's address (the Docker
- *    ranges isEdgePeer takes, a subnet of one of this machine's bridges,
  *    one of the edge's own Docker networks, or OrbStack's 0.250.250.254):
  *    `unattested`. Docker Desktop and OrbStack on macOS hand the edge
  *    their gateway's address, and a TCP passthrough in front hides the
@@ -467,7 +527,7 @@ export function edgeClient(
   const c = forwardedClient(xff);
   if (!c) return "unattested";
   if (isLoopbackAddress(c)) return "local";
-  if (isEdgePeer(c) || local.bridges.some((b) => inSubnet(c, b)))
+  if (isDockerRangeAddress(c) || local.bridges.some((b) => inSubnet(c, b)))
     return "unattested";
   // 0.0.0.0/8 ("this network") is never a client on another machine:
   // OrbStack presents the host to its containers as 0.250.250.254.
@@ -506,18 +566,6 @@ export function isLoopbackBind(host: string): boolean {
     .toLowerCase()
     .replace(/^\[|\]$/g, "");
   return h === "localhost" || isLoopbackAddress(h);
-}
-
-/**
- * A Docker bridge address (172.16.0.0/12): where a Linux host's containers
- * reach it as host.docker.internal (`host-gateway`, the edge's
- * extra_hosts). One address, never 0.0.0.0 or ::.
- */
-export function isDockerBridgeAddress(addr: string): boolean {
-  const a = addr.trim();
-  if (!net.isIPv4(a)) return false;
-  const [x, y] = a.split(".").map(Number);
-  return x === 172 && y >= 16 && y <= 31;
 }
 
 /**
@@ -588,6 +636,14 @@ export function checkRequest(
       error:
         "This server answers only to its own host names (localhost, " +
         "127.0.0.1, [::1] with its port, or its edge hostname).",
+    };
+  if (via === "edge" && ctx.edgeStarting?.())
+    return {
+      ok: false,
+      status: 503,
+      code: "edge_starting",
+      error: `${title} is starting. Try again in a moment.`,
+      via,
     };
   // Issue 334: an embed key reaches its own routes only, never another
   // (loopback lets an anonymous request through: the key must not ride along).
@@ -667,7 +723,9 @@ export function checkRequest(
         status: 403,
         code: "agent_token_elsewhere",
         error:
-          "This agent token works only from its own agent's processes, and this call came from another process. Nothing ran.",
+          // Issue 1131: what to do. A busy machine can make Den miss the
+          // agent's own process; the token is never in this text.
+          `This agent token works only from its own agent's processes, and ${title} couldn't tell this call came from one of them. Nothing ran. If it came from this agent's own tools, try the call again (a busy machine can cause this); if it keeps happening, run \`${cli} doctor\` and restart the agent from Agents.`,
       };
     if (proved === "revoked")
       return {
@@ -689,12 +747,38 @@ export function checkRequest(
     principal =
       typeof proved === "string" ? { kind: "person", actor: proved } : proved;
   }
+  // Issue 636: the test-person path counts only with the person's own
+  // token, from this machine, on a test bed. Anything else is refused
+  // here, before any route runs.
+  if (header(req, TEST_PERSON_HEADER) !== undefined) {
+    if (principal?.kind !== "person" || beyond)
+      return {
+        ok: false,
+        status: 403,
+        code: "test_person_refused",
+        error: testPersonCredentialRefusal(),
+      };
+    if (!ctx.testBed?.())
+      return {
+        ok: false,
+        status: 403,
+        code: "not_test_bed",
+        error: notTestBedRefusal(),
+        principal,
+      };
+    principal = { ...principal, testPerson: true };
+  }
   // Once Den's own named https address works, sessions count only when
   // minted on it: none on a loopback name, and none minted elsewhere.
   const namedOnly = ctx.loopbackSessions?.() === false;
   const found = principal ? null : (ctx.session?.(req, via) ?? null);
+  // Issue 796: an agent's read-only view lives on loopback only, so it
+  // still counts there.
+  const loopView = via === "loopback" && found?.via === "agent-view";
   const session =
-    namedOnly && (via === "loopback" || !found?.secure) ? null : found;
+    namedOnly && (via === "loopback" || !found?.secure) && !loopView
+      ? null
+      : found;
 
   const method = (req.method ?? "GET").toUpperCase();
   const reqUrl = new URL(req.url ?? "/", "http://localhost");
@@ -756,11 +840,24 @@ export function checkRequest(
     principal: p,
     via,
     beyond,
+    edgeLocal: proved && who === "local",
     session,
     ...(client ? { client: normAddress(client) } : {}),
   });
   const browser: Principal | null = session
-    ? { kind: "person-browser", session: session.key }
+    ? {
+        kind: "person-browser",
+        session: session.key,
+        ...(session.via === "fixture" ? { fixture: true as const } : {}),
+        ...(session.via === "agent-view" && session.agent
+          ? {
+              view: {
+                agent: session.agent,
+                workspace: session.agentWorkspace ?? "",
+              },
+            }
+          : {}),
+      }
     : null;
 
   if (!changes(method) && !isUpgrade(req)) {
@@ -787,7 +884,7 @@ export function checkRequest(
       code: "origin_rejected",
       error:
         "A request that changes something needs an Origin from this server, " +
-        `or \`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `or \`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   }
   if (!originAllowed(origin, ctx))
@@ -826,6 +923,7 @@ export function checkRequest(
       principal: null,
       via,
       beyond,
+      edgeLocal: proved && who === "local",
       session: null,
       ending,
       ...(client ? { client: normAddress(client) } : {}),
@@ -862,6 +960,8 @@ export const AGENT_FORBIDDEN: readonly string[] = [
   "/api/workspaces/:ws/agents/:id/link",
   // D72: an agent never moves itself (or another) out of its scope.
   "/api/workspaces/:ws/agents/:id/move",
+  // Issue 1182: an agent's folder: it asks with the held write agent_folder.
+  "/api/workspaces/:ws/agents/:id/folder",
 ];
 
 /**
@@ -885,7 +985,24 @@ export const AGENT_READ_ONLY: readonly string[] = [
 export const AGENT_PERSON_WRITES: readonly string[] = [
   // Allow and Deny on a held write: never the asking agent's.
   "/api/approvals/:id/decide",
+  // Issue 214: a schedule's standing Allow, and running it now: a person's.
+  "/api/verify/schedules/allow",
+  "/api/verify/schedules/run",
+  // Issue 964: taking an Allow back: a person's too.
+  "/api/verify/schedules/revoke",
+  // Issue 1182: importing or removing an outside runner's run: a person's.
+  "/api/verify/import",
+  "/api/verify/remove",
+  // Issue 52: the Coach's Run now is a person's (the handler checks too).
+  "/api/coach/run",
+  // Issue 52: Dismiss a Coach finding, and Undo it: a person's.
+  "/api/coach/dismiss",
+  "/api/coach/undismiss",
+  // Issue 110: Apply a Coach finding's change (a held write): a person's.
+  "/api/coach/apply",
   "/api/settings",
+  // Issue 1371 Part 2: Undo of a setting an agent changed: the person's.
+  "/api/settings/undo",
   "/api/scope",
   "/api/web-url",
   // Issue 666: an alias made this install's address: the owner's.
@@ -898,6 +1015,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/agents/accounts",
   "/api/agents/accounts/token",
   "/api/agents/accounts/order",
+  // Issue 1182: removing one, and its token.
+  "/api/agents/accounts/remove",
   "/api/release/config",
   "/api/release/deploy",
   "/api/personas",
@@ -912,6 +1031,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces",
   "/api/workspaces/rename",
   "/api/workspaces/create",
+  // Issue 1182: a reset to the blueprint replaces a project's entries.
+  "/api/workspaces/seed",
   "/api/workspaces/settings",
   "/api/workspaces/services",
   "/api/workspaces/services/mode",
@@ -932,6 +1053,10 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/workspaces/:ws/agent-modes",
   // Issue 352: change or remove a project's MCP server (project_mcp_* asks).
   "/api/workspaces/:ws/mcp-servers/:name",
+  // Issue 1480: add or remove a project's app event feed (writes only: an
+  // agent still reads the list; project_event_feed_* asks).
+  "/api/workspaces/:ws/event-feeds",
+  "/api/workspaces/:ws/event-feeds/:name",
   // Issue 103: a composer's Send types into an agent's session.
   "/api/workspaces/:ws/agents/:id/say",
   // Issue 96: the order a person sees their agents in is the person's.
@@ -953,11 +1078,16 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   // Issue 172: the person's devices for push alerts.
   "/api/alerts/subscribe",
   "/api/alerts/unsubscribe",
+  "/api/alerts/test",
+  "/api/alerts/forget",
+  "/api/alerts/presence",
+  "/api/alerts/ack",
   // This install's Hub link.
   "/api/hub/connect",
   "/api/hub/disconnect",
   "/api/hub/sync",
   "/api/hub/link-suggestions",
+  "/api/hub/connect-review",
   "/api/hub/names-check",
   // Issue 144: ending a gate slot early is a person's.
   "/api/gate-slots/end",
@@ -967,6 +1097,13 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/gate-slots/renew",
   "/api/gate-slots/release",
   "/api/gate-slots/runners/revoke",
+  // Issue 625: the test boxes are a person's to change.
+  "/api/gate-slots/boxes",
+  "/api/gate-slots/boxes/remove",
+  "/api/gate-slots/boxes/enable",
+  // Issue 642: CI runner entries; an agent asks with gate_runner_entry_set.
+  "/api/gate-slots/runner-entries",
+  "/api/gate-slots/runner-entries/remove",
 ];
 
 /** Commands a person runs, streamed over GET: an agent never starts one. */
@@ -986,8 +1123,6 @@ const SESSION_ROUTE = /^\/api\/sessions\/([^/]+)(?:\/|$)/;
  *  - a shell-grade route, unless it is its own session's
  *    (`/api/sessions/<its session id or name>/…`): agent start and resume
  *    mint tokens, the browser sessions are a person's.
- * Seam (WS-3a, 0.4.2): the route's workspace against `p.workspace` and
- * `p.grants` is checked here; nothing is yet.
  */
 export function agentRefusal(
   p: AgentPrincipal,
@@ -996,6 +1131,7 @@ export function agentRefusal(
   cls: RouteClass,
   /** The query: service exec's command and environment are checked. */
   search?: URLSearchParams,
+  mode: () => InstallMode = installModeNow,
 ): string | null {
   // An agent runs a service's up, down or restart, and only on local
   // (the MCP tool's rule, held here too: a token can skip the tool).
@@ -1041,7 +1177,7 @@ export function agentRefusal(
   if (target)
     return (
       agentResumeRefusal(p, target.ws, target.id, mcpActions()) ??
-      workspaceRefusal(p, pathname)
+      workspaceRefusal(p, method, pathname, cls, search, mode)
     );
   // AG-17.1: MCP agent_import, opted in, inside the agent's scope (its
   // list as well as its import: conversation titles are a person's).
@@ -1051,11 +1187,11 @@ export function agentRefusal(
       // Issue 160: the bring-in itself is a held write, never the route.
       (imp.imports ? `${p.actor}: ${AGENT_IMPORT_HELD}.` : null) ??
       agentImportRefusal(p, imp.ws, mcpActions()) ??
-      workspaceRefusal(p, pathname)
+      workspaceRefusal(p, method, pathname, cls, search, mode)
     );
   if (cls === "shell-grade")
     return `${p.actor} can't ${method === "GET" ? "open" : "use"} ${pathname}: starting or resuming an agent, and the browser sessions, are a person's.`;
-  return workspaceRefusal(p, pathname);
+  return workspaceRefusal(p, method, pathname, cls, search, mode);
 }
 
 /** The org config's mcp.actions; none when it can't be read. */
@@ -1067,9 +1203,161 @@ function mcpActions(): readonly string[] {
   }
 }
 
-/** WS-3a's seam (0.4.2): an agent's route outside its workspace. Not yet. */
-function workspaceRefusal(_p: AgentPrincipal, _pathname: string): null {
-  return null;
+const LITERAL_PATHS = new Set(
+  ROUTES.filter((r) => !/[:*]/.test(r.path)).map((r) => r.path),
+);
+const PROJECT_SEGMENTS = [":ws", ":project"];
+const WS_ROUTES = ROUTES.flatMap((r) => {
+  const at = r.path
+    .split("/")
+    .findIndex((seg) => PROJECT_SEGMENTS.includes(seg));
+  return at < 0 ? [] : [{ path: r.path, at }];
+});
+
+export function routeWorkspace(pathname: string): string | null {
+  if (LITERAL_PATHS.has(pathname)) return null;
+  const hit = WS_ROUTES.find((r) => pathMatches(r.path, pathname));
+  if (!hit) return null;
+  const seg = pathname.split("/")[hit.at] ?? "";
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+export function requestWorkspaces(
+  pathname: string,
+  search?: URLSearchParams,
+): string[] {
+  const out: string[] = [];
+  const inPath = routeWorkspace(pathname);
+  if (inPath !== null) out.push(inPath);
+  for (const k of ["ws", "workspace"])
+    for (const v of search?.getAll(k) ?? []) if (v) out.push(v);
+  return out;
+}
+
+function readsOnly(method: string, cls: RouteClass): boolean {
+  return (method === "GET" || method === "HEAD") && cls === "readonly";
+}
+
+export const STRICT_PERSON_READS: readonly string[] = [
+  "/api/server-log",
+  "/api/approvals",
+  "/api/alerts",
+  "/api/alerts/devices",
+  "/api/alerts/stream",
+  "/api/report/diagnostics",
+  "/api/report/drafts",
+  "/api/report/drafts/:id",
+  "/api/report/shots/:id",
+  "/api/report/shot-share",
+  "/api/report/github-send/:id",
+  "/api/perf-report/current",
+  "/api/health/stream",
+  "/api/service/daemons",
+  "/api/catalog",
+  "/api/release/config",
+  "/api/release/branches",
+  "/api/release/deploy/active",
+  "/api/release/deploy",
+  "/api/runs/last",
+  "/api/workspaces/cleanup-preview",
+  "/api/personas",
+  "/api/personas/:id",
+  "/api/verify/overview",
+  "/api/verify/runs/:id",
+  "/api/verify/runs/:id/report",
+  "/api/verify/schedules",
+  "/api/embed/app-keys",
+  "/api/hub/github",
+  "/api/hub/link-suggestions",
+  "/api/hub/groups",
+  "/api/hub/connect-review",
+  "/api/hub/names-check",
+  "/api/gate-slots/runners",
+  "/api/gate-slots/runner-entries",
+];
+
+function workspaceRefusal(
+  p: AgentPrincipal,
+  method: string,
+  pathname: string,
+  cls: RouteClass,
+  search: URLSearchParams | undefined,
+  mode: () => InstallMode,
+): string | null {
+  if (
+    (method === "GET" || method === "HEAD") &&
+    STRICT_PERSON_READS.some((r) => pathMatches(r, pathname)) &&
+    !isServerScope(p.workspace) &&
+    mode() === "strict"
+  )
+    return `${p.actor} can't read this on a strict install: it is the person's own, across every project.`;
+  const outside = requestWorkspaces(pathname, search).find(
+    (ws) => !scopeReaches(p, ws),
+  );
+  if (outside === undefined) return null;
+  if (readsOnly(method, cls) && mode() !== "strict") return null;
+  return `${p.actor} can reach ${scopeWords(p)} only, not "${printableName(outside)}". A person adds the project to agents.<id>.grants in user.yml to widen it.`;
+}
+
+function printableName(v: string): string {
+  return v.replace(/[^\x20-\x7e]/g, "?").slice(0, 80);
+}
+
+export function agentFocusRefusal(
+  req: http.IncomingMessage,
+  focused: string | null | undefined,
+  what: string,
+): string | null {
+  const p = agentPrincipalOf(req);
+  if (!p || !focused || scopeReaches(p, focused)) return null;
+  return `${p.actor} can reach ${scopeWords(p)} only, not "${printableName(focused)}" (the focused project ${what}).`;
+}
+
+export const FOCUSED_READS: Readonly<Record<string, "named" | "focused">> = {
+  "/api/workspaces/available-repos": "named",
+  "/api/workspaces/settings": "named",
+  "/api/workspaces/deps-check": "named",
+  "/api/test-sources": "focused",
+};
+
+export function agentFocusedReadRefusal(
+  req: http.IncomingMessage,
+  pathname: string,
+  search: URLSearchParams,
+  focused: string | null | undefined,
+  mode: () => InstallMode = installModeNow,
+): string | null {
+  const method = (req.method ?? "GET").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return null;
+  const reads = Object.hasOwn(FOCUSED_READS, pathname)
+    ? FOCUSED_READS[pathname]
+    : undefined;
+  if (!reads || (reads === "named" && search.get("workspace"))) return null;
+  if (mode() !== "strict") return null;
+  return agentFocusRefusal(req, focused, "this reads");
+}
+
+export function agentFocusMoved(
+  req: http.IncomingMessage,
+  checked: string | null | undefined,
+  now: string | null | undefined,
+): string | null {
+  if (!agentPrincipalOf(req) || (checked ?? null) === (now ?? null))
+    return null;
+  return "the focused project changed after the check: start it again";
+}
+
+export function agentRowFilter(
+  req: http.IncomingMessage,
+  mode: () => InstallMode = installModeNow,
+): ((ws: string) => boolean) | null {
+  const p = agentPrincipalOf(req);
+  if (!p || mode() !== "strict") return null;
+  return (ws) => scopeReaches(p, ws);
 }
 
 /**
@@ -1128,7 +1416,7 @@ function mutatingGetRefusal(
       code: "origin_rejected",
       error:
         "This request runs something: it needs this server's own page, or " +
-        `\`Authorization: Bearer $(${cli} web token --print)\`.`,
+        `\`Authorization: Bearer <token>\` (run \`${cli} web token --print\` in your own terminal for it).`,
     };
   return null;
 }
@@ -1149,6 +1437,13 @@ export function sessionRequestAllowed(
 
 const PRINCIPALS = new WeakMap<http.IncomingMessage, Principal>();
 
+/**
+ * Issue 814: the test operator's act a request was let through as (the
+ * request gate in index.ts sets it, after operatorRefusal), or none. Only
+ * on a fixture session's request; it never makes the request the person's.
+ */
+const OPERATOR_ACTS = new WeakMap<http.IncomingMessage, OperatorAct>();
+
 /** Remember what the request proved (for the audit trail). */
 export function setPrincipal(
   req: http.IncomingMessage,
@@ -1158,6 +1453,10 @@ export function setPrincipal(
 }
 
 /** Issue 621: the gate-only runner a request's token proves, if any. */
+export function storedPrincipal(req: http.IncomingMessage): Principal | null {
+  return PRINCIPALS.get(req) ?? null;
+}
+
 export function runnerPrincipalOf(
   req: http.IncomingMessage,
 ): RunnerPrincipal | null {
@@ -1170,7 +1469,26 @@ export function agentPrincipalOf(
   req: http.IncomingMessage,
 ): AgentPrincipal | null {
   const p = PRINCIPALS.get(req);
-  return p?.kind === "agent" ? p : null;
+  if (p?.kind === "agent") return p;
+  // Issue 796: an agent's read-only view is that agent everywhere a
+  // handler refuses an agent's token or scopes it to its project, so no
+  // handler can forget it. It carries no grants.
+  if (p?.kind === "person-browser" && p.view) return viewAgent(p.view);
+  return null;
+}
+
+/** Issue 796: the agent an agent's view stands for (agentRefusal's shape). */
+export function viewAgent(v: {
+  agent: string;
+  workspace: string;
+}): AgentPrincipal {
+  return {
+    kind: "agent",
+    actor: v.agent as `agent:${string}`,
+    workspace: v.workspace,
+    grants: [],
+    session: { name: "" },
+  };
 }
 
 /**
@@ -1183,6 +1501,12 @@ export function agentPrincipalOf(
 export function principalOf(req: http.IncomingMessage): string | undefined {
   const p = PRINCIPALS.get(req);
   if (p?.kind === "person" || p?.kind === "agent") return p.actor;
+  // Issue 810: the fixture person is named as such, never the human;
+  // issue 814: the test operator's act as the test operator.
+  if (p?.kind === "person-browser" && p.session && p.fixture)
+    return OPERATOR_ACTS.has(req) ? OPERATOR_PRINCIPAL : FIXTURE_PRINCIPAL;
+  // Issue 796: an agent's view is the agent, never the person.
+  if (p?.kind === "person-browser" && p.session && p.view) return p.view.agent;
   if (p?.kind === "person-browser" && p.session) return `person:${osUser()}`;
   return undefined;
 }
@@ -1198,6 +1522,19 @@ export function principalOf(req: http.IncomingMessage): string | undefined {
  */
 export function auditActorOf(req: http.IncomingMessage): Actor {
   const claimed = actorFromHeaders(req.headers);
+  const p = PRINCIPALS.get(req);
+  // Issue 796: an agent's read-only view, named as that agent (its session
+  // was minted for the agent's own token), never the person.
+  if (p?.kind === "person-browser" && p.view)
+    return {
+      kind: "agent",
+      client: AGENT_VIEW_CLIENT,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      agent: p.view.agent as `agent:${string}`,
+      workspace: p.view.workspace,
+    };
   const agent = agentPrincipalOf(req);
   if (agent) {
     const actor: AgentActor = {
@@ -1211,5 +1548,88 @@ export function auditActorOf(req: http.IncomingMessage): Actor {
     };
     return actor;
   }
+  // Issue 810: the fixture person is never the person. Every person-only
+  // check of the form agentPrincipalOf(req) || auditActorOf(req) refuses
+  // it, and the audit keeps it as a claim, labelled as such.
+  if (p?.kind === "person-browser" && p.fixture)
+    return {
+      kind: "agent",
+      client: OPERATOR_ACTS.has(req) ? OPERATOR_PRINCIPAL : FIXTURE_PRINCIPAL,
+      clientVersion: "-",
+      mcpPid: null,
+      session: "",
+      unverified: true,
+    };
   return claimed ? { ...claimed, unverified: true } : null;
+}
+
+/**
+ * Issue 810: whether a person-only check must refuse this request: an
+ * agent's token, a claimed agent, the fixture person, or (issue 796) an
+ * agent's read-only view.
+ */
+export function notAPersonOf(req: http.IncomingMessage): boolean {
+  return !!agentPrincipalOf(req) || !!auditActorOf(req);
+}
+
+/**
+ * Whether this request proved a person: the CLI's
+ * bearer, or a signed-in browser that is neither an agent's view nor the
+ * fixture person, with no agent's token or claim on it. A loopback caller
+ * that proved nothing is not one.
+ */
+export function provenPersonOf(req: http.IncomingMessage): boolean {
+  if (notAPersonOf(req)) return false;
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person") return true;
+  return p?.kind === "person-browser" && !p.view && !p.fixture;
+}
+
+/**
+ * Whether this request is a test bed's CLI on the test-person path (issue
+ * 636): a person token marked testPerson. A person-only write that widens
+ * what runs refuses it (issue 642 review).
+ */
+export function testPersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return p?.kind === "person" && p.testPerson === true;
+}
+
+/**
+ * Issue 402: whether this request is a test install's fixture person
+ * itself: its browser session, with no agent's token or claim on it.
+ */
+export function fixturePersonOf(req: http.IncomingMessage): boolean {
+  const p = PRINCIPALS.get(req);
+  return (
+    p?.kind === "person-browser" &&
+    p.fixture === true &&
+    !actorFromHeaders(req.headers)
+  );
+}
+
+export function markOperatorAct(
+  req: http.IncomingMessage,
+  act: OperatorAct,
+): void {
+  const p = PRINCIPALS.get(req);
+  if (p?.kind === "person-browser" && p.fixture) OPERATOR_ACTS.set(req, act);
+}
+
+export function operatorActOf(req: http.IncomingMessage): OperatorAct | null {
+  return OPERATOR_ACTS.get(req) ?? null;
+}
+
+/**
+ * Issue 814: a person-only check that also lets the test operator through
+ * for `act`, and only that act: a person, or a fixture session's request
+ * the gate let through as `act`. Every other caller is refused as
+ * notAPersonOf refuses it.
+ */
+export function personOrOperator(
+  req: http.IncomingMessage,
+  act: OperatorAct,
+): boolean {
+  if (!notAPersonOf(req)) return true;
+  return !agentPrincipalOf(req) && OPERATOR_ACTS.get(req) === act;
 }

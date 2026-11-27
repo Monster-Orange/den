@@ -1,5 +1,7 @@
 /**
- * A fake bed for gate/503.mjs: terminals open and close through the API,
+ * A fake bed for gate/503.mjs: terminals open and close through the CLI
+ * (`sessions start` / `sessions kill`; the page's route answers 403
+ * fixture_scope, as Den answers the fixture person),
  * doctor --json has the Terminals row, and readBed answers the installed
  * @lydell/node-pty, the lockfile and Den's config reader, as a working Den
  * does, unless `broken` names one part to break:
@@ -7,7 +9,8 @@
  *   doctor no Terminals row in doctor
  *   keys   the config reader lacks the sessions.pty_* keys
  *   pty    another node-pty version is installed
- *   reason the cap's refusal has no reason
+ *   reason the cap's refusal doesn't name sessions.max_concurrent
+ *   nostart `sessions start` is refused before any terminal opens
  *   others another program on the machine opens 3 PTYs while the check runs
  * `cap` is sessions.max_concurrent; `capIn` is where the bed sets it:
  * "den.yml", or "default" (only Den's default in den-config).
@@ -27,43 +30,64 @@ export function fakeBed({ broken = null, cap = 8, capIn = "den.yml" } = {}) {
       const method = init.method ?? "GET";
       if (p === "/api/sessions" && method === "GET")
         return json(200, { sessions: [], workspaces: ["north"] });
-      if (p === "/api/workspaces/north/sessions" && method === "POST") {
+      if (/^\/api\/(workspaces\/[^/]+\/)?sessions/.test(p) && method !== "GET")
+        return json(403, {
+          ok: false,
+          code: "fixture_scope",
+          error:
+            "The fixture person can only use the pages and the few writes live checks need: not this.",
+        });
+      return json(404, { ok: false });
+    },
+    cli(args) {
+      if (args[0] === "sessions" && args[1] === "start") {
+        const at = (f) => args[args.indexOf(f) + 1];
+        if (at("--workspace") !== "north" || !args.includes("--"))
+          return { code: 2, out: "", err: "✗ usage" };
+        if (broken === "nostart")
+          return { code: 1, out: "", err: "✗ the session host is not running" };
         if (open.size >= cap)
-          return json(
-            429,
-            broken === "reason"
-              ? { ok: false, code: "cap" }
-              : {
-                  ok: false,
-                  error: `${cap} sessions are running (sessions.max_concurrent is ${cap})`,
-                  code: "cap",
-                  hints: [
-                    "Stop a session first, or raise sessions.max_concurrent.",
-                  ],
-                },
-          );
-        const id = `t${++next}`;
-        open.add(id);
+          return {
+            code: 1,
+            out: "",
+            err:
+              broken === "reason"
+                ? "✗ cap"
+                : `✗ ${cap} sessions are running (sessions.max_concurrent is ${cap})\n  Stop one first (\`den sessions kill <name>\`), or raise sessions.max_concurrent.`,
+          };
+        const name = at("--name");
+        open.add(name);
+        next++;
         host++;
         machine++;
-        return json(201, { session: { id } });
+        return {
+          code: 0,
+          out: args.includes("--json")
+            ? JSON.stringify({
+                session: {
+                  name,
+                  pid: 1000 + next,
+                  ref: { id: `s${next}` },
+                  startedAt: new Date(0).toISOString(),
+                },
+                dropped: [],
+              })
+            : `started ${name} (id s${next}, pid ${1000 + next})\n  attach: den sessions attach ${name}`,
+          err: "",
+        };
       }
-      const m = /^\/api\/sessions\/([^/]+)\/close$/.exec(p);
-      if (m && method === "POST") {
-        if (open.delete(decodeURIComponent(m[1])) && broken !== "leak") {
+      if (args[0] === "sessions" && args[1] === "kill") {
+        if (open.delete(args[2]) && broken !== "leak") {
           host--;
           machine--;
         }
         if (broken === "others" && open.size === 0) machine += 3;
-        return json(200, { ok: true });
+        return { code: 0, out: `stopped ${args[2]}`, err: "" };
       }
-      return json(404, { ok: false });
-    },
-    cli(args) {
       if (args[0] !== "doctor") return { code: 2, out: "", err: "" };
       const checks =
         broken === "doctor"
-          ? []
+          ? [{ id: "node", status: "ok", detail: "v24" }]
           : [
               {
                 id: "terminal_host_ptys",

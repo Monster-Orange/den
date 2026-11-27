@@ -6,7 +6,9 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import {
+  APPROVE_WINDOW_MS,
   formatPairCode,
+  MAX_PAIRS_PER_CLIENT_MINUTE,
   MAX_PENDING_PAIRS,
   MAX_WITHDRAWN_KEPT,
   newPairCode,
@@ -63,6 +65,7 @@ describe("a request", () => {
     expect(pairs.waiting()).toEqual([
       {
         code: r.code,
+        ref: r.ref,
         state: "pending",
         device: "Chrome on macOS",
         client: "203.0.113.7",
@@ -142,7 +145,13 @@ describe("the cap and the rate limit", () => {
     }
     const left = pairs.waiting().map((w) => w.code);
     expect(left).toHaveLength(MAX_PENDING_PAIRS);
-    expect(left).toEqual(made.slice(2).map((m) => m.code));
+    // Issue 819: the newest first.
+    expect(left).toEqual(
+      made
+        .slice(2)
+        .map((m) => m.code)
+        .reverse(),
+    );
     expect(pairs.get(made[0].id)).toBeNull();
     expect(pairs.approve(made[0].code)).toEqual({
       ok: false,
@@ -150,7 +159,7 @@ describe("the cap and the rate limit", () => {
     });
   });
 
-  it("past 10 attempts a minute, every attempt is refused (a right code too) until the minute passes", () => {
+  it("past 10 attempts in the window, every attempt is refused (a right code too) until the window passes", () => {
     const c = clock();
     // Its page polls all along (issue 320: else it ends unseen first).
     const pairs = new PairRequests({ now: c.now, unseenMs: Infinity });
@@ -163,8 +172,196 @@ describe("the cap and the rate limit", () => {
       error: "rate_limited",
     });
     expect(pairs.get(r.id)?.state).toBe("pending");
-    c.advance(60_000);
+    c.advance(APPROVE_WINDOW_MS);
     expect(pairs.approve(r.code)).toMatchObject({ ok: true });
+  });
+});
+
+describe("issue 819: approving needs the code from the device's screen", () => {
+  it("a request has a public handle apart from its code and poll id", () => {
+    const pairs = new PairRequests({ now: clock().now });
+    const r = pairs.create({ userAgent: UA });
+    expect(r.ref.length).toBeGreaterThanOrEqual(16);
+    expect([r.ref === r.id, r.ref.includes(r.code.replace("-", ""))]).toEqual([
+      false,
+      false,
+    ]);
+    expect(pairs.waiting()[0].ref).toBe(r.ref);
+  });
+
+  it("by its handle, only its own code approves it, typed in any case, with spaces or a dash", () => {
+    const pairs = new PairRequests({ now: clock().now, unseenMs: Infinity });
+    const a = pairs.create({ userAgent: UA });
+    const b = pairs.create({ userAgent: UA });
+    expect(pairs.approve({ ref: a.ref })).toEqual({
+      ok: false,
+      error: "malformed",
+    });
+    // Another request's code is wrong for this one.
+    expect(pairs.approve({ ref: a.ref, code: b.code })).toEqual({
+      ok: false,
+      error: "wrong",
+    });
+    expect(pairs.get(b.id)?.state).toBe("pending");
+    const typed = ` ${a.code.toLowerCase().replace("-", " ")} `;
+    expect(pairs.approve({ ref: a.ref, code: typed })).toMatchObject({
+      ok: true,
+    });
+    expect(pairs.get(a.id)?.state).toBe("approved");
+  });
+
+  it("deny by its handle needs no code", () => {
+    const pairs = new PairRequests({ now: clock().now });
+    const a = pairs.create({ userAgent: UA });
+    expect(pairs.deny({ ref: a.ref })).toMatchObject({ ok: true });
+    expect(pairs.get(a.id)?.state).toBe("denied");
+  });
+
+  it("past its 10 minutes it can't be approved at all, by handle or code, and drops off the list", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now, unseenMs: Infinity });
+    const a = pairs.create({ userAgent: UA });
+    c.advance(PAIR_TTL_MS);
+    expect(pairs.waiting()).toEqual([]);
+    expect(pairs.approve({ ref: a.ref, code: a.code })).toEqual({
+      ok: false,
+      error: "expired",
+    });
+    expect(pairs.approve(a.code)).toEqual({ ok: false, error: "expired" });
+  });
+
+  it("a wrong code counts toward the limit; a request that ended or a handle that names none doesn't", () => {
+    const c = clock();
+    const pairs = new PairRequests({
+      now: c.now,
+      unseenMs: Infinity,
+      maxAttempts: 3,
+    });
+    const a = pairs.create({ userAgent: UA });
+    const gone = pairs.create({ userAgent: UA });
+    pairs.withdraw(gone.id);
+    const wrong = a.code === "000-000" ? "000-001" : "000-000";
+    for (let i = 0; i < 10; i++) {
+      expect(pairs.approve({ ref: gone.ref, code: gone.code })).toEqual({
+        ok: false,
+        error: "ended",
+      });
+      expect(
+        pairs.approve({ ref: "nothing-by-that-name", code: wrong }),
+      ).toEqual({ ok: false, error: "unknown" });
+    }
+    for (let i = 0; i < 3; i++)
+      expect(pairs.approve({ ref: a.ref, code: wrong })).toEqual({
+        ok: false,
+        error: "wrong",
+      });
+    expect(pairs.approve({ ref: a.ref, code: a.code })).toEqual({
+      ok: false,
+      error: "rate_limited",
+    });
+  });
+
+  it("the limit and its window are read when used (Settings); the default window is short", () => {
+    expect(APPROVE_WINDOW_MS).toBeLessThanOrEqual(30_000);
+    const c = clock();
+    let max = 1;
+    let windowMs = 5_000;
+    const pairs = new PairRequests({
+      now: c.now,
+      unseenMs: Infinity,
+      maxAttempts: () => max,
+      windowMs: () => windowMs,
+    });
+    const a = pairs.create({ userAgent: UA });
+    const wrong = a.code === "000-000" ? "000-001" : "000-000";
+    pairs.approve({ ref: a.ref, code: wrong });
+    expect(pairs.approve({ ref: a.ref, code: a.code })).toMatchObject({
+      error: "rate_limited",
+    });
+    max = 5;
+    expect(pairs.approve({ ref: a.ref, code: wrong })).toMatchObject({
+      error: "wrong",
+    });
+    windowMs = 1;
+    c.advance(2);
+    max = 1;
+    expect(pairs.approve({ ref: a.ref, code: a.code })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("the waiting list shows a sign-in link's request first, then the newest", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now, unseenMs: Infinity });
+    const old = pairs.create({ userAgent: UA });
+    c.advance(10);
+    const linked = pairs.create({
+      userAgent: UA,
+      link: "n".repeat(22),
+      linkAt: 123,
+    });
+    c.advance(10);
+    const newest = pairs.create({ userAgent: UA });
+    expect(pairs.waiting().map((w) => w.ref)).toEqual([
+      linked.ref,
+      newest.ref,
+      old.ref,
+    ]);
+    expect(pairs.waiting()[0].linkAt).toBe(123);
+  });
+});
+
+describe("issue 819: who may make requests", () => {
+  it(`one client address makes at most ${MAX_PAIRS_PER_CLIENT_MINUTE} a minute (a Setting); another isn't held up`, () => {
+    const c = clock();
+    let per = 3;
+    const pairs = new PairRequests({
+      now: c.now,
+      unseenMs: Infinity,
+      perClient: () => per,
+    });
+    for (let i = 0; i < 3; i++)
+      expect(pairs.tryCreate({ userAgent: UA, client: "203.0.113.7" }).ok).toBe(
+        true,
+      );
+    expect(pairs.tryCreate({ userAgent: UA, client: "203.0.113.7" })).toEqual({
+      ok: false,
+      error: "rate_limited",
+    });
+    expect(pairs.tryCreate({ userAgent: UA, client: "198.51.100.2" }).ok).toBe(
+      true,
+    );
+    per = 10;
+    expect(pairs.tryCreate({ userAgent: UA, client: "203.0.113.7" }).ok).toBe(
+      true,
+    );
+    c.advance(60_000);
+    per = 3;
+    expect(pairs.tryCreate({ userAgent: UA, client: "203.0.113.7" }).ok).toBe(
+      true,
+    );
+  });
+
+  it("past the cap, a request without a link never drops one a sign-in link opened", () => {
+    const c = clock();
+    const pairs = new PairRequests({ now: c.now, unseenMs: Infinity, max: 2 });
+    const l1 = pairs.create({ userAgent: UA, link: "a".repeat(22) });
+    c.advance(1);
+    const plain = pairs.create({ userAgent: UA });
+    c.advance(1);
+    // The plain one goes, not the older link's.
+    const l2 = pairs.create({ userAgent: UA, link: "b".repeat(22) });
+    expect(pairs.get(plain.id)).toBeNull();
+    expect(pairs.get(l1.id)?.state).toBe("pending");
+    // Full of links: a plain one is refused, and nothing is dropped.
+    expect(pairs.tryCreate({ userAgent: UA })).toEqual({
+      ok: false,
+      error: "full",
+    });
+    expect([pairs.get(l1.id)?.state, pairs.get(l2.id)?.state]).toEqual([
+      "pending",
+      "pending",
+    ]);
   });
 });
 

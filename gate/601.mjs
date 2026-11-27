@@ -8,6 +8,7 @@
 // sign-in works again once web.address_unknown_keep_seconds passes. Its
 // first four clauses only read; the last runs after them, through the
 // harness's ctx.addressDead (the address down, the window set short).
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 601;
 export const clauses = [
   "a real browser signed in through the address holds a host-only Secure __Host- session cookie, and the session answers signed in",
@@ -18,18 +19,6 @@ export const clauses = [
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
 export const timeoutMs = 300000;
-
-/** doctor --json's signin_host check, or null. */
-function signinRow(out) {
-  const at = String(out ?? "").indexOf("{");
-  if (at < 0) return null;
-  try {
-    const j = JSON.parse(String(out).slice(at));
-    return (j.checks ?? []).find((c) => c?.id === "signin_host") ?? null;
-  } catch {
-    return null;
-  }
-}
 
 /** A loopback GET with nothing: its status, Location, whether it set a
  * cookie, and whether it answered with a page. */
@@ -55,13 +44,34 @@ async function loopback(port, path) {
   }
 }
 
+/**
+ * Den's loopback port: from the bed's host address first (no signed-in
+ * call: once the address is proven, a loopback sign-in is sent to the
+ * address, so the bed's signed calls on loopback can't sign in), else
+ * from /api/server-info; 0 when neither answers (the loopback clauses are
+ * then not run).
+ */
+export async function loopbackPort(ctx) {
+  try {
+    const p = Number(new URL(ctx.hostUrl).port);
+    if (p > 0) return p;
+  } catch {
+    /* no host address */
+  }
+  try {
+    return Number((await ctx.api("/api/server-info"))?.port) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function setup() {
   return {};
 }
 
 export async function run(ctx) {
   const doc = await ctx.cli(["doctor", "--json"]);
-  const row = signinRow(doc.out);
+  const row = doctorChecks(doc).find((c) => c?.id === "signin_host") ?? null;
   const proven = row?.status === "ok";
 
   await ctx.goto(ctx.page, "/");
@@ -77,19 +87,18 @@ export async function run(ctx) {
   });
   await ctx.shot("601-signed-in");
 
-  let port = 0;
-  try {
-    port = Number((await ctx.api("/api/server-info"))?.port) || 0;
-  } catch {
-    /* no port: the loopback clauses can't run */
-  }
+  const port = await loopbackPort(ctx);
   const signin = port ? await loopback(port, "/signin") : null;
   // No https address: a whole sign-in where the browser is (clause 3).
   const whole = port && !proven ? await signInOnLoopback(ctx, port) : null;
 
   // Last: the address is down after this.
   let afterDead;
-  if (proven && origin.startsWith("https:") && typeof ctx.addressDead === "function") {
+  if (
+    proven &&
+    origin.startsWith("https:") &&
+    typeof ctx.addressDead === "function"
+  ) {
     try {
       afterDead = await ctx.addressDead({ keepSeconds: 30, maxMs: 180000 });
       if (port && !afterDead.timedOut && !afterDead.windowTimedOut)
@@ -217,20 +226,22 @@ export function expect(cells) {
     },
     !r.afterDead
       ? { clause: clauses[4], ok: null, skip: "needs-dead-address" }
-      : r.afterDead.timedOut || r.afterDead.windowTimedOut
-        ? {
-            clause: clauses[4],
-            ok: false,
-            note: r.afterDead.timedOut
-              ? `the address never stopped counting (waited ${r.afterDead.waitedMs} ms)`
-              : `loopback still sent to the address after ${r.afterDead.windowMs} ms`,
-          }
-        : {
-            clause: clauses[4],
-            ok: !!r.afterDead.whole?.ok,
-            note: r.afterDead.error
-              ? `addressDead failed: ${r.afterDead.error}`
-              : `${r.afterDead.whole?.ok ? "signed in" : "not signed in"} ${r.afterDead.windowMs ?? "?"} ms after the address left: ${said(r.afterDead.whole)}`,
-          },
+      : !r.port && !r.afterDead.error
+        ? { clause: clauses[4], ok: null, skip: "needs-loopback-port" }
+        : r.afterDead.timedOut || r.afterDead.windowTimedOut
+          ? {
+              clause: clauses[4],
+              ok: false,
+              note: r.afterDead.timedOut
+                ? `the address never stopped counting (waited ${r.afterDead.waitedMs} ms)`
+                : `loopback still sent to the address after ${r.afterDead.windowMs} ms`,
+            }
+          : {
+              clause: clauses[4],
+              ok: !!r.afterDead.whole?.ok,
+              note: r.afterDead.error
+                ? `addressDead failed: ${r.afterDead.error}`
+                : `${r.afterDead.whole?.ok ? "signed in" : "not signed in"} ${r.afterDead.windowMs ?? "?"} ms after the address left: ${said(r.afterDead.whole)}`,
+            },
   ];
 }

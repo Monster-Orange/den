@@ -15,7 +15,7 @@ import * as os from "os";
 import * as path from "path";
 import type { AddressInfo } from "net";
 import { cmdWebLogin } from "../../../src/ui/cli/web-command.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 import {
   DEN_IDENTITY_PATH,
   identityBody,
@@ -73,6 +73,8 @@ async function login(edgeDown: boolean | null) {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    // Sign-in: the person's own terminal.
+    person: { tty: true, line: () => [process.pid, 1] },
     webUrl: () => ({ url: wanted, confirmed: true }),
     addressDeps: { edgeDown: () => edgeDown },
   });

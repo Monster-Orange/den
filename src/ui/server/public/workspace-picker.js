@@ -71,14 +71,43 @@ export function wsLabel(data, slug) {
  * projectDisplayName in src/shared/workspace-name.ts.
  */
 export function projectLabel(data, slug) {
-  const h = data?.workspaces?.[slug]?.hub_project?.name;
-  return typeof h === "string" && h.trim() ? h.trim() : wsLabel(data, slug);
+  const h = hubNameOf(data, slug);
+  return h || wsLabel(data, slug);
 }
 
 /** Where that name comes from: "hub" or "local". */
 export function projectNameSource(data, slug) {
+  return hubNameOf(data, slug) ? "hub" : "local";
+}
+
+/**
+ * The linked Hub project's name, or "". Issue 646: a link to another Hub
+ * (the server's hubElsewhere) counts as not linked.
+ */
+function hubNameOf(data, slug) {
+  if (data?.hubElsewhere?.[slug]) return "";
   const h = data?.workspaces?.[slug]?.hub_project?.name;
-  return typeof h === "string" && h.trim() ? "hub" : "local";
+  return typeof h === "string" && h.trim() ? h.trim() : "";
+}
+
+/**
+ * Issue 646 (mock v2, part 2): the project header's Hub chip. `hub`: the
+ * shell's Hub status (team, url), or null before it answers. Linked:
+ * {kind: "linked", company, project, host, href}; a link to another Hub:
+ * {kind: "elsewhere", href}; not linked: null.
+ */
+export function hubChipModel(data, slug, hub) {
+  const href = `/settings?project=${encodeURIComponent(slug)}#workspace`;
+  if (data?.hubElsewhere?.[slug]) return { kind: "elsewhere", href };
+  const project = hubNameOf(data, slug);
+  if (!project) return null;
+  return {
+    kind: "linked",
+    company: typeof hub?.team === "string" ? hub.team : "",
+    project,
+    host: String(hub?.url || "").replace(/^https?:\/\//, ""),
+    href,
+  };
 }
 
 /**
@@ -181,6 +210,11 @@ export function buildScopeMenuModel(scope, data, t = enT, locale) {
     // (the only active project): no project is selected, so the pins of
     // no project show too, and a new pin is of no project.
     pinProject: one ?? null,
+    // Issue 168: the project in view's colour (its chip's dot); null under
+    // All active.
+    colour: one ? projectColour(data, one) : null,
+    // Issue 168: every project's colour, for what the shell draws (the bell).
+    colours: projectColours(data),
     pinImplicit: !!one && !multi && scope?.scope !== one,
     focus: focus ?? null,
     title: t(focus ? "ws.viewTitleFocus" : "ws.viewTitle", {
@@ -200,4 +234,74 @@ export function ownersLabel(owners) {
   return Array.isArray(owners) && owners.length > 1
     ? ` · ${owners.join(", ")}`
     : "";
+}
+
+/**
+ * Issue 168: the eight project colours (shell-prefs.ts lists the same).
+ * No orange and no red: orange is the brand and the selection, red means
+ * a problem. Each is a theme token, --pc-<name>, light and dark.
+ */
+export const PROJECT_COLOURS = [
+  "blue",
+  "teal",
+  "green",
+  "purple",
+  "pink",
+  "gold",
+  "brown",
+  "slate",
+];
+
+/** The server agent's scope: no project, so no colour (neutral grey). */
+const NO_COLOUR = new Set(["den-server"]);
+
+/**
+ * Issue 168: the localStorage key a colour save stamps (a time), so the
+ * person's other tabs hear of it (a storage event) and repaint.
+ */
+export const PROJECT_COLOURS_KEY = "den-project-colours-at";
+
+/** A stable start in the eight for `slug`: the same on every screen. */
+function colourSeed(slug) {
+  let h = 2166136261;
+  for (const c of String(slug)) {
+    h ^= c.codePointAt(0);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h % PROJECT_COLOURS.length;
+}
+
+/**
+ * Issue 168: every project's colour, slug to colour name. A project the
+ * person gave a colour (data.projectColours, theirs only) has it. Each
+ * other one has its slug's own pick (Automatic): the slug alone decides
+ * it, so a project has the same colour on every screen and every device,
+ * whatever other projects there are or what colours they wear. Two
+ * projects may share one; the person can choose another.
+ */
+export function projectColours(data) {
+  const saved =
+    data?.projectColours && typeof data.projectColours === "object"
+      ? data.projectColours
+      : {};
+  const out = {};
+  for (const s of Object.keys(data?.workspaces ?? {})) {
+    if (NO_COLOUR.has(s)) continue;
+    out[s] = PROJECT_COLOURS.includes(saved[s])
+      ? saved[s]
+      : PROJECT_COLOURS[colourSeed(s)];
+  }
+  return out;
+}
+
+/**
+ * Issue 168: one project's colour name, or null for none (the server
+ * agent, no project). A project the payload doesn't list takes its slug's
+ * own pick.
+ */
+export function projectColour(data, slug) {
+  if (!slug || NO_COLOUR.has(slug)) return null;
+  return (
+    projectColours(data)[slug] ?? PROJECT_COLOURS[colourSeed(slug)] ?? null
+  );
 }

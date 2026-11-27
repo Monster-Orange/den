@@ -1,3 +1,4 @@
+import { testInstallRestartEnv } from "../../shared/test-install-launch.js";
 import { browserOpenRefusal } from "../../shared/browser-open.js";
 import {
   ownerGithubLine,
@@ -8,17 +9,23 @@ import chalk from "chalk";
 import { execFileSync, spawn, spawnSync } from "child_process";
 import * as fs from "fs";
 import * as http from "http";
-import { webProbeTarget } from "../../shared/web-dial.js";
+import { denWebBase, webProbeTarget } from "../../shared/web/web-dial.js";
 import * as path from "path";
 import { pathToFileURL } from "url";
 import { CLI_SPAWN_TIMEOUT_MS, DEFAULT_PORT } from "../../shared/constants.js";
-import { LookupTimeoutError, lookup } from "./proc-lookup.js";
+import { LookupTimeoutError, lookup } from "../../shared/proc-lookup.js";
 import {
   readSecretsConfig,
   secretsProcessEnv,
   type SecretsConfig,
 } from "../../shared/secrets/index.js";
-import { getDistRoot, getEngineRoot, getStateDir } from "../../shared/paths.js";
+import {
+  getDistRoot,
+  getEngineRoot,
+  getProfile,
+  getStateDir,
+} from "../../shared/paths.js";
+import { envName } from "../../shared/profile.js";
 import { hasDenUiMarker } from "../../shared/ui-marker.js";
 import {
   cliAuthHeaders,
@@ -27,7 +34,7 @@ import {
   personToken,
   readWebSecret,
   rotateWebSecret,
-} from "../../shared/web-secret.js";
+} from "../../shared/web/web-secret.js";
 import { newConfirmCode } from "../../shared/confirm-code.js";
 import {
   checkLoginCode,
@@ -41,7 +48,7 @@ import {
   SESSION_TOUCH_MS,
   sessionIdPrefix,
   WebSessionStore,
-} from "../../shared/web-session.js";
+} from "../../shared/web/web-session.js";
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
@@ -68,7 +75,7 @@ import {
   clearWebOwner,
   readWebOwner,
   writeWebOwner,
-} from "../../shared/web-owner.js";
+} from "../../shared/web/web-owner.js";
 import {
   ownServer,
   processCwd,
@@ -84,14 +91,26 @@ import {
   readWebUrl,
   requireWebUrl,
   type WebUrl,
-} from "../../shared/web-url.js";
+} from "../../shared/web/web-url.js";
 import { webServiceAction, type WebServiceDeps } from "./web-service.js";
 import {
   CLAIM_CODE_TTL_MS,
   claimLink,
   mintClaimCode,
-  personGrantRefusal,
 } from "../../shared/claim-code.js";
+import {
+  FIXTURE_LABEL,
+  fixtureLoginLink,
+} from "../../shared/fixture-person.js";
+import {
+  FIXTURE_SETUP_SECRET_ENV_KEY,
+  FROM_SETUP_SECRET_FLAG,
+} from "../../shared/fixture-setup-secret.js";
+import {
+  personHereRefusal,
+  terminalRefusal,
+  type PersonHereDeps,
+} from "../../shared/person-here.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
   checkAddress,
@@ -109,6 +128,12 @@ import {
   type CheckDeps,
 } from "../../shared/edge/address-check.js";
 import { localDateTime } from "../../shared/local-time.js";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
+import {
+  personServerFor,
+  throughServer,
+  type PersonServer,
+} from "./person-server.js";
 interface WebCommandOptions {
   /** `open` is `up` that always opens a fresh sign-in tab (SEC-1b). */
   action: "up" | "down" | "restart" | "open";
@@ -490,17 +515,58 @@ export function startupRefusal(logPath: string, offset = 0): string | null {
   return last ? redactSecrets(last).slice(0, 600) : null;
 }
 
-async function waitForDenWeb(port: number, pid?: number): Promise<boolean> {
-  const { probeMs, startMs } = webReadyWaits();
-  const deadline = Date.now() + startMs;
-  while (Date.now() < deadline) {
-    if (await isDenWebRunning(port, probeMs)) return true;
-    // A server that refused to start has exited: no point waiting it out.
-    if (pid !== undefined && !pidAlive(pid))
-      return isDenWebRunning(port, probeMs);
-    await new Promise((resolve) => setTimeout(resolve, WEB_START_POLL_MS));
+/** What `web up`'s wait found (issue 804). */
+export type ReadyWait =
+  | { ready: true; afterAll?: true }
+  | { ready: false; refusal?: string };
+
+/**
+ * Issue 804: waits for a server just started to answer as Den, until
+ * `startMs` (web.start_wait_seconds) runs out. The pid it started exiting
+ * is never, by itself, a failure: it may be a launcher or wrapper that
+ * exits once the real server is up. Only a pid that has exited AND a
+ * refusal in this start's part of the server's log (startupRefusal) ends
+ * the wait early. When the wait runs out, one more probe: a Den that
+ * answers then is ready, after all.
+ */
+export async function waitForReady(d: {
+  startMs: number;
+  pollMs: number;
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  probe: () => Promise<boolean>;
+  /** Whether the started pid still runs (true when there is none). */
+  alive: () => boolean;
+  /** The server's own refusal line for this start, or null. */
+  refusal: () => string | null;
+}): Promise<ReadyWait> {
+  const deadline = d.now() + d.startMs;
+  while (d.now() < deadline) {
+    if (await d.probe()) return { ready: true };
+    if (!d.alive()) {
+      const why = d.refusal();
+      if (why) return { ready: false, refusal: why };
+    }
+    await d.sleep(d.pollMs);
   }
-  return false;
+  return (await d.probe()) ? { ready: true, afterAll: true } : { ready: false };
+}
+
+async function waitForDenWeb(
+  port: number,
+  started?: { pid?: number; logPath: string; logOffset?: number },
+): Promise<ReadyWait> {
+  const { probeMs, startMs } = webReadyWaits();
+  return waitForReady({
+    startMs,
+    pollMs: WEB_START_POLL_MS,
+    now: Date.now,
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    probe: () => isDenWebRunning(port, probeMs),
+    alive: () => started?.pid === undefined || pidAlive(started.pid),
+    refusal: () =>
+      started ? startupRefusal(started.logPath, started.logOffset) : null,
+  });
 }
 
 /**
@@ -564,6 +630,13 @@ export function webServerEnv(
   cfg: SecretsConfig = readSecretsConfig(),
 ): NodeJS.ProcessEnv {
   return { ...base, PORT: String(port), ...secretsProcessEnv(cfg, base) };
+}
+
+export function webRestartEnv(
+  port: number,
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return { ...webServerEnv(port, base), ...testInstallRestartEnv() };
 }
 
 function startDenWebServer(options: WebCommandOptions): StartedServer {
@@ -666,7 +739,7 @@ export function spawnDetachedWebRestart(port: number): number | undefined {
       {
         cwd: root,
         detached: true,
-        env: webServerEnv(port),
+        env: webRestartEnv(port),
         stdio: ["ignore", logFd, logFd],
       },
     );
@@ -713,9 +786,7 @@ function readWebServerState(): WebServerState | null {
 function writeWebServerState(state: WebServerState): void {
   const statePath = webServerStatePath();
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  const tmp = `${statePath}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
-  fs.renameSync(tmp, statePath);
+  writeFileAtomic(statePath, `${JSON.stringify(state, null, 2)}\n`);
 }
 
 function removeWebServerState(): void {
@@ -1011,7 +1082,7 @@ function runAppleScript(
   script: string,
   timeout = CLI_SPAWN_TIMEOUT_MS,
 ): string {
-  return execFileSync("osascript", [], {
+  return execFileSync("/usr/bin/osascript", [], {
     input: script,
     encoding: "utf-8",
     timeout,
@@ -1092,13 +1163,35 @@ function tabNext(url: string | undefined): string | undefined {
   }
 }
 
+/** Where a Linux system keeps xdg-open (never the caller's PATH). */
+const XDG_OPEN_PATHS = [
+  "/usr/bin/xdg-open",
+  "/usr/local/bin/xdg-open",
+  "/bin/xdg-open",
+];
+
+/**
+ * Sign-in: the program that opens the browser, by absolute path: macOS's
+ * /usr/bin/open, the first xdg-open of a fixed system list elsewhere (null
+ * when there is none). Windows: its own cmd.exe.
+ */
+export function browserOpener(
+  platform: NodeJS.Platform = process.platform,
+  exists: (p: string) => boolean = (p) => fs.existsSync(p),
+): string | null {
+  if (platform === "darwin") return "/usr/bin/open";
+  if (platform === "win32")
+    return `${process.env.SystemRoot ?? "C:\\Windows"}\\System32\\cmd.exe`;
+  return XDG_OPEN_PATHS.find(exists) ?? null;
+}
+
+let OPENER: string | null | undefined;
+
 function openUrl(url: string): BrowserOpenResult {
-  const cmd =
-    process.platform === "darwin"
-      ? "open"
-      : process.platform === "win32"
-        ? "cmd"
-        : "xdg-open";
+  // Resolved once per run.
+  if (OPENER === undefined) OPENER = browserOpener();
+  const cmd = OPENER;
+  if (!cmd) return { status: "open-failed", error: "no browser opener found" };
   const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
   const result = spawnSync(cmd, args, {
     stdio: "ignore",
@@ -1274,6 +1367,8 @@ export const WEB_SUBCOMMANDS_WITH_HELP = [
   "approve",
   "claim-link",
   "url",
+  "fixture-person",
+  "fixture-login",
 ] as const;
 
 export function displayWebHelp(): void {
@@ -1292,8 +1387,10 @@ export function displayWebHelp(): void {
   );
   console.log(`  ${product().cli} web owner [link|show|unlink] [--json]`);
   console.log(`  ${product().cli} web url [<address>] [--json]`);
+  console.log(`  ${product().cli} web approve --list [--json] [--port <port>]`);
+  console.log(`  ${product().cli} web fixture-person`);
   console.log(
-    `  ${product().cli} web approve <code> | --list [--json] [--port <port>]`,
+    `  ${product().cli} web fixture-login [--next <path>] [--origin <url>]`,
   );
   console.log();
   console.log(chalk.bold("Actions:"));
@@ -1308,7 +1405,7 @@ export function displayWebHelp(): void {
     "  open               Start if needed, and sign this browser in (a new tab)",
   );
   console.log(
-    "  login              Print a one-time sign-in link (5 min; web.login_link_ttl) and its code, then wait until it's used",
+    "  login              Print a one-time sign-in link (5 min; web.login_link_ttl), then wait until it's used or approved",
   );
   console.log("  sessions           List the signed-in browsers");
   console.log(
@@ -1321,7 +1418,7 @@ export function displayWebHelp(): void {
     "  owner link         Link your GitHub account as this Den's owner (Sign in with GitHub)",
   );
   console.log(
-    "  approve <code>     Let in a computer whose signed-out page shows this code",
+    "  approve --list     List the computers waiting; approve them in a signed-in browser (Settings › Access)",
   );
   console.log(
     "  claim-link         Print a one-time setup link (30 min) that signs this machine's browser in",
@@ -1356,17 +1453,7 @@ export function displayWebHelp(): void {
  * alone on stdout; a one-line note on stderr that it grants the user's
  * access. Creates web.secret on first need.
  */
-export function cmdWebToken(
-  args: string[],
-  io: {
-    out: (s: string) => void;
-    err: (s: string) => void;
-    stateDir?: string;
-  } = {
-    out: (s) => process.stdout.write(s),
-    err: (s) => process.stderr.write(s),
-  },
-): number {
+export function cmdWebToken(args: string[], io: CliIo = stdIo): number {
   const usage =
     `Usage: ${product().cli} web token --print\n` +
     "  Prints the token that authorizes your CLI's calls to the web server.\n";
@@ -1378,6 +1465,12 @@ export function cmdWebToken(
   if (!args.includes("--print") || rest.length > 0) {
     io.err(usage);
     return 2;
+  }
+  // Sign-in: the token is the person's, printed only to their terminal.
+  const refused = printRefusal(io);
+  if (refused) {
+    io.err(`${product().cli}: ${refused}\n`);
+    return 1;
   }
   const secret = ensureWebSecret(io.stateDir ?? getStateDir());
   io.err(
@@ -1451,6 +1544,14 @@ async function runWeb(args: string[]): Promise<void> {
     process.exitCode = await cmdWebUrl(args.slice(1));
     return;
   }
+  if (args[0] === "fixture-person") {
+    process.exitCode = await cmdWebFixturePerson(args.slice(1));
+    return;
+  }
+  if (args[0] === "fixture-login") {
+    process.exitCode = await cmdWebFixtureLogin(args.slice(1));
+    return;
+  }
   if (args.includes("--help") || args.includes("-h")) {
     displayWebHelp();
     return;
@@ -1478,7 +1579,7 @@ async function runWeb(args: string[]): Promise<void> {
     options.action,
     options.port,
     identity.kind === "ours",
-    (p) => waitForDenWeb(p),
+    async (p) => (await waitForDenWeb(p)).ready,
     webServiceDeps,
   );
   if (svc.handled) {
@@ -1581,10 +1682,18 @@ async function runWeb(args: string[]): Promise<void> {
     );
     try {
       started = startDenWebServer(options);
-      running = await waitForDenWeb(options.port, started.pid);
-      if (!running) {
+      const wait = await waitForDenWeb(options.port, started);
+      running = wait.ready;
+      if (wait.ready && wait.afterAll)
+        console.log(
+          chalk.yellow(
+            `  ${product().title} answered after all, past web.start_wait_seconds: it is slow to start here.`,
+          ),
+        );
+      if (!wait.ready) {
         // The server's own reason, when it gave one, then where to look.
-        const why = startupRefusal(started.logPath, started.logOffset);
+        const why =
+          wait.refusal ?? startupRefusal(started.logPath, started.logOffset);
         throw new Error(
           why
             ? `${product().title} web refused to start: ${why}\n  See ${started.logPath}`
@@ -1681,9 +1790,22 @@ async function runWeb(args: string[]): Promise<void> {
   // is printed only when the browser couldn't be opened: the one line the
   // person then needs.
   // Inside an agent's session: the plain page, never a sign-in link.
-  let link: string | null = personGrantRefusal(process.env) ? origin : null;
+  // Sign-in: a link only where `web login` would print one.
+  let link: string | null = webOpenRefusal(getStateDir()) ? origin : null;
+  // Issue 819: its code registered with the server from this terminal, so
+  // on first run (nobody signed in yet) it signs this browser in, on the
+  // address too. The tab's own path rides along as `next`.
+  let code: string | null = null;
+  if (link === null) {
+    code = new URL(freshLoginLink(options.port, "/", origin)).searchParams.get(
+      "c",
+    );
+    if (code) await registerLoginLink(getStateDir(), options.port, code);
+  }
   const signIn = (next?: string) =>
-    (link ??= freshLoginLink(options.port, next ?? "/", origin));
+    (link ??= code
+      ? loginLink(origin, code, next ?? "/")
+      : freshLoginLink(options.port, next ?? "/", origin));
   const browser = openOrFocusDenWebUrl(
     signIn,
     options.port,
@@ -1729,6 +1851,11 @@ async function runWeb(args: string[]): Promise<void> {
   } else {
     console.log(chalk.yellow("\n  Could not open a browser automatically."));
   }
+  // Sign-in: a link is printed only to a terminal.
+  if (terminalRefusal(onTerminal())) {
+    console.log(chalk.gray(`  ${noLinkHereLine(origin, product().cli)}\n`));
+    return;
+  }
   console.log(
     `  Sign in (once, within ${ttlText(loginLinkTtl())}): ${signIn()}\n`,
   );
@@ -1745,9 +1872,10 @@ export function freshLoginLink(
   next = "/",
   origin?: string,
   stateDir: string = getStateDir(),
+  person: PersonCheck = {},
 ): string {
   void port; // the link is on the address, whatever port serves it
-  const refused = personGrantRefusal(process.env);
+  const refused = personHereRefusal({ ...person, stateDir });
   if (refused) throw new Error(refused);
   return loginLink(
     origin ?? requireWebUrl(product().cli),
@@ -1774,7 +1902,7 @@ export function cmdWebClaimLink(args: string[], io: CliIo = stdIo): number {
     );
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -1831,6 +1959,50 @@ interface CliIo {
   webUrl?: () => WebUrl | null;
   /** Issue 455: the address check's parts (tests swap the owner lookup). */
   addressDeps?: Partial<CheckDeps>;
+  /** Sign-in: where this runs (tests give its parents and the terminal). */
+  person?: PersonCheck;
+}
+
+/** Sign-in: personHereRefusal's parts, and whether output is a terminal. */
+type PersonCheck = Omit<PersonHereDeps, "stateDir" | "env"> & {
+  tty?: boolean;
+};
+
+/** Sign-in: `web up`'s line where it prints no link: the address, and what to run. */
+export function noLinkHereLine(origin: string, cli: string): string {
+  return `${origin.replace(/\/+$/, "")} (a sign-in link is printed only in a terminal: run \`${cli} web login\` in one)`;
+}
+
+/**
+ * Sign-in: why `web up` / `web open` won't make a sign-in link here (it
+ * opens the plain page instead), or null: the checks `web login` makes.
+ */
+export function webOpenRefusal(
+  stateDir: string,
+  person: PersonCheck = {},
+): string | null {
+  return (
+    personHereRefusal({ ...person, stateDir }) ??
+    terminalRefusal(person.tty ?? onTerminal())
+  );
+}
+
+/** Whether this process's output is on a terminal (stdout and stderr). */
+function onTerminal(): boolean {
+  return !!process.stdout.isTTY && !!process.stderr.isTTY;
+}
+
+/** Sign-in: why this command won't let a browser in from here, or null. */
+function grantRefusal(io: CliIo): string | null {
+  return personHereRefusal({
+    ...io.person,
+    stateDir: io.stateDir ?? getStateDir(),
+  });
+}
+
+/** grantRefusal, then: a link or code is printed only to a terminal. */
+function printRefusal(io: CliIo): string | null {
+  return grantRefusal(io) ?? terminalRefusal(io.person?.tty ?? onTerminal());
 }
 
 /**
@@ -1999,8 +2171,9 @@ function parseLoginArgs(
 const LOGIN_HELP = () =>
   LOGIN_USAGE() +
   "  Prints a one-time sign-in link (open it within web.login_link_ttl, 5 minutes\n" +
-  "  unless set) for one browser, and a\n" +
-  "  code the page behind the link asks for, then waits until the link is used:\n" +
+  "  unless set) for one browser, then waits until it is used. Before anyone has\n" +
+  "  signed in here, the link signs that browser in. After that it shows a code,\n" +
+  "  and a browser that is already signed in approves it (Settings › Access).\n" +
   '  "Signed in: <browser> (<address>) at <time>", or "Expired: nobody used the\n' +
   '  link" (exit 1). On this machine `web up` opens such a link by itself.\n' +
   "  From another machine, pass the edge hostname as --host, or a LAN address\n" +
@@ -2009,8 +2182,8 @@ const LOGIN_HELP = () =>
   "  --host <name>   an edge hostname that routes here (an edge domain or alias,\n" +
   "                  a VPN name among them): the link uses its edge URL\n" +
   "  --origin <url>  the address the browser uses, http(s)://host[:port]\n" +
-  "  --no-wait       print the link and exit; the link signs in by itself, no\n" +
-  "                  code (for scripts)\n";
+  "  --no-wait       print the link and exit (for scripts); it shows a code for\n" +
+  "                  a signed-in browser to approve\n";
 
 /**
  * `<cli> web login --no-wait`: a fresh sign-in link on stdout, alone (the
@@ -2027,7 +2200,7 @@ export async function cmdWebLogin(
     io.out(LOGIN_HELP());
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -2053,9 +2226,9 @@ export async function cmdWebLogin(
       (l) => io.err(`${product().cli}: ${l}\n`),
       io.addressDeps,
     ));
-  const link = freshLoginLink(a.port, a.next, origin, stateDir);
+  const link = freshLoginLink(a.port, a.next, origin, stateDir, io.person);
   io.err(
-    `${product().cli}: open this link within ${ttlText(loginLinkTtl())}; it signs in one browser, once.\n`,
+    `${product().cli}: open this link within ${ttlText(loginLinkTtl())}, in one browser, once. ${APPROVE_IN_BROWSER}\n`,
   );
   io.out(`${link}\n`);
   return 0;
@@ -2094,12 +2267,38 @@ function clockTime(iso: string): string {
 }
 
 /**
- * `<cli> web login` (SEC-2a): the link and an 8-character code, then a
- * wait until the link is used or expires. The page behind the link asks
- * for the code before it signs anything in. The CLI registers the link's
- * nonce and the code with the running server (its bearer) and polls that
- * wait; the code is shown here only, never logged. With no server running
- * (or `--no-wait`) it prints the link alone, as before.
+ * Issue 819: register a sign-in link's code with the running server (the
+ * CLI's bearer, from this terminal), as `web login` does: on first run it
+ * then signs in wherever it is opened. Whether it was registered; nothing
+ * is printed.
+ */
+async function registerLoginLink(
+  stateDir: string,
+  port: number,
+  code: string,
+): Promise<boolean> {
+  const secret = ensureWebSecret(stateDir);
+  const checked = checkLoginCode(code, secret);
+  if (!checked.ok) return false;
+  const reg = await serverCall(stateDir, port, "POST", "/api/web/logins", {
+    nonce: checked.nonce,
+    expiresAt: checked.expiresAt,
+  });
+  return reg?.status === 200;
+}
+
+/** Issue 819: what a link opened after the first sign-in asks for. */
+const APPROVE_IN_BROWSER =
+  "Once someone has signed in here, it shows a code: approve it in a browser that is signed in (Settings › Access).";
+
+/**
+ * `<cli> web login` (SEC-2a; issue 819): the link, then a wait until it is
+ * used, approved or denied, or expires. The CLI registers the link's nonce
+ * with the running server (its bearer, from this terminal) and polls that
+ * wait. On first run (nobody has signed in here yet) the registered link
+ * signs its browser in; after that, it opens the pairing screen and a
+ * signed-in browser approves it. With no server running (or `--no-wait`)
+ * it prints the link alone, unregistered.
  */
 export async function cmdWebLoginWait(
   args: string[],
@@ -2110,7 +2309,7 @@ export async function cmdWebLoginWait(
     io.out(LOGIN_HELP());
     return 0;
   }
-  const refused = personGrantRefusal(process.env);
+  const refused = printRefusal(io);
   if (refused) {
     io.err(`${product().cli}: ${refused}\n`);
     return 1;
@@ -2150,6 +2349,8 @@ export async function cmdWebLoginWait(
     io.err(`${product().cli}: could not make a sign-in link\n`);
     return 1;
   }
+  // Issue 819: on first run, a link opened away from this computer asks
+  // for this code (printed below only then).
   const confirm = newConfirmCode();
   const reg = await serverCall(stateDir, a.port, "POST", "/api/web/logins", {
     nonce: checked.nonce,
@@ -2160,20 +2361,23 @@ export async function cmdWebLoginWait(
   if (!reg) {
     io.err(
       `${product().cli}: no ${product().title} web server answers on port ${a.port}, so this ` +
-        "doesn't wait and the link asks for no code (as --no-wait). Start the server " +
-        `(\`${product().cli} web up\`), then open this link within ${ttlText(ttl)}; it signs in one browser, once.\n`,
+        "doesn't wait (as --no-wait). Start it " +
+        `(\`${product().cli} web up\`), then open this link within ${ttlText(ttl)}. ${APPROVE_IN_BROWSER}\n`,
     );
     io.out(`${link}\n`);
     return 0;
   }
-  const id = (reg.json as { id?: unknown } | null)?.id;
+  const regJson = (reg.json ?? {}) as { id?: unknown; firstRun?: unknown };
+  const id = regJson.id;
   if (reg.status !== 200 || typeof id !== "string") {
     io.err(`${product().cli}: ${apiError(reg)}\n`);
     return 1;
   }
   io.err(
-    `${product().cli}: open this link within ${ttlText(ttl)}, in the browser to sign in. ` +
-      `It asks for this code: ${confirm}\n`,
+    regJson.firstRun === true
+      ? `${product().cli}: open this link within ${ttlText(ttl)}, in the browser to sign in. ` +
+          `Opened on another computer, it asks for this code: ${confirm}\n`
+      : `${product().cli}: open this link within ${ttlText(ttl)}, in the browser to sign in. ${APPROVE_IN_BROWSER}\n`,
   );
   io.out(`${link}\n`);
   // D16: on a terminal, the time left, in place.
@@ -2184,8 +2388,10 @@ export async function cmdWebLoginWait(
   if (tty) tick();
   else io.err(`${waiting}\n`);
   const pollMs = opts.pollMs ?? 1000;
-  // The link's own time, then the 5 minutes an opened link has for its code.
-  const deadline = Date.now() + (opts.maxWaitMs ?? ttl + 6 * 60_000);
+  // The link's own time, then the 10 minutes an opened link's device has
+  // to be approved (pair-requests.ts).
+  const deadline = Date.now() + (opts.maxWaitMs ?? ttl + 11 * 60_000);
+  let toldPairing = false;
   for (;;) {
     await new Promise((r) => setTimeout(r, pollMs));
     if (tty) tick();
@@ -2205,11 +2411,23 @@ export async function cmdWebLoginWait(
     const over =
       !r ||
       j.state === "used" ||
+      j.state === "denied" ||
       j.state === "refused" ||
       j.state === "expired" ||
       r.status === 404 ||
       Date.now() > deadline;
     if (tty && over) io.err("\n");
+    // Issue 819: opened once the install is set up: its device waits for
+    // a signed-in browser's approval.
+    if (r && j.state === "pairing" && !toldPairing) {
+      toldPairing = true;
+      if (tty) io.err("\n");
+      io.err(
+        `${product().cli}: opened in ${j.device ?? "a browser"}${j.client ? ` (${j.client})` : ""}. ` +
+          // Issue 819: the pairing code stays on that device's screen.
+          "Read the code on that device's screen, and type it in a browser that is signed in, at Settings › Access.\n",
+      );
+    }
     if (r && j.state === "used") {
       io.out(
         `Signed in: ${j.device ?? "a browser"}${j.client ? ` (${j.client})` : ""}` +
@@ -2217,6 +2435,11 @@ export async function cmdWebLoginWait(
       );
       return 0;
     }
+    if (r && j.state === "denied") {
+      io.err("Denied in a signed-in browser; the link no longer works\n");
+      return 1;
+    }
+    // A server from before issue 819 (its page asked for a code).
     if (r && j.state === "refused") {
       io.err("Refused: too many wrong codes; the link no longer works\n");
       return 1;
@@ -2225,7 +2448,11 @@ export async function cmdWebLoginWait(
       (r && (j.state === "expired" || r.status === 404)) ||
       Date.now() > deadline
     ) {
-      io.err("Expired: nobody used the link\n");
+      io.err(
+        toldPairing
+          ? "Expired: nobody approved it\n"
+          : "Expired: nobody used the link\n",
+      );
       return 1;
     }
     if (!r) {
@@ -2511,9 +2738,15 @@ export async function cmdWebLogout(
 
 // ── SEC-2a: approve this computer with a code (`web approve`) ──────────────
 
+/** Issue 819: `web approve <code>`'s answer. */
+export const APPROVE_ONLY_IN_BROWSER =
+  "A device is approved only from a browser that is signed in: open Settings › Access there and type the code that device's screen shows. `web approve --list` shows the ones waiting.";
+
 interface WaitingRow {
-  code: string;
+  ref?: string;
   device: string;
+  fromLink?: boolean;
+  fromLogin?: string;
   client?: string;
   createdAt: string;
   expiresAt: string;
@@ -2526,11 +2759,11 @@ function agoText(iso: string, now = Date.now()): string {
 }
 
 /**
- * `<cli> web approve <code> | --list [--json]`: let in a computer whose
- * signed-out page shows `<code>` (case and dashes don't matter), or list
- * the ones waiting. It asks the running server, with this CLI's bearer:
- * the requests live in its memory only, so with no server there is
- * nothing to approve.
+ * `<cli> web approve --list [--json]`: the computers whose signed-out page
+ * shows a code, waiting. It asks the running server, with this CLI's
+ * bearer: the requests live in its memory only. Issue 819: approving one
+ * is a person's signed-in browser's (Settings › Access); `web approve
+ * <code>` says so and changes nothing.
  */
 export async function cmdWebApprove(
   args: string[],
@@ -2545,14 +2778,15 @@ export async function cmdWebApprove(
 `);
     return 2;
   }
-  const usage = `Usage: ${product().cli} web approve <code> | --list [--json] [--port <port>]\n`;
+  const usage = `Usage: ${product().cli} web approve --list [--json] [--port <port>]\n`;
   if (isHelp(rest)) {
     io.out(
       usage +
-        "  Lets in the computer whose signed-out page shows <code> (like K7Q-42M; case\n" +
-        "  and dashes don't matter). That page then signs in by itself. A code lasts\n" +
+        "  Lists the computers whose signed-out page shows a code, waiting to be let in.\n" +
+        "  Approve one in a browser that is signed in: Settings › Access. A code lasts\n" +
         "  10 minutes and works once.\n" +
-        "  --list   the computers waiting: code, browser, address, age\n" +
+        "  --list   the computers waiting: browser, address, age, and whether a\n" +
+        "           web login link asked (a code is typed off that computer's screen)\n" +
         "  --json   with --list: as JSON\n",
     );
     return 0;
@@ -2567,17 +2801,13 @@ export async function cmdWebApprove(
     io.err(usage);
     return 2;
   }
-  const refused = list ? null : personGrantRefusal(process.env);
-  if (refused) {
-    io.err(`${product().cli}: ${refused}\n`);
+  if (!list) {
+    // Issue 819: only a person's signed-in browser approves a device.
+    io.err(`${product().cli}: ${APPROVE_ONLY_IN_BROWSER}\n`);
     return 1;
   }
   const stateDir = io.stateDir ?? getStateDir();
-  const r = list
-    ? await serverCall(stateDir, port, "GET", "/api/web/waiting")
-    : await serverCall(stateDir, port, "POST", "/api/web/approve", {
-        code: codes[0],
-      });
+  const r = await serverCall(stateDir, port, "GET", "/api/web/waiting");
   if (!r) {
     io.err(
       `${product().cli}: no ${product().title} web server answers on port ${port}. ` +
@@ -2590,46 +2820,43 @@ export async function cmdWebApprove(
     io.err(`${product().cli}: ${apiError(r)}\n`);
     return 1;
   }
-  if (list) {
-    const rows = ((r.json as { waiting?: WaitingRow[] }).waiting ?? []).map(
-      (w) => ({ ...w }),
-    );
-    if (asJson) {
-      io.out(`${JSON.stringify(rows, null, 2)}\n`);
-      return 0;
-    }
-    if (rows.length === 0) {
-      io.out("No computers are waiting for approval.\n");
-      return 0;
-    }
-    const table = [
-      ["CODE", "BROWSER", "ADDRESS", "WAITING"],
-      ...rows.map((w) => [
-        w.code,
-        w.device,
-        w.client ?? "",
-        agoText(w.createdAt),
-      ]),
-    ];
-    const widths = table[0].map((_, c) =>
-      Math.max(...table.map((row) => row[c].length)),
-    );
-    for (const row of table)
-      io.out(
-        `${row
-          .map((cell, c) =>
-            c === row.length - 1 ? cell : cell.padEnd(widths[c]),
-          )
-          .join("  ")
-          .trimEnd()}\n`,
-      );
+  const rows = ((r.json as { waiting?: WaitingRow[] }).waiting ?? []).map(
+    (w) => ({ ...w }),
+  );
+  if (asJson) {
+    io.out(`${JSON.stringify(rows, null, 2)}\n`);
     return 0;
   }
-  const w = r.json as WaitingRow;
-  io.out(
-    `Approved: ${w.device}${w.client ? ` (${w.client})` : ""}. ` +
-      "Its page signs in by itself.\n",
+  if (rows.length === 0) {
+    io.out("No computers are waiting for approval.\n");
+    return 0;
+  }
+  const table = [
+    ["BROWSER", "ADDRESS", "WAITING", "FROM"],
+    ...rows.map((w) => [
+      w.device,
+      w.client ?? "",
+      agoText(w.createdAt),
+      // Issue 819: no code here (it is read off that computer's screen).
+      w.fromLogin
+        ? `web login run at ${clockTime(w.fromLogin)}`
+        : w.fromLink
+          ? "a sign-in link"
+          : "",
+    ]),
+  ];
+  const widths = table[0].map((_, c) =>
+    Math.max(...table.map((row) => row[c].length)),
   );
+  for (const row of table)
+    io.out(
+      `${row
+        .map((cell, c) =>
+          c === row.length - 1 ? cell : cell.padEnd(widths[c]),
+        )
+        .join("  ")
+        .trimEnd()}\n`,
+    );
   return 0;
 }
 
@@ -2652,6 +2879,8 @@ export async function cmdWebOwner(
     client?: GithubDeviceClient;
     sleep?: (ms: number) => Promise<void>;
     clientId?: string;
+    /** Issue 989: the running server (default: this install's). */
+    server?: PersonServer;
   } = stdIo,
 ): Promise<number> {
   const usage = `Usage: ${product().cli} web owner [link|show|unlink] [--json]\n`;
@@ -2676,7 +2905,7 @@ export async function cmdWebOwner(
   }
   const stateDir = io.stateDir ?? getStateDir();
   const cli = product().cli;
-  const refused = sub === "show" ? null : personGrantRefusal(process.env);
+  const refused = sub === "show" ? null : grantRefusal(io);
   if (refused) {
     io.err(`${cli}: ${refused}\n`);
     return 1;
@@ -2691,6 +2920,42 @@ export async function cmdWebOwner(
           : `No owner is linked. Run \`${cli} web owner link\`.\n`,
       );
     return 0;
+  }
+  // Issue 989: the running server links and unlinks the owner when it
+  // answers (a person's grant there); its refusal is final. No server:
+  // the CLI does it here, as before.
+  const server = io.server ?? personServerFor(stateDir);
+  const ask = async (
+    method: "GET" | "POST",
+    p: string,
+    body?: unknown,
+  ): Promise<Record<string, unknown> | null | "refused"> => {
+    try {
+      return await throughServer(server, method, p, body);
+    } catch (e) {
+      io.err(`${cli}: ${(e as Error).message}\n`);
+      return "refused";
+    }
+  };
+  if (sub === "unlink") {
+    const answer = await ask("POST", "/api/web/owner/unlink", {});
+    if (answer === "refused") return 1;
+    if (answer) {
+      const login = typeof answer.was === "string" ? answer.was : null;
+      if (asJson) io.out(`${JSON.stringify({ unlinked: login }, null, 2)}\n`);
+      else
+        io.out(
+          login
+            ? `Unlinked @${login}. Signed-in browsers stay signed in (\`${cli} web logout\` ends them).\n`
+            : "No owner was linked.\n",
+        );
+      return 0;
+    }
+  }
+  if (sub === "link") {
+    const started = await ask("POST", "/api/web/owner/link", {});
+    if (started === "refused") return 1;
+    if (started) return linkThroughServer(started, ask, io, asJson);
   }
   if (sub === "unlink") {
     const was = clearWebOwner(stateDir);
@@ -2765,5 +3030,241 @@ export async function cmdWebOwner(
       `Linked @${rec.login} (${githubPrincipal(outcome.identity.id)}) as this Den's owner; ` +
         "the token was not kept. Sign in with GitHub from your other devices now works.\n",
     );
+  return 0;
+}
+
+/** How often `web owner link` asks the server for the flow's outcome. */
+const LINK_POLL_MS = 2_000;
+
+/**
+ * Issue 989: `web owner link` through the server: it runs GitHub's device
+ * flow and keeps the owner; the CLI shows the code and asks for the
+ * outcome until it is approved, refused or expired.
+ */
+async function linkThroughServer(
+  started: Record<string, unknown>,
+  ask: (
+    method: "GET" | "POST",
+    p: string,
+  ) => Promise<Record<string, unknown> | null | "refused">,
+  io: CliIo & { sleep?: (ms: number) => Promise<void> },
+  asJson: boolean,
+): Promise<number> {
+  const cli = product().cli;
+  const id = typeof started.id === "string" ? started.id : "";
+  if (!id) {
+    io.err(`${cli}: the web app didn't start a link; run it again\n`);
+    return 1;
+  }
+  io.out(
+    `Open ${String(started.verificationUri ?? GITHUB_DEVICE_PAGE)} and enter this code:\n\n    ${String(started.userCode)}\n\n` +
+      "Waiting for you to approve it on GitHub (it asks for no permissions)…\n",
+  );
+  const sleep =
+    io.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (;;) {
+    await sleep(LINK_POLL_MS);
+    const v = await ask("GET", `/api/web/owner/link/${encodeURIComponent(id)}`);
+    if (v === "refused") return 1;
+    if (v === null) {
+      io.err(`${cli}: the web app stopped answering; run it again\n`);
+      return 1;
+    }
+    if (v.state === "pending") continue;
+    if (v.state === "ok") {
+      const login = String(v.login ?? "");
+      if (asJson) io.out(`${JSON.stringify({ owner: { login } }, null, 2)}\n`);
+      else
+        io.out(
+          `Linked @${login} as this Den's owner; the token was not kept. Sign in with GitHub from your other devices now works.\n`,
+        );
+      return 0;
+    }
+    io.err(
+      `${cli}: ${String(v.error ?? `the link ended (${String(v.state)})`)}\n`,
+    );
+    return 1;
+  }
+}
+
+// ── Issue 810: the fixture person (live checks on a test install) ──────────
+
+/** What the fixture commands read: the CLI's io, and the test-install mark. */
+type FixtureIo = CliIo & { testInstall?: () => boolean };
+
+/** `web.test_install` from the distribution config (false when unreadable). */
+function testInstallNow(io: FixtureIo): boolean {
+  if (io.testInstall) return io.testInstall();
+  try {
+    return readWebAuthConfig(getDistRoot(), product().configFile).testInstall;
+  } catch {
+    return false;
+  }
+}
+
+const FIXTURE_PERSON_HELP = () =>
+  `Usage: ${product().cli} web fixture-person [${FROM_SETUP_SECRET_FLAG} [--port <port>]]\n` +
+  "  Setting up the fixture person live checks sign in as is a button: on a test\n" +
+  "  install, sign in and press Settings › Access › Set up test person in your\n" +
+  "  browser.\n" +
+  `  ${FROM_SETUP_SECRET_FLAG}: on a test install started with the\n` +
+  `  launcher's one-time setup value (${setupSecretEnvName()}), sends this\n` +
+  "  command's own copy of it, once, and the install makes the fixture person.\n";
+
+const setupSecretEnvName = () =>
+  envName(getProfile(), FIXTURE_SETUP_SECRET_ENV_KEY);
+
+/**
+ * Issue 1018: `web fixture-person --from-setup-secret`: sends the CLI's
+ * own copy of the launcher's setup value (from its environment, never an
+ * argument, which other processes can read) to the server, once. The
+ * server checks everything; this never prints the value.
+ */
+async function fixturePersonFromSetupSecret(
+  args: string[],
+  io: FixtureIo,
+): Promise<number> {
+  let port: number | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    const v =
+      a === "--port" ? args[++i] : a.startsWith("--port=") ? a.slice(7) : null;
+    const n = v === null ? NaN : Number(v);
+    if (Number.isInteger(n) && n >= 1 && n <= 65535) port = n;
+    else {
+      io.err(FIXTURE_PERSON_HELP());
+      return 2;
+    }
+  }
+  const name = setupSecretEnvName();
+  const value = process.env[name];
+  delete process.env[name];
+  if (!value) {
+    io.err(
+      `${product().cli}: ${FROM_SETUP_SECRET_FLAG} sends the setup value from this command's environment (${name}), and it isn't set. Nothing was sent.\n`,
+    );
+    return 2;
+  }
+  const base = denWebBase(port ?? configuredPort());
+  let r: Response;
+  try {
+    r = await fetch(`${base}/api/web/fixture-person/setup-secret`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...cliAuthHeaders() },
+      body: JSON.stringify({ secret: value }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    io.err(
+      `${product().cli}: the test install's web app isn't running, so the setup value wasn't sent. Start it (\`${product().cli} web up\`).\n`,
+    );
+    return 1;
+  }
+  const b = (await r.json().catch(() => null)) as {
+    ok?: boolean;
+    error?: string;
+  } | null;
+  if (r.ok && b?.ok) {
+    io.out(
+      `The ${FIXTURE_LABEL} is set up. Sign in as it with \`${product().cli} web fixture-login\`.\n`,
+    );
+    return 0;
+  }
+  io.err(
+    `${product().cli}: ${b?.error ?? `the setup value was refused (the web app answered ${r.status})`}\n`,
+  );
+  return 1;
+}
+
+/**
+ * `<cli> web fixture-person` (issue 810): setup is Settings' Set up test
+ * person, a person's browser session only. This says so and fails; it
+ * never asks the server (which refuses every CLI bearer there).
+ */
+export function cmdWebFixturePerson(
+  args: string[],
+  io: FixtureIo = stdIo,
+): Promise<number> {
+  if (isHelp(args)) {
+    io.out(FIXTURE_PERSON_HELP());
+    return Promise.resolve(0);
+  }
+  if (args[0] === FROM_SETUP_SECRET_FLAG)
+    return fixturePersonFromSetupSecret(args.slice(1), io);
+  io.err(
+    `${product().cli}: setting up the ${FIXTURE_LABEL} is a button, not a command: ` +
+      "on a test install, sign in and press Settings › Access › Set up test person in your browser.\n",
+  );
+  return Promise.resolve(1);
+}
+
+const FIXTURE_LOGIN_HELP = () =>
+  `Usage: ${product().cli} web fixture-login [--next <path>] [--origin <url>]\n` +
+  "  On a test install with its fixture person set up, prints a one-time sign-in\n" +
+  "  link as the fixture person (for live checks; an agent may run it). Refused\n" +
+  "  on any install not marked a test install.\n";
+
+/**
+ * `<cli> web fixture-login` (issue 810): the gate runner's one-time link
+ * as the fixture person, on stdout alone. An agent may run it: it never
+ * signs in as the person. Refused off a test install, or with no fixture
+ * person set up.
+ */
+export async function cmdWebFixtureLogin(
+  args: string[],
+  io: FixtureIo = stdIo,
+): Promise<number> {
+  if (isHelp(args)) {
+    io.out(FIXTURE_LOGIN_HELP());
+    return 0;
+  }
+  let next = "/";
+  let origin: string | null = null;
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    const val = (flag: string) =>
+      a === flag
+        ? args[++i]
+        : a.startsWith(`${flag}=`)
+          ? a.slice(flag.length + 1)
+          : undefined;
+    const n = val("--next");
+    const o = n === undefined ? val("--origin") : undefined;
+    if (n !== undefined) next = n;
+    else if (o !== undefined) {
+      origin = parseOrigin(o);
+      if (!origin) {
+        io.err(
+          `--origin must be http(s)://host[:port] with no path, got "${o}"\n`,
+        );
+        return 2;
+      }
+    } else {
+      io.err(FIXTURE_LOGIN_HELP());
+      return 2;
+    }
+  }
+  const testInstall = testInstallNow(io);
+  if (!origin && testInstall) {
+    try {
+      origin = requireWebUrl(product().cli, (io.webUrl ?? readWebUrl)());
+    } catch (e) {
+      io.err(`${product().cli}: ${(e as Error).message}\n`);
+      return 1;
+    }
+  }
+  const r = fixtureLoginLink(io.stateDir ?? getStateDir(), {
+    testInstall,
+    origin: origin ?? "",
+    next,
+    ttlMs: loginLinkTtl(),
+    configFile: product().configFile,
+    cli: product().cli,
+  });
+  if (!r.ok) {
+    io.err(`${product().cli}: ${r.error}\n`);
+    return 1;
+  }
+  io.out(`${r.url}\n`);
   return 0;
 }

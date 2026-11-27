@@ -26,7 +26,8 @@ import {
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import type { ScriptedPty } from "../sessions/helpers/fake-pty.js";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -148,7 +149,7 @@ async function open(url: string, ready: string): Promise<Page> {
   }, latest);
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, url));
+  await signInPage(p, s!.stateDir, s!.base, url);
   if (new URL(p.url()).hash !== new URL(url, s!.base).hash)
     await p.goto(`${s!.base}${url}`);
   await p.waitForSelector(ready);
@@ -308,6 +309,45 @@ describe("issue 252: one agent's mode, set in the page", () => {
     );
     expect(auditRows()).toContain("set lead's mode to edits in north");
     expect(auditRows()).toContain("set lead's mode to its project's in north");
+    await p.context().close();
+  }, 120_000);
+
+  it("issue 1631: ⋯ › Skill packs: Off saves the agent's own key and restarts it after its turn with no pack", async () => {
+    if (skip()) return;
+    const p = await open("/agents", `${ROW} [data-mode]`);
+    await p.click(ROW);
+    const more = `.pane [data-act="more"]`;
+    await p.waitForSelector(more);
+    await p.click(more);
+    await p
+      .getByRole("menuitem", { name: "Skill packs: Install's default" })
+      .click();
+    const off = p.getByRole("menuitemradio", { name: "Off", exact: true });
+    await off.waitFor();
+    expect(await menuItems(p)).toEqual([
+      ["Install's default", "true"],
+      ["Off", "false"],
+      ["On", "false"],
+    ]);
+    const before = s!.made.length;
+    await off.click();
+    await p.waitForFunction(
+      (m) => document.body.innerText.includes(m),
+      "lead's skill packs are set. It restarts after its turn, on the same conversation.",
+      { timeout: 15_000 },
+    );
+    await resumedIn("auto", before);
+    const hit = s!.made
+      .slice(before)
+      .find((m) => m.args.includes("--resume") && m.args.includes(TOKEN))?.args;
+    expect(hit).toBeDefined();
+    expect(hit).not.toContain("--plugin-dir");
+    const rows = (await (
+      await fetch(`${s!.base}/api/sessions`, { headers: denAuth(s!.stateDir) })
+    ).json()) as { sessions: { agent?: string; skillPacks?: unknown }[] };
+    expect(rows.sessions.find((x) => x.agent === "lead")?.skillPacks).toBe(
+      "off",
+    );
     await p.context().close();
   }, 120_000);
 

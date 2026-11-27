@@ -21,8 +21,8 @@ import * as path from "path";
 import {
   cliAuthHeaders,
   readWebSecret,
-} from "../../../src/shared/web-secret.js";
-import { mintLoginCode } from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-secret.js";
+import { mintLoginCode } from "../../../src/shared/web/web-session.js";
 import { mintClaimCode } from "../../../src/shared/claim-code.js";
 import {
   spawnServer,
@@ -30,6 +30,8 @@ import {
   stopServer,
 } from "../../child-servers.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
+import { signedIn, type SignedIn } from "./helpers/signed-in.js";
+import { inTerminal, linkIn } from "./helpers/in-terminal.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -122,17 +124,78 @@ const flags = (line: string) =>
     .map((f) => f.trim().split("=")[0].toLowerCase())
     .sort();
 
+/** Any session cookie's Set-Cookie line (either name), or "". */
+const anyCookie = (r: Reply) =>
+  ([] as string[])
+    .concat(r.headers["set-cookie"] ?? [])
+    .find((c) => /^(__Host-)?den_session_\d+=[^;]/.test(c)) ?? "";
+/** The pairing screen's request a page shows (issue 819), or undefined. */
+function pairOf(r: Reply): { id: string; code: string } | undefined {
+  const m =
+    /<script type="application\/json" id="den-error">\s*([\s\S]*?)\s*<\/script>/.exec(
+      r.body,
+    );
+  return m
+    ? (JSON.parse(m[1]) as { signin?: { pair?: { id: string; code: string } } })
+        .signin?.pair
+    : undefined;
+}
+/** Issue 819: the person's signed-in browser here, which approves devices. */
+let person: SignedIn | null = null;
+async function approve(code: string): Promise<void> {
+  const send = () =>
+    call(
+      "POST",
+      "/api/web/approve",
+      {
+        ...person!.headers,
+        "sec-fetch-site": "same-origin",
+        "x-den-approve-key": person!.approveKey,
+      },
+      JSON.stringify({ code }),
+    );
+  let r = person ? await send() : null;
+  if (r?.status !== 200) {
+    // Signed out since (a test ends every session): a person signs in again.
+    person = await signedIn(stateDir, `http://localhost:${port}`);
+    minted.push(person.value, person.approveKey);
+    r = await send();
+  }
+  expect(r.status).toBe(200);
+}
+/**
+ * A sign-in link opened with `extra` (its Host, the edge's headers): first
+ * run signs in at once (a 303); after that (issue 819) the link opens the
+ * pairing screen, a person's browser approves the device, and its page's
+ * poll sets the cookie. The reply that set it.
+ */
+async function signInReply(
+  extra: Record<string, string> = {},
+  next?: string,
+): Promise<Reply> {
+  const r = await call(
+    "GET",
+    `/auth?c=${encodeURIComponent(code())}${next ? `&next=${encodeURIComponent(next)}` : ""}`,
+    { ...nav, ...extra },
+  );
+  if (r.status === 303) return r;
+  const pair = pairOf(r);
+  if (!pair) throw new Error(`the link showed no pairing screen (${r.status})`);
+  await approve(pair.code);
+  const { accept: _a, ...rest } = { ...nav, ...extra };
+  void _a;
+  return call("GET", `/api/signin/code/${encodeURIComponent(pair.id)}`, {
+    ...rest,
+    "sec-fetch-site": "same-origin",
+  });
+}
 /** Sign in on `host` (localhost by default): the `cookie:` header to send. */
 async function signIn(
   extra: Record<string, string> = {},
 ): Promise<Record<string, string>> {
-  const r = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
-    ...nav,
-    ...extra,
-  });
-  expect(r.status).toBe(303);
-  const line = setCookie(r);
-  const pair = line.split(";")[0];
+  const r = await signInReply(extra);
+  const pair = anyCookie(r).split(";")[0];
+  expect(pair.length).toBeGreaterThan(0);
   minted.push(pair.split("=")[1] ?? "");
   return { cookie: pair };
 }
@@ -231,7 +294,9 @@ afterAll(async () => {
 });
 
 describe("the login link", () => {
-  it("a valid code: a session cookie (HttpOnly, SameSite=Lax, Path=/, no Secure on http) and a 303 to next", async () => {
+  // Issue 819: the install's first sign-in (this computer, nobody signed
+  // in yet). Every later link opens the pairing screen.
+  it("first run: a valid code: a session cookie (HttpOnly, SameSite=Lax, Path=/, no Secure on http) and a 303 to next", async () => {
     const r = await call(
       "GET",
       `/auth?c=${encodeURIComponent(code())}&next=${encodeURIComponent("/settings?x=1")}`,
@@ -251,10 +316,27 @@ describe("the login link", () => {
     expect(r.headers["cache-control"]).toBe("no-store");
   });
 
+  it("once set up, it opens the pairing screen (no cookie), and the approved device's poll sets one (issue 819)", async () => {
+    const c = code();
+    const first = await call("GET", `/auth?c=${encodeURIComponent(c)}`, nav);
+    const pair = pairOf(first);
+    expect([first.status, setCookie(first), !!pair]).toEqual([401, "", true]);
+    expect(first.body.includes(c)).toBe(false);
+    await approve(pair!.code);
+    const done = await call(
+      "GET",
+      `/api/signin/code/${encodeURIComponent(pair!.id)}`,
+      { "sec-fetch-site": "same-origin" },
+    );
+    const line = setCookie(done);
+    minted.push(line.split(";")[0].split("=")[1] ?? "");
+    expect(flags(line)).toEqual(["httponly", "max-age", "path", "samesite"]);
+  });
+
   it("is one-time: the second use gets the signed-out page, which never echoes the code", async () => {
     const c = code();
     const first = await call("GET", `/auth?c=${encodeURIComponent(c)}`, nav);
-    expect(first.status).toBe(303);
+    expect([first.status, setCookie(first)]).toEqual([401, ""]);
     const again = await call("GET", `/auth?c=${encodeURIComponent(c)}`, nav);
     expect(again.status).toBe(401);
     expect(setCookie(again)).toBe("");
@@ -283,10 +365,13 @@ describe("the login link", () => {
     "/\\evil.example",
     "https:evil.example",
   ])("next=%p goes to /", async (n) => {
+    // A browser already signed in goes on to next (issue 819: the one
+    // place a link still answers with a 303 once the install is set up).
+    const c = await signIn();
     const r = await call(
       "GET",
       `/auth?c=${encodeURIComponent(code())}&next=${encodeURIComponent(n)}`,
-      nav,
+      { ...nav, ...c },
     );
     expect([r.status, where(r)]).toEqual([303, "/"]);
   });
@@ -300,13 +385,13 @@ describe("the login link", () => {
 
   it("Secure only over HTTPS from the edge: X-Forwarded-Proto counts on the edge Host, with the edge's proof, only", async () => {
     // The edge's header counts only with its proof now: sent as the edge sends it.
-    const edge = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
-      ...nav,
+    // Issue 819: the session is set by the approved device's poll.
+    const edge = await signInReply({
       host: EDGE,
       "x-forwarded-proto": "https",
       ...EDGE_PROOF,
     });
-    expect(edge.status).toBe(303);
+    expect(edge.status).toBe(200);
     // Over https the cookie is the __Host- one (host-only, Secure): where the session lives.
     const line =
       ([] as string[])
@@ -314,22 +399,18 @@ describe("the login link", () => {
         .find((c) => c.startsWith(`__Host-${cookieName()}=`)) ?? "";
     expect(flags(line)).toContain("secure");
     // A spoofed header from loopback with a localhost Host: no Secure.
-    const spoof = await call("GET", `/auth?c=${encodeURIComponent(code())}`, {
-      ...nav,
-      "x-forwarded-proto": "https",
-    });
-    expect(spoof.status).toBe(303);
+    const spoof = await signInReply({ "x-forwarded-proto": "https" });
+    expect(spoof.status).toBe(200);
     // A cookie was set (so "no Secure" can't pass on no cookie at all).
     expect(setCookie(spoof).length).toBeGreaterThan(0);
     expect(flags(setCookie(spoof))).not.toContain("secure");
     // The edge Host with the header but without the edge's proof: not https,
     // so the plain cookie, no Secure.
-    const unproved = await call(
-      "GET",
-      `/auth?c=${encodeURIComponent(code())}`,
-      { ...nav, host: EDGE, "x-forwarded-proto": "https" },
-    );
-    expect(unproved.status).toBe(303);
+    const unproved = await signInReply({
+      host: EDGE,
+      "x-forwarded-proto": "https",
+    });
+    expect(unproved.status).toBe(200);
     expect(setCookie(unproved).length).toBeGreaterThan(0);
     expect(flags(setCookie(unproved))).not.toContain("secure");
   });
@@ -341,47 +422,28 @@ describe("the setup link (0.4.12: /auth?claim=)", () => {
     minted.push(c);
     return c;
   };
-  /** The approval key in a sign-in 303's fragment, or "". */
-  const keyOf = (r: Reply) =>
-    /#ak=([A-Za-z0-9_-]{43})$/.exec(String(r.headers.location ?? ""))?.[1] ??
-    "";
 
-  it("opened once: a session cookie, a 303 to / with the approval key in the fragment and no claim, no referrer", async () => {
-    const r = await call(
-      "GET",
-      `/auth?claim=${encodeURIComponent(claim())}`,
-      nav,
-    );
-    expect(r.status).toBe(303);
-    const loc = String(r.headers.location ?? "");
-    expect(loc.startsWith("/#ak=")).toBe(true);
-    expect(loc.includes("claim")).toBe(false);
-    expect(keyOf(r).length).toBe(43);
-    minted.push(keyOf(r));
-    const line = setCookie(r);
-    expect(flags(line)).toEqual(["httponly", "max-age", "path", "samesite"]);
-    minted.push(line.split(";")[0].split("=")[1] ?? "");
+  // Issue 819: first run is over here (the login link's first test), so
+  // the setup link no longer signs in by itself.
+  it("once set up: spent as it opens the pairing screen, which says so; no cookie, no referrer", async () => {
+    const c = claim();
+    const r = await call("GET", `/auth?claim=${encodeURIComponent(c)}`, nav);
+    expect([r.status, setCookie(r), !!pairOf(r)]).toEqual([401, "", true]);
+    expect(r.body).toContain('"pairLead":"err.signin.claimSetUp"');
+    expect(r.body).toContain("Settings › Access");
+    expect(r.body.includes(c)).toBe(false);
     expect(r.headers["referrer-policy"]).toBe("no-referrer");
     expect(r.headers["cache-control"]).toBe("no-store");
-    // It is listed as claimed with a setup link.
-    const list = json(await call("GET", "/api/web/sessions", bearer()));
-    expect(
-      (list.sessions as { via: string }[]).some((x) => x.via === "claim"),
-    ).toBe(true);
-  });
-
-  it("opened again: no cookie, and a page that says it was used and offers the sign-in, never echoing the code", async () => {
-    const c = claim();
-    expect(
-      (await call("GET", `/auth?claim=${encodeURIComponent(c)}`, nav)).status,
-    ).toBe(303);
     const again = await call(
       "GET",
       `/auth?claim=${encodeURIComponent(c)}`,
       nav,
     );
-    expect(again.status).toBe(401);
-    expect(setCookie(again)).toBe("");
+    expect([again.status, setCookie(again), !!pairOf(again)]).toEqual([
+      401,
+      "",
+      false,
+    ]);
     expect(again.body).toContain("This setup link was used or has expired.");
     expect(again.body).toContain("someone else may have");
     expect(again.body.includes(c)).toBe(false);
@@ -410,16 +472,11 @@ describe("the setup link (0.4.12: /auth?claim=)", () => {
   });
 
   it("end to end: the cookie and the CSRF token /api/session hands out are not enough to let a browser in; the approval key is", async () => {
-    const r = await call(
-      "GET",
-      `/auth?claim=${encodeURIComponent(claim())}`,
-      nav,
-    );
-    const key = keyOf(r);
-    minted.push(key);
-    const pair = setCookie(r).split(";")[0];
-    minted.push(pair.split("=")[1] ?? "");
-    const cookie = { cookie: pair };
+    // A person's browser (issue 819: approved by a signed-in one).
+    const me = await signedIn(stateDir, `http://localhost:${port}`);
+    const key = me.approveKey;
+    minted.push(key, me.value);
+    const cookie = { cookie: me.cookie };
     const sess = await sessionCsrf(cookie);
     // /api/session never returns the key.
     expect(JSON.stringify(sess).includes(key)).toBe(false);
@@ -712,10 +769,43 @@ describe("the route classes", () => {
 });
 
 describe("the CLI: web login, web sessions, web logout", () => {
-  it("`web login --no-wait` prints one link on stdout (the origin asked for, /auth, a code) that signs a browser in once", async () => {
+  it("`web login --no-wait` prints one link on stdout (the origin asked for, /auth, a code); once set up it opens the pairing screen, once (issue 819)", async () => {
     // Issue 666: this install's only edge name is a loopback one, which is
     // never its address, so it has none: the link names its origin.
-    const r = cli([
+    // Sign-in: a link is printed only in a terminal.
+    const r = await inTerminal(
+      TSX,
+      [
+        path.join(ENGINE, "src", "ui", "cli", "index.ts"),
+        "web",
+        "login",
+        "--no-wait",
+        "--port",
+        String(port),
+        "--origin",
+        `http://localhost:${port}`,
+        "--next",
+        "/settings",
+      ],
+      {
+        cwd: root,
+        env: { ...serverEnv(root, path.join(tmp, "home"), port), CI: "1" },
+      },
+    ).done;
+    expect(r.status).toBe(0);
+    const link = linkIn(r.text);
+    minted.push(link);
+    const u = new URL(link);
+    expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
+      `http://localhost:${port}`,
+      "/auth",
+      "/settings",
+    ]);
+    expect(r.text).toMatch(/within 5 minutes/);
+    // The code is in the link alone, once.
+    expect(r.text.split(u.searchParams.get("c") ?? "\0").length).toBe(2);
+    // Not in a terminal: no link.
+    const piped = cli([
       "web",
       "login",
       "--no-wait",
@@ -723,25 +813,12 @@ describe("the CLI: web login, web sessions, web logout", () => {
       String(port),
       "--origin",
       `http://localhost:${port}`,
-      "--next",
-      "/settings",
     ]);
-    expect(r.status).toBe(0);
-    const link = r.stdout.trim();
-    minted.push(link);
-    expect(link.split("\n").length).toBe(1);
-    const u = new URL(link);
-    expect([u.origin, u.pathname, u.searchParams.get("next")]).toEqual([
-      `http://localhost:${port}`,
-      "/auth",
-      "/settings",
-    ]);
-    expect(r.stderr).toMatch(/within 5 minutes/);
-    expect(r.stderr.includes(u.searchParams.get("c") ?? "\0")).toBe(false);
+    expect([piped.status, piped.stdout]).toEqual([1, ""]);
     const a = await call("GET", `${u.pathname}${u.search}`, nav);
-    expect([a.status, where(a)]).toEqual([303, "/settings"]);
+    expect([a.status, setCookie(a), !!pairOf(a)]).toEqual([401, "", true]);
     const b = await call("GET", `${u.pathname}${u.search}`, nav);
-    expect(b.status).toBe(401);
+    expect([b.status, setCookie(b), !!pairOf(b)]).toEqual([401, "", false]);
   }, 90_000);
 
   it("`web sessions` lists browsers (id prefix, created, last seen, host, user agent); `web logout <id>` ends one", async () => {
@@ -872,15 +949,18 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
     if (lan) await stopServer(lan);
   });
 
-  it("a `web login --no-wait --origin http://<this machine>:<port>` link with no fetch-metadata headers: 303 and the cookie", async () => {
+  it("first run: a `web login --origin http://<this machine>:<port>` link with no fetch-metadata headers asks for the code it printed; that code signs in", async () => {
     if (!name) return;
-    const r = spawnSync(
+    // Sign-in: a link is printed only in a terminal. Issue 819: `web login`
+    // registers it from this terminal with a code it prints on first run;
+    // opened from another computer, the link asks for that code. It waits
+    // until it is used.
+    const t = inTerminal(
       TSX,
       [
         path.join(ENGINE, "src", "ui", "cli", "index.ts"),
         "web",
         "login",
-        "--no-wait",
         "--port",
         String(lanPort),
         "--origin",
@@ -888,13 +968,22 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
       ],
       {
         cwd: lanDist,
-        encoding: "utf-8",
-        timeout: 60_000,
         env: { ...serverEnv(lanDist, lanHome, lanPort), CI: "1" },
       },
     );
-    expect(r.status).toBe(0);
-    const link = r.stdout.trim();
+    let printed = "";
+    const link = await new Promise<string>((resolve) =>
+      t.onText((all) => {
+        if (/waiting for the link/.test(all)) {
+          printed =
+            /it asks for this code: ([0-9A-Z]{4}-[0-9A-Z]{4})/.exec(all)?.[1] ??
+            "";
+          resolve(linkIn(all));
+        }
+      }),
+    );
+    minted.push(printed);
+    expect(printed).not.toBe("");
     minted.push(link);
     const u = new URL(link);
     minted.push(u.searchParams.get("c") ?? "");
@@ -910,19 +999,34 @@ describe("a plain-http LAN bind (DEN_BIND_HOST=0.0.0.0, web.allow_plain_http_rem
         lanPort,
       );
       expect([cross.status, setCookie(cross)]).toEqual([403, ""]);
-      const a = await call(
+      const opened = await call(
         "GET",
         `${u.pathname}${u.search}`,
         host,
         undefined,
         lanPort,
       );
+      expect(opened.headers["set-cookie"] ?? []).toEqual([]);
+      const a = await call(
+        "POST",
+        `${u.pathname}${u.search}`,
+        { host: u.host, origin: `http://${u.host}` },
+        JSON.stringify({ code: printed }),
+        lanPort,
+      );
       const line = ([] as string[])
         .concat(a.headers["set-cookie"] ?? [])
         .find((c) => c.startsWith(`den_session_${lanPort}=`));
       minted.push(line?.split(";")[0].split("=")[1] ?? "");
-      expect([a.status, where(a), !!line]).toEqual([303, "/", true]);
+      expect([a.status, JSON.parse(a.body).next, !!line]).toEqual([
+        200,
+        "/",
+        true,
+      ]);
     }
+    const r = await t.done;
+    expect(r.status).toBe(0);
+    expect(r.text).toMatch(/Signed in: /);
   }, 90_000);
 });
 

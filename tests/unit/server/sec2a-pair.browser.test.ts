@@ -3,10 +3,11 @@
  * Den can't place), with Sign in with GitHub turned off
  * (`web.github_client_id: ""`):
  *  - no Sign in with GitHub button; the page shows a code to approve this
- *    computer with, and every command on it names the machine it runs on;
+ *    computer with, from a signed-in browser (issue 819: no command
+ *    approves it), and every command on it names the machine it runs on;
  *  - a copy button says "Copied";
- *  - approval through the server's API (the CLI's bearer, as `web approve`
- *    sends it) signs the page in by itself: no reload, no link;
+ *  - approval from a signed-in browser signs the page in by itself: no
+ *    reload, no link; the CLI's bearer can't approve it;
  *  - approval in Settings › Access › Waiting devices on localhost does too;
  *  - the countdown, with Playwright's fake clock: it runs out at 10
  *    minutes, says the code expired, and a new code is a click away.
@@ -21,10 +22,9 @@ import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
 import { cliPrefix } from "../../../src/shared/cli-command.js";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
-import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
 
@@ -33,7 +33,7 @@ const EDGE = "den.acme.localhost";
 const SHORT = os.hostname().split(".")[0];
 const USER = os.userInfo().username;
 const SHOTS = process.env.DEN_SEC2_SHOTS ?? "";
-const CODE_RE = /web approve ([0-9A-Z]{3}-[0-9A-Z]{3})$/;
+const CODE_RE = /^[0-9A-Z]{3}-[0-9A-Z]{3}$/;
 let browser: Browser | null = null;
 let tmp = "";
 let root = "";
@@ -125,17 +125,16 @@ async function edgePage(
   if (before) await before(p);
   const r = await p.goto(`http://${EDGE}:${port}/settings?x=1`);
   expect(r?.status()).toBe(401);
-  // D67: the browser way leads, with the code shown big; the commands
-  // wait under "Other ways", closed. Open it for the checks below.
+  // Issue 1333: the page asks for a code only on its button.
+  await p.waitForSelector("#den-pair-start, #den-pair-code");
+  if (await p.$("#den-pair-start")) await p.click("#den-pair-start");
+  // D67: the browser way, with the code shown big. Issue 819: it is the
+  // only way; no command approves this computer.
   await p.waitForSelector("#den-pair-code");
   expect(await p.isVisible("#den-pair-browser")).toBe(true);
-  expect(await p.isVisible("#den-pair-cmd")).toBe(false);
-  await p.click("#den-pair-other > summary");
-  await p.waitForSelector("#den-pair-cmd");
-  const code = CODE_RE.exec((await p.textContent("#den-pair-cmd")) ?? "")?.[1];
-  expect(!!code).toBe(true);
-  expect((await p.textContent("#den-pair-code"))?.trim()).toBe(code);
-  return { ctx, p, code: code! };
+  const code = (await p.textContent("#den-pair-code"))?.trim() ?? "";
+  expect(CODE_RE.test(code)).toBe(true);
+  return { ctx, p, code };
 }
 
 /** POST to the server as the CLI does: its bearer, on localhost. */
@@ -162,12 +161,8 @@ const signedIn = (p: Page) =>
  * device in needs a signed-in browser holding its approval key).
  */
 async function claimIn(page: Page): Promise<void> {
-  await page.goto(
-    claimLink(
-      `http://localhost:${port}`,
-      mintClaimCode(readWebSecret(stateDir)!),
-    ),
-  );
+  // Issue 819: first run, then approved by a signed-in browser.
+  await signInPage(page, stateDir, `http://localhost:${port}`);
   await page.waitForFunction(
     () => localStorage.getItem("den.approveKey")?.length === 43,
   );
@@ -190,8 +185,13 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     expect(await p.textContent("#den-signin-where")).toBe(
       `You're opening Den from another computer. Den runs on ${SHORT}, so it needs to know this is you.`,
     );
-    // Every command: its own copy button, and the line before it names
-    // the machine (the server's, or "From this computer" for ssh).
+    // Issue 819: no command approves this computer.
+    expect(await p.locator("#den-pair-cmd, #den-pair-ssh").count()).toBe(0);
+    expect(await p.textContent("#den-pair")).not.toMatch(/web approve/);
+    // Every command (Other ways: a new sign-in link): its own copy button,
+    // and the line before it names the machine (the server's, or "From
+    // this computer" for ssh).
+    await p.click("#den-signin-other > summary");
     const lines = await p.$$eval(".den-cmd", (els) =>
       els.map((el) => ({
         id: el.querySelector("pre")?.id,
@@ -201,12 +201,7 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
       })),
     );
     expect(lines.map((l) => l.id).sort()).toEqual(
-      [
-        "den-pair-cmd",
-        "den-pair-ssh",
-        "den-signin-cmd",
-        "den-signin-ssh",
-      ].sort(),
+      ["den-signin-cmd", "den-signin-ssh"].sort(),
     );
     for (const l of lines) {
       expect([l.id, l.copy, l.says.includes(SHORT)]).toEqual([
@@ -225,20 +220,9 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     }
     expect(
       lines
-        .find((l) => l.id === "den-pair-ssh")
+        .find((l) => l.id === "den-signin-ssh")
         ?.cmd.startsWith(`ssh ${USER}@${EDGE} '`),
     ).toBe(true);
-    // The ssh target is a name: Open Terminal is an ssh:// link to it, as
-    // the account Den runs as (SEC-2a-UX: an SSH app's own default
-    // account is one nobody knows), and the note says which.
-    expect(await p.getAttribute("#den-pair-term", "href")).toBe(
-      `ssh://${USER}@${EDGE}`,
-    );
-    expect(await p.textContent("#den-pair-note")).toBe(
-      `Log in with your ${SHORT} account (${USER}) and its password, or an SSH key.`,
-    );
-    // "Other ways" starts collapsed.
-    expect(await p.isVisible("#den-signin-cmd")).toBe(false);
     if (SHOTS) {
       fs.mkdirSync(SHOTS, { recursive: true });
       await p.screenshot({
@@ -249,131 +233,47 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
     await ctx.close();
   }, 90_000);
 
-  const UA = {
-    windows:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-    mac: "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
-    // iPadOS Safari says Macintosh too.
-    ipad: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
-  };
-
-  it("on Windows: no Open Terminal link; the ssh command is the step, with the PowerShell line", async () => {
-    if (skip()) return;
-    const { ctx, p } = await edgePage(undefined, UA.windows);
-    await p.waitForSelector("#den-pair-ssh");
-    expect(await p.$$('#den-pair a[href^="ssh:"]')).toHaveLength(0);
-    expect(await p.$("#den-pair-term")).toBeNull();
-    expect(await p.textContent("#den-pair-win")).toBe(
-      "Open Windows Terminal or PowerShell, paste this, and press Enter.",
-    );
-    // The command, with its copy button, right after that line.
-    expect(
-      await p.$eval(
-        "#den-pair-win",
-        (el) =>
-          `${el.nextElementSibling?.querySelector("pre")?.id} ${!!el.nextElementSibling?.querySelector("button[data-copy-for]")}`,
-      ),
-    ).toBe("den-pair-ssh true");
-    expect(await p.isVisible("#den-pair-ssh")).toBe(true);
-    // Which account to log in as still shows.
-    expect(await p.textContent("#den-pair-note")).toContain(USER);
-    await ctx.close();
-  }, 60_000);
-
-  it("on macOS and iPadOS: Open Terminal shows, and no PowerShell line", async () => {
-    if (skip()) return;
-    for (const ua of [UA.mac, UA.ipad]) {
-      const { ctx, p } = await edgePage(undefined, ua);
-      await p.waitForSelector("#den-pair-term");
-      expect(await p.getAttribute("#den-pair-term", "href")).toBe(
-        `ssh://${USER}@${EDGE}`,
-      );
-      expect(await p.$("#den-pair-win")).toBeNull();
-      expect(await p.isVisible("#den-pair-ssh")).toBe(true);
-      await ctx.close();
-    }
-  }, 60_000);
-
-  it("a click on Open Terminal that keeps the page's focus for 2 s says Nothing opened?", async () => {
-    if (skip()) return;
-    const { ctx, p } = await edgePage(async (pg) => {
-      await pg.addInitScript(() => {
-        (
-          window as unknown as { __denNothingOpenedMs: number }
-        ).__denNothingOpenedMs = 300;
-        // No ssh:// app here: the click opens nothing, as on a machine
-        // without one.
-        document.addEventListener(
-          "click",
-          (e) => {
-            if ((e.target as Element)?.closest?.("#den-pair-term"))
-              e.preventDefault();
-          },
-          true,
-        );
-      });
-    }, UA.mac);
-    await p.waitForSelector("#den-pair-term");
-    expect(await p.isVisible("#den-pair-nothing")).toBe(false);
-    await p.click("#den-pair-term");
-    await p.waitForSelector("#den-pair-nothing", {
-      state: "visible",
-      timeout: 5_000,
-    });
-    expect(await p.textContent("#den-pair-nothing")).toBe(
-      "Nothing opened? Copy the command below and paste it into your terminal app.",
-    );
-    await ctx.close();
-  }, 60_000);
-
-  it("a click on Open Terminal that an app takes (the page loses focus) says nothing", async () => {
-    if (skip()) return;
-    const { ctx, p } = await edgePage(async (pg) => {
-      await pg.addInitScript(() => {
-        (
-          window as unknown as { __denNothingOpenedMs: number }
-        ).__denNothingOpenedMs = 300;
-        document.addEventListener(
-          "click",
-          (e) => {
-            if ((e.target as Element)?.closest?.("#den-pair-term")) {
-              e.preventDefault();
-              // An app took the link: this page no longer has focus.
-              Object.defineProperty(document, "hasFocus", {
-                value: () => false,
-              });
-            }
-          },
-          true,
-        );
-      });
-    }, UA.mac);
-    await p.waitForSelector("#den-pair-term");
-    await p.click("#den-pair-term");
-    await p.waitForTimeout(900);
-    expect(await p.isVisible("#den-pair-nothing")).toBe(false);
-    await ctx.close();
-  }, 60_000);
-
   it("a copy button says Copied", async () => {
     if (skip()) return;
     const { ctx, p } = await edgePage();
-    const btn = p.locator('button[data-copy-for="den-pair-cmd"]');
+    await p.click("#den-signin-other > summary");
+    const btn = p.locator('button[data-copy-for="den-signin-cmd"]');
     expect((await btn.textContent())?.trim()).toBe("");
     await btn.click();
     await p.waitForFunction(
       () =>
         document.querySelector(
-          'button[data-copy-for="den-pair-cmd"] .den-copied',
+          'button[data-copy-for="den-signin-cmd"] .den-copied',
         )?.textContent === "Copied",
     );
     await ctx.close();
   }, 90_000);
 
-  it("approval through the server's API signs the page in by itself, onto the page it asked for", async () => {
+  it("approval from a signed-in browser signs the page in by itself, onto the page it asked for; the CLI's bearer can't approve", async () => {
     if (skip()) return;
     const { ctx, p, code } = await edgePage();
-    expect(await asCli("/api/web/approve", { code })).toBe(200);
+    // Issue 819: only a person's signed-in browser approves.
+    expect(await asCli("/api/web/approve", { code })).toBe(403);
+    const local = await browser!.newContext();
+    const s = await local.newPage();
+    await claimIn(s);
+    const ok = await s.evaluate(async (c) => {
+      const sess = (await (
+        await fetch("/api/session", { cache: "no-store" })
+      ).json()) as { csrf?: string };
+      const r = await fetch("/api/web/approve", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-den-csrf": String(sess.csrf ?? ""),
+          "x-den-approve-key": localStorage.getItem("den.approveKey") ?? "",
+        },
+        body: JSON.stringify({ code: c }),
+      });
+      return r.status;
+    }, code);
+    expect(ok).toBe(200);
+    await local.close();
     await p.waitForFunction(
       () => !document.querySelector("#den-signin"),
       null,
@@ -402,12 +302,29 @@ describe("the signed-out page through the edge, with an empty GitHub client id",
       Object.keys(localStorage).some((k) => k.endsWith("-changelog-seen")),
     );
     expect(await s.$("#cl-overlay.open")).toBeNull();
-    const row = s.locator(`.set-waiting[data-code="${code}"]`);
+    // Issue 819: the row has no code: the person types the code that
+    // computer's screen shows. Found by its request's handle (its page
+    // keeps it).
+    const ref = await p.evaluate(
+      () => sessionStorage.getItem("den-pair-mine") ?? "",
+    );
+    expect(ref).not.toBe("");
+    const row = s.locator(`.set-waiting[data-ref="${ref}"]`);
     await row.waitFor();
     expect(await row.textContent()).toMatch(/Chrome on \w+/);
-    // The shell's own "a device is waiting" dialog can open over the page
-    // at the same moment (a CI flake): this checks Settings' Approve, so the
-    // click goes to it directly.
+    expect(await row.textContent()).not.toContain(code);
+    expect(await row.locator("[data-approve]").isDisabled()).toBe(true);
+    // The shell's own "Allow this computer?" pop-up can open over the page
+    // for the same request (modal, its own code field focused): this checks
+    // Settings' field and Approve, so the code goes into that field and the
+    // click to its button directly, as typed input does.
+    await row
+      .locator("input[data-code-for]")
+      .evaluate((el: HTMLInputElement, v: string) => {
+        el.value = v;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }, code.toLowerCase());
+    expect(await row.locator("[data-approve]").isDisabled()).toBe(false);
     await row.locator("[data-approve]").dispatchEvent("click");
     await p.waitForFunction(
       () => !document.querySelector("#den-signin"),

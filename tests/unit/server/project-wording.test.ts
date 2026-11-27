@@ -18,7 +18,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vm from "vm";
 import ts from "typescript";
-import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
+import { UI_LANGUAGES } from "../../../src/shared/ui-language.js";
 import { EN_FALLBACK as TOPBAR_EN } from "../../../src/ui/server/public/topbar.js";
 import { EN_FALLBACK as APPEARANCE_EN } from "../../../src/ui/server/public/appearance.js";
 import { EN_FALLBACK as PICKER_EN } from "../../../src/ui/server/public/workspace-picker.js";
@@ -63,6 +63,8 @@ function withoutCode(s: string): string {
         /(?:\{cli\}|<cli>|\$\{cli\}|\bden|\bacme)\s+workspaces?\b/gi,
         " ",
       )
+      // a config command a row shows: __DEN_CLI__ config sessions.max_concurrent=8
+      .replace(/__DEN_CLI__ config \S+/g, " ")
       // help's own command column: "  workspace list   …"
       .replace(/^\s{2,}workspace(?= [a-z<[])/gim, " ")
   );

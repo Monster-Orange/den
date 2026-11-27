@@ -110,20 +110,22 @@ describe("the queue rules (issue 715)", () => {
       entry("a", "browser", 2),
       entry("p", "browser", 3, { reason: "r" }),
     ];
-    expect(ids(queueOrder(q, GATE_DEFAULTS, at(4)))).toEqual(["c", "p", "a"]);
+    const own = { ...GATE_DEFAULTS, releasePassOtherKindMinutes: 0 };
+    expect(ids(queueOrder(q, own, at(4)))).toEqual(["c", "p", "a"]);
   });
 
-  it("never passes a run that has waited past the pass limit", () => {
+  // Issue 751: a plain waiter is passed however long it has waited; the
+  // pass limit applies only between marked runs (cpu-backfill-751.test.ts).
+  it("passes a plain run however long it has waited (issue 751)", () => {
     const q = [
       entry("h", "browser", 0, { granted: 0 }),
       entry("old", "browser", 0),
       entry("a", "browser", 50),
       entry("p", "browser", 61, { reason: "r" }),
     ];
-    // At 61 min, "old" has waited past 60: p goes behind it, ahead of a.
     expect(ids(queueOrder(q, GATE_DEFAULTS, at(61)))).toEqual([
-      "old",
       "p",
+      "old",
       "a",
     ]);
     expect(
@@ -139,7 +141,7 @@ describe("the queue rules (issue 715)", () => {
 
   it("the cap is a setting (default 1; 0 turns priority off)", () => {
     expect(GATE_DEFAULTS.priorityMax).toBe(1);
-    expect(GATE_DEFAULTS.priorityPassLimitMinutes).toBe(60);
+    expect(GATE_DEFAULTS.priorityPassLimitMinutes).toBe(0);
     expect(GATE_DEFAULTS.priorityAgents).toBe(true);
     const q = [
       entry("h", "browser", 0, { granted: 0 }),
@@ -161,6 +163,7 @@ describe("the store's audit (issue 715)", () => {
   const store = () => {
     let now = at(10);
     return new GateStore({
+      platform: "linux",
       dir: tmp(),
       alive: () => true,
       now: () => (now += 1000),
@@ -278,7 +281,11 @@ function deps(env: NodeJS.ProcessEnv = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const d: GateDeps = {
-    store: new GateStore({ dir: tmp(), alive: () => true }),
+    store: new GateStore({
+      platform: "linux",
+      dir: tmp(),
+      alive: () => true,
+    }),
     env,
     out: (l) => out.push(l),
     err: (l) => err.push(l),
@@ -434,7 +441,11 @@ describe("gate_slot_request with priority (issue 715)", () => {
   });
 
   it("takes priority with a reason, and refuses one without", async () => {
-    const store = new GateStore({ dir: tmp(), alive: () => true });
+    const store = new GateStore({
+      platform: "linux",
+      dir: tmp(),
+      alive: () => true,
+    });
     store.ask({
       kind: "browser",
       who: "h",

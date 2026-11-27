@@ -2,6 +2,7 @@
 // Live check for #455: Den prints only an address it has just proven reaches this Den; when
 // another server holds the port, Den names it and offers the two ways out (mock v3).
 // Read only: it never binds a port, never changes a setting, and never presses Check again.
+import { doctorChecks, readJson } from "./lib/read-json.mjs";
 export const issue = 455;
 export const clauses = [
   "Den never prints or links an address before checking it reaches this Den (an identity challenge, not a connect)",
@@ -22,6 +23,9 @@ const hex = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
     b.toString(16).padStart(2, "0"),
   ).join("");
+
+// Read only (issue 845): reads the identity route, /api/edge/address, doctor, `edge route` and the Edge page.
+export const readOnly = true;
 
 export async function setup(ctx) {
   const s = {};
@@ -45,29 +49,31 @@ export async function setup(ctx) {
     badStatus: bad.status,
   };
   s.address = await ctx.api("/api/edge/address");
-  const d = ctx.cli(["doctor"]);
+  const d = ctx.cli(["doctor", "--json"]);
+  const checks = doctorChecks(d);
   s.doctor = {
     code: d.code,
-    lines: (d.out || "")
-      .split("\n")
-      .filter((l) =>
+    lines: checks
+      .filter((c) =>
         /checked just now|is held by|in use by something|no address was checked|Options: free port|edge route --for|Not reachable yet|isn't checked yet/.test(
-          l,
+          String(c?.detail ?? ""),
         ),
       )
-      .map((l) => l.trim()),
+      .map((c) => `${c.id}: ${c.detail}`),
   };
   s.routes = {};
   for (const kind of ["nginx", "caddy", "traefik"]) {
-    const r = ctx.cli(["edge", "route", "--for", kind]);
+    const r = ctx.cli(["edge", "route", "--for", kind, "--json"]);
+    const route = readJson(r, `edge route --for ${kind}`);
     s.routes[kind] = {
       code: r.code,
-      out: r.out || "",
-      err: (r.err || "").trim(),
+      host: route?.host ?? null,
+      config: String(route?.config ?? ""),
+      err: String(r.err ?? "").trim(),
     };
     // Into <module>-log.txt, so a failing clause shows what the CLI said.
     ctx.log?.(
-      `edge route --for ${kind}: exit ${r.code}\n${r.out || ""}\n${(r.err || "").trim()}`,
+      `edge route --for ${kind} --json: exit ${r.code}\n${s.routes[kind].config}\n${s.routes[kind].err}`,
     );
   }
   return s;
@@ -113,7 +119,7 @@ export function expect(cells) {
     ({ cell }) => `edge-${cell.browser}-${cell.width}.png`,
   );
   const routeOk = (k, re) =>
-    s.routes?.[k]?.code === 0 && re.test(s.routes[k].out);
+    s.routes?.[k]?.code === 0 && re.test(s.routes[k].config);
   return [
     {
       clause: clauses[0],
@@ -202,7 +208,8 @@ export function expect(cells) {
         routeOk("traefik", /rule: "Host\(`/),
       detail: Object.entries(s.routes ?? {})
         .map(
-          ([k, r]) => `${k}: exit ${r.code}, ${r.out.split("\n").length} lines`,
+          ([k, r]) =>
+            `${k}: exit ${r.code}, for ${r.host ?? "?"}, ${r.config.length} characters`,
         )
         .join("; "),
     },

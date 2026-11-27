@@ -22,11 +22,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { writeWebOwner } from "../../../src/shared/web-owner.js";
+import { writeWebOwner } from "../../../src/shared/web/web-owner.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
-import { signInUrl } from "./helpers/den-auth.js";
-import { signIn } from "./helpers/signed-in.js";
+import { signIn, signInPage } from "./helpers/signed-in.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { launchBrowser } from "../helpers/browser.js";
@@ -264,7 +263,7 @@ describe("the account entry draws who is signed in", () => {
       extraHTTPHeaders: AWAY,
     });
     const p = await ctx.newPage();
-    const r = await p.goto(signInUrl(stateDir, `http://${EDGE}:${port}`, "/"));
+    const r = await signInPage(p, stateDir, `http://${EDGE}:${port}`, "/");
     expect(r?.status()).toBe(200);
     expect(await entry(p)).toMatchObject({
       name: "Local",

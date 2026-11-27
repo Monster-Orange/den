@@ -19,6 +19,11 @@
  *                           [{ cell, result }]
  *     timeoutMs             a cell's time limit (the harness's default
  *                           otherwise); over it, the cell is ok false
+ *     items                 the release items whose clauses it proves, its
+ *                           own issue among them, on one line:
+ *                           `export const items = [715, 991];`. The bed
+ *                           reads it from the source to plan a tag's items
+ *                           (gate/<item>.mjs, or a check that lists the item)
  *
  * Prints a JSON array of problems (empty when all is well); exits 1 when
  * there are any. Loads each file, so a file that throws on import counts.
@@ -60,8 +65,18 @@ export function checkGateModule(file, mod) {
     !(Number.isInteger(mod.timeoutMs) && mod.timeoutMs > 0)
   )
     out.push(`${file}: timeoutMs is not a positive whole number`);
+  if ("items" in mod) {
+    const items = Array.isArray(mod.items) ? mod.items : [];
+    if (!items.includes(mod.issue))
+      out.push(`${file}: items must list its own issue (${mod.issue})`);
+    if (!items.every((n) => Number.isInteger(n) && n > 0))
+      out.push(`${file}: items must be issue numbers (whole numbers above 0)`);
+  }
   return out;
 }
+
+// What the bed reads without loading the file (den-bed lib/order-modules.zsh).
+const ITEMS_LINE = /^export const items = \[[0-9, ]*\];?$/m;
 
 /**
  * A module's own plain `fetch` runs on the host, where the browser's
@@ -74,14 +89,45 @@ export function checkGateModule(file, mod) {
 const HOST_FETCH_AT_URL =
   /(?<![\w.$])fetch\(\s*(?:ctx\.url\b|`\$\{\s*ctx\.url\s*\}|new URL\([^()]*?,\s*ctx\.url\s*\))/g;
 
+// A skip reason written in the source: `skip: "..."`, `skip = "..."`, or a
+// constant used as one (`skip: NAME`, `const NAME = "..."`).
+const SKIP_LITERAL =
+  /\bskip\s*(?::|=(?!=))\s*(?:"([^"\n]*)"|'([^'\n]*)'|([A-Z][A-Z0-9_]*)\b)/g;
+
 export function checkGateSource(file, src) {
   const out = [];
-  for (const m of String(src).matchAll(HOST_FETCH_AT_URL)) {
-    const line = src.slice(0, m.index).split("\n").length;
+  const text = String(src);
+  if (/^export const items\b/m.test(text) && !ITEMS_LINE.test(text))
     out.push(
-      `${file}: line ${line}: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)`,
+      `${file}: items must be on one line, \`export const items = [${/^(\d+)/.exec(file)?.[1]}, …];\` (the bed reads it from the source)`,
+    );
+  const lineOf = (i) => text.slice(0, i).split("\n").length;
+  for (const m of text.matchAll(HOST_FETCH_AT_URL)) {
+    out.push(
+      `${file}: line ${lineOf(m.index)}: a plain fetch against ctx.url runs on the host and reaches the live edge; use ctx.hostUrl (or ctx.fetch)`,
     );
   }
+  // Issue 726's bed run: a skip in words, not "person" or "needs-<thing>",
+  // makes every row it answers unreadable to the harness.
+  const bad = new Map();
+  for (const m of text.matchAll(SKIP_LITERAL)) {
+    let at = m.index;
+    let reason = m[1] ?? m[2];
+    if (m[3]) {
+      const c = new RegExp(
+        `\\bconst\\s+${m[3]}\\s*=\\s*(?:"([^"\\n]*)"|'([^'\\n]*)')`,
+      ).exec(text);
+      if (!c) continue;
+      at = c.index;
+      reason = c[1] ?? c[2];
+    }
+    if (SKIP.test(reason)) continue;
+    bad.set(`${lineOf(at)}\0${reason}`, [lineOf(at), reason]);
+  }
+  for (const [line, reason] of [...bad.values()].sort((a, b) => a[0] - b[0]))
+    out.push(
+      `${file}: line ${line}: skip reason ${JSON.stringify(reason)} is not "person" or "needs-<thing>" (put the words in why)`,
+    );
   return out;
 }
 

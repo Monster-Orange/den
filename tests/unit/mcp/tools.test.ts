@@ -7,6 +7,7 @@ import { describe, expect, it } from "@jest/globals";
 import {
   ACTION_TOOL_NAMES,
   APPROVAL_TOOL_NAMES,
+  DIRECT_WRITE_TOOL_NAMES,
   HUB_FILE_TOOL_NAMES,
   READ_TOOL_NAMES,
   callTool,
@@ -119,14 +120,16 @@ const beyondReport = (calls: Call[]) =>
   calls.filter((c) => c.path !== "/api/activity");
 
 describe("tool registration", () => {
-  it("with no mcp: block, only the read tools, Hub's file tools (den#49) and the held writes (0.4.15: the person's approval gates those)", () => {
+  it("with no mcp: block, only the read tools, Hub's file tools (den#49), the direct writes (issue_write) and the held writes (0.4.15: the person's approval gates those)", () => {
     const names = toolsFor(cfg({ actions: [] })).map((t) => t.name);
     expect(names).toEqual([
       ...READ_TOOL_NAMES,
       ...HUB_FILE_TOOL_NAMES,
+      ...DIRECT_WRITE_TOOL_NAMES,
       ...APPROVAL_TOOL_NAMES,
     ]);
     expect(HUB_FILE_TOOL_NAMES).toEqual(["hub_put", "hub_pull"]);
+    expect(DIRECT_WRITE_TOOL_NAMES).toEqual(["issue_write"]);
     expect(names).toEqual(
       expect.arrayContaining(["stacks", "edge_status", "logs_tail", "status"]),
     );
@@ -142,6 +145,7 @@ describe("tool registration", () => {
     expect(names).toEqual([
       ...READ_TOOL_NAMES,
       ...HUB_FILE_TOOL_NAMES,
+      ...DIRECT_WRITE_TOOL_NAMES,
       ...APPROVAL_TOOL_NAMES,
       "service_up",
       "run_tests",
@@ -157,12 +161,16 @@ describe("tool registration", () => {
       expect(on).toContain(n);
       expect(off).not.toContain(n);
     }
-    expect(off).toEqual([...READ_TOOL_NAMES, ...HUB_FILE_TOOL_NAMES]);
+    expect(off).toEqual([
+      ...READ_TOOL_NAMES,
+      ...HUB_FILE_TOOL_NAMES,
+      ...DIRECT_WRITE_TOOL_NAMES,
+    ]);
   });
 
   it("approvalsState says which state is in effect", () => {
     expect(approvalsState(cfg())).toMatch(
-      /^held writes on: workspace_create, repo_add, hub_connect, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, hub_project_create, hub_link, project_mcp_add, project_mcp_remove, project_mcp_update, agent_folder, agent_mode, gate_runner_token_create, host_restart, service_try, verify_run, agent_import, approval_policy, pr_close follow the approval policy: one that widens what an agent may do runs only after the person's Allow/,
+      /^held writes on: workspace_create, repo_add, hub_connect, den_restart_server, den_update, agent_create, persona_create, persona_update, repo_clone, project_mode, project_agent_cap, hub_project_create, hub_link, project_mcp_add, project_mcp_remove, project_mcp_update, project_event_feed_add, project_event_feed_remove, agent_folder, agent_mode, agent_sandbox_set, setting_change, gate_settings_set, gate_runner_token_create, gate_box_set, gate_box_remove, host_restart, web_url_set, gate_runner_entry_set, service_try, verify_run, agent_import, approval_policy, pr_close, report follow the approval policy: one that widens what an agent may do runs only after the person's Allow/,
     );
     expect(approvalsState(cfg({ approvals: false }))).toMatch(
       /^held writes off \(mcp\.approvals: false\)/,
@@ -171,7 +179,9 @@ describe("tool registration", () => {
 
   it("there is no deploy tool and nothing for the never-exposed routes", () => {
     const names = toolsFor(cfg()).map((t) => t.name);
-    for (const n of names)
+    // Issue 1395: gate_settings_set is a held write (POST /api/approvals),
+    // not the Settings page's route.
+    for (const n of names.filter((x) => x !== "gate_settings_set"))
       expect(n).not.toMatch(/deploy|sudo|terminal|editor|settings|aws|exec/);
   });
 });

@@ -17,7 +17,7 @@ import {
   checkRequest,
   type GuardContext,
 } from "../../../src/ui/server/request-guard.js";
-import { approveKeyHash } from "../../../src/shared/web-session.js";
+import { approveKeyHash } from "../../../src/shared/web/web-session.js";
 
 const PORT = 4103;
 const PATH = "/api/report/shots/0123456789abcdef";
@@ -38,6 +38,9 @@ function agent(workspace: string) {
   };
 }
 
+/** Issue 403 after 810: the fixture person, as a test install's live checks sign in. */
+const FIXTURE = { ...SESSION, key: "sess-fixture", via: "fixture" as const };
+
 function ctx(): GuardContext {
   return {
     port: PORT,
@@ -55,7 +58,9 @@ function ctx(): GuardContext {
     session: (req) =>
       String(req.headers.cookie ?? "").includes(`den_session_${PORT}=good`)
         ? SESSION
-        : null,
+        : String(req.headers.cookie ?? "").includes(`den_session_${PORT}=fx`)
+          ? FIXTURE
+          : null,
   };
 }
 
@@ -111,5 +116,50 @@ describe("issue 403: reading a kept screenshot, through the real guard", () => {
     expect(read({ authorization: "Bearer den_at_server" }).reader).toEqual({
       ok: true,
     });
+  });
+
+  // The fixture person runs a test install's live checks. It may never
+  // decide what waits for a person (issue 810), but reading a kept
+  // screenshot decides nothing: there it is the person who runs the install.
+  it("the fixture person's signed-in browser (CSRF) reads it", () => {
+    const { reader } = read({
+      cookie: `den_session_${PORT}=fx`,
+      "x-den-csrf": FIXTURE.csrf,
+    });
+    // Issue 946: marked, so the route shows it only what a fixture filed.
+    expect(reader).toEqual({ ok: true, fixture: true });
+  });
+
+  it("the fixture person's cookie with no CSRF token is refused (401)", () => {
+    expect(read({ cookie: `den_session_${PORT}=fx` }).reader).toEqual({
+      ok: false,
+      status: 401,
+    });
+  });
+
+  // Issue 946: the fixture cookie with anything less than its own CSRF token.
+  it("the fixture person's cookie with a wrong CSRF token is refused (401)", () => {
+    expect(
+      read({ cookie: `den_session_${PORT}=fx`, "x-den-csrf": "not-its-token" })
+        .reader,
+    ).toEqual({ ok: false, status: 401 });
+  });
+
+  it("the fixture person's cookie with a bearer is never the fixture person", () => {
+    const { reader } = read({
+      cookie: `den_session_${PORT}=fx`,
+      "x-den-csrf": FIXTURE.csrf,
+      authorization: "Bearer den_at_gate403notatoken",
+    });
+    expect(reader).toEqual({ ok: false, status: 401 });
+  });
+
+  it("the fixture person's cookie with an agent's claim header reads only as the fixture person", () => {
+    const { reader } = read({
+      cookie: `den_session_${PORT}=fx`,
+      "x-den-csrf": FIXTURE.csrf,
+      "x-den-actor": "agent:north-a",
+    });
+    expect(reader).toEqual({ ok: true, fixture: true });
   });
 });

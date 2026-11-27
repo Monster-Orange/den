@@ -170,6 +170,40 @@ command for each.
 
 In a distribution the command is that distribution's `cli` name.
 
+### Test beds
+
+A test bed is an install that runs Den's live checks against stub agents.
+Mark it at install time with `den create <name> --test-bed` (it writes
+`web.test_install: true` in the distribution config; Settings, `config` and
+an agent's token can't change it), and start it with the test launcher on
+its own state folder, with no owner. `den doctor` says whether an install is
+a test bed.
+
+To give the test bed's fixture person a name on the rail, set it by hand
+next to `web.test_install` in the distribution config:
+
+```yaml
+web:
+  test_install: true
+  fixture_person:
+    name: Robin Example # one line, at most 64 characters, no @
+    login: robin-example # a GitHub-style login, at most 39 characters
+```
+
+Use an invented name, never a real person's. The rail shows the name over
+the login; the audit and the server log still say "fixture person". Den makes
+no GitHub call for it. A wrong value, or the key in
+`config/local/user.yml`, is ignored with a warning at start; it never stops
+Den. On an install that isn't a test bed it does nothing, and `den doctor`
+says so.
+
+A test driver that runs inside an agent-like environment and needs to act
+as the person (start or end a stub agent, answer a fixture prompt) runs
+`den --test-person <command>`. It doesn't remove environment variables. On
+a test bed the command runs as the person, and the audit row says it came
+from the test-person path. On any other install it is refused with a clear
+error, and nothing runs.
+
 ## Sending feedback about Den
 
 **Built-in feedback first.** Every page and pop-up in Den has a Report button. It sends a screenshot, the page and

@@ -14,13 +14,13 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
-import { claimLink, mintClaimCode } from "../../../src/shared/claim-code.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
+import { readWebSecret } from "../../../src/shared/web/web-secret.js";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { writeWebOwner } from "../../../src/shared/web-owner.js";
+import { writeWebOwner } from "../../../src/shared/web/web-owner.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { startDenServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
@@ -149,12 +149,8 @@ async function edgePage(): Promise<{ ctx: BrowserContext; p: Page }> {
  * device in needs a signed-in browser holding its approval key).
  */
 async function claimIn(page: Page): Promise<void> {
-  await page.goto(
-    claimLink(
-      `http://localhost:${port}`,
-      mintClaimCode(readWebSecret(stateDir)!),
-    ),
-  );
+  // Issue 819: first run, then approved by a signed-in browser.
+  await signInPage(page, stateDir, `http://localhost:${port}`);
   await page.waitForFunction(
     () => localStorage.getItem("den.approveKey")?.length === 43,
   );
@@ -221,6 +217,9 @@ describe("Sign in with GitHub on the edge's signed-out page", () => {
   it("#320: signed in with GitHub, the page withdraws its own code before it goes, even if its pagehide never runs", async () => {
     if (skip()) return;
     const { ctx, p } = await edgePage();
+    // Issue 1333: the page asks for a code only on its button.
+    await p.waitForSelector("#den-pair-start, #den-pair-code");
+    if (await p.$("#den-pair-start")) await p.click("#den-pair-start");
     // The page's own code is waiting, as on any signed-out page.
     await p.waitForSelector("#den-pair-code");
     // The landing never answers: the page never unloads, so no pagehide.
@@ -302,9 +301,10 @@ describe("Settings › Access", () => {
         expect.stringMatching(
           /Chrome on \w+.*signed in with GitHub \(@octo-owner\) · created just now · from .* · last seen just now/,
         ),
-        // 0.4.12: this browser, signed in with the setup link, with Revoke.
+        // This browser, with Revoke (issue 819: approved from a signed-in
+        // browser, or on first run its one-time link).
         expect.stringMatching(
-          /This device.*claimed with a setup link · created just now.*Revoke/,
+          /This device.*(approved with a code|signed in with a one-time link) · created just now.*Revoke/,
         ),
       ]),
     );

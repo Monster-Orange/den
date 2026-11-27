@@ -31,8 +31,8 @@ jest.mock("../../../src/shared/edge/config.js", () => ({
   }),
 }));
 import { cmdWebLogin } from "../../../src/ui/cli/web-command.js";
-import { readWebSecret } from "../../../src/shared/web-secret.js";
-import { checkLoginCode } from "../../../src/shared/web-session.js";
+import { readWebSecret } from "../../../src/shared/web/web-secret.js";
+import { checkLoginCode } from "../../../src/shared/web/web-session.js";
 
 let tmp = "";
 beforeEach(() => {
@@ -47,6 +47,8 @@ async function login(args: string[]) {
     out: (s) => (out += s),
     err: (s) => (err += s),
     stateDir: tmp,
+    // Sign-in: the person's own terminal.
+    person: { tty: true, line: () => [process.pid, 1] },
   });
   return { code, out, err };
 }

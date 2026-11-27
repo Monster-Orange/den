@@ -104,7 +104,13 @@ async function postsAtLeast(
 
 const rail = (p: Page) =>
   p.evaluate(() =>
-    [...document.querySelectorAll(".den-rail > *")].map((g) =>
+    // The foot's entries are listed one by one (issue 1341: they sit in
+    // one .den-rail-foot after the spacer).
+    [
+      ...document.querySelectorAll(
+        ".den-rail > :not(.den-rail-foot), .den-rail > .den-rail-foot > *",
+      ),
+    ].map((g) =>
       g.classList.contains("den-rail-group")
         ? {
             heading: g.querySelector(".den-gh > span")?.textContent,
@@ -562,7 +568,7 @@ describe("the scope breadcrumb (R4)", () => {
     });
     expect(await menuRows(p)).toEqual([
       { text: "All active (2)", role: "menuitemradio", checked: "false" },
-      { text: "ws-aCLI default", role: "menuitemradio", checked: "false" },
+      { text: "ws-a", role: "menuitemradio", checked: "false" },
       { text: "ws-b", role: "menuitemradio", checked: "true" },
       { text: "Manage projects…", role: "menuitem", checked: null },
     ]);
@@ -1031,7 +1037,8 @@ describe("a consumer's dev.18 run (two consumers)", () => {
     await p.click("#ws-pill");
     await p.waitForSelector(".den-pop");
     const items = await axNames(p, "menuitemradio");
-    expect(items).toContain("default, CLI default");
+    // Issue 897: the row is named by the project alone, no "CLI default".
+    expect(items).toContain("default");
     await p.context().close();
   });
 

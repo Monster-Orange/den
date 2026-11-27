@@ -6,16 +6,22 @@
  * browser and width, the same clauses as
  * tests/unit/server/bell-row.browser.test.ts.
  *
+ * Issue 187: before each click, the cursor over the row, its dot and its
+ * time is read; each must be the pointer.
+ *
  * Names are this check's own (gate93-*). Teardown marks their items read,
  * removes the agents, and puts back the two settings it changes for the
  * run (turn-finished shown; the page's language, for es and ja).
  */
 export const issue = 93;
+// Issue 187 (the pointer cursor on a row that opens) is proved here too.
+export const items = [93, 187];
 export const clauses = [
   "a long question's row and a short one's both open on a click in the middle of the text",
   "no element named Open (Abrir, 開く) in any row, in en, es and ja",
   "Enter on the focused row opens it, with a focus ring and one accessible name",
   "the controls inside a row do not open the row",
+  "a row that opens shows the pointer cursor over its text, its dot and its time (issue 187)",
 ];
 export const matrix = { browsers: ["chromium", "webkit"], widths: [1280, 390] };
 export const timeoutMs = 180000;
@@ -235,6 +241,7 @@ export async function run(ctx, state) {
 
   // 1. A click in the middle of each question's text opens it.
   seen.click = {};
+  seen.cursor = {};
   for (const k of ["long", "short"]) {
     const link = state.links[k];
     if (!link) {
@@ -247,6 +254,23 @@ export async function run(ctx, state) {
     let opened = false;
     let noBox;
     if (n === 1) {
+      // Issue 187: the cursor a person sees over the row's parts.
+      // A row that opens: its text is its link (data-bell="open"), its dot
+      // the aria-hidden mark, its time the <time>.
+      const cur = await r
+        .evaluate((row) => {
+          const c = (el) =>
+            el
+              ? el.ownerDocument.defaultView.getComputedStyle(el).cursor
+              : null;
+          return {
+            row: c(row.querySelector('[data-bell="open"]')),
+            dot: c(row.querySelector('[aria-hidden="true"]')),
+            time: c(row.querySelector("time")),
+          };
+        })
+        .catch(() => null);
+      if (cur && typeof cur === "object") seen.cursor[k] = cur;
       // The question's text: its two-line span, or the link that holds it.
       const m = await boxOf(ctx, r, r.locator(".den-bell-t, a").first(), k);
       if (m.box) {
@@ -406,6 +430,7 @@ function rows(s, cell) {
   const k = s?.keys ?? {};
   const t = s?.controls ?? {};
   const names = s?.names ?? {};
+  const cur = s?.cursor ?? {};
   return [
     {
       clause: clauses[0],
@@ -438,6 +463,15 @@ function rows(s, cell) {
           detail: `${tag} ${JSON.stringify(t)}`,
         }
       : { clause: clauses[3], ok: null, skip: "needs-row-controls" },
+    {
+      clause: clauses[4],
+      ok: ["long", "short"].every(
+        (k) =>
+          cur[k] &&
+          ["row", "dot", "time"].every((w) => cur[k][w] === "pointer"),
+      ),
+      detail: `${tag} ${JSON.stringify(cur)}`,
+    },
   ];
 }
 

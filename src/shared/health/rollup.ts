@@ -1,12 +1,12 @@
 /**
  * The repo health rollup, typed for TypeScript callers (`<cli> status`).
  *
- * The rule itself is one plain ES module, src/ui/server/public/health-rollup.js,
+ * The rule itself is one plain ES module, rollup-rule.js beside this file,
  * because the browser runs it too (the header row and the graph): one
  * function everywhere, so the row, its chip, the graph and `status` never
  * disagree. See that file for the rule.
  */
-import * as rollup from "../../ui/server/public/health-rollup.js";
+import * as rollup from "./rollup-rule.js";
 
 export type RepoState = "down" | "degraded" | "ok" | "unknown";
 

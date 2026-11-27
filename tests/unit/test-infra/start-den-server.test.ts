@@ -21,7 +21,11 @@ const FAKE = `
 const http = require("http");
 http.createServer((q, s) => {
   s.setHeader("Content-Type", "application/json");
-  s.end(JSON.stringify({ root: process.env.DEN_ROOT, pid: process.pid }));
+  s.end(JSON.stringify({
+    root: process.env.DEN_ROOT,
+    pid: process.pid,
+    gateDir: process.env.DEN_GATE_DIR,
+  }));
 }).listen(Number(process.env.PORT), "localhost");
 `;
 
@@ -99,5 +103,128 @@ ${FAKE}`;
       // den#143: the exit code too, so a flake names its cause.
       /try 1 on port \d+: it exited \(exit code 1\)\nbad config/,
     );
+  });
+
+  it("output sent to a log file: a port clash there is still seen, and tried again on another port", async () => {
+    const root = tmpRoot();
+    const log = path.join(root, "web.log");
+    const fd = fs.openSync(log, "a");
+    cleanup.push(async () => fs.closeSync(fd));
+    const once = path.join(root, "said-taken");
+    const script = `
+const fs = require("fs");
+if (!fs.existsSync(${JSON.stringify(once)})) {
+  fs.writeFileSync(${JSON.stringify(once)}, process.env.PORT);
+  console.error("  ✗ Port " + process.env.PORT + " is already in use.");
+  process.exit(1);
+}
+${FAKE}`;
+    const started = await startDenServer(
+      process.execPath,
+      ["-e", script],
+      {
+        cwd: root,
+        stdio: ["ignore", fd, fd],
+        env: { ...process.env, DEN_ROOT: root },
+      },
+      { timeoutMs: 10_000, logFile: log },
+    );
+    cleanup.push(() => stopServer(started.server));
+    expect(String(started.port)).not.toBe(fs.readFileSync(once, "utf-8"));
+  });
+
+  it("output sent to a log file: any other exit fails at once, with the log's last 40 lines", async () => {
+    const root = tmpRoot();
+    const log = path.join(root, "web.log");
+    fs.writeFileSync(log, "an earlier run's line\n");
+    const fd = fs.openSync(log, "a");
+    cleanup.push(async () => fs.closeSync(fd));
+    const script =
+      'for (let i = 1; i <= 50; i++) console.error("line " + i); console.error("bad config"); process.exit(1)';
+    const err = await startDenServer(
+      process.execPath,
+      ["-e", script],
+      {
+        cwd: root,
+        stdio: ["ignore", fd, fd],
+        env: { ...process.env, DEN_ROOT: root },
+      },
+      { timeoutMs: 10_000, logFile: log },
+    ).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err?.message).toMatch(
+      /try 1 on port \d+: it exited \(exit code 1\)\n/,
+    );
+    expect(err?.message).toMatch(/line 12\n[^]*line 50\nbad config/);
+    expect(err?.message).not.toMatch(/line 11\n/);
+    expect(err?.message).not.toMatch(/an earlier run's line/);
+    expect(err?.message).not.toMatch(/try 2/);
+  });
+
+  it("a server that never answers is named as timed out, never as exited (the stop is ours)", async () => {
+    const root = tmpRoot();
+    await expect(
+      startDenServer(
+        process.execPath,
+        ["-e", 'console.log("booting"); setInterval(() => {}, 1000)'],
+        { cwd: root, env: { ...process.env, DEN_ROOT: root } },
+        { timeoutMs: 1_500 },
+      ),
+    ).rejects.toThrow(
+      /try 1 on port \d+: it never answered within 1\.5 s\nbooting/,
+    );
+  });
+
+  it("a server gets its own gate folder, never the worker's shared one", async () => {
+    // A slot another test left in the worker's folder must never show in
+    // this server's bell (an overrun row moved a bell test's buttons).
+    const shared = process.env.DEN_GATE_DIR!;
+    expect(shared).toBeTruthy();
+    const root = tmpRoot();
+    const started = await startDenServer(
+      process.execPath,
+      ["-e", FAKE],
+      { cwd: root, env: { ...process.env, DEN_ROOT: root } },
+      { timeoutMs: 10_000 },
+    );
+    cleanup.push(() => stopServer(started.server));
+    const info = await new Promise<{ gateDir?: string }>((r, j) =>
+      http
+        .get(`http://localhost:${started.port}/api/server-info`, (res) => {
+          let b = "";
+          res.on("data", (d: Buffer) => (b += d.toString()));
+          res.on("end", () => r(JSON.parse(b)));
+        })
+        .on("error", j),
+    );
+    expect(info.gateDir).toBeTruthy();
+    expect(path.resolve(info.gateDir!)).not.toBe(path.resolve(shared));
+  });
+
+  it("a gate folder the test chose itself is kept", async () => {
+    const root = tmpRoot();
+    const mine = path.join(root, "my-gates");
+    const started = await startDenServer(
+      process.execPath,
+      ["-e", FAKE],
+      {
+        cwd: root,
+        env: { ...process.env, DEN_ROOT: root, DEN_GATE_DIR: mine },
+      },
+      { timeoutMs: 10_000 },
+    );
+    cleanup.push(() => stopServer(started.server));
+    const info = await new Promise<{ gateDir?: string }>((r, j) =>
+      http
+        .get(`http://localhost:${started.port}/api/server-info`, (res) => {
+          let b = "";
+          res.on("data", (d: Buffer) => (b += d.toString()));
+          res.on("end", () => r(JSON.parse(b)));
+        })
+        .on("error", j),
+    );
+    expect(info.gateDir).toBe(mine);
   });
 });

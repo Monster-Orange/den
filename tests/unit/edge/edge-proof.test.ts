@@ -7,7 +7,14 @@
  *
  * A temp state folder. No real secret is printed.
  */
-import { afterEach, beforeEach, describe, expect, it } from "@jest/globals";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -88,8 +95,10 @@ describe("the edge picks up the proof (H1)", () => {
     fs.writeFileSync(edgeYml(), "# old\n");
     expect(syncEdgeProof(cfg(), new Set([7000]))).toBe("written");
     const p = readEdgeProof(dir)!;
-    expect(fs.readFileSync(edgeYml(), "utf8")).toContain(p);
-    expect(fs.statSync(edgeYml()).mode & 0o777).toBe(0o600);
+    const den = path.join(dir, "dynamic", "000-den.yml");
+    expect(fs.readFileSync(den, "utf8")).toContain(p);
+    expect(fs.statSync(den).mode & 0o777).toBe(0o600);
+    expect(fs.existsSync(edgeYml())).toBe(false);
     expect(syncEdgeProof(cfg(), new Set([7000]))).toBe("current");
   });
 
@@ -142,6 +151,60 @@ describe("Den checks the proof on each request (H1)", () => {
     const next = rotateEdgeProof(dir);
     expect(proved(req(old))).toBe(false);
     expect(proved(req(next))).toBe(true);
+  });
+
+  it("issue 1592: a proof rewritten in one tick, same inode and size, is read again", async () => {
+    const { edgeProofChecker } =
+      await import("../../../src/shared/edge/proof.js");
+    const file = edgeProofFile(dir);
+    const old = ensureEdgeProof(dir);
+    // A whole-ms stamp, now: utimes keeps no sub-ms part.
+    const tick = new Date();
+    fs.utimesSync(file, tick, tick);
+    const proved = edgeProofChecker(() => dir);
+    expect(proved(req(old))).toBe(true);
+    // A new proof in the same file, at the same size, in the same tick of
+    // a coarse file clock (or a rename onto a reused inode).
+    const next = "cd".repeat(32);
+    fs.writeFileSync(file, `${next}\n`, { mode: 0o600 });
+    fs.utimesSync(file, tick, tick);
+    expect(proved(req(old))).toBe(false);
+    expect(proved(req(next))).toBe(true);
+  });
+
+  it("issue 1592: the generation file rewritten in one tick, same inode and size, to an older generation: read again, and the proof no longer proves", async () => {
+    const { edgeProofChecker, edgeProofGenerationFile, EDGE_PROOF_GENERATION } =
+      await import("../../../src/shared/edge/proof.js");
+    const p = ensureEdgeProof(dir);
+    const gen = edgeProofGenerationFile(dir);
+    const tick = new Date();
+    fs.utimesSync(gen, tick, tick);
+    const proved = edgeProofChecker(() => dir);
+    expect(proved(req(p))).toBe(true);
+    const older = `${EDGE_PROOF_GENERATION - 1}\n`;
+    expect(older.length).toBe(fs.readFileSync(gen, "utf8").length);
+    fs.writeFileSync(gen, older, { mode: 0o600 });
+    fs.utimesSync(gen, tick, tick);
+    expect(proved(req(p))).toBe(false);
+  });
+
+  it("the trust hold is looked at on every request, never from the cache: held, the same checker's next request fails; released, it proves", async () => {
+    const { edgeProofChecker, holdEdgeTrust, releaseEdgeTrust } =
+      await import("../../../src/shared/edge/proof.js");
+    const p = ensureEdgeProof(dir);
+    const later = Date.now() + 10_000;
+    const clock = jest.spyOn(Date, "now").mockReturnValue(later);
+    try {
+      const proved = edgeProofChecker(() => dir);
+      expect(proved(req(p))).toBe(true);
+      expect(proved(req(p))).toBe(true);
+      holdEdgeTrust(dir, "a reason");
+      expect(proved(req(p))).toBe(false);
+      releaseEdgeTrust(dir);
+      expect(proved(req(p))).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("no proof file (no edge, or not synced yet): nothing proves (fails closed)", async () => {

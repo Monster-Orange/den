@@ -19,8 +19,9 @@ import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
+import { signedIn, type SignedIn } from "./helpers/signed-in.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -54,10 +55,16 @@ async function askCode(): Promise<{ id: string; code: string }> {
 }
 const poll = (id: string) =>
   fetch(`${base()}/api/signin/code/${id}`, { headers: page() });
+/** Issue 819: a person's signed-in browser approves (its key and all). */
+let person: SignedIn | null = null;
 const approve = (code: string) =>
   fetch(`${base()}/api/web/approve`, {
     method: "POST",
-    headers: bearer(),
+    headers: {
+      ...person!.headers,
+      "x-den-approve-key": person!.approveKey,
+      "content-type": "application/json",
+    },
     body: JSON.stringify({ code }),
   });
 const waiting = async () =>
@@ -101,6 +108,7 @@ beforeAll(async () => {
   );
   server = started.server;
   port = started.port;
+  person = await signedIn(stateDir, base());
 }, 60_000);
 
 afterAll(async () => {

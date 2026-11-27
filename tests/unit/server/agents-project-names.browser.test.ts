@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import type { Browser } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -18,6 +18,7 @@ import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -77,23 +78,14 @@ describe("the Agents page names a project as Hub does", () => {
     const ctx = await browser.newContext({
       viewport: { width: 1280, height: 860 },
     });
-    await ctx.addInitScript(() => {
-      try {
-        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-          localStorage.setItem(k, "9.9.9");
-      } catch {
-        /* none */
-      }
-    });
+    await seeWhatsNew(ctx, s.base);
     const p = await ctx.newPage();
     // The names come slower than the list: the page waits for them.
     await p.route("**/api/workspaces", async (route) => {
       await new Promise((r) => setTimeout(r, 1500));
       await route.continue();
     });
-    await p.goto(
-      signInUrl(s.stateDir, s.base, `/agents?open=${sid}&layout=tabs`),
-    );
+    await signInPage(p, s.stateDir, s.base, `/agents?open=${sid}&layout=tabs`);
     const pane = `.pane[data-id="${sid}"]`;
     await p
       .locator(`.agtab[data-id="${sid}"] .tm`)
@@ -110,7 +102,6 @@ describe("the Agents page names a project as Hub does", () => {
         sel,
         { timeout: 10_000 },
       );
-    await said(`#agl .wsg[data-ws="north"] .wsh`);
     await said(`${pane} .bar2 .where .wsn`);
     await said(`${pane} .bar2 .aglink .mono`);
     await said(`${pane} .agto`);
@@ -119,8 +110,11 @@ describe("the Agents page names a project as Hub does", () => {
       "To scout · North Star",
     );
     // The page's line: "1 agent · 0 waiting · North Star" in a project.
-    await p.goto(
-      signInUrl(s.stateDir, s.base, `/agents?project=north&open=${sid}`),
+    await signInPage(
+      p,
+      s.stateDir,
+      s.base,
+      `/agents?project=north&open=${sid}`,
     );
     await p.locator("#ag-count").waitFor();
     await p.waitForFunction(

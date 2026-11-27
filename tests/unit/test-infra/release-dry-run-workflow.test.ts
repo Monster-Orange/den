@@ -27,6 +27,8 @@ interface Step {
   env?: Record<string, unknown>;
 }
 interface Job {
+  name?: string;
+  "runs-on"?: unknown;
   needs?: string | string[];
   if?: string;
   uses?: string;
@@ -87,11 +89,17 @@ describe("release-gates.yml: the release's checks, tests and pack, in one place"
 describe("release.yml calls the gates and publishes only after them", () => {
   const w = wf("release.yml");
 
-  it("one job calls release-gates.yml with no versions (the commit's own)", () => {
+  it("one job calls release-gates.yml with no versions (the commit's own) and no tests (issue 996), only the promoted commit (issue 922)", () => {
     const callers = Object.entries(w.jobs).filter(([, j]) => j.uses === GATES);
     expect(callers.map(([n]) => n)).toEqual(["gates"]);
-    expect(w.jobs.gates.with).toBeUndefined();
-    expect(needs(w.jobs.gates)).toEqual(["check"]);
+    expect(Object.keys(w.jobs.gates.with ?? {}).sort()).toEqual([
+      "dev-commit",
+      "dev-tag",
+      "ref",
+      "tests",
+    ]);
+    expect(w.jobs.gates.with?.tests).toBe(false);
+    expect(needs(w.jobs.gates)).toEqual(["check", "tested"]);
   });
 
   it("the tag, the publish, the GitHub release and the kit wait on the gates", () => {
@@ -121,19 +129,48 @@ describe("release-dry-run.yml: the release on every dev tag, publishing nothing"
   const w = wf("release-dry-run.yml");
   const raw = text("release-dry-run.yml");
 
-  it("runs on a pushed tag v*-dev.* only", () => {
-    expect(w.on).toEqual({ push: { tags: ["v*-dev.*"] } });
+  // Issue 1492: and by hand, which only the box watch's fallback does.
+  it("runs on a pushed tag v*-dev.*, or by hand (the box watch's hosted fallback)", () => {
+    expect(w.on).toEqual({
+      push: { tags: ["v*-dev.*"] },
+      workflow_dispatch: null,
+    });
   });
 
-  it("reads the repository only: no write, no OIDC token, anywhere", () => {
+  // Issue 1492: the one write is the box watch's actions: write, to read
+  // this run's jobs and start the hosted run. Nothing else writes.
+  it("reads the repository only: no OIDC token anywhere; the box watch alone may start a run", () => {
     expect(w.permissions).toEqual({ contents: "read" });
     for (const [name, job] of Object.entries(w.jobs))
-      expect([name, job.permissions]).toEqual([name, undefined]);
-    expect(raw).not.toMatch(/id-token|:\s*write\b/);
+      expect([name, job.permissions]).toEqual([
+        name,
+        name === "box-watch"
+          ? { actions: "write", contents: "read" }
+          : undefined,
+      ]);
+    expect(raw).not.toMatch(/id-token/);
+    expect(
+      [...raw.matchAll(/^\s*([\w-]+):\s*write\b/gm)].map((m) => m[1]),
+    ).toEqual(["actions"]);
+  });
+
+  // Issue 1492: release-box-watch.mjs knows its own job as "box-watch", the
+  // job's key; a name: would change what the jobs API lists.
+  it("the box watch runs only on a pushed dev tag, hosted, under its key's name", () => {
+    const bw = w.jobs["box-watch"];
+    expect(bw.name).toBeUndefined();
+    expect(bw["runs-on"]).toBe("ubuntu-latest");
+    expect(bw.if).toContain("github.event_name == 'push'");
+    expect(
+      fs.readFileSync(
+        path.join(process.cwd(), "scripts", "release-box-watch.mjs"),
+        "utf8",
+      ),
+    ).toMatch(/const SELF = "box-watch";/);
   });
 
   it("has no tag, publish, GitHub release or kit job", () => {
-    expect(Object.keys(w.jobs).sort()).toEqual(["gates", "plan"]);
+    expect(Object.keys(w.jobs).sort()).toEqual(["box-watch", "gates", "plan"]);
     for (const j of ["tag", "publish", "github-release", "den-ui"])
       expect(w.jobs[j]).toBeUndefined();
   });
@@ -174,6 +211,9 @@ describe("release-dry-run.yml: the release on every dev tag, publishing nothing"
       "den-version": "${{ needs.plan.outputs.den }}",
       "kit-version": "${{ needs.plan.outputs.kit }}",
       "changelog-date": "${{ needs.plan.outputs.date }}",
+      // Issue 1492: checks and pack go to the box with plan; '' keeps them hosted.
+      "box-labels":
+        "${{ (vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.') && vars.DEN_RELEASE_RUNNER_LABELS) && vars.DEN_RELEASE_RUNNER_LABELS || '' }}",
     });
   });
 });

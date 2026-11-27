@@ -23,7 +23,10 @@
  * 2. The pixels, when the baseline PNGs are on this machine
  *    (DEN_UI_DIFF_DIR, default ~/Library/Logs/den-probe/den-ui-diff/
  *    baseline): a 0-pixel difference, compared in the browser. The PNGs
- *    are not in the repo (each is ~100 KB); CI runs check 1 only.
+ *    are not in the repo (each is ~100 KB); CI runs check 1 only. This
+ *    run's own shots go to a temp folder (DEN_UI_AFTER_DIR, default
+ *    <tmp>/den-ui-diff-after), never beside the baseline: a test writes
+ *    only under the temp folders (issue 1356; issue 1478).
  *
  * Where it runs: the fixture keeps the browser's fingerprint from the
  * capture (its user agent, pixel ratio and the width of one line of text in
@@ -37,13 +40,23 @@
  * DEN_UI_CAPTURE=1 writes the fixture and the PNGs instead of comparing
  * (run once, before the move). DEN_PW_WS: Den's own Playwright server.
  * DEN_SKIP_BROWSER_TESTS=1 skips.
+ *
+ * @visual-reference tests/unit/den-ui/fixtures/visual-env.json
+ * (issue 1527): it compares against stored references, so the gate runs it
+ * only on a box whose browser matches that record of where they were taken.
+ * Its capture writes the record.
  */
+import { visualOff } from "../helpers/visual-guard.js";
+import {
+  visualEnvOf,
+  writeVisualEnv,
+} from "../../../src/shared/gates/visual.js";
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { Browser, BrowserContext, Page } from "playwright";
-import { signInUrl } from "../server/helpers/den-auth.js";
+import { signInPage } from "../server/helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -58,7 +71,10 @@ const OUT_DIR =
   process.env.DEN_UI_DIFF_DIR ??
   path.join(os.homedir(), "Library", "Logs", "den-probe", "den-ui-diff");
 const BASE_DIR = path.join(OUT_DIR, "baseline");
-const AFTER_DIR = path.join(OUT_DIR, "after");
+// Issue 1478: written, so under the temp folders (the write guard).
+const AFTER_DIR =
+  process.env.DEN_UI_AFTER_DIR ?? path.join(os.tmpdir(), "den-ui-diff-after");
+let afterSaid = false;
 
 const AREAS = ["shell", "version", "update", "report", "working"] as const;
 type Area = (typeof AREAS)[number];
@@ -197,6 +213,25 @@ const ALLOWED_STYLES: Record<string, Array<[string, string]>> = {
   "header.den-top margin-left": [["-233px", "0px"]],
 };
 
+/**
+ * Boxes the kit may move, each with its reason: "area-width selector" →
+ * [dx, dy, dw, dh] added to the baseline's rect.
+ */
+const ALLOWED_MOVES: Record<string, [number, number, number, number]> = {
+  // (Issue 1444's 22px lower rail entries on a phone are in the baseline
+  // itself since its capture on CI's browser, issue 1527.)
+};
+
+/** `want` with the allowed moves applied. */
+function allowMoves(key: string, want: Measure[]): Measure[] {
+  return want.map((m) => {
+    const d = ALLOWED_MOVES[`${key} ${m.sel}`];
+    if (!d || !m.rect) return m;
+    const rect = m.rect.map((v, i) => +(v + d[i]!).toFixed(2));
+    return { ...m, rect: rect as Measure["rect"] };
+  });
+}
+
 /** `want` with the allowed style changes applied. */
 function allowStyles(want: Measure[]): Measure[] {
   return want.map((m) => {
@@ -232,6 +267,9 @@ const ALLOWED_ATTRS = new Set([
   "data-nav-shape",
   "data-nav-legacy",
   "data-nav-kit",
+  // Issue 1499: Report's mark for the shot's box, where the shot swaps in
+  // for "Taking the screenshot…". It changes no look.
+  "data-shot-box",
 ]);
 
 interface Node {
@@ -253,6 +291,9 @@ interface Shot {
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
+/** Why this browser cannot compare the references, or "". */
+let envOff = "";
+const VISUAL_RECORD = "tests/unit/den-ui/fixtures/visual-env.json";
 
 beforeAll(async () => {
   try {
@@ -262,6 +303,8 @@ beforeAll(async () => {
     if (process.env.DEN_SKIP_BROWSER_TESTS === "1") return;
     throw err;
   }
+  // Issue 1527: compared only in the browser the references were taken on.
+  if (!CAPTURE && browser) envOff = await visualOff(browser, VISUAL_RECORD);
   s = await startAgentsPageServer();
 }, 90_000);
 
@@ -269,7 +312,7 @@ afterAll(async () => {
   await closeBrowserSuite({ browsers: [browser], servers: [s] });
 }, 90_000);
 
-const skip = () => !browser || !s;
+const skip = () => !browser || !s || !!envOff;
 
 /** The fixed release notes What's new shows (the CHANGELOG changes). */
 const NOTES = [
@@ -368,7 +411,7 @@ async function open(
     /* never answered */
   });
   const p = await ctx.newPage();
-  await p.goto(signInUrl(s!.stateDir, s!.base, "/settings"));
+  await signInPage(p, s!.stateDir, s!.base, "/settings");
   await p.waitForFunction(
     () =>
       "denShell" in window &&
@@ -401,7 +444,40 @@ async function settle(p: Page): Promise<void> {
       timeout: 10_000,
     })
     .catch(() => {});
-  await p.waitForTimeout(400);
+  await still(p, SELECTORS.shell);
+}
+
+/**
+ * Waits until `sels` hold still: no transition or animation with an end
+ * is running, and each match's markup and box read the same on two
+ * animation frames in a row. Replaces a fixed settle time: it returns as
+ * soon as the area is drawn, and fails (at 10 s) if it never is.
+ */
+async function still(p: Page, sels: string[]): Promise<void> {
+  await p.waitForFunction(
+    (sels) => {
+      const w = window as unknown as { __stillLast?: string };
+      const busy = document
+        .getAnimations()
+        .some(
+          (a) =>
+            a.playState === "running" &&
+            a.effect?.getComputedTiming().endTime !== Infinity,
+        );
+      const parts = sels.flatMap((sel) =>
+        [...document.querySelectorAll(sel)].map((el) => {
+          const r = el.getBoundingClientRect();
+          return `${el.outerHTML}|${r.x},${r.y},${r.width},${r.height}`;
+        }),
+      );
+      const now = parts.join("\n");
+      const same = !busy && parts.length > 0 && now === w.__stillLast;
+      w.__stillLast = now;
+      return same;
+    },
+    sels,
+    { polling: "raf", timeout: 10_000 },
+  );
 }
 
 async function show(p: Page, area: Area): Promise<void> {
@@ -409,6 +485,16 @@ async function show(p: Page, area: Area): Promise<void> {
     await p.waitForSelector(".den-upd .upd-pill", {
       state: "visible",
       timeout: 20_000,
+    });
+    // Issue 1478: the pill empties its live status and fills it again a
+    // moment later, so a screen reader announces it; the look is the
+    // settled one, with the words in place.
+    const status = await p
+      .getByRole("region", { name: "Update" })
+      .getByRole("status")
+      .elementHandle();
+    await p.waitForFunction((el) => !!el && el.textContent !== "", status, {
+      timeout: 10_000,
     });
   } else if (area === "report") {
     await p.evaluate(() =>
@@ -419,6 +505,12 @@ async function show(p: Page, area: Area): Promise<void> {
     await p.waitForSelector("dialog.fb-dlg[open]", {
       state: "visible",
       timeout: 20_000,
+    });
+    // Issue 1499: the form opens before the screenshot is taken; it is
+    // measured as it was, with the shot in.
+    await p.waitForSelector("[data-shot-wait]", {
+      state: "detached",
+      timeout: 30_000,
     });
   } else if (area === "working") {
     await p.evaluate(`${pageImport("/busy-den.js")}.then(() => true)`);
@@ -440,12 +532,12 @@ async function show(p: Page, area: Area): Promise<void> {
       timeout: 20_000,
     });
   }
-  await p.waitForTimeout(300);
+  await still(p, SELECTORS[area]);
   // Focus rings follow where focus happened to land: none in the shot.
   await p.evaluate(() =>
     (document.activeElement as HTMLElement | null)?.blur?.(),
   );
-  await p.waitForTimeout(100);
+  await still(p, SELECTORS[area]);
 }
 
 /** The area's tree and measures, from the page. */
@@ -460,7 +552,16 @@ async function measure(p: Page, area: Area): Promise<Shot> {
             attrs[a.name] = a.value;
         const kids: Node[] = [];
         let text = "";
-        for (const c of Array.from(el.childNodes)) {
+        // Issue 1499: Report's screenshot part is a wrapper with no box
+        // (display: contents), swapped in when the capture ends; its
+        // children count as its parent's, as before it was there.
+        const nodes = (e: Element): ChildNode[] =>
+          Array.from(e.childNodes).flatMap((c) =>
+            c.nodeType === 1 && (c as Element).hasAttribute("data-shot-area")
+              ? nodes(c as Element)
+              : [c],
+          );
+        for (const c of nodes(el)) {
           if (c.nodeType === 3) text += c.textContent ?? "";
           else if (c.nodeType === 1 && depth < 40)
             kids.push(tree(c as Element, depth + 1));
@@ -603,6 +704,9 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
             fixture[key] = shot;
             fs.mkdirSync(path.dirname(FIXTURE), { recursive: true });
             fs.writeFileSync(FIXTURE, JSON.stringify(fixture, null, 1) + "\n");
+            // Issue 1527: the record of the browser they were taken on.
+            if (browser)
+              writeVisualEnv(path.dirname(FIXTURE), await visualEnvOf(browser));
             return;
           }
           const want = fixture[key];
@@ -611,7 +715,7 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           expect(treeDiff(want.tree, shot.tree)).toEqual([]);
           const same =
             (fixture as unknown as Record<string, string>)[ENV_KEY] === env;
-          const wantM = allowStyles(want.measures);
+          const wantM = allowMoves(key, allowStyles(want.measures));
           if (same) expect(shot.measures).toEqual(wantM);
           else {
             // Another browser: all but the rects exactly, the rects within
@@ -626,6 +730,13 @@ describe("issue 95: Den on the kit's shell looks as it did", () => {
           if (same && fs.existsSync(base)) {
             fs.mkdirSync(AFTER_DIR, { recursive: true });
             fs.writeFileSync(path.join(AFTER_DIR, name), png);
+            // Issue 1478: say where this run's shots are, once.
+            if (!afterSaid) {
+              afterSaid = true;
+              process.stdout.write(
+                `shell-kit-parity: this run's shots are in ${AFTER_DIR}\n`,
+              );
+            }
             // Report's screenshot preview is a picture of the page, not the
             // kit's look: left out.
             const skipRects = await p.evaluate(() =>

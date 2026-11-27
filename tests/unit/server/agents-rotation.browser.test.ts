@@ -24,13 +24,14 @@ import type { Browser, Page } from "playwright";
 import { writeRotation } from "../../../src/shared/agents/rotation.js";
 import { loadPty } from "../../../src/shared/sessions/pty.js";
 import { GOOD_HANDOFF } from "../agents/helpers/handoff.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { runtimeArgs } from "../helpers/unwrap-sandbox.js";
 
 let s: AgentsPageServer | null = null;
 let browser: Browser | null = null;
@@ -120,7 +121,7 @@ async function open(ws: string): Promise<Page> {
   p.on("console", (m) => {
     if (m.type() === "error") errors.push(`console: ${m.text()}`);
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, `/agents?ws=${ws}`));
+  await signInPage(p, s!.stateDir, s!.base, `/agents?ws=${ws}`);
   await p.waitForSelector("#agl:not([aria-busy]) .agst", { timeout: 20_000 });
   return p;
 }
@@ -245,7 +246,7 @@ describe("rotated agents on the Agents page (den#4)", () => {
       .slice(before)
       .filter((m) => m.opts.env?.DEN_AGENT === "agent:relay");
     expect(made).toHaveLength(1);
-    const args = made[0].args;
+    const args = runtimeArgs(made[0]);
     expect(args[0]).toBe("--session-id");
     expect(args[1]).not.toBe(TOKEN.relay);
     expect(args).not.toContain("--resume");

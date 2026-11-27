@@ -18,6 +18,15 @@ import {
   DEN_SETTING_CATEGORIES,
 } from "../../../src/ui/server/public/settings-registry.js";
 
+describe("issue 158: the loop's addition", () => {
+  it("its field stops at the server's limit, so a long paste isn't a bare 400", () => {
+    const row = DEN_SETTINGS.find(
+      (r) => r.id === "workspace.hub_delivery_loop_extra",
+    ) as { control: { type: string; maxLength?: number } } | undefined;
+    expect(row?.control).toEqual({ type: "text", maxLength: 2000 });
+  });
+});
+
 const cats = DEN_SETTING_CATEGORIES.slice().sort((a, b) => a.order - b.order);
 const ids = (q: string) =>
   sections(cats, DEN_SETTINGS, q).map((s) => [
@@ -60,11 +69,29 @@ describe("search", () => {
       [
         "agents",
         [
+          // Issue 1371 Part 2: Integrations names terminals.
+          "agents.settings_integrations",
           "agents.pane_reconnect",
           "agents.pane_reconnect_window",
           "agents.pane_reconnect_wait",
+          // Issue 1373: Agents at once (plain terminals never count).
+          "agents.max_concurrent",
           // den#156: the Agents list's wait for the terminal host.
           "agents.list_host_wait",
+          "agents.draft_hold_max",
+        ],
+      ],
+      // Issue 532: Server › the terminal limits.
+      [
+        "server",
+        [
+          "server.sessions_max",
+          "server.sessions_close_grace",
+          "server.sessions_size_claim_grace",
+          "server.sessions_size_leave_grace",
+          "server.sessions_pty_close",
+          "server.sessions_pty_warn",
+          "server.sessions_pty_machine",
         ],
       ],
       ["cli", ["cli.cli_tabs"]],

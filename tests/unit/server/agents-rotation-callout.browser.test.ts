@@ -34,7 +34,7 @@ import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
 
@@ -121,7 +121,7 @@ async function open(
   p.on("console", (m) => {
     if (m.type() === "error") errors.push(`console: ${m.text()}`);
   });
-  await p.goto(signInUrl(s!.stateDir, s!.base, url));
+  await signInPage(p, s!.stateDir, s!.base, url);
   return { p, errors };
 }
 

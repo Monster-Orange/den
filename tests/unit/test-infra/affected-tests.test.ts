@@ -32,6 +32,8 @@ interface Map {
   everything: string[];
   smoke: string[];
   rules: { when: string[]; run: string[]; why: string }[];
+  subjects?: Record<string, string[]>;
+  subjectless?: string[];
 }
 interface Case {
   file: string;
@@ -100,6 +102,7 @@ const select = (a: {
   map: Map;
   importersOf?: Record<string, string[]>;
   mentioned?: string[];
+  named?: Record<string, string[]>;
 }) => call<Selection>(AFFECTED, "selectTests", a);
 
 /** Every *.test.ts under tests/, as jest lists them (repo-relative). */
@@ -229,6 +232,49 @@ describe("selectTests (fixtures)", () => {
   });
 });
 
+describe("tests that read a changed file as text (issue 1707)", () => {
+  const naming = (changed: string[], sources: Record<string, string>) =>
+    call<Record<string, string[]>>(
+      AFFECTED,
+      "testsNamingPaths",
+      changed,
+      sources,
+    );
+
+  it("a test whose text names a changed file's repo path is picked, with the path as its reason", () => {
+    const n = naming(["src/ui/server/index.ts", "src/lib.ts"], {
+      "tests/reads.test.ts":
+        'path.resolve(__dirname, "../../../src/ui/server/index.ts")',
+      "tests/other.test.ts": 'import { x } from "../src/other";',
+      "tests/near.test.ts": '"src/ui/server/index.tsx"',
+    });
+    expect(n).toEqual({ "tests/reads.test.ts": ["src/ui/server/index.ts"] });
+    const s = select({
+      changed: ["src/ui/server/index.ts"],
+      allTests: ["tests/reads.test.ts", "tests/other.test.ts"],
+      related: [],
+      map: { everything: [], smoke: [], rules: [] },
+      named: n,
+    });
+    expect(s.files).toEqual({
+      "tests/reads.test.ts": ["names src/ui/server/index.ts"],
+    });
+  });
+
+  it("PR 1281's change picks birth-import-first-814 from the real tests", () => {
+    const sources = Object.fromEntries(
+      TESTS.map((t) => [t, fs.readFileSync(path.join(ROOT, t), "utf-8")]),
+    );
+    const n = naming(
+      ["src/ui/server/index.ts", "src/ui/cli/web-command.ts"],
+      sources,
+    );
+    expect(n["tests/unit/server/birth-import-first-814.test.ts"]).toEqual([
+      "src/ui/server/index.ts",
+    ]);
+  });
+});
+
 describe("the map (tests/affected-map.json)", () => {
   it("is valid; smoke files exist; every run glob names a test", () => {
     call(AFFECTED, "validateMap", MAP);
@@ -237,7 +283,7 @@ describe("the map (tests/affected-map.json)", () => {
     const globs = MAP.rules.flatMap((r) => r.run);
     const res = call<string[]>(AFFECTED, "globsToRegExps", globs);
     const dead = globs.filter(
-      (g, i) => !TESTS.some((t) => new RegExp(res[i]).test(t)),
+      (_g, i) => !TESTS.some((t) => new RegExp(res[i]).test(t)),
     );
     expect(dead).toEqual([]);
   });
@@ -315,6 +361,37 @@ describe("the map (tests/affected-map.json)", () => {
     expect(files.length).toBeLessThan(TESTS.length / 10);
   });
 
+  it("a Settings row change runs the pin test and every test that reads the Settings files", () => {
+    const s = select({
+      changed: ["src/ui/server/public/settings-registry.js"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+      importersOf: {
+        "tests/unit/server/helpers/settings-sources.ts": [
+          "tests/unit/server/settings-sources.test.ts",
+        ],
+      },
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain(
+      "tests/unit/server/settings-registry-order.test.ts",
+    );
+    expect(files).toContain("tests/unit/server/settings-sources.test.ts");
+  });
+
+  it("a change to the Settings pin's fixture runs the pin test", () => {
+    const s = select({
+      changed: ["tests/fixtures/settings-registry-order.json"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(Object.keys(s.files)).toContain(
+      "tests/unit/server/settings-registry-order.test.ts",
+    );
+  });
+
   it("a pull request touching the request guard runs everything", () => {
     const s = select({
       changed: ["src/ui/server/request-guard.ts"],
@@ -326,14 +403,42 @@ describe("the map (tests/affected-map.json)", () => {
     expect(s.allBecause).toEqual(["src/ui/server/request-guard.ts"]);
     expect(Object.keys(s.files)).toHaveLength(TESTS.length);
   });
+
+  it("a pull request touching only a live check runs every live check's own test", () => {
+    const s = select({
+      changed: ["gate/252.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    const own = TESTS.filter((t) =>
+      t.startsWith("tests/unit/test-infra/gate-"),
+    );
+    expect(own).toContain("tests/unit/test-infra/gate-252-runner.test.ts");
+    expect(own).toContain("tests/unit/test-infra/gate-expect-shape.test.ts");
+    for (const t of own) expect([t, files.includes(t)]).toEqual([t, true]);
+  });
+
+  it("a live check's change also runs a test elsewhere that loads it by path", () => {
+    const s = select({
+      changed: ["gate/750.mjs"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    const files = Object.keys(s.files);
+    expect(files).toContain("tests/unit/gates/gate-750-hub-leg.test.ts");
+    expect(files).toContain("tests/unit/gates/gate-750-real-read.test.ts");
+  });
 });
 
 describe("tests that start Den as a process (issue 708)", () => {
   // Pull request 704's change: the server process sends the acks, and the
   // integration test reaches it over HTTP, never by an import.
   const PR_704 = [
-    "src/shared/hub-delivery-loop.ts",
-    "src/shared/hub-delivery.ts",
+    "src/shared/hub/hub-delivery-loop.ts",
+    "src/shared/hub/hub-delivery.ts",
     "src/ui/cli/agent-ops.ts",
     "src/ui/server/attention.ts",
     "src/ui/server/hub-delivery-service.ts",
@@ -343,6 +448,22 @@ describe("tests that start Den as a process (issue 708)", () => {
     "tests/unit/shared/hub-delivery-held-ack.test.ts",
     "tests/unit/shared/hub-delivery-loop.test.ts",
   ];
+
+  it("issue 728: a test declared in subjects runs on its subject, though it starts a scaffolded distribution's bin the pattern can't see", () => {
+    const s = select({
+      changed: ["src/ui/cli/doctor-command.ts"],
+      allTests: TESTS,
+      related: [],
+      map: MAP,
+    });
+    expect(s.all).toBe(false);
+    expect(Object.keys(s.files)).toEqual(
+      expect.arrayContaining([
+        "tests/unit/server/no-secrets-store.integration.test.ts",
+        "tests/unit/cli/repo-add-no-run.integration.test.ts",
+      ]),
+    );
+  });
 
   it("a change to its subject runs it, with no import edge (704's change)", () => {
     const s = select({
@@ -355,12 +476,11 @@ describe("tests that start Den as a process (issue 708)", () => {
     expect(Object.keys(s.files)).toContain(
       "tests/unit/server/hub-delivery.integration.test.ts",
     );
-    // Its subject only: not every test that starts Den.
     const starters = Object.entries(s.files).filter(([, why]) =>
       why.some((w) => /starts Den/.test(w)),
     );
     expect(starters.length).toBeGreaterThan(0);
-    expect(starters.length).toBeLessThan(15);
+    expect(starters.length).toBeLessThan(20);
   });
 
   it("finds them: by a helper, bin/den, or tsx on an entry", () => {
@@ -382,8 +502,9 @@ describe("tests that start Den as a process (issue 708)", () => {
       call<string[]>(MAP_GEN, "subjectOf", t, text, {});
     expect(subj("tests/unit/server/hub-delivery.integration.test.ts")).toEqual(
       [
-        "src/shared/hub-delivery-loop.ts",
-        "src/shared/hub-delivery.ts",
+        "src/shared/hub/hub-delivery-journal.ts",
+        "src/shared/hub/hub-delivery-loop.ts",
+        "src/shared/hub/hub-delivery.ts",
         "src/ui/server/hub-delivery-service.ts",
       ].sort(),
     );
@@ -401,7 +522,25 @@ describe("tests that start Den as a process (issue 708)", () => {
     );
     // missing: starts Den, no subject, not listed (add `subjects` for it).
     // stale: listed, but it has a subject now or starts no Den (drop it).
-    expect(r).toEqual({ missing: [], stale: [] });
+    // empty: a declared subject glob that names no file (issue 709).
+    expect(r).toEqual({ missing: [], stale: [], empty: [] });
+  });
+
+  it("issue 709: a declared subject that names no file is refused, never counted as a subject", () => {
+    const a11y = "tests/unit/server/a11y.browser.test.ts";
+    const r = call<{ empty: string[] }>(MAP_GEN, "subjectGaps", {
+      ...MAP,
+      subjects: {
+        ...MAP.subjects,
+        [a11y]: ["", "src/ui/server/no-such-module.ts", "src/ui/server/*.ts"],
+        "tests/unit/no-such.test.ts": ["src/ui/server/index.ts"],
+      },
+    });
+    expect(r.empty).toEqual([
+      `${a11y}: ""`,
+      `${a11y}: "src/ui/server/no-such-module.ts"`,
+      "tests/unit/no-such.test.ts: the test isn't there",
+    ]);
   });
 });
 
@@ -413,15 +552,14 @@ describe("the replay's real failures stay caught", () => {
     for (const c of cases) expect(c.verdict).not.toBe("flake");
   });
 
-  it("the map catches every one, on the Node it failed on (ci.yml's pr matrix)", () => {
-    const nodes = call<string[]>(
-      REPLAY,
-      "prNodesOf",
-      fs.readFileSync(
-        path.join(ROOT, ".github", "workflows", "ci.yml"),
-        "utf-8",
-      ),
+  it("the map catches every one, on the Node it failed on (the pr matrix, or the nightly run for Node 22)", () => {
+    const ciText = fs.readFileSync(
+      path.join(ROOT, ".github", "workflows", "ci.yml"),
+      "utf-8",
     );
+    // Issue 998: a pull request runs Node 24; Node 22 runs nightly on main.
+    expect(call<string[]>(REPLAY, "prNodesOf", ciText)).toEqual(["24.13.0"]);
+    const nodes = call<string[]>(REPLAY, "caughtNodesOf", ciText);
     expect(nodes).toEqual(["22.13.0", "24.13.0"]);
     for (const c of cases) expect(c.nodes?.length).toBeGreaterThan(0);
     const rows = call<Case[]>(REPLAY, "recheck", cases, MAP, nodes);
@@ -673,30 +811,45 @@ describe("ci.yml (issue 398)", () => {
   ) as { jobs: Record<string, Job> };
   const runs = (j: Job) => j.steps.map((s) => s.run ?? "").join("\n");
 
-  it("a push to main runs the full matrix; none of it runs on a pull request", () => {
-    for (const name of ["checks", "tests", "dist-smoke"]) {
+  it("the pr job runs affected-map.mjs --check", () => {
+    expect(runs(ci.jobs.pr)).toMatch(/node scripts\/affected-map\.mjs --check/);
+  });
+
+  // Issue 996: a push to main runs the checks only; the full matrix runs by
+  // hand (workflow_dispatch). None of it runs on a pull request.
+  it("the full matrix runs by hand, the checks on main too; none of it on a pull request", () => {
+    expect(ci.jobs.checks.if).toBe(
+      "github.event_name == 'push' || github.event_name == 'workflow_dispatch'",
+    );
+    for (const name of ["tests", "dist-smoke"])
       expect([name, ci.jobs[name].if]).toEqual([
         name,
-        "github.event_name == 'push'",
+        "github.event_name == 'workflow_dispatch'",
       ]);
+    for (const name of ["checks", "tests", "dist-smoke"])
       expect(ci.jobs[name].strategy?.matrix?.node).toEqual([
         "22.13.0",
         "24.13.0",
       ]);
-    }
-    expect(ci.jobs["den-ui-nav"].if).toContain("github.event_name == 'push'");
+    expect(ci.jobs["den-ui-nav"].if).toContain(
+      "github.event_name == 'workflow_dispatch'",
+    );
   });
 
-  it("a pull request: both Nodes, the checks, then the subset with its reasons in the summary", () => {
+  it("a pull request: Node 24, the checks, then the subset with its reasons in the summary", () => {
     const pr = ci.jobs.pr;
-    expect(pr.if).toBe("github.event_name == 'pull_request'");
-    expect(ci.jobs["pr-shards"].needs).toEqual(["pr"]);
+    expect(pr.if).toBe(
+      "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
+    );
+    // Issue 843: and the fast static checks.
+    expect(ci.jobs["pr-shards"].needs).toEqual(["fast", "pr"]);
     const text = runs(pr);
+    // Issue 843: the words gate and the kit copies run once, in `fast`,
+    // which the pr job waits for.
+    expect(ci.jobs.pr.needs).toEqual(["fast"]);
     for (const gate of [
       "npm run typecheck",
-      "scripts/words-gate.mjs",
       "npm run lint",
-      "gate:den-ui",
       "scripts/org-name-gate.mjs",
       "scripts/org-name-commits.mjs",
       "scripts/dist-smoke.sh",
@@ -710,11 +863,11 @@ describe("ci.yml (issue 398)", () => {
       /affected-tests\.mjs "\$BASE" HEAD --out affected\.txt --summary "\$GITHUB_STEP_SUMMARY"/,
     );
     for (const name of ["pr", "pr-shards"]) {
-      // The same Nodes as main's matrix: the replay found real failures
-      // that showed on Node 22 alone.
+      // Issue 998: Node 24 only (the Node installs run); Node 22 runs
+      // nightly on main.
       expect([name, ci.jobs[name].strategy?.matrix?.node]).toEqual([
         name,
-        ci.jobs.tests.strategy?.matrix?.node,
+        ["24.13.0"],
       ]);
       const versions = ci.jobs[name].steps
         .map(
@@ -725,19 +878,29 @@ describe("ci.yml (issue 398)", () => {
         )
         .filter(Boolean);
       expect([name, versions]).toEqual([name, ["${{ matrix.node }}"]]);
-      expect(runs(ci.jobs[name])).toContain(
-        "mapfile -t files < affected.txt && npm test",
+      expect(runs(ci.jobs[name])).toMatch(
+        /mapfile -t files < (affected|shard)\.txt && npm test/,
       );
     }
   });
 
-  // Only checks and dist-smoke may name DEN_SELF_HOSTED
-  // (ci-runner-guard.test.ts); the pull-request jobs stay GitHub-hosted.
-  it("the pr jobs run GitHub-hosted", () => {
-    expect([ci.jobs.pr["runs-on"], ci.jobs["pr-shards"]["runs-on"]]).toEqual([
-      "ubuntu-latest",
-      "ubuntu-latest",
-    ]);
+  // Issue 1226: pr and pr-shards may use the self-hosted runners (every
+  // event is checked in ci-runner-guard.test.ts). A fork's pull request
+  // never does, and with the switch off they fall back to GitHub-hosted.
+  it("the pr jobs fall back to GitHub-hosted, and a fork's PR never leaves it", () => {
+    for (const job of ["pr", "pr-shards"]) {
+      const on = String(ci.jobs[job]["runs-on"]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining("|| 'ubuntu-latest'"),
+      ]);
+      expect([job, on]).toEqual([
+        job,
+        expect.stringContaining(
+          "github.event.pull_request.head.repo.full_name == github.repository",
+        ),
+      ]);
+    }
   });
 });
 
@@ -833,7 +996,7 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
   it("shell.js, ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
     for (const f of [
       "src/ui/server/public/shell.js",
-      "src/ui/server/ui-language.ts",
+      "src/shared/ui-language.ts",
       "src/ui/server/ui-assets.ts",
       "tests/unit/server/helpers/en-catalog.ts",
       "tests/unit/server/helpers/kit-shell.ts",
@@ -846,5 +1009,32 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
       });
       expect([f, s.all]).toEqual([f, true]);
     }
+  });
+});
+
+describe("the map's one form: the generator writes prettier's form, --check fails on any other", () => {
+  const raw = (m: unknown) => JSON.stringify(m, null, 2) + "\n";
+  it("the generator's text passes prettier --check", async () => {
+    const text = call<string>(MAP_GEN, "mapText", MAP);
+    expect(text).not.toBe(raw(MAP));
+    expect(
+      call<boolean>("prettier", "check", text, { filepath: MAP_FILE }),
+    ).toBe(true);
+    expect(JSON.parse(text)).toEqual(MAP);
+  });
+  it("--check's form test: the old raw form fails, the committed map passes", () => {
+    expect(call<string | null>(MAP_GEN, "formIssue", raw(MAP))).toMatch(
+      /run node scripts\/affected-map\.mjs/,
+    );
+    expect(
+      call<string | null>(
+        MAP_GEN,
+        "formIssue",
+        fs.readFileSync(MAP_FILE, "utf-8"),
+      ),
+    ).toBeNull();
+  });
+  it("its message no longer asks for a prettier step", () => {
+    expect(fs.readFileSync(MAP_GEN, "utf-8")).not.toMatch(/then prettier/);
   });
 });

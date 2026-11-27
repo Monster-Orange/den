@@ -18,8 +18,9 @@
  * every element under them that has a box (display: none, `hidden` and
  * what sits inside them are left out; an <svg> is one element, its shapes
  * are not). Each element's slot is "top", "rail" or "foot" (the rail's
- * entries after its spacer, .den-rail-grow: Settings, the collapse
- * toggle). For each: its key (below), its parent's key, slot, role, tag,
+ * entries after its spacer, .den-rail-grow: the .den-rail-foot box and
+ * what it holds, Settings, the account entry, the collapse toggle). For
+ * each: its key (below), its parent's key, slot, role, tag,
  * accessible name, classes, box { x, y, w, h } and computed styles
  * (STYLE_PROPS), and a rail entry's kind tag (0.7.3: `kind`, compared on
  * every entry both sides draw) and why it is off (0.7.4: `off`, compared
@@ -596,20 +597,27 @@ const COLUMN = ["rail", "foot"];
  * The search's slot for a viewport width (issue 303, "the search never
  * moves"): its x and width are a function of the viewport only, the same
  * in any host. Above 720px: the left part is 444px, less what the bar
- * needs for the search and the kit's right group (TOP_RIGHT_MIN);
+ * needs for the search and the kit's right group (TOP_RIGHT_MIN); under
+ * 944px the search narrows first, so the left part keeps TOP_LEFT_MIN;
  * 481–720px: 200px; up to 480px: 62px. The bar's padding is 12px and
  * its column gap 8px. Mirrors shell.css's .den-top columns (defaults).
  */
 export const TOP_RIGHT_MIN = 380;
+/** The left part's least width above 720px, before the search gives way (issue 981). */
+export const TOP_LEFT_MIN = 220;
+/** The search's least width: its icon (issue 981). */
+export const SEARCH_MIN = 56;
 export function searchSlot(viewportW) {
   const pad = 12;
   const gap = 8;
   if (viewportW > 720) {
-    const left = Math.max(
-      0,
-      Math.min(444, viewportW - 2 * pad - 304 - 2 * gap - TOP_RIGHT_MIN),
-    );
-    return { x: pad + left + gap, w: 304 };
+    // Issue 981: the search gives way before the left part does: the left
+    // part (the crumbs, the project picker in them) keeps TOP_LEFT_MIN
+    // while the search narrows, down to its icon (SEARCH_MIN).
+    const room = viewportW - 2 * pad - 2 * gap - TOP_RIGHT_MIN;
+    const w = Math.max(SEARCH_MIN, Math.min(304, room - TOP_LEFT_MIN));
+    const left = Math.max(0, Math.min(444, room - w));
+    return { x: pad + left + gap, w };
   }
   return { x: pad + (viewportW < 480 ? 62 : 200) + gap, w: 54 };
 }
@@ -1078,8 +1086,35 @@ export function compareNav(actual, reference, opts = {}) {
   const ka = kids(actual);
   const kr = kids(reference);
   const emptyOneSide = (k) => !ka.get(k) !== !kr.get(k);
+  // Issue 1341: the boxes holding the account entry (the rail's foot)
+  // change height by exactly the entry's own change, and no more.
+  const acctBy = new Map(actual.elements.map((e) => [e.key, e]));
+  const refBy = new Map(reference.elements.map((e) => [e.key, e]));
+  const acctHolders = new Set();
+  if (acct && acctRef && (acct.lines ?? 0) !== (acctRef.lines ?? 0))
+    for (let k = acct.parent; k && acctBy.has(k); k = acctBy.get(k).parent)
+      acctHolders.add(k);
+  const acctDh = acct && acctRef ? acct.box.h - acctRef.box.h : 0;
+  const holdsAcct = (d) => {
+    if (!acctHolders.has(d.key)) return false;
+    const a = acctBy.get(d.key);
+    const r = refBy.get(d.key);
+    if (!r) return false;
+    const dh = /height/.test(d.property)
+      ? (parseFloat(a.style.height) || a.box.h) -
+        (parseFloat(r.style.height) || r.box.h)
+      : null;
+    if (d.property === "box.top")
+      return Math.abs(a.box.y - r.box.y + acctDh) <= tol;
+    if (d.property === "box.bottom") return false;
+    return dh != null && Math.abs(dh - acctDh) <= tol;
+  };
   return diffs.filter(
-    (d) => !(tall.test(d.property) && (acctOwn(d.key) || emptyOneSide(d.key))),
+    (d) =>
+      !(
+        tall.test(d.property) &&
+        (acctOwn(d.key) || emptyOneSide(d.key) || holdsAcct(d))
+      ),
   );
   function styles(w, g, skip) {
     for (const p of STYLE_PROPS) {

@@ -136,7 +136,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     wsDir,
     config: {
       maxConcurrent: 4,
+      maxPerProject: 0,
       restartWaitMs: 120 * 60_000,
+      unaskedExitWindowMs: 10 * 60_000,
       personaPacks: [],
       agents: {},
       runtimeCatalog: [],
@@ -160,6 +162,13 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     workspaceExists: (ws) => ["north", "south"].includes(ws),
     maxConcurrent: () => r.config.maxConcurrent,
     agentsConfig: () => r.config,
+    // Issue 1328: removing an agent never touches a real user.yml.
+    forgetSandbox: () => {},
+    // Issue 936: the rig's fake PTY records argv as given; a test of the
+    // sandbox deletes this to get Den's own.
+    agentSandbox: (argv) => ({ applied: true, argv, env: {} }),
+    // Issue 1325: no real /tmp folder per test session unless a test asks.
+    sessionTmp: () => undefined,
     distRoot: () => dir,
     stateDir: () => stateDir,
     workspaceDir: wsDir,
@@ -174,12 +183,19 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     hub: async () => null,
     // Never this machine's Hub token cache, nor its processes (0.4.48).
     hubProblem: () => null,
+    // Issue 1016: never this machine's web.url.
+    webUrl: () => null,
     processes: () => [],
     workspaceRepos: () => [],
     // Issue 335: never this machine's workspaces.yml.
     workspaceMcpServers: () => undefined,
+    // Issue 158: never this machine's workspaces.yml either.
+    workspaceHubLoop: () => undefined,
     // D52: Den's own address as agents reach it (never this machine's port).
     denBase: () => DEN_BASE,
+    // Issue 989: never this machine's server: none answers unless a test
+    // gives one.
+    server: async () => null,
     // No early-exit watch unless a test asks for one (it waits up to 3 s).
     exitWatchMs: 0,
     // Stop doesn't wait for the session to end unless a test asks (0.4.8).
@@ -212,6 +228,9 @@ export async function rig(over: Partial<AgentsDeps> = {}): Promise<Rig> {
     env: {
       PATH: `${bin}:/usr/bin:/bin`,
       HOME: "/home/someone",
+      // Issue 1356: the gate folder an agent's sandbox names is the rig's,
+      // never one under that made-up home.
+      DEN_GATE_DIR: path.join(dir, "gate-slots"),
       SOME_TOKEN: "secret-value-123",
     },
     out: (l) => r.out.push(l),

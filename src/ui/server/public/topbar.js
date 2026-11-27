@@ -37,6 +37,7 @@
  * route, container, daemon or server process changes. Start and Restart
  * are the explicit actions, through the page's own runner.
  */
+import { terminalName } from "./terminals-list.js";
 import { hydrateSearch } from "/kit/shell-client.js";
 import { isMac } from "./term-input.js";
 import { formatTime } from "/kit/time.js";
@@ -433,6 +434,8 @@ const KIND = [
   "service",
   "app",
   "agent",
+  // Issue 482: a terminal is its own kind, on its own page.
+  "terminal",
   "workspace",
   "action",
   "setting",
@@ -925,6 +928,19 @@ function paletteItems() {
     const extra =
       sn && sn !== base && sn !== x.persona && sn !== x.label ? sn : "";
     const name = extra ? `${base} · ${extra}` : base;
+    // Issue 482: a terminal is listed as one, and opens on Terminals.
+    if (x.kind === "session") {
+      const tn = terminalName(x);
+      items.push({
+        key: `agent:${x.id}`,
+        kind: "terminal",
+        label: t("tm.pal", { ws: x.workspace, name: tn }),
+        dot: x.state === "running" ? "" : "off",
+        keywords: [x.workspace, tn, x.folder ?? "", "terminal", "terminals"],
+        ...page(`/terminals?open=${encodeURIComponent(x.id)}`),
+      });
+      continue;
+    }
     items.push({
       key: `agent:${x.id}`,
       kind: "agent",
@@ -1247,6 +1263,7 @@ const sudo = {
 export async function unlockWith(password, { saveToVault = false } = {}) {
   if (!password) return { ok: false, error: t("lock.wrong") };
   try {
+    // busy-ok: its caller, the lock form's submit, holds Unlock with the kit's dots
     const r = await fetch("/api/sudo-password", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1300,6 +1317,7 @@ export function askSudo(need = {}) {
       const loaded = await getJson(
         "/api/sudo-password/load-from-vault",
         { ok: false },
+        // busy-ok: an automatic try before the lock form opens; no button yet
         { method: "POST" },
       );
       if (loaded.ok) return settleSudo(true);
@@ -1481,7 +1499,9 @@ function openLock() {
     const saveCb = $("den-lock-vault");
     const pw = input.value;
     if (!pw) return;
-    btn.textContent = t("lock.checking");
+    // Issue 698: the kit's dots on the button until the answer; a wrong
+    // password is said under it.
+    const release = sh()?.holdDots?.(btn) ?? (async () => {});
     btn.disabled = true;
     err.hidden = true;
     const saveToVault = !!(saveLabel() && saveCb?.checked);
@@ -1509,10 +1529,8 @@ function openLock() {
       input.value = "";
       input.focus();
     } finally {
-      if (btn.isConnected) {
-        btn.textContent = t("lock.go");
-        btn.disabled = false;
-      }
+      await release();
+      if (btn.isConnected) btn.disabled = false;
     }
   };
   pop.querySelector("form").addEventListener("submit", onSubmit);

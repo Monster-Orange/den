@@ -35,9 +35,23 @@ const base = (ws, agent) => `${agentUrl(ws, agent)}/helpers`;
 /** D34: what the page does once a person cleared (set by wireHelperRows). */
 let onClearedHook = null;
 
-/** D34 Clear done (the Helpers list): hide `agent`'s finished helpers. */
-export async function clearHelpers(ws, agent) {
-  await window.denShell.api("POST", `${agentUrl(ws, agent)}/clear-helpers`, {});
+/**
+ * D34 Clear done (the Helpers list): hide `agent`'s finished helpers. The
+ * pressed `button` (when given) holds the kit's dots until the answer.
+ */
+export async function clearHelpers(ws, agent, button) {
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
+  try {
+    await window.denShell.api(
+      "POST",
+      `${agentUrl(ws, agent)}/clear-helpers`,
+      {},
+    );
+  } finally {
+    void release();
+  }
   await onClearedHook?.(agent, ws);
 }
 
@@ -168,6 +182,8 @@ function countLabel(key, total, running) {
  */
 export function helperBadgeHtml(r) {
   const n = r?.helpers?.running;
+  if (!n && r?.helpersPending)
+    return `<span class="agr-hp hp-wait" data-helpers-pending="1">${esc(t("hp.counting"))}</span>`;
   if (!n) return "";
   return `<span class="agr-hp agr-hp-ph hp-run" aria-hidden="true"><span class="hp-dot"></span>${esc(t("hp.chip", { n }))}</span>`;
 }
@@ -190,6 +206,7 @@ export function helperToggleHtml(r, open = false) {
 /** D62: "2 helpers running", for the row's label; "" when none run. */
 export function helperCountSaid(r) {
   const n = r?.helpers?.running;
+  if (!n && r?.helpersPending) return t("hp.counting");
   return n ? t("hp.rowRunning", { n }) : "";
 }
 
@@ -226,6 +243,7 @@ const CSS = `
 .agr-hp{flex:none;display:inline-flex;align-items:center;padding:0 6px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;line-height:16px;font-weight:400;cursor:pointer}
 .agr-hp:hover{color:var(--text);border-color:var(--border-strong)}
 .agr-hp-ph{visibility:hidden}
+.agr-hp.hp-wait{cursor:default;border-style:dashed}
 .agrw{position:relative}
 .agrw>.agr-hpb{position:absolute;margin:0;font:inherit;font-size:11px;line-height:16px;background:var(--surface);min-height:0;z-index:1}
 .agrw>.agr-hpb[aria-expanded="true"]{color:var(--text);border-color:var(--border-strong)}
@@ -283,19 +301,16 @@ function dialog() {
   dlg.querySelector("[data-hp-clear]").addEventListener("click", async (e) => {
     const b = e.currentTarget;
     const at = dlg.dataset;
-    b.disabled = true;
     try {
-      await clearHelpers(at.ws, at.agent);
+      await clearHelpers(at.ws, at.agent, b);
     } catch (err) {
       const body = dlg.querySelector("#hp-body");
       body.insertAdjacentHTML(
         "afterbegin",
         `<p class="hp-none" role="alert">${esc(t("hp.clearFailed", { err: err?.message || String(err) }))}</p>`,
       );
-      b.disabled = false;
       return;
     }
-    b.disabled = false;
     await loadHelpers(at.ws, at.agent);
     dlg.querySelector("#hp-h").focus();
   });

@@ -108,12 +108,25 @@ import {
   getReposRoot,
   readAgentsConfig,
   readMcpConfig,
+  uiConsoleCheckSeconds,
+  uiRestartWaitSeconds,
 } from "../../shared/den-config.js";
+import {
+  CONSOLE_AWAY_FILE,
+  consoleOwnerUid,
+  stepConsole,
+  type ConsoleBack,
+} from "../../shared/console-away.js";
 import type { AgentMove } from "../../shared/agents/order.js";
 import type { AgentRecord } from "../../shared/agents/records.js";
 import { sayToAgent } from "./agent-say.js";
+import {
+  rememberOperatorShell,
+  testBedOnly,
+} from "../../shared/test-operator.js";
 import { clearAgentCompacting } from "./context-watch-service.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
+import { FIXTURE_MODES } from "../../shared/fixture-person.js";
 import {
   readWorkspacesFile,
   conversationFolders,
@@ -135,7 +148,11 @@ import {
   agentDetails,
   agentTools,
   restartAgent,
-  askAboutJob,
+  restartMany,
+  restartOutcomeOf,
+  restartWaitOf,
+  type RestartOutcome,
+  restartStateOf,
   staleAgents,
   agentHelpers,
   agentHelperTranscript,
@@ -148,13 +165,15 @@ import {
   listRuntimes,
   markInterrupted,
   runningAgentIds,
-  busyAgentIds,
+  busyAgentHolds,
   resumeAfterHostRestart,
   agentsOfSessions,
   endedAfterHostRestart,
   noteNotBackAfterHostRestart,
   modeCheck,
   modeRestartDetail,
+  skillPackCheck,
+  skillPackRestartDetail,
   cancelStalePersonaChanges,
   NOT_IN_WORKSPACE,
   pruneStopped,
@@ -177,6 +196,7 @@ import {
   relaunchAgent,
   resumeOrRelaunch,
   keepAgentConversation,
+  setAgentFolder,
   setAgentPermission,
   setAgentResumeOnRestart,
   clearAgentHelpers,
@@ -185,6 +205,7 @@ import {
   rotationSettings,
   setRotationSetting,
   rotationTick,
+  exitTick,
   trustTick,
   TRUST_DECLINED,
   TRUST_WAITING,
@@ -204,10 +225,17 @@ import {
   projectMcpView,
   checkProjectMcpRemove,
   runProjectMcpRemove,
+  checkEventFeedAdd,
+  runEventFeedAdd,
+  checkEventFeedRemove,
+  runEventFeedRemove,
+  projectAgentIds,
   checkProjectMcpUpdate,
   runProjectMcpUpdate,
 } from "../cli/agent-ops.js";
 import { agentSessionName } from "../../shared/agents/session-name.js";
+import type { NotificationStore } from "../../shared/notifications.js";
+import { RestartLive } from "./restart-live.js";
 import { recordAction } from "./audit.js";
 import {
   agentFile,
@@ -224,7 +252,13 @@ import {
 import { FILE_DENY_DEFAULTS } from "../../shared/agents/file-deny.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
+  notAPersonOf,
+  fixturePersonOf,
+  provenPersonOf,
+  operatorActOf,
+  personOrOperator,
   principalOf,
 } from "./request-guard.js";
 import {
@@ -236,6 +270,7 @@ import { readBody, sendJson } from "./http-helpers.js";
 import { sitePage } from "./ui-assets.js";
 import { product } from "../../shared/product.js";
 import type { Actor } from "../../shared/agent-actor.js";
+import { noteCapsHeld } from "./cap-bell.js";
 import {
   HOST_RESTART_ACTION,
   HOST_RESTART_TITLE,
@@ -254,11 +289,11 @@ export interface AgentRouteDeps {
   hubStatus?: () => Promise<import("../../shared/hub.js").HubStatus>;
   /** H5 (tests): Den Hub's GitHub coverage, and the project sync. */
   hubGithub?: () => Promise<
-    | { orgs: import("../../shared/hub-project-sync.js").OrgCoverage[] }
+    | { orgs: import("../../shared/hub/hub-project-sync.js").OrgCoverage[] }
     | { error: string }
     | null
   >;
-  projectSync?: import("../../shared/hub-project-sync.js").ProjectSync;
+  projectSync?: import("../../shared/hub/hub-project-sync.js").ProjectSync;
   /** 0.4.40 (tests): comment delivery, restarted on connect, stopped on disconnect. */
   hubDeliveries?: { restart(): void; stop(): void };
   /** HUB-1.7: Connect to Hub's state (tests: fake Hub calls and store). */
@@ -268,11 +303,15 @@ export interface AgentRouteDeps {
 }
 
 const AGENTS_PATH =
-  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|file|say|order))?$/;
+  /^\/api\/workspaces\/([^/]+)\/agents(?:\/([^/]+)\/(stop|resume|fresh|relaunch|remove|name|paths|persona|keep|settings|mode|handoff|clear-helpers|compacting-clear|restart|link|move|folder|file|say|order))?$/;
 
 /** Issue 225: a project's mode and each of its agents' (Settings › Project). */
 const MODES_PATH = /^\/api\/workspaces\/([^/]+)\/agent-modes$/;
 const MCP_SERVERS_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers$/;
+/** Issue 459: GET a project's app event feeds and their state. */
+const EVENT_FEEDS_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds$/;
+/** Issue 1480: one of them, removed by a person. */
+const EVENT_FEED_PATH = /^\/api\/workspaces\/([^/]+)\/event-feeds\/([^/]+)$/;
 /** Issue 352: one of them, changed or removed by a person. */
 const MCP_SERVER_PATH = /^\/api\/workspaces\/([^/]+)\/mcp-servers\/([^/]+)$/;
 
@@ -420,6 +459,35 @@ function restarted(what: string, s: { already?: { at: string } }): string {
     : what;
 }
 
+/** Issue 89: how many of its last lines the error's own words carry. */
+const EARLY_LINES_SAID = 3;
+
+/**
+ * Issue 89: the answer to a start (or resume) whose agent exited at once:
+ * its exit code and its last lines (redacted) in the words every page and
+ * pop-up shows, and all of its tail for a page to show line by line.
+ */
+export function earlyExitAnswer(
+  id: string,
+  early: NonNullable<Started["early"]>,
+  warnings: readonly string[] = [],
+): Record<string, unknown> {
+  const code = early.exitCode === undefined ? "" : ` (exit ${early.exitCode})`;
+  const last = early.tail.slice(-EARLY_LINES_SAID);
+  const said = last.length
+    ? `. Its last ${last.length === 1 ? "line" : `${last.length} lines`}: ${last.join(" / ")}`
+    : ". It printed nothing";
+  return {
+    ok: false,
+    error: `agent ${id} exited at once${code}${said}`,
+    code: "exited_at_once",
+    ...(early.exitCode === undefined ? {} : { exitCode: early.exitCode }),
+    tail: early.tail,
+    session: early.sessionName,
+    ...(warnings.length ? { warnings } : {}),
+  };
+}
+
 function sendStarted(
   res: http.ServerResponse,
   s: Started & { fresh?: boolean },
@@ -427,20 +495,7 @@ function sendStarted(
   extra: Record<string, unknown> = {},
 ): void {
   if (s.early) {
-    const code =
-      s.early.exitCode === undefined ? "" : ` (exit ${s.early.exitCode})`;
-    sendJson(
-      res,
-      {
-        ok: false,
-        error: `agent ${s.rec.id} exited at once${code}`,
-        code: "exited_at_once",
-        tail: s.early.tail,
-        session: s.early.sessionName,
-        ...(s.warnings.length ? { warnings: s.warnings } : {}),
-      },
-      502,
-    );
+    sendJson(res, earlyExitAnswer(s.rec.id, s.early, s.warnings), 502);
     return;
   }
   sendJson(res, {
@@ -586,6 +641,11 @@ export async function handleAgentRoutes(
   if (mp) return modesRoute(req, res, mp[1], webDeps(deps.agents));
   const mcpp = MCP_SERVERS_PATH.exec(pathname);
   if (mcpp) return mcpServersRoute(req, res, mcpp[1], webDeps(deps.agents));
+  const efp = EVENT_FEEDS_PATH.exec(pathname);
+  if (efp) return eventFeedsRoute(req, res, efp[1], webDeps(deps.agents));
+  const ef1 = EVENT_FEED_PATH.exec(pathname);
+  if (ef1)
+    return eventFeedRoute(req, res, ef1[1], ef1[2], webDeps(deps.agents));
   const mcp1 = MCP_SERVER_PATH.exec(pathname);
   if (mcp1)
     return mcpServerRoute(req, res, mcp1[1], mcp1[2], webDeps(deps.agents));
@@ -595,6 +655,8 @@ export async function handleAgentRoutes(
   if (dp) return detailsRoute(req, res, dp, webDeps(deps.agents));
   const tp = TOOLS_PATH.exec(pathname);
   if (tp) return toolsRoute(req, res, tp, webDeps(deps.agents));
+  if (pathname === "/api/agents/restart-status")
+    return restartStatusRoute(req, res);
   if (
     pathname === "/api/agents/stale" ||
     pathname === "/api/agents/restart-stale"
@@ -642,6 +704,31 @@ export async function handleAgentRoutes(
       ),
     );
   }
+  // Issue 750: this install's groups from Hub, for the By group view.
+  if (pathname === "/api/hub/groups") {
+    const m = await import("./hub-groups-routes.js");
+    return m.hubGroupsRoute(req, res, await m.defaultHubGroupsDeps());
+  }
+  // Issue 646: Connect's one review: a row per project, Connect and link all.
+  if (pathname === "/api/hub/connect-review") {
+    const [rv, audit, guard] = await Promise.all([
+      import("./hub-connect-review.js"),
+      import("./audit.js"),
+      import("./request-guard.js"),
+    ]);
+    return rv.hubReviewRoute(
+      req,
+      res,
+      await rv.defaultHubReviewDeps((line) =>
+        audit.recordAction(
+          guard.auditActorOf(req),
+          { verb: "hub-link", detail: line.slice(0, 400) },
+          guard.principalOf(req),
+        ),
+      ),
+      `Settings › Hub, Connect's review (${guard.principalOf(req) ?? "person"})`,
+    );
+  }
   // Issue 167: when Hub last answered a check of its names; Try again.
   if (pathname === "/api/hub/names-check") {
     const m = await import("./hub-names-routes.js");
@@ -687,7 +774,7 @@ export async function handleAgentRoutes(
       ? null
       : (deps.hubConnect ?? defaultConnect)?.lastResult();
     // 0.4.45: the editions Settings names under Connect (den.yml).
-    const { hubEditions } = await import("../../shared/hub-editions.js");
+    const { hubEditions } = await import("../../shared/hub/hub-editions.js");
     const { readDenConfig } = await import("../../shared/den-config.js");
     let editions = null;
     try {
@@ -695,7 +782,27 @@ export async function handleAgentRoutes(
     } catch {
       editions = null;
     }
-    const out = { ...st, ...(editions ? { editions } : {}) };
+    // Issue 869: Hub refused this Den's address when it was last told.
+    const tell = await import("../../shared/hub/hub-den-url.js");
+    const denUrl = tell.denUrlTellProblem(tell.readDenUrlTell(getStateDir()));
+    const hs = await import("./hub-switch.js");
+    const { readUserConfig } = await import("../../shared/den-config.js");
+    const swDeps = await hs.hubSwitchDeps();
+    const was = hs.readHubSwitch(swDeps.stateDir);
+    const sw = hs.liveHubSwitch({
+      ...swDeps,
+      days: hs.switchDays((readUserConfig() as Record<string, unknown>).hub),
+    });
+    const sf = await import("../../shared/state-folder.js");
+    const next = rail ? null : sf.takeConnectNext(getStateDir());
+    const out = {
+      ...st,
+      ...(next ? { connectNext: next } : {}),
+      ...(editions ? { editions } : {}),
+      ...(denUrl ? { denUrl } : {}),
+      ...(sw ? { switching: { to: sw.to, from: sw.from } } : {}),
+      ...(was && !sw ? { switchEnded: { to: was.to } } : {}),
+    };
     sendJson(res, last ? { ...out, connect: last } : out);
     return true;
   }
@@ -804,6 +911,7 @@ export async function handleAgentRoutes(
     | "compacting-clear"
     | "link"
     | "move"
+    | "folder"
     | "restart"
     | "file"
     | "say"
@@ -960,6 +1068,44 @@ export async function handleAgentRoutes(
     );
   let what = `${verb} ${id ?? "?"} in ${ws}`;
   try {
+    // Issue 956: the test operator's message and relaunch reach only the
+    // bed's own agents, those Den marked when it started them on the
+    // test-person path (issue 943). Issue 1407: its restart too, and a
+    // test install's fixture person's restart. Any other agent: refused,
+    // as a person-only act is. Checked before the 404 below, so an id
+    // that doesn't exist answers the same 403: they can't learn which
+    // agents are there. Never the server agent's.
+    const opAct = operatorActOf(req);
+    const fixtureRestart = verb === "restart" && !opAct && fixturePersonOf(req);
+    const fixtureMode = verb === "mode" && !opAct && fixturePersonOf(req);
+    if (
+      opAct === "agent-say" ||
+      opAct === "agent-relaunch" ||
+      opAct === "agent-restart" ||
+      fixtureRestart ||
+      fixtureMode
+    ) {
+      let marked = false;
+      try {
+        marked =
+          id !== undefined &&
+          !isServerScope(ws) &&
+          agentRecord(d, id, ws).testBed === true;
+      } catch {
+        marked = false;
+      }
+      if (!marked)
+        throw new AgentError(
+          opAct === "agent-say"
+            ? "only a person can send an agent a message"
+            : opAct === "agent-relaunch"
+              ? "only a person can relaunch an agent"
+              : fixtureMode
+                ? "only a person can change an agent's mode"
+                : "only a person can restart an agent",
+          { status: 403 },
+        );
+    }
     // Another workspace's agent is no agent here: a 404 that doesn't name
     // it, before anything else is said about it.
     if (id !== undefined) agentRecord(d, id, ws);
@@ -985,13 +1131,18 @@ export async function handleAgentRoutes(
       });
     // Issue 199: an agent's mode is what it may do without asking: a
     // person's (an agent asks through the held write agent_mode).
-    if (verb === "mode" && (agent || actor))
+    if (verb === "mode" && (agent || actor) && !fixtureMode)
       throw new AgentError(
         "only a person can change an agent's mode (an agent asks with agent_mode)",
         { status: 403 },
       );
-    // D44: a restart is the person's (it stops a session).
-    if (verb === "restart" && (agent || actor))
+    // D44: a restart is the person's (it stops a session). Issue 1407: and
+    // the test operator's, for the bed's own agents only (checked above).
+    if (
+      verb === "restart" &&
+      !fixtureRestart &&
+      !personOrOperator(req, "agent-restart")
+    )
       throw new AgentError("only a person can restart an agent", {
         status: 403,
       });
@@ -1000,9 +1151,16 @@ export async function handleAgentRoutes(
       throw new AgentError("only a person can move an agent", {
         status: 403,
       });
+    // Issue 1182: an agent asks for a folder with the held write
+    // agent_folder; this route is the person's.
+    if (verb === "folder" && (agent || actor))
+      throw new AgentError(
+        "only a person can change an agent's folder (an agent asks with agent_folder)",
+        { status: 403 },
+      );
     // Issue 103: what a person sends from a composer; an agent never
     // types into another agent's session.
-    if (verb === "say" && (agent || actor))
+    if (verb === "say" && !personOrOperator(req, "agent-say"))
       throw new AgentError("only a person can send an agent a message", {
         status: 403,
       });
@@ -1167,6 +1325,15 @@ export async function handleAgentRoutes(
           throw new AgentError(`${k}: unknown field (mode takes mode)`, {
             usage: true,
           });
+      if (
+        fixtureMode &&
+        body.mode !== null &&
+        !FIXTURE_MODES.includes(String(body.mode))
+      )
+        throw new AgentError(
+          `only a person can choose ${String(body.mode)}: a live check may pick ${FIXTURE_MODES.join(" or ")}`,
+          { status: 403 },
+        );
       let intent: PermissionIntent | null = null;
       if (body.mode !== null) {
         if (typeof body.mode !== "string")
@@ -1388,28 +1555,74 @@ export async function handleAgentRoutes(
         });
       what = `restart ${id} in ${ws} (${when === "now" ? "now" : "at its next idle"}), same conversation`;
       if (when === "after-turn") {
-        // 0.4.48: a job it left running is asked about first (job_running).
-        await askAboutJob(d, id!, ws);
+        // Issue 1407: where it stands first, never a silent wait. A job it
+        // left running (job_running, with what it runs and how long) or a
+        // turn Den can't read (turn_unknown) is the person's: Restart now.
+        const plan = await restartStateOf(d, id!, ws);
+        // Part 2: the page and the bell follow it live, like a bulk one
+        // (a job or an unknown turn waits on the person's Restart now).
+        const live = await restartLive();
+        live.begin([plan]);
+        if (plan.state === "job")
+          throw new AgentError(
+            `agent ${id}: a background job it started is still running (${plan.job?.command ?? "?"}, ${plan.job?.minutes ?? 0} min). Restart now ends the job.`,
+            { status: 409, code: "job_running", job: plan.job },
+          );
+        if (plan.state === "unknown")
+          throw new AgentError(
+            `agent ${id}: Den can't tell when its turn ends, so it can't wait for it. Restart it now instead.`,
+            { status: 409, code: "turn_unknown" },
+          );
         // It may wait for a long turn: answer now, audit when it's done.
-        void restartAgent(
-          d,
-          id!,
-          ws,
-          "after-turn",
-          deps.personaWait ?? {},
-        ).then(
-          (s) =>
+        void restartAgent(d, id!, ws, "after-turn", {
+          ...(deps.personaWait ?? {}),
+          jobStops: true,
+        }).then(
+          async (s) => {
+            (await restartLive()).done({
+              id: id!,
+              workspace: ws,
+              outcome: "restarted",
+            });
             audit(
               restarted(what, s) + onSignIn(s.rec),
               s.early ? "exited at once" : undefined,
-            ),
-          (e: unknown) =>
-            audit(what, e instanceof Error ? e.message : String(e)),
+            );
+          },
+          (e: unknown) => {
+            live.done(
+              restartOutcomeOf(
+                id!,
+                ws,
+                e,
+                deps.personaWait?.maxMs ?? restartWaitOf(d),
+              ),
+            );
+            audit(what, e instanceof Error ? e.message : String(e));
+          },
         );
-        sendJson(res, { ok: true, agent: id, pending: true }, 202);
+        sendJson(
+          res,
+          { ok: true, agent: id, pending: true, state: plan.state },
+          202,
+        );
         return true;
       }
-      const s = await restartAgent(d, id!, ws, "now");
+      const live = await restartLive();
+      const s = await restartAgent(d, id!, ws, "now").catch((e: unknown) => {
+        live.done({
+          id: id!,
+          workspace: ws,
+          outcome: "failed",
+          error: e instanceof Error ? e.message : String(e),
+        });
+        throw e;
+      });
+      live.done({
+        id: id!,
+        workspace: ws,
+        outcome: "restarted",
+      });
       audit(
         restarted(what, s) + onSignIn(s.rec),
         s.early ? "exited at once" : undefined,
@@ -1424,6 +1637,33 @@ export async function handleAgentRoutes(
             ? { note: FRESH_NOTE }
             : {},
       );
+    } else if (verb === "folder") {
+      // Issue 1182: {repo} or {folder}: a stopped agent's folder.
+      const body = await jsonBody(req);
+      for (const k of Object.keys(body))
+        if (k !== "repo" && k !== "folder")
+          throw new AgentError(
+            `${k}: unknown field (folder takes repo or folder)`,
+            { usage: true },
+          );
+      const repo = typeof body.repo === "string" ? body.repo : undefined;
+      const folder = typeof body.folder === "string" ? body.folder : undefined;
+      if ((repo === undefined) === (folder === undefined))
+        throw new AgentError("folder takes repo or folder, one of them", {
+          usage: true,
+        });
+      const rec = setAgentFolder(d, id!, ws, {
+        ...(repo !== undefined ? { repo } : {}),
+        ...(folder !== undefined ? { folder } : {}),
+      });
+      what = `set ${rec.id}'s folder to ${rec.cwd} in ${ws}`;
+      audit(what);
+      sendJson(res, {
+        ok: true,
+        agent: rec.id,
+        cwd: rec.cwd,
+        ...(rec.repo ? { repo: rec.repo, project: rec.project } : {}),
+      });
     } else if (verb === "move") {
       // D72: {to, when}: to another workspace, same conversation.
       const body = await jsonBody(req);
@@ -1474,7 +1714,13 @@ export async function handleAgentRoutes(
       sendJson(res, { ok: true, removed });
     } else {
       // D28: a due agent under auto relaunches from its handoff instead.
-      const r = await resumeOrRelaunch(d, id!, ws);
+      // Issue 1129: one waiting in the restart queue leaves it and starts
+      // now, ahead of the rest (a person opened it); never twice.
+      const run = () => resumeOrRelaunch(d, id!, ws);
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const r = (await (restartQueue().openNow(id!, run) ?? run())) as Awaited<
+        ReturnType<typeof resumeOrRelaunch>
+      >;
       if (r.kind === "relaunched") {
         what = `relaunch ${r.s.rec.id} from its handoff (${r.s.why}) in ${ws}, on Resume`;
         audit(what, r.s.early ? "exited at once" : undefined);
@@ -1838,10 +2084,13 @@ async function plainSession(
       principalOf(req),
     );
   try {
-    if (actor && !actor.unverified)
+    // Issue 814: any agent credential or claim, and the fixture person,
+    // except as the test operator's terminal-start.
+    if (!personOrOperator(req, "terminal-start"))
       throw new AgentError("an agent can't start a session from the page", {
         status: 403,
       });
+    const operator = operatorActOf(req) === "terminal-start";
     // Issue 479: an optional { cwd } (Open a terminal there). No body,
     // or none of it: the project's folder, as before.
     const raw = await readBody(req).catch(() => "");
@@ -1856,8 +2105,26 @@ async function plainSession(
     const b = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
     if (b.cwd !== undefined && typeof b.cwd !== "string")
       throw new AgentError("cwd must be a string", { usage: true });
+    // Issue 482: { replaces } (Restart): the exited terminal it replaces.
+    if (b.replaces !== undefined && typeof b.replaces !== "string")
+      throw new AgentError("replaces must be a string", { usage: true });
     const cwd = b.cwd as string | undefined;
-    const { info } = await startPlainSession(d, ws, cwd ? { cwd } : {});
+    const replaces = b.replaces as string | undefined;
+    // Issue 814: the test operator's terminal (Den's fixed stub, never a
+    // shell) opens in the project's folder only, remembered by host id.
+    if (operator && (cwd !== undefined || replaces !== undefined))
+      throw new AgentError(
+        "the test operator's terminal takes no cwd or replaces",
+        { status: 403 },
+      );
+    const { info } = await startPlainSession(
+      d,
+      ws,
+      operator
+        ? { operator: true }
+        : { ...(cwd ? { cwd } : {}), ...(replaces ? { replaces } : {}) },
+    );
+    if (operator) rememberOperatorShell(info.ref.id);
     what = `plain session ${info.name} in ${ws}${cwd ? ` at ${cwd}` : ""}`; // words-ok: the audit row's existing wording, plus the folder
     audit();
     sendJson(res, {
@@ -1895,7 +2162,9 @@ async function runtimePath(
       principalOf(req),
     );
   try {
-    if (actor && !actor.unverified)
+    // Issue 814: any agent credential or claim, and the fixture person
+    // (it was let through here by its unverified claim).
+    if (notAPersonOf(req))
       throw new AgentError("an agent can't set a runtime's path", {
         status: 403,
       });
@@ -2096,6 +2365,8 @@ export async function refreshTerminalHost(
   d: AgentsResolved,
   log: (line: string) => void,
   by: "start" | "held" = "start",
+  /** Issue 1403: a routine host_restart: never wait and cut a turn. */
+  o: { idleOnly?: boolean } = {},
 ): Promise<
   import("../../shared/sessions/host-refresh.js").RefreshResult | null
 > {
@@ -2116,7 +2387,13 @@ export async function refreshTerminalHost(
   if (hostRefreshing) return null; // Issue 731: one at a time
   hostRefreshing = true;
   try {
-    return await refreshAndReport(d, log, { waitS, note, checkS, by });
+    return await refreshAndReport(d, log, {
+      waitS,
+      note,
+      checkS,
+      by,
+      idleOnly: o.idleOnly === true,
+    });
   } finally {
     hostRefreshing = false;
   }
@@ -2142,7 +2419,13 @@ export function hostRefreshFailedLine(why: string): string {
 async function refreshAndReport(
   d: AgentsResolved,
   log: (line: string) => void,
-  o: { waitS: number; note: boolean; checkS: number; by: "start" | "held" },
+  o: {
+    waitS: number;
+    note: boolean;
+    checkS: number;
+    by: "start" | "held";
+    idleOnly?: boolean;
+  },
 ): Promise<import("../../shared/sessions/host-refresh.js").RefreshResult> {
   const { refreshSessionHost, HOST_RESTART_NOTE } =
     await import("../../shared/sessions/host-refresh.js");
@@ -2164,8 +2447,14 @@ async function refreshAndReport(
       by,
       ...s,
     });
+  // Issue 732: while it waits, which agents a background job holds it for.
+  let waitWhy: string | null = null;
+  let heldBy = "";
   const r = await refreshSessionHost({
-    onWait: ({ why }) => state({ state: "waiting", why }),
+    onWait: ({ why }) => {
+      waitWhy = why;
+      state({ state: "waiting", why });
+    },
     connectExisting: () => d.connectExisting(),
     connect: () => d.connect(),
     socket: sessionPaths(d.stateDir()).socket,
@@ -2175,7 +2464,22 @@ async function refreshAndReport(
       pty: installedPtyModule(),
     }),
     running: () => runningAgentIds(d),
-    busy: (ids) => busyAgentIds(d, ids),
+    busy: async (ids) => {
+      const holds = await busyAgentHolds(d, ids);
+      const jobs = holds.flatMap((h) =>
+        h.job ? [{ agent: h.agent, minutes: h.job.minutes }] : [],
+      );
+      const key = JSON.stringify(jobs);
+      if (waitWhy !== null && key !== heldBy) {
+        heldBy = key;
+        state({
+          state: "waiting",
+          why: waitWhy,
+          ...(jobs.length ? { jobs } : {}),
+        });
+      }
+      return holds.map((h) => h.agent);
+    },
     waitMs: waitS * 1000,
     cutNote: note ? HOST_RESTART_NOTE : null,
     resume: (id, n) => resumeAfterHostRestart(d, id, n),
@@ -2184,6 +2488,7 @@ async function refreshAndReport(
     ended: (ids) => endedAfterHostRestart(d, ids),
     checkMs: checkS * 1000,
     log: (l) => log(`  ${l}`),
+    ...(o.idleOnly ? { idleOnly: true } : {}),
   });
   const endedAt = new Date().toISOString();
   if (r.did === "failed") {
@@ -2268,6 +2573,175 @@ export function noteRanWhileAway(
   });
 }
 
+/**
+ * Issue 163: back from a logout (the web server ran on, under Keep agents
+ * running after logout): one bell note naming the agents that ran while
+ * the person was logged out, and one naming those that stopped meanwhile.
+ * Neither when nothing ran or stopped.
+ */
+export function noteRanWhileLoggedOut(
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">,
+  back: ConsoleBack,
+): void {
+  const min = Math.max(1, Math.round(back.awayMs / 60_000));
+  const ran = [...back.kept, ...back.started];
+  if (ran.length) {
+    const names = ran.join(", ");
+    store.add({
+      kind: "service",
+      subject: "record:agents-ran-while-logged-out",
+      scope: "workspace/den-server",
+      text: `While you were logged out (${min} min), these agents ran: ${names}`,
+      msg: { key: "bell.m.ranLoggedOut", vars: { min, names } },
+      link: "/agents",
+    });
+  }
+  if (back.ended.length) {
+    const names = back.ended.join(", ");
+    store.add({
+      kind: "service",
+      subject: "record:agents-stopped-while-logged-out",
+      scope: "workspace/den-server",
+      text: `While you were logged out (${min} min), these agents stopped: ${names}`,
+      msg: { key: "bell.m.stoppedLoggedOut", vars: { min, names } },
+      link: "/agents",
+    });
+  }
+}
+
+/**
+ * Issue 163: one look at the console (console-away.ts). On the person's
+ * return after longer than `waitMs` (ui.restart_wait_seconds: a quick user
+ * switch is not an absence), the bell note. Returns the return it noted.
+ */
+export function consoleTick(d: {
+  stateDir: string;
+  me: number;
+  owner: () => number | null;
+  running: () => string[];
+  now: () => number;
+  waitMs: number;
+  store: Pick<import("../../shared/notifications.js").NotificationStore, "add">;
+}): ConsoleBack | null {
+  const r = stepConsole(d.stateDir, {
+    me: d.me,
+    owner: d.owner(),
+    running: d.running(),
+    now: d.now(),
+  });
+  if (r.back && r.back.awayMs > d.waitMs) {
+    noteRanWhileLoggedOut(d.store, r.back);
+    return r.back;
+  }
+  return null;
+}
+
+type NoteStore = Pick<
+  import("../../shared/notifications.js").NotificationStore,
+  "add"
+>;
+
+/**
+ * Issue 163: one tick of the logout watch, its parts passed in. Nothing
+ * happens when the console can't be read, or when nothing changed (logged
+ * in and not away, or still away): the running agents are asked, and the
+ * store opened, only when the person has just left or just come back.
+ * A web server running as root (me 0) never watches: at the login window
+ * root owns the console, which would read as "logged in".
+ */
+export async function logoutWatchTick(d: {
+  me: number;
+  owner: () => number | null;
+  stateDir: string;
+  running: () => Promise<string[]>;
+  store: () => NoteStore | Promise<NoteStore>;
+  now: () => number;
+  waitMs: number;
+}): Promise<ConsoleBack | null> {
+  if (d.me === 0) return null;
+  const owner = d.owner();
+  if (owner === null) return null;
+  const away = fs.existsSync(path.join(d.stateDir, CONSOLE_AWAY_FILE));
+  // Nothing changed: logged in and not away, or still away.
+  if ((owner === d.me) !== away) return null;
+  // A failed lookup is not "nobody is running": it would save an empty
+  // record at the leave, or name every agent as stopped at the return.
+  // Leave the record as it is; the next tick tries again.
+  let running: string[];
+  try {
+    running = await d.running();
+  } catch {
+    return null;
+  }
+  const store = await d.store();
+  return consoleTick({
+    stateDir: d.stateDir,
+    me: d.me,
+    owner: () => owner,
+    running: () => running,
+    now: d.now,
+    waitMs: d.waitMs,
+    store,
+  });
+}
+
+/**
+ * Issue 163: on macOS, look at the console every ui.console_check_seconds
+ * (30). Never off macOS, and never as root (see logoutWatchTick). Returns
+ * whether the watch started.
+ */
+export function startLogoutWatch(
+  log: (line: string) => void,
+  deps: AgentRouteDeps = {},
+  env: {
+    platform?: NodeJS.Platform;
+    uid?: number | null;
+    every?: (fn: () => void, ms: number) => void;
+  } = {},
+): boolean {
+  const platform = env.platform ?? process.platform;
+  const me =
+    env.uid !== undefined
+      ? env.uid
+      : typeof process.getuid === "function"
+        ? process.getuid()
+        : null;
+  if (platform !== "darwin" || me === null || me === 0) return false;
+  const every =
+    env.every ??
+    ((fn: () => void, ms: number) => {
+      setInterval(fn, ms).unref();
+    });
+  let busy = false;
+  const tick = async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      const back = await logoutWatchTick({
+        me,
+        owner: () => consoleOwnerUid(),
+        stateDir: getStateDir(),
+        running: () => runningAgentIds(webDeps(deps.agents)),
+        store: async () =>
+          (await import("./notification-service.js")).notificationDeps().store,
+        now: () => Date.now(),
+        waitMs: uiRestartWaitSeconds() * 1000,
+      });
+      if (back)
+        log(
+          `Ran while you were logged out (${Math.round(back.awayMs / 60_000)} min): kept running: ${back.kept.join(", ") || "none"} · started: ${back.started.join(", ") || "none"} · ended: ${back.ended.join(", ") || "none"}`,
+        );
+    } catch {
+      /* the bell is best effort: the next tick tries again */
+    } finally {
+      busy = false;
+    }
+  };
+  void tick();
+  every(() => void tick(), uiConsoleCheckSeconds() * 1000);
+  return true;
+}
+
 /** How often stopped agents are checked against remove_stopped_after. */
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
 
@@ -2337,9 +2811,15 @@ export function startAgentUpkeep(
         log(`  ⚠ ${(e as Error).message}`);
       }
       const hubUp = await hubAnswers();
+      // Issue 1129: a batch at a time (agents.resume), never all at once.
+      const { restartQueue } = await import("./restart-queue-service.js");
+      const { notificationDeps: bell } =
+        await import("./notification-service.js");
+      const queue = restartQueue({ log, store: () => bell().store });
       const f = await markInterrupted(d, {
         restoreAll,
         ...(hubUp ? { hubUp, hubWaitMs: waitS * 1000 } : {}),
+        queue,
       });
       if (f.withoutHub.length) {
         log(
@@ -2381,6 +2861,7 @@ export function startAgentUpkeep(
         );
       for (const x of f.failed)
         log(`  ⚠ agent ${x.agent} did not resume: ${x.why}`);
+      if (f.failed.length) await noteCapsHeld(d.stateDir(), f.failed);
     } catch (e) {
       log(`  ⚠ agents after the restart: ${(e as Error).message}`);
     }
@@ -2414,11 +2895,29 @@ export function startAgentUpkeep(
           log(`Relaunched ${who} from its handoff after ${e.why}`);
         } else if (e.kind === "asked")
           log(`Asked ${who} for its handoff (${e.asked} of 2)`);
+        else if (e.kind === "waiting")
+          log(
+            `Rotation of ${who} waits: ${e.running} background item(s) it started still run`,
+          );
         else if (e.kind === "fell-back")
           log(
             `  ⚠ ${who} wrote no handoff after 2 asks: its callout asks the person`,
           );
         else log(`  ⚠ rotation of ${who}: ${e.why}`);
+      }
+      // Issue 926: a session that ended without Den asking: recorded,
+      // told, and brought back once (exit 0 is left down).
+      for (const e of await exitTick(d)) {
+        const who = `${e.agent} in ${e.workspace}`;
+        if (e.kind === "resumed" || e.kind === "relaunched")
+          log(
+            `Agent ${who} ended without Den asking (exit ${e.code}); ${e.kind === "relaunched" ? "relaunched from its handoff" : "resumed"}`,
+          );
+        else if (e.kind === "left")
+          log(
+            `  ⚠ agent ${who} ended without Den asking (exit ${e.code}): ${e.why}`,
+          );
+        else log(`Agent ${who} quit by itself (exit 0)`);
       }
       // Issue 658: a relaunch whose conversation was never written (it
       // ended at the folder-trust question, say) can relaunch again.
@@ -2457,12 +2956,22 @@ export function startAgentUpkeep(
     onRestarted: (e) =>
       recordAction(null, { verb: "agents", detail: modeRestartDetail(e) }),
   });
+  const pc = skillPackCheck(d, {
+    log,
+    onRestarted: (e) =>
+      recordAction(null, { verb: "agents", detail: skillPackRestartDetail(e) }),
+  });
   let checking = false;
   const modes = async () => {
     if (checking) return;
     checking = true;
     try {
       await mc.tick();
+      await pc
+        .tick()
+        .catch((e: unknown) =>
+          log(`  ⚠ agents' skill packs: ${(e as Error).message}`),
+        );
     } catch (e) {
       log(`  ⚠ agents' modes: ${(e as Error).message}`);
     } finally {
@@ -2546,6 +3055,11 @@ async function rotationRoute(
           { usage: true },
         );
     const out = setRotationSetting(d, body);
+    // Issue 1391: agents may read the trail, and this row holds no free
+    // text. setRotationSetting throws before it on anything unchecked: a
+    // scope from OVERRIDE_SCOPES or install, a name-shaped target, a key
+    // from ROTATE_KEYS, and a value checkRotateValue takes (1–100,
+    // "never", auto, ask, off, true, false) or null.
     recordAction(
       null,
       {
@@ -2630,7 +3144,7 @@ async function hubConnectRoute(
       );
       return true;
     }
-    const r = hc.start(origin, body.url);
+    const r = hc.start(origin, body.url, { switch: body.switch === true });
     sendJson(res, r, r.ok ? 200 : 400);
     return true;
   }
@@ -2692,6 +3206,54 @@ async function toolsRoute(
   return true;
 }
 
+/** This server's live restart status (one per server). */
+let LIVE: RestartLive | null = null;
+async function restartLive(): Promise<RestartLive> {
+  if (LIVE) return LIVE;
+  let store: Pick<NotificationStore, "add" | "remove"> | null = null;
+  try {
+    store = (await import("./notification-service.js")).notificationDeps()
+      .store;
+  } catch {
+    /* no bell here: the page still has it */
+  }
+  LIVE ??= new RestartLive({ store });
+  return LIVE;
+}
+
+/**
+ * GET /api/agents/restart-status: each agent of a bulk
+ * restart, live (its state, and why it waits); a signed-in person's read
+ * only (provenPersonOf). Restarted ones clear after a
+ * moment; none, an empty list. The page polls it while it shows a run.
+ */
+async function restartStatusRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD")
+    return methodNotAllowed(res, "GET");
+  // Every project's restarts (job commands, why one failed): a person's
+  // read only. An agent's token or view, the fixture, or a caller that
+  // proved nothing is refused.
+  if (!provenPersonOf(req)) {
+    sendJson(
+      res,
+      {
+        ok: false,
+        code: "person_only",
+        error: "only a signed-in person can read the agents' restart status",
+      },
+      403,
+    );
+    return true;
+  }
+  const live = await restartLive();
+  sendJson(res, { agents: live.list(), run: live.progress() });
+  return true;
+}
+
 /**
  * D44: GET /api/agents/stale: the running agents whose MCP servers are out
  * of date (`?fresh=1` asks Hub's config again, after Connect or
@@ -2714,7 +3276,11 @@ async function staleRoute(
     "1";
   if (!post) {
     try {
-      sendJson(res, { agents: await staleAgents(d, { fresh }) });
+      const rows = await staleAgents(d, { fresh });
+      const keep = agentRowFilter(req);
+      sendJson(res, {
+        agents: keep ? rows.filter((r) => keep(r.workspace)) : rows,
+      });
     } catch (e) {
       sendError(res, e);
     }
@@ -2732,37 +3298,107 @@ async function staleRoute(
       },
       principalOf(req),
     );
+  let claimed: { id: string; workspace: string }[] = [];
   try {
-    if (agentPrincipalOf(req) || actor)
+    // Issue 1407: the test operator too, for the bed's own agents only.
+    const operator = operatorActOf(req) === "agents-restart-stale";
+    if (!personOrOperator(req, "agents-restart-stale"))
       throw new AgentError("only a person can restart agents", {
         status: 403,
       });
-    guard(actor);
+    if (!operator) guard(actor);
     const body = await jsonBody(req);
     for (const k of Object.keys(body))
-      throw new AgentError(`${k}: unknown field (restart-stale takes none)`, {
-        usage: true,
-      });
-    const list = await staleAgents(d, { fresh: true });
+      if (k !== "only")
+        throw new AgentError(
+          `${k}: unknown field (restart-stale takes only: "hub")`,
+          { usage: true },
+        );
+    // Issue 1223: only: "hub", Settings' Hub offer (the Hub-stale only);
+    // none, every stale agent (an older Den's tools too).
+    if (body.only !== undefined && body.only !== "hub")
+      throw new AgentError(
+        `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
+        { usage: true },
+      );
+    const live = await restartLive();
+    const all = (await staleAgents(d, { fresh: true })).filter(
+      (a) =>
+        body.only !== "hub" ||
+        a.stale.adds.length > 0 ||
+        a.stale.drops.length > 0,
+    );
+    // Before anything is restarted, checked or audited by name.
+    const list = live.claim(
+      operator
+        ? testBedOnly(all, (a) => {
+            try {
+              return agentRecord(d, a.id, a.workspace).testBed === true;
+            } catch {
+              return false;
+            }
+          })
+        : all,
+    );
+    claimed = list;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
-    for (const a of list) {
-      const one = `restart ${a.id} in ${a.workspace} (at its next idle), same conversation, for its tools`;
-      void restartAgent(
-        d,
-        a.id,
-        a.workspace,
-        "after-turn",
-        deps.personaWait ?? {},
-      ).then(
-        (s) => audit(restarted(one, s), s.early ? "exited at once" : undefined),
-        (e: unknown) => audit(one, e instanceof Error ? e.message : String(e)),
-      );
-    }
-    sendJson(res, { ok: true, pending: list }, 202);
+    // Issue 1407: each agent is checked first and answered for: restarting
+    // now, after its turn, a background job (what, how long) or can't
+    // tell. Only the first two restart; the person decides the others
+    // (Restart now). How each restart ended reaches the trail.
+    const one = (id: string, ws: string) =>
+      `restart ${id} in ${ws} (at its next idle), same conversation, for its tools`;
+    // Part 2: the page and the bell follow each agent live (restartLive).
+    const outcomes: RestartOutcome[] = [];
+    let begun = false;
+    const plan = await restartMany(
+      d,
+      list.map((a) => ({ id: a.id, workspace: a.workspace })),
+      {
+        ...(deps.personaWait ?? {}),
+        slot: async (id) => {
+          const { restartQueue } = await import("./restart-queue-service.js");
+          await restartQueue().add({ id, why: "tools", run: async () => true });
+          return () => undefined;
+        },
+        onDone: (o) => {
+          if (begun) live.done(o);
+          else outcomes.push(o);
+          if (o.outcome === "restarted") audit(one(o.id, o.workspace));
+          else
+            audit(
+              one(o.id, o.workspace),
+              o.outcome === "job"
+                ? `a background job is still running (${o.job?.command ?? "?"}, ${o.job?.minutes ?? 0} min)`
+                : o.outcome === "timedOut"
+                  ? `still working after ${o.minutes ?? 0} min; not restarted`
+                  : (o.error ?? "not restarted"),
+            );
+        },
+      },
+    );
+    live.begin(plan);
+    begun = true;
+    for (const o of outcomes.splice(0)) live.done(o);
+    for (const p of plan)
+      if (p.state === "job" || p.state === "unknown")
+        audit(
+          one(p.id, p.workspace),
+          p.state === "job"
+            ? `waits for the person: a background job is running (${p.job?.command ?? "?"}, ${p.job?.minutes ?? 0} min)`
+            : "waits for the person: Den can't tell when its turn ends",
+        );
+    sendJson(
+      res,
+      { ok: true, pending: list, agents: plan, run: live.progress() },
+      202,
+    );
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
+  } finally {
+    (await restartLive()).release(claimed);
   }
   return true;
 }
@@ -2791,6 +3427,140 @@ async function mcpServersRoute(
     return true;
   }
   sendJson(res, { ok: true, ...projectMcpView(d, ws) });
+  return true;
+}
+
+/**
+ * Issue 459: GET /api/workspaces/:ws/event-feeds: the project's app event
+ * feeds with their state (connected, retrying, last event time); names,
+ * agents and urls only, never a bearer or its value.
+ */
+async function eventFeedsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  d: AgentsResolved,
+): Promise<true> {
+  const method = req.method ?? "GET";
+  if (method !== "GET" && method !== "HEAD" && method !== "POST")
+    return methodNotAllowed(res, "GET, POST");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  if (method === "POST") return eventFeedWrite(req, res, ws, null, d);
+  const { appFeedsView } = await import("./app-feed-service.js");
+  // Issue 1480: the project's agents, for the row's Add.
+  sendJson(res, {
+    ok: true,
+    ...appFeedsView(ws),
+    agents: projectAgentIds(d, ws),
+  });
+  return true;
+}
+
+/**
+ * Issue 1480: Settings › Project › App event feeds, a row's actions.
+ * DELETE /api/workspaces/:ws/event-feeds/:name removes one.
+ */
+async function eventFeedRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  rawWs: string,
+  rawName: string,
+  d: AgentsResolved,
+): Promise<true> {
+  if ((req.method ?? "GET") !== "DELETE")
+    return methodNotAllowed(res, "DELETE");
+  const ws = safeDecode(rawWs);
+  if (!ws || isServerScope(ws) || !d.workspaceExists(ws)) {
+    sendJson(
+      res,
+      { ok: false, error: `no project "${ws}"`, code: "not_found" },
+      404,
+    );
+    return true;
+  }
+  return eventFeedWrite(req, res, ws, safeDecode(rawName), d);
+}
+
+/**
+ * Issue 1480: a person adds a feed (POST { name, agent, url, bearer?,
+ * list_url? }, the bearer a secrets.refs name) or removes one (name).
+ * Checked as the held writes are (agent-ops.ts); a person's only: their
+ * click is the decision. An agent asks with project_event_feed_add or
+ * project_event_feed_remove, which the approval policy places.
+ */
+async function eventFeedWrite(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ws: string,
+  name: string | null,
+  d: AgentsResolved,
+): Promise<true> {
+  const remove = name !== null;
+  const actor = auditActorOf(req);
+  let what = remove
+    ? `remove event feed ${name} from project ${ws}`
+    : `add an event feed to project ${ws}`;
+  const audit = (detail: string, reason?: string) =>
+    recordAction(
+      actor,
+      {
+        verb: "agents",
+        detail,
+        ...(reason ? { outcome: "refused" as const, reason } : {}),
+      },
+      principalOf(req),
+    );
+  try {
+    if (agentPrincipalOf(req) || actor)
+      throw new AgentError(
+        remove
+          ? "only a person can remove a project's event feed here (an agent asks with project_event_feed_remove)"
+          : "only a person can add a project's event feed here (an agent asks with project_event_feed_add)",
+        { status: 403 },
+      );
+    let ask: Record<string, unknown> = { project: ws, name };
+    if (!remove) {
+      const body: unknown = await jsonBody(req);
+      // Reviewer E: a JSON null or a list is a usage error, not a 500.
+      if (!body || typeof body !== "object" || Array.isArray(body))
+        throw new AgentError("send a JSON object", { usage: true });
+      for (const k of Object.keys(body))
+        if (!["name", "agent", "url", "bearer", "list_url"].includes(k))
+          throw new AgentError(
+            `${k}: unknown field (takes name, agent, url, bearer and list_url)`,
+            { usage: true },
+          );
+      ask = { ...body, project: ws };
+    }
+    const c = remove
+      ? checkEventFeedRemove(d, ask)
+      : await checkEventFeedAdd(d, ask);
+    if (!c.ok)
+      throw new AgentError(c.error, {
+        status: c.error.startsWith(`project ${ws} has no event feed`)
+          ? 404
+          : 400,
+        usage: true,
+      });
+    what = c.summary;
+    const r = remove
+      ? await runEventFeedRemove(d, { ...c.args })
+      : await runEventFeedAdd(d, { ...c.args });
+    if (!r.ok) throw new AgentError(r.error, { usage: true });
+    audit(what);
+    sendJson(res, { ok: true, project: r.project, name: r.name });
+  } catch (e) {
+    audit(what, e instanceof Error ? e.message : String(e));
+    sendError(res, e, ws);
+  }
   return true;
 }
 

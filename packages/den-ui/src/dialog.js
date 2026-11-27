@@ -12,6 +12,11 @@
  *     css: "/kit/dialog.css",      where dialog.css is, for a page that
  *                                  doesn't link it (default: beside
  *                                  another kit stylesheet on the page)
+ *     hold: (button) => release,   issue 1054: hold a pressed button while
+ *                                  its request runs (busy.js's held button:
+ *                                  dots, disabled, aria-busy); release()
+ *                                  gives it back. Default: disabled and
+ *                                  aria-busy only.
  *   })
  *
  *   askConfirm(opts) → Promise<boolean>      OK true; Cancel or Esc false
@@ -26,6 +31,12 @@
  *                     starts on Cancel, the safe answer
  *   opts.value        askText: the field's first text (selected)
  *   opts.label        askText: the field's own name (default: the title)
+ *   opts.onAnswer     askConfirm, issue 1054: (yes) => Promise | undefined,
+ *                     called on a press of OK (true) or Cancel (false). A
+ *                     promise keeps the dialog open with the pressed button
+ *                     held until it settles, then closes; a rejection says
+ *                     its message in the dialog and gives the button back.
+ *                     Esc never calls it.
  *
  * askConfirm and tell are role="alertdialog"; askText is role="dialog".
  * Each is named by its title (aria-labelledby) and described by its
@@ -130,9 +141,24 @@ export function focusBack(el) {
 }
 
 export const DIALOG_WORDS = {
-  en: { ok: "OK", cancel: "Cancel", close: "Close" },
-  es: { ok: "Aceptar", cancel: "Cancelar", close: "Cerrar" },
-  ja: { ok: "OK", cancel: "キャンセル", close: "閉じる" },
+  en: {
+    ok: "OK",
+    cancel: "Cancel",
+    close: "Close",
+    failed: "That didn't work. Try again.",
+  },
+  es: {
+    ok: "Aceptar",
+    cancel: "Cancelar",
+    close: "Cerrar",
+    failed: "No ha funcionado. Inténtalo de nuevo.",
+  },
+  ja: {
+    ok: "OK",
+    cancel: "キャンセル",
+    close: "閉じる",
+    failed: "うまくいきませんでした。もう一度お試しください。",
+  },
 };
 
 const hook = {
@@ -143,7 +169,56 @@ const hook = {
   words: {},
   report: null,
   css: null,
+  hold: null,
 };
+
+/**
+ * Issue 1054: what a held action's failure says in its dialog: the error's
+ * own message, else the kit's "That didn't work. Try again." (never an
+ * empty alert).
+ */
+export function failedLine(err) {
+  const own = typeof err === "string" ? err : err?.message;
+  return typeof own === "string" && own.trim() ? own : dialogWord("failed");
+}
+
+/** Issue 1054: hold a button while its request runs; returns release(). */
+function holdFor(b) {
+  if (!b) return () => {};
+  if (typeof hook.hold === "function") {
+    const r = hook.hold(b);
+    if (typeof r === "function") return r;
+  }
+  // Issue 1434: held, not disabled, so it keeps focus; its clicks stop
+  // at the window (below).
+  const own = b.getAttribute("aria-disabled") !== "true";
+  b.setAttribute("aria-busy", "true");
+  b.setAttribute("aria-disabled", "true");
+  return () => {
+    b.removeAttribute("aria-busy");
+    if (own) b.removeAttribute("aria-disabled");
+  };
+}
+
+/**
+ * Issue 1434: a click on a held button (aria-busy with aria-disabled, as
+ * busy.js holds) stops at the window, before the page's own listeners.
+ */
+globalThis.window?.addEventListener?.(
+  "click",
+  (e) => {
+    for (let n = e.target; n; n = n.parentNode)
+      if (
+        n.getAttribute?.("aria-busy") === "true" &&
+        n.getAttribute("aria-disabled") === "true"
+      ) {
+        e.preventDefault?.();
+        e.stopImmediatePropagation?.();
+        return;
+      }
+  },
+  true,
+);
 
 /** The product's language, words and Report (see the top of this file). */
 export function configureDialog(h) {
@@ -217,12 +292,14 @@ function attrsOf(o) {
  * plain one (no kind) never validates the form: it is a way out.
  */
 function actionHtml(a) {
+  // Issue 673: the kit's one button (button.css); dk-btn, dk-primary and
+  // dk-danger stay as the dialog's hooks.
   const cls =
-    "dk-btn" +
+    "den-btn dk-btn" +
     (a.kind === "primary"
-      ? " dk-primary"
+      ? " primary dk-primary"
       : a.kind === "danger"
-        ? " dk-danger"
+        ? " danger dk-danger"
         : "") +
     (a.className ? ` ${a.className}` : "");
   if (a.href != null)
@@ -281,7 +358,7 @@ function panelInner(spec, ids) {
       ? `<span class="dk-sub" id="${esc(ids.sub)}">${esc(spec.subtitle)}</span>`
       : "") +
     `<span class="dk-acts">${actionsHtml(spec.headActions)}` +
-    `<form class="dk-x-f" method="dialog"><button type="submit" class="dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
+    `<form class="dk-x-f" method="dialog"><button type="submit" class="den-btn dk-btn dk-x" value="close" data-dk="close"${attrsOf(spec.closeAttrs)}>${esc(close)}</button></form>` +
     `</span></div>` +
     `<div class="dk-body" id="${esc(ids.body)}"${attrsOf(spec.bodyAttrs)}>${spec.body ?? ""}</div>` +
     (spec.foot ?? "") +
@@ -298,7 +375,8 @@ function panelInner(spec, ids) {
  *
  *   kind "confirm"  a Yes/No question: heading, body, actions in the footer
  *   kind "panel"    a large dialog: heading (and subtitle), the header's
- *                   own actions and Close, a body that scrolls, a footer
+ *                   own actions and Close, a body that scrolls, a footer;
+ *                   with sheet: true, a full-screen sheet on a phone
  *
  * title and labels are text (escaped); body, extra and foot are HTML the
  * caller has escaped. Called with a kind string first (kind, opts, ids),
@@ -324,7 +402,7 @@ export function dialogHtml(spec, opts, askIds) {
       ? ` aria-describedby="${esc(ids.m)}"`
       : "";
   return (
-    `<dialog id="${esc(ids.id)}" class="dk-dlg dk-${kind}${s.className ? ` ${esc(s.className)}` : ""}"` +
+    `<dialog id="${esc(ids.id)}" class="dk-dlg dk-${kind}${kind === "panel" && s.sheet ? " dk-sheet" : ""}${s.className ? ` ${esc(s.className)}` : ""}"` +
     ` data-dk-kind="${esc(s.dataKind ?? kind)}" role="${esc(role)}"${named}${described}` +
     attrsOf(s.attrs) +
     (s.report ? " data-dk-report" : "") +
@@ -434,6 +512,13 @@ function startOf(d, sel) {
  *     remove,      take it off the page once closed (default: true for
  *                  HTML, false for an element)
  *     show,        false: mount only; show() later
+ *     onAction,    issue 1054: (value, dialog, button) on a press of an
+ *                  action that closes it. A promise back keeps it open, the
+ *                  button held (configureDialog's hold) and the others
+ *                  off, until it settles: then it closes with that value;
+ *                  a rejection says its message in the dialog (.dk-err,
+ *                  role=alert) and gives the buttons back. Esc does
+ *                  nothing meanwhile.
  *   }) → { dialog, show(opener?), close(value?), closed }
  *
  * `closed` is a promise of the value, renewed on each show().
@@ -455,7 +540,47 @@ export function mountDialog(target, o = {}) {
   let settle = null;
   let gone = false;
   let shown = false;
+  let waiting = false;
   const handle = { dialog: d, show, close, closed: Promise.resolve("") };
+
+  // Issue 1054: an action whose request runs while the dialog stays open.
+  d.addEventListener("submit", (e) => {
+    if (waiting) {
+      e.preventDefault();
+      return;
+    }
+    if (typeof o.onAction !== "function") return;
+    const btn = e.submitter ?? null;
+    const value = btn?.value ?? "";
+    const p = o.onAction(value, d, btn);
+    if (!p || typeof p.then !== "function") return;
+    e.preventDefault();
+    waiting = true;
+    const others = [...d.querySelectorAll(".dk-ft button")].filter(
+      (x) => x !== btn && !x.disabled,
+    );
+    others.forEach((x) => (x.disabled = true));
+    const release = holdFor(btn);
+    d.querySelector(".dk-err")?.remove();
+    Promise.resolve(p).then(
+      async () => {
+        await release();
+        waiting = false;
+        close(value);
+      },
+      async (err) => {
+        await release();
+        waiting = false;
+        others.forEach((x) => (x.disabled = false));
+        const line = document.createElement("p");
+        line.className = "dk-err";
+        line.setAttribute("role", "alert");
+        line.textContent = failedLine(err);
+        d.querySelector(".dk-ft")?.before(line);
+        btn?.focus?.();
+      },
+    );
+  });
 
   function close(value = "cancel") {
     if (gone) return;
@@ -494,14 +619,14 @@ export function mountDialog(target, o = {}) {
 
   d.addEventListener("cancel", (e) => {
     e.preventDefault();
-    close("cancel");
+    if (!waiting) close("cancel");
   });
   d.addEventListener("keydown", (e) => {
     if (e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      close("cancel");
+      if (!waiting) close("cancel");
       return;
     }
     if (e.key === "Tab") {
@@ -569,6 +694,18 @@ export function mountDialog(target, o = {}) {
   return handle;
 }
 
+/**
+ * Issue 864: one pop-up at a time. A pop-up that may give way to the
+ * person's question (What's new) asks to hear of each question here;
+ * `fn(dialog)` runs just before the question shows, with its dialog.
+ * Returns a function that stops it.
+ */
+const asking = new Set();
+export function onAsk(fn) {
+  asking.add(fn);
+  return () => asking.delete(fn);
+}
+
 /** askConfirm, askText and tell, on the frame. */
 function open(kind, opts = {}) {
   const id = `dk-q-${++seq}`;
@@ -579,8 +716,13 @@ function open(kind, opts = {}) {
     onClose: (v, d) => {
       text = d.querySelector('[data-dk="field"]')?.value ?? "";
     },
+    onAction:
+      kind === "confirm" && typeof opts.onAnswer === "function"
+        ? (v) => opts.onAnswer(v === "ok")
+        : undefined,
     show: false,
   });
+  for (const fn of asking) fn(h.dialog);
   h.show(opts.opener);
   return h.closed.then((v) => answerOf(kind, v === "ok", text));
 }

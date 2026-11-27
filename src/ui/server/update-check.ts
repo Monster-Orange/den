@@ -65,12 +65,16 @@ import { UPDATE_WAIT_CHECKS_DEFAULT } from "../../shared/den-config.js";
 
 // The state file and doctor's line live in src/shared (the CLI reads them).
 export {
+  firstCheckDelay,
   readCheckState,
+  scheduleUpdateChecks,
   selfUpdateSummary,
+  tickBegun,
   tickText,
   updateCheckFile,
   writeCheckState,
   type CheckState,
+  type CheckTimers,
   type UpdateTick,
 } from "../../shared/update-check-state.js";
 
@@ -208,6 +212,66 @@ export function backNoteHeldNote(
     msg: { key: "bell.m.backNoteHeld", vars: { agent } },
     link: "/server-agent",
   });
+}
+
+/** Issue 629: the bell item while Den's tools note waits on a dialog. */
+export const TOOLS_NOTE_HELD_SUBJECT = "record:hub-tools-note-held";
+
+/**
+ * Issue 629: Den restarted `agent` to load Hub's tools, and its note
+ * saying so waits: a dialog for the person is open in its terminal.
+ */
+export function toolsNoteHeldNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  workspace: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: `${TOOLS_NOTE_HELD_SUBJECT}:${agent}`,
+    scope: `workspace/${workspace}`,
+    text: `${title} reconnected Hub's tools for ${agent}; its note waits until you answer ${agent} in its terminal`,
+    msg: { key: "bell.m.toolsNoteHeld", vars: { agent } },
+    link: "/agents",
+  });
+}
+
+/** Issue 749: the bell item for an agent whose Hub tools still didn't load. */
+export const TOOLS_LIST_FAILED_SUBJECT = "record:hub-tools-list-failed";
+
+/**
+ * Issue 749: listing Hub's tools failed again after Den's one restart for
+ * it, so Den stops restarting `agent` and tells its person once.
+ */
+export function toolsListFailedNote(
+  store: Pick<NotificationStore, "add">,
+  title: string,
+  agent: string,
+  workspace: string,
+  error: string,
+): void {
+  store.add({
+    kind: "service",
+    subject: `${TOOLS_LIST_FAILED_SUBJECT}:${agent}`,
+    scope: `workspace/${workspace}`,
+    text: `${agent} can't use Hub's tools: ${error}. ${title} restarted it once; restart it from Agents once Hub is fixed`,
+    msg: { key: "bell.m.toolsListFailed", vars: { agent } },
+    link: "/agents",
+  });
+}
+
+/**
+ * Issue 629: clear every waiting-note bell item. The loop that kept a note
+ * is in memory: after Den restarts, nothing waits any more, so an item
+ * left over would never go. How many it cleared.
+ */
+export function clearToolsNotesHeld(
+  store: Pick<NotificationStore, "remove">,
+): number {
+  return store.remove((x) =>
+    x.subject.startsWith(`${TOOLS_NOTE_HELD_SUBJECT}:`),
+  );
 }
 
 /** Issue 562 review: the bell line after a restart that stopped waiting. */
@@ -378,7 +442,11 @@ export interface UpdateCheckDeps {
     version: string,
     reason: string,
     opts?: { security: boolean },
-  ): Promise<{ ok: boolean; error?: string }>;
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    rollbackFailed?: import("./den-update.js").RollbackFailed;
+  }>;
   /** Hold "update Den to X" for the person; false when it couldn't. */
   ask(version: string, reason: string): Promise<boolean> | boolean;
   /**
@@ -693,10 +761,21 @@ export function updateCheck(d: UpdateCheckDeps): UpdateCheck {
         return { did: "updating", version: want, security: true };
       }
       const why = r.error ?? "the update didn't run";
-      d.notice(want, `Den couldn't update to ${want}: ${why}`, {
-        key: "bell.m.updateFailed",
-        vars: { v: want, why },
-      });
+      const rb = "rollbackFailed" in r ? r.rollbackFailed : undefined;
+      if (rb)
+        d.notice(
+          want,
+          `Den couldn't update to ${want}, and the rollback failed too: Den ${rb.from} may not start. Put the pin back on ${rb.from} in ${rb.root} and run npm install there. Why: ${rb.why}`,
+          {
+            key: "bell.m.updateRollbackFailed",
+            vars: { v: want, from: rb.from, root: rb.root, why: rb.why },
+          },
+        );
+      else
+        d.notice(want, `Den couldn't update to ${want}: ${why}`, {
+          key: "bell.m.updateFailed",
+          vars: { v: want, why },
+        });
       return { did: "failed", version: want, why };
     },
   };

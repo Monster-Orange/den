@@ -52,7 +52,7 @@
  * search field with ⌘K inside), bellButtonHtml and bellPanelHtml (the
  * bell and its panel); and accountHtml (the rail's account entry).
  */
-import { esc, kitT } from "./strings.js";
+import { esc, kitT, safeId } from "./strings.js";
 import { icon } from "./icons.js";
 
 export { icon } from "./icons.js";
@@ -193,7 +193,9 @@ export function navItemHtml(n, navRole, lang) {
   const off = navOff(n.off);
   const extra = b
     ? '<span class="den-bdg' +
-      (b.bad ? " bad" : "") +
+      (b.bad ? " bad" : b.warn ? " warn" : "") +
+      '" data-badge="' +
+      (b.bad ? "bad" : b.warn ? "warn" : "") +
       '" aria-hidden="true">' +
       esc(b.n) +
       "</span>"
@@ -264,8 +266,13 @@ export function navItemHtml(n, navRole, lang) {
     : link;
 }
 
-/** A rail group: its heading (and "from <d>" tag) and its entries. */
-export function railGroupHtml(g, body, lang) {
+/**
+ * A rail group: its heading (and "from <d>" tag) and its entries, in
+ * div.den-gb. Issue 1444: `folded` marks it data-folded; the heading stays
+ * plain, and only hydrateRailFolds (shell-client.js) makes it the toggle,
+ * so a page with no script shows every entry.
+ */
+export function railGroupHtml(g, body, lang, folded) {
   const id = esc(g.id);
   const from = g.from;
   return (
@@ -273,6 +280,7 @@ export function railGroupHtml(g, body, lang) {
     id +
     '"' +
     (from ? ' aria-describedby="den-gd-' + id + '"' : "") +
+    (folded ? " data-folded" : "") +
     '><div class="den-gh" data-nav-role="group"><span id="den-gh-' +
     id +
     '">' +
@@ -293,8 +301,11 @@ export function railGroupHtml(g, body, lang) {
         esc(kitT(lang, "kit.from", { d: from })) +
         "</span>"
       : "") +
+    '<div class="den-gb" id="den-gb-' +
+    id +
+    '">' +
     body +
-    "</div>"
+    "</div></div>"
   );
 }
 
@@ -314,7 +325,12 @@ function collapseHtml(collapsed, lang) {
   );
 }
 
-/** The rail's content: the groups, the spacer, the foot, the toggle. */
+/**
+ * The rail's content: the groups, the spacer, then the foot (a host's
+ * foot entries, Settings, the account entry, the toggle) in one
+ * .den-rail-foot. The foot stays pinned at the rail's bottom while the
+ * groups scroll above it (issue 1341).
+ */
 export function railHtml({
   nav = [],
   groups = [],
@@ -323,8 +339,10 @@ export function railHtml({
   account,
   lang,
   collapsed,
+  folded = [],
 } = {}) {
   let html = "";
+  const fold = new Set(Array.isArray(folded) ? folded : []);
   for (const g of groups) {
     const items = nav.filter((n) => n.group === g.id);
     if (!items.length) continue;
@@ -332,15 +350,18 @@ export function railHtml({
       g,
       items.map((n) => navItemHtml(n, "page", lang)).join(""),
       lang,
+      fold.has(g.id) && !items.some((n) => n.current),
     );
   }
   html += '<div class="den-rail-grow"></div>';
+  html += '<div class="den-rail-foot">';
   html += foot
     .map((n) => (typeof n === "string" ? n : navItemHtml(n, undefined, lang)))
     .join("");
   html += settingsHtml(settings, lang);
   html += accountHtml(account);
   html += collapseHtml(!!collapsed, lang);
+  html += "</div>";
   return html;
 }
 
@@ -711,25 +732,37 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
   return html + (after || "") + "</div>";
 }
 
+function hostPlaceholder(placeholder, lang) {
+  let w = placeholder;
+  if (w && typeof w === "object") {
+    const l = String(lang || "en");
+    w = w[l] ?? w[l.split("-")[0]];
+  }
+  return typeof w === "string" && w.trim() ? w : null;
+}
+
 /**
- * The search field: the kit's placeholder ("Search…"), then ⌘K inside it,
- * as a button (the host's palette or page opens on it: hydrateSearch).
- *   searchHtml({ id?, shortcut?, lang })
- * Its placeholder and its name ("Search") are the kit's words, in the
- * page's language: one search in every product, so a host can't set them.
+ * The search field: a placeholder (the kit's "Search…", or the host's, one
+ * word or words per locale), then ⌘K inside it, as a button (hydrateSearch).
+ *   searchHtml({ id?, shortcut?, lang, placeholder? })
+ * Its name is what it shows, less a trailing "…" (WCAG 2.5.3).
  * `shortcut: false`: no ⌘K.
  */
-export function searchHtml({ id, shortcut, lang } = {}) {
+export function searchHtml({ id, shortcut, lang, placeholder } = {}) {
   const keys = shortcut !== false;
+  const host = hostPlaceholder(placeholder, lang);
+  const name = host
+    ? host.trim().replace(/\s*(…|\.\.\.)$/u, "") || host.trim()
+    : kitT(lang, "kit.search.label");
   return (
     '<button type="button" class="den-search" id="' +
     esc(id || "den-search") +
     '" aria-haspopup="dialog" data-nav-kit="search"' +
     (keys ? ' aria-keyshortcuts="Meta+K Control+K"' : "") +
     ' aria-label="' +
-    esc(kitT(lang, "kit.search.label")) +
+    esc(name) +
     '"><span class="den-search-ph">' +
-    esc(kitT(lang, "kit.search.ph")) +
+    esc(host ?? kitT(lang, "kit.search.ph")) +
     "</span>" +
     (keys ? '<kbd aria-hidden="true">⌘K</kbd>' : "") +
     '<span class="den-search-ic" aria-hidden="true">⌕</span></button>'
@@ -800,10 +833,10 @@ function bellRowHtml(it) {
  * `actions`: buttons beside the heading (Mark all read); `lead`: HTML
  * under the heading; `after`: HTML after the rows; `foot`: the footer (a
  * Report button). Every HTML part is the host's own.
- * Issue 101: `sections` { needs, earlier? } in place of rows: the kit
- * heads them "Needs you" (first, always; its own line when `needs` is
- * empty) and "Earlier" (when given), in its words; the host gives only
- * each section's rows.
+ * `sections` { needs, done?, earlier? } in place of rows: the
+ * kit heads them "Needs you" (first, always; its own line when `needs` is
+ * empty), "Done, not seen" (when given) and "Earlier" (when
+ * given), in its words; the host gives only each section's rows.
  */
 export function bellPanelHtml({
   title,
@@ -863,7 +896,6 @@ function bellSectionHtml(id, word, rows) {
   );
 }
 
-/** Issue 101: Needs you, then Earlier (the host's rows in each). */
 function bellSectionsHtml(s, lang) {
   const needs = s.needs || "";
   return (
@@ -875,6 +907,9 @@ function bellSectionsHtml(s, lang) {
           esc(kitT(lang, "kit.bell.needsNone")) +
           "</p>",
     ) +
+    (s.done
+      ? bellSectionHtml("done", kitT(lang, "kit.bell.done"), s.done)
+      : "") +
     (s.earlier
       ? bellSectionHtml("earlier", kitT(lang, "kit.bell.earlier"), s.earlier)
       : "")
@@ -1071,9 +1106,6 @@ export function menuRowHtml(r) {
     ">"
   );
 }
-
-/** An id made of safe characters: letters, digits, - and _. */
-const safeId = (s) => String(s).replace(/[^A-Za-z0-9_-]/g, "-");
 
 /** A host's words: text, or { key, vars } in the kit's tables (addStrings). */
 const words = (w, lang) =>

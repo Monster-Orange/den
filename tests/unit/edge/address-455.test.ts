@@ -24,7 +24,7 @@ import * as path from "path";
 import type { AddressInfo } from "net";
 import { cmdWebLogin } from "../../../src/ui/cli/web-command.js";
 import { edgeUp, portInUse } from "../../../src/shared/edge/runtime.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 import {
   DEN_IDENTITY_PATH,
   identityBody,
@@ -109,6 +109,8 @@ describe("case 1: a non-Den server answers 404 on the address's port", () => {
       out: (s) => (out += s),
       err: (s) => (err += s),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
       webUrl: () => ({
         url: `http://den.acme.localhost:${held}`,
         confirmed: true,
@@ -148,6 +150,8 @@ describe("case 1: a non-Den server answers 404 on the address's port", () => {
       out: (s) => (out += s),
       err: (s) => (err += s),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
       webUrl: () => ({
         url: `http://den.acme.localhost:${held}`,
         confirmed: true,
@@ -167,6 +171,8 @@ describe("case 1: a non-Den server answers 404 on the address's port", () => {
       out: (s) => (out += s),
       err: (s) => (err += s),
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
       // Den's own port, by a .localhost name: it answers as this Den.
       webUrl: () => ({
         url: `http://den.acme.localhost:${denPort}`,
@@ -189,6 +195,8 @@ describe("case 1: a non-Den server answers 404 on the address's port", () => {
       out: (s) => (out += s),
       err: () => {},
       stateDir: tmp,
+      // Sign-in: the person's own terminal.
+      person: { tty: true, line: () => [process.pid, 1] },
       webUrl: () => ({
         url: `http://den.acme.localhost:${other}`,
         confirmed: true,

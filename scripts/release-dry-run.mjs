@@ -9,7 +9,11 @@
  *     - kit: packages/den-ui's own version. It is decided in the candidate,
  *       never in the release commit: when npm already has that version and
  *       the kit changed since the commit npm's copy was built from, it fails
- *       and says to bump the kit's version in the candidate.
+ *       and says to bump the kit's version in the candidate (the rule is
+ *       scripts/kit-version.mjs's, which CI and the release run too).
+ *       When the release publishes the kit and next/queue has the same kit
+ *       version with other kit files, it fails and says to bump next/queue's
+ *       den-ui first (issue 1508).
  *     Exit 0: planned. 1: the kit's rule, or npm answered with an error
  *     other than a 404. 2: bad arguments.
  *
@@ -21,11 +25,15 @@
  *     Exit 0: applied. 1: a file lacks a line it edits (named). 2: bad
  *     arguments.
  */
-import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
+import {
+  checkKit,
+  checkKitQueue,
+  KIT_DIR,
+  KIT_PKG,
+  KitError,
+} from "./kit-version.mjs";
 
-const KIT_DIR = "packages/den-ui";
-const KIT_PKG = `${KIT_DIR}/package.json`;
 const SEMVER = /^\d+\.\d+\.\d+$/;
 
 class Stop extends Error {
@@ -38,65 +46,17 @@ class Stop extends Error {
 const readJson = (f) => JSON.parse(fs.readFileSync(f, "utf8"));
 const note = (s) => process.stderr.write(s + "\n");
 
-/** npm view <spec> <field>: the value, or null on a 404. Any other error stops. */
-function npmView(spec, field) {
-  const r = spawnSync("npm", ["view", spec, field], { encoding: "utf8" });
-  if (r.status === 0) return r.stdout.trim();
-  if (/E404/.test(r.stderr ?? "")) return null;
-  throw new Stop(
-    1,
-    `::error::npm view ${spec} ${field} failed (not a 404): ${(r.stderr ?? "").trim()}`,
-  );
-}
-
-const git = (...args) => execFileSync("git", args, { encoding: "utf8" }).trim();
-const isCommit = (sha) =>
-  spawnSync("git", ["cat-file", "-e", `${sha}^{commit}`]).status === 0;
-
+/** The kit's version (scripts/kit-version.mjs): its rule failing stops the plan. */
 function kitVersion() {
-  const kit = readJson(KIT_PKG);
-  const v = kit.version;
-  const lock = readJson("package-lock.json");
-  const locked = lock.packages?.[KIT_DIR]?.version;
-  if (locked !== v)
-    throw new Stop(
-      1,
-      `::error::${KIT_PKG} says ${v}, package-lock.json's "${KIT_DIR}" says ${locked}: bump both together in the candidate`,
-    );
-  if (v.includes("-")) {
-    note(`kit ${v} is a prerelease: the release never publishes it`);
-    return v;
+  try {
+    const kit = checkKit();
+    // Issue 1508: a published kit carries next/queue's files at its version.
+    if (kit.publish) checkKitQueue({ version: kit.version });
+    return kit.version;
+  } catch (e) {
+    if (e instanceof KitError) throw new Stop(1, e.message);
+    throw e;
   }
-  if (npmView(kit.name, "name") === null) {
-    note(`${kit.name} isn't on npm yet: its first publish is by hand`);
-    return v;
-  }
-  if (npmView(`${kit.name}@${v}`, "version") !== v) {
-    note(`the release publishes ${kit.name}@${v} (npm doesn't have it yet)`);
-    return v;
-  }
-  // npm has this version: the kit must not have changed since then.
-  let base = npmView(`${kit.name}@${v}`, "gitHead") || "";
-  let from = `the commit npm's copy was built from (${base.slice(0, 9)})`;
-  if (!base || !isCommit(base)) {
-    base = git("log", "-1", "--format=%H", "-G", '"version"', "--", KIT_PKG);
-    from = `the commit that set ${v} (${base.slice(0, 9)})`;
-  }
-  const changed = base
-    ? git("diff", "--name-only", base, "HEAD", "--", KIT_DIR)
-    : "";
-  if (changed) {
-    throw new Stop(
-      1,
-      `::error::${KIT_DIR} changed since ${from}, but its version ${v} is on npm already. ` +
-        `Bump the kit's version in this candidate (${KIT_PKG} and its entry in package-lock.json): ` +
-        `the release commit never changes it (CONTRIBUTING › Releasing). Changed: ${changed.split("\n").join(", ")}`,
-    );
-  }
-  note(
-    `${kit.name}@${v} is on npm and the kit is unchanged since: nothing new to publish`,
-  );
-  return v;
 }
 
 function plan(tag) {

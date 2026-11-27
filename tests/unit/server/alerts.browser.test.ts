@@ -9,7 +9,8 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { denAuth, signInUrl } from "./helpers/den-auth.js";
+import { denAuth } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -75,6 +76,7 @@ async function open(
   o: {
     permission: string;
     front: boolean;
+    hidden?: boolean;
     /** S2: the device's subscription a stubbed PushManager hands out. */
     sub?: PushStub["subscription"];
   },
@@ -84,7 +86,7 @@ async function open(
     reducedMotion: "reduce",
   });
   await ctx.addInitScript(
-    ({ v, permission, front, sub }) => {
+    ({ v, permission, front, hidden, sub }) => {
       try {
         for (const k of ["den-changelog-seen", "acme-changelog-seen"])
           localStorage.setItem(k, v);
@@ -116,6 +118,10 @@ async function open(
       }
       w.Notification = FakeNotification;
       Document.prototype.hasFocus = () => front;
+      if (hidden)
+        Object.defineProperty(Document.prototype, "visibilityState", {
+          get: () => "hidden",
+        });
       if (sub) {
         // S2: a service worker and PushManager that never reach a real
         // push service: the subscription is the test's local stub.
@@ -155,7 +161,7 @@ async function open(
   );
   const p = await ctx.newPage();
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto(signInUrl(s!.stateDir, s!.base, path));
+  await signInPage(p, s!.stateDir, s!.base, path);
   return p;
 }
 
@@ -193,8 +199,19 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       ).__shown.map((n) => ({ title: n.title, body: n.body, tag: n.tag })),
     );
     expect(shown).toHaveLength(1);
-    expect(shown[0].body).toBe("planner needs your permission");
-    expect(shown[0].title).toBeTruthy();
+    expect(shown[0].title).toBe("planner needs your permission");
+    expect(shown[0].body).toBe("north");
+    await p.waitForFunction(() => document.title.startsWith("(1) "), null, {
+      timeout: 15_000,
+    });
+    await p.waitForFunction(
+      () =>
+        (
+          document.getElementById("den-favicon")?.getAttribute("href") ?? ""
+        ).startsWith("data:image/png"),
+      null,
+      { timeout: 15_000 },
+    );
     expect(shown[0].tag).toMatch(/^[0-9a-f-]{36}$/);
     expect(JSON.stringify(shown)).not.toContain("sk-live");
     await p.evaluate(() =>
@@ -285,6 +302,26 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       alerts: { quiet_from: "22:00", quiet_to: "07:00" },
     });
     await s!.settings({ alerts: { quiet_from: null, quiet_to: null } });
+    const fin = p.locator('[data-focus-key="notifications-alert_finished"]');
+    expect(await fin.isChecked()).toBe(false);
+    await fin.click();
+    await p.locator("#set-alert-sound").click();
+    await p
+      .locator("#setting-notifications-alert_sound button[data-sound=finished]")
+      .click();
+    const count = p.locator('[data-focus-key="notifications-tab_count"]');
+    expect(await count.isChecked()).toBe(true);
+    const end = Date.now() + 10_000;
+    while (
+      ((await s!.settingsGet()).alerts as { sound?: boolean } | undefined)
+        ?.sound !== true &&
+      Date.now() < end
+    )
+      await new Promise((r) => setTimeout(r, 50));
+    expect(await s!.settingsGet()).toMatchObject({
+      alerts: { finished: true, sound: true, tab_count: true },
+    });
+    await s!.settings({ alerts: { finished: null, sound: null } });
     expect(errors).toEqual([]);
     await p.context().close();
   }, 90_000);
@@ -296,6 +333,7 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       const p = await open("/settings#notifications", {
         permission: "default",
         front: false,
+        hidden: true,
         sub: stub.subscription,
       });
       await p.click('#set-nav a[data-cat="notifications"]');
@@ -353,7 +391,8 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       expect(stub.received).toHaveLength(1);
       expect(stub.received[0].vapidOk).toBe(true);
       expect(JSON.parse(stub.received[0].text!)).toMatchObject({
-        body: "planner needs your permission",
+        title: "planner needs your permission",
+        body: "north",
         link: "/agents?project=north&agent=planner",
       });
       // The tab leaves it to the push: no second notification.
@@ -392,6 +431,56 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
         event: "resumed",
         from: "session",
       });
+      expect(errors).toEqual([]);
+      await p.context().close();
+    } finally {
+      await stub.close();
+    }
+  }, 120_000);
+
+  it("Devices that get push: this device shows up; Send a test alert reaches it and says so; Forget removes it", async () => {
+    if (skip()) return;
+    const stub = await startPushStub();
+    try {
+      const p = await open("/settings#notifications", {
+        permission: "granted",
+        front: true,
+        sub: stub.subscription,
+      });
+      await p.click('#set-nav a[data-cat="notifications"]');
+      const row = p.locator("#setting-notifications-push_devices");
+      // None yet: it says how to add a phone, and the test waits for one.
+      await row.locator("#set-push-none").waitFor();
+      expect(await row.locator("#set-push-test").isDisabled()).toBe(true);
+      await p.locator("#set-phone-push").click();
+      const device = row.locator("[data-device]");
+      await device.waitFor({ timeout: 15_000 });
+      expect(await device.count()).toBe(1);
+      expect(await device.getAttribute("data-service")).toBe("other");
+      expect(await device.getAttribute("data-this")).not.toBeNull();
+      await row.locator("#set-push-test").click();
+      await row
+        .locator("[data-test-result]", {
+          hasText: "Sent: its push service took it.",
+        })
+        .waitFor({ timeout: 15_000 });
+      expect(stub.received).toHaveLength(1);
+      expect(JSON.parse(stub.received[0].text!)).toMatchObject({
+        body: "Test alert: this device gets alerts when an agent needs you.",
+        link: "/settings#notifications",
+      });
+      // The phone is lost: Forget it here.
+      await device.locator("[data-forget]").click();
+      await row.locator("#set-push-none").waitFor({ timeout: 15_000 });
+      expect(
+        (
+          (await (
+            await fetch(`${s!.base}/api/alerts/devices`, {
+              headers: denAuth(s!.stateDir),
+            })
+          ).json()) as { devices: unknown[] }
+        ).devices,
+      ).toEqual([]);
       expect(errors).toEqual([]);
       await p.context().close();
     } finally {

@@ -11,13 +11,14 @@
  */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 jest.setTimeout(60_000);
 
@@ -48,13 +49,8 @@ async function open(e: (typeof ENGINES)[number]): Promise<Page> {
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
       st.textContent = "#cl-overlay{display:none!important}";
@@ -90,7 +86,7 @@ describe.each(ENGINES)("issue 393 in %s: Browser sign-in", (e) => {
   it("signed in: Sign out, and no Sign in", async () => {
     if (!browsers[e] || !s) return;
     const p = await open(e);
-    await p.goto(signInUrl(s.stateDir, s.base, "/settings#cli"));
+    await signInPage(p, s.stateDir, s.base, "/settings#cli");
     await p.locator("#set-signout").waitFor({ timeout: 20_000 });
     expect(await p.locator("#set-signin").count()).toBe(0);
     await p.context().close();

@@ -8,7 +8,7 @@ import {
   ProjectSync,
   projectList,
   syncAgents,
-} from "../../shared/hub-project-sync.js";
+} from "../../shared/hub/hub-project-sync.js";
 import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import { projectRepos } from "../../shared/project-repos.js";
 import { listRecords } from "../../shared/agents/records.js";
@@ -38,6 +38,16 @@ export function projectSync(): ProjectSync {
       );
     },
     spelling: projectRepos,
+    moved: (m) =>
+      void Promise.all([
+        import("../../shared/hub/hub-moved.js"),
+        import("./notification-service.js"),
+      ])
+        .then(([hm, ns]) => {
+          const store = ns.notificationDeps().store;
+          for (const x of m) store.add(hm.movedNote(x));
+        })
+        .catch(() => undefined),
     send: async (projects) => {
       const at = await hubAndToken();
       if (!at) return null;
@@ -55,12 +65,31 @@ export function projectSync(): ProjectSync {
  * the same beat reads a new Hub project asked of Hub (only when one
  * waits), so a project links on its own once an owner allows it.
  */
+export async function retryDenUrlTellNow(): Promise<void> {
+  try {
+    const [{ retryDenUrlTell }, { readWebUrl }, hub] = await Promise.all([
+      import("../../shared/hub/hub-den-url.js"),
+      import("../../shared/web/web-url.js"),
+      import("../../shared/hub.js"),
+    ]);
+    await retryDenUrlTell({
+      hub: hubAndToken,
+      put: hub.hubPutDenUrl,
+      stateDir: getStateDir(),
+      denUrl: () => readWebUrl()?.url ?? null,
+    });
+  } catch {
+    return;
+  }
+}
+
 export function startProjectSync(checkSeconds: number): void {
   const s = projectSync();
   s.request();
   const ms = Math.max(5, checkSeconds) * 1000;
   setInterval(() => {
     s.check();
+    void retryDenUrlTellNow();
     void import("./hub-create-routes.js")
       .then((m) => m.settleAllHubCreates())
       .catch(() => undefined);
@@ -68,7 +97,7 @@ export function startProjectSync(checkSeconds: number): void {
 }
 
 /**
- * 0.4.45: bring Hub's project names here (shared/hub-project-names.ts):
+ * 0.4.45: bring Hub's project names here (shared/hub/hub-project-names.ts):
  * at start, after Connect, and every `hub.names_check_seconds` (default
  * 300). A page shows a new name on its next read of the projects.
  */
@@ -76,14 +105,14 @@ export async function refreshHubNamesNow(): Promise<string[]> {
   const at = await hubAndToken();
   if (!at) return [];
   const { refreshHubNames, recordHubNamesCheck } =
-    await import("../../shared/hub-project-names.js");
-  const link = await import("../../shared/hub-project-link.js");
+    await import("../../shared/hub/hub-project-names.js");
+  const link = await import("../../shared/hub/hub-project-link.js");
   const hub = await import("../../shared/hub.js");
   return refreshHubNames({
     linked: () => {
       const out: [
         string,
-        import("../../shared/hub-project-link.js").HubProjectLink,
+        import("../../shared/hub/hub-project-link.js").HubProjectLink,
       ][] = [];
       for (const ws of Object.keys(readWorkspacesFile().workspaces)) {
         const l = link.hubProjectOf(ws);
@@ -128,6 +157,16 @@ export function startMcpReconnect(
 ): void {
   let rc: import("../cli/mcp-reconnect.js").McpReconnect | null = null;
   let busy = false;
+  // Issue 629: a note held before Den restarted waits no more.
+  void (async () => {
+    try {
+      const { notificationDeps } = await import("./notification-service.js");
+      const u = await import("./update-check.js");
+      u.clearToolsNotesHeld(notificationDeps().store);
+    } catch {
+      /* the bell is best effort */
+    }
+  })();
   const run = async () => {
     if (busy) return;
     busy = true;
@@ -145,6 +184,12 @@ export function startMcpReconnect(
           },
           attempts,
           log: (line) => console.log(`[hub] ${line}`),
+          // Issue 629: the note waits for the person's dialog: the bell says so.
+          held: (id, ws) => void bellToolsNote(id, ws, true),
+          cleared: (id) => void bellToolsNote(id, "", false),
+          // Issue 749: its tool listing still fails after Den's one restart.
+          gaveUp: (id, ws, error) => void bellToolsListFailed(id, ws, error),
+          listed: (id) => void bellToolsListFailed(id, "", null),
         });
       }
       await rc.tick();
@@ -158,5 +203,44 @@ export function startMcpReconnect(
   ).unref();
 }
 
-/** How much of each org Den Hub can read, live (shared/hub-github.ts). */
-export { githubCoverage } from "../../shared/hub-github.js";
+/** Issue 629: the bell item for a tools note that waits, or its end. */
+async function bellToolsNote(
+  id: string,
+  workspace: string,
+  on: boolean,
+): Promise<void> {
+  try {
+    const { notificationDeps } = await import("./notification-service.js");
+    const u = await import("./update-check.js");
+    const { product } = await import("../../shared/product.js");
+    const store = notificationDeps().store;
+    if (on) u.toolsNoteHeldNote(store, product().title, id, workspace);
+    else
+      store.remove((x) => x.subject === `${u.TOOLS_NOTE_HELD_SUBJECT}:${id}`);
+  } catch {
+    /* the bell is best effort */
+  }
+}
+
+/** Issue 749: the bell item for an agent whose Hub tools still don't load, or its end. */
+async function bellToolsListFailed(
+  id: string,
+  workspace: string,
+  error: string | null,
+): Promise<void> {
+  try {
+    const { notificationDeps } = await import("./notification-service.js");
+    const u = await import("./update-check.js");
+    const { product } = await import("../../shared/product.js");
+    const store = notificationDeps().store;
+    if (error !== null)
+      u.toolsListFailedNote(store, product().title, id, workspace, error);
+    else
+      store.remove((x) => x.subject === `${u.TOOLS_LIST_FAILED_SUBJECT}:${id}`);
+  } catch {
+    /* the bell is best effort */
+  }
+}
+
+/** How much of each org Den Hub can read, live (shared/hub/hub-github.ts). */
+export { githubCoverage } from "../../shared/hub/hub-github.js";

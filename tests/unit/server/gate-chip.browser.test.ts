@@ -10,7 +10,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
-import { signInUrl } from "./helpers/den-auth.js";
+import { signInPage } from "./helpers/signed-in.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -19,6 +19,7 @@ import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer | null = null;
@@ -87,14 +88,7 @@ async function page(): Promise<Page> {
     viewport: { width: 1280, height: 860 },
     reducedMotion: "reduce",
   });
-  await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
-  });
+  await seeWhatsNew(ctx, s!.base);
   return ctx.newPage();
 }
 
@@ -126,7 +120,7 @@ describe("issue 144: the gate chip on Agents", () => {
         body: JSON.stringify({ ok: true, slots }),
       });
     });
-    await p.goto(signInUrl(s!.stateDir, s!.base, `/agents`));
+    await signInPage(p, s!.stateDir, s!.base, `/agents`);
     const chip = p.locator("#ag-gate");
     await chip.waitFor({ state: "visible", timeout: 20_000 });
     // The kit's time in the page (issue 668): the same text the chip draws.
@@ -197,6 +191,81 @@ describe("issue 144: the gate chip on Agents", () => {
     await p.context().close();
   }, 60_000);
 
+  it("issue 1263: the queue lists the throwaway containers removed after their run, as text, only when any", async () => {
+    if (!browser) return;
+    const p = await page();
+    const errors: string[] = [];
+    p.on("pageerror", (e) => errors.push(e.message));
+    let removed: unknown[] = [
+      {
+        at: new Date().toISOString(),
+        id: "s1",
+        label: "<b>x</b>",
+        count: 2,
+        images: ["postgres:16"],
+      },
+    ];
+    await p.route("**/api/gate-slots", (route) =>
+      route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          settings: { cpuSlots: 2, overrunMarginMinutes: 15 },
+          slots: [HOLDER],
+          removed,
+        }),
+      }),
+    );
+    await signInPage(p, s!.stateDir, s!.base, `/agents`);
+    const chip = p.locator("#ag-gate");
+    await chip.waitFor({ state: "visible", timeout: 20_000 });
+    await p
+      .locator(`#agl [data-id="${sid}"] [data-gate-tag]`)
+      .waitFor({ timeout: 10_000 });
+    await p.evaluate(() =>
+      (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
+    );
+    await chip.click();
+    const pop = p.locator('#ag-gate-pop[role="dialog"]');
+    await pop.waitFor();
+    await expect(
+      pop
+        .getByRole("heading", {
+          name: "Throwaway containers removed after their run",
+        })
+        .count(),
+    ).resolves.toBe(1);
+    const row = pop.locator("[data-gate-removed] li");
+    expect(await row.count()).toBe(1);
+    expect(await row.textContent()).toMatch(
+      / · 2 containers of <b>x<\/b> \(postgres:16\)$/,
+    );
+    expect(await row.locator("b").count()).toBe(0);
+
+    removed = [];
+    await p.keyboard.press("Escape");
+    await p.reload();
+    await chip.waitFor({ state: "visible", timeout: 20_000 });
+    await p
+      .locator(`#agl [data-id="${sid}"] [data-gate-tag]`)
+      .waitFor({ timeout: 10_000 });
+    await p.evaluate(() =>
+      (window as unknown as { closeChangelog?: () => void }).closeChangelog?.(),
+    );
+    await chip.click();
+    await pop.waitFor();
+    expect(await pop.locator("[data-gate-id]").count()).toBe(1);
+    expect(
+      await pop
+        .getByRole("heading", {
+          name: "Throwaway containers removed after their run",
+        })
+        .count(),
+    ).toBe(0);
+    expect(await pop.locator("[data-gate-removed]").count()).toBe(0);
+    expect(errors).toEqual([]);
+    await p.context().close();
+  }, 60_000);
+
   it("no slot held or waited for: no chip", async () => {
     if (!browser) return;
     const p = await page();
@@ -206,7 +275,7 @@ describe("issue 144: the gate chip on Agents", () => {
         body: JSON.stringify({ settings: {}, slots: [] }),
       }),
     );
-    await p.goto(signInUrl(s!.stateDir, s!.base, `/agents`));
+    await signInPage(p, s!.stateDir, s!.base, `/agents`);
     await p.locator(`#agl .agr[data-id="${sid}"]`).waitFor({ timeout: 20_000 });
     expect(await p.locator("#ag-gate").isHidden()).toBe(true);
     await p.context().close();

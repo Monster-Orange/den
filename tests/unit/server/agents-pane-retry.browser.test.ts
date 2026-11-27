@@ -16,8 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Route } from "playwright";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
-import { signInUrl } from "./helpers/den-auth.js";
-import { signIn } from "./helpers/signed-in.js";
+import { signIn, signInPage } from "./helpers/signed-in.js";
 import type { ScriptedPty } from "../sessions/helpers/fake-pty.js";
 import {
   startAgentsPageServer,
@@ -25,6 +24,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -81,13 +81,8 @@ describe("a pane whose terminal code failed to load (issue 128)", () => {
       viewport: { width: 1440, height: 900 },
       reducedMotion: "reduce",
     });
+    await seeWhatsNew(ctx, s.base);
     await ctx.addInitScript(() => {
-      try {
-        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-          localStorage.setItem(k, "9.9.9");
-      } catch {
-        /* none */
-      }
       (window as unknown as { __loaded: number }).__loaded = Date.now();
     });
     // The person's browser, signed in as `web up` does (0.4.71): a pane's
@@ -161,13 +156,8 @@ describe("the server agent's terminal code failed to load (issue 128)", () => {
       viewport: { width: 1440, height: 900 },
       reducedMotion: "reduce",
     });
+    await seeWhatsNew(ctx, s.base);
     await ctx.addInitScript(() => {
-      try {
-        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-          localStorage.setItem(k, "9.9.9");
-      } catch {
-        /* none */
-      }
       (window as unknown as { __loaded: number }).__loaded = Date.now();
     });
     const p = await ctx.newPage();
@@ -176,7 +166,7 @@ describe("the server agent's terminal code failed to load (issue 128)", () => {
       if (aborted++ === 0) return route.abort("connectionreset");
       return route.continue();
     });
-    await p.goto(signInUrl(fresh!.stateDir, fresh!.base, "/"));
+    await signInPage(p, fresh!.stateDir, fresh!.base, "/");
     const t0 = Date.now();
     while (aborted === 0 && Date.now() - t0 < 20_000)
       await new Promise((r) => setTimeout(r, 50));
