@@ -107,6 +107,7 @@ export const UI_MODULES: readonly string[] = [
   "/pty-refusal.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
+  "/account-dialog.js",
   // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).
   "/busy-den.js",
   // issue 133: Den's words and Report on the kit's dialogs (/kit/dialog.js).

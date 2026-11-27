@@ -8,7 +8,9 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- UI kit 0.23.0: the dialog with left nav and search (`dialog-nav.js`, `dialog-nav.css`, DS component #5) for Account and Settings pop-ups: a rail with search and the pane list, panes that stay mounted, search that jumps to a row, the open pane in the address (Back closes it), a question before a typed change is lost, read-only panes, and a list-then-pane layout on a phone. Words in en, es and ja.
+- UI kit 0.23.0: the dialog with left nav and search (`dialog-nav.js`, `dialog-nav.css`, DS component #5) for Account and Settings pop-ups: a rail with search and the pane list, panes that stay mounted, search that jumps to a row, the open pane in the address (Back closes it), a question before a typed change is lost, read-only panes, an icon per pane, extra foot links, forms in a pane that save in place ("Saved" or the error shown in the pane), and a list-then-pane layout on a phone. Words in en, es and ja.
+
+- Account opens as a pop-up over the page you're on: click your name at the foot of the rail, or open any page with `?account=<pane>`. Back or Esc closes it. Its first pane, Profile, shows who is signed in.
 
 ## [0.4.92] - unreleased
 

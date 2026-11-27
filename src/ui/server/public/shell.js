@@ -10850,6 +10850,25 @@
       return SETTING_CATS.slice().sort(byOrder);
     },
   };
+  function openAccountDialog(pane, from) {
+    return import("/account-dialog.js").then(function (m) {
+      return m.openAccount(pane, from);
+    });
+  }
+  window.denShell.openAccount = openAccountDialog;
+  document.addEventListener(
+    "click",
+    function (e) {
+      var a = e.target && e.target.closest && e.target.closest("#den-ident");
+      if (!a || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey)
+        return;
+      e.preventDefault();
+      openAccountDialog(null, a);
+    },
+    true,
+  );
+  if (new URLSearchParams(location.search).has("account"))
+    openAccountDialog(new URLSearchParams(location.search).get("account"));
 
   // The ready path for a script that loads before shell.js:
   // window.denShellQueue is an array of functions, each called with
