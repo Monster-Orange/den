@@ -5,6 +5,7 @@ const MODES = ["pages", "more"];
 const PER = [25, 50, 100, 200];
 const SELECT_MAX = 500;
 const TRAIL_MAX = 20;
+let popSeq = 0;
 
 function num(v) {
   const n = Number(v);
@@ -219,19 +220,18 @@ function pagesHtml(m, open) {
   ctl.push(pageLink(m, "next", m.hasNext));
   if (counted) ctl.push(pageLink(m, "last", m.hasNext));
   const per = m.perOptions.length > 1;
-  const menu =
-    `<details class="den-pager-opts">` +
-    `<summary class="den-pager-btn" aria-label="${esc(String(w.more ?? ""))}"><span aria-hidden="true">⋯</span></summary>` +
-    `<div class="den-pager-menu"><p class="den-pager-menu-range">${range}</p>` +
-    (per ? perPicker(m, "") : "") +
-    `</div></details>`;
+  const pop = `den-pager-pop-${++popSeq}`;
   return (
     `${open} data-den-pager-count="${counted ? "yes" : "no"}">` +
+    `<div class="den-pager-row">` +
     `<p class="den-pager-range">${range}</p>` +
     `<div class="den-pager-ctl">${ctl.join("")}</div>` +
     (per ? perPicker(m, "den-pager-side") : "") +
-    menu +
-    "</nav>"
+    `<button class="den-pager-btn den-pager-opts" type="button" popovertarget="${pop}" aria-label="${esc(String(w.more ?? ""))}"><span aria-hidden="true">⋯</span></button>` +
+    `</div>` +
+    `<div class="den-pager-menu" id="${pop}" popover="auto"><p class="den-pager-menu-range">${range}</p>` +
+    (per ? perPicker(m, "") : "") +
+    `</div></nav>`
   );
 }
 
@@ -251,11 +251,12 @@ export function pagerHtml(o = {}) {
   void href;
   return (
     `${open} data-den-pager-model="${esc(JSON.stringify(keep))}">` +
+    `<div class="den-pager-row">` +
     `<p class="den-pager-range" aria-live="polite">${esc(rangeText(m))}</p>` +
     `<div class="den-pager-ctl">` +
     `<p class="den-pager-err" hidden>${esc(String(w.moreErr ?? ""))}</p>` +
     `<a class="den-pager-btn den-pager-more" href="${esc(m.moreHref || "#")}">${esc(moreText(m))}</a>` +
-    "</div></nav>"
+    "</div></div></nav>"
   );
 }
 
@@ -449,39 +450,39 @@ function hydratePages(root, opts) {
     if (!inScope || t.closest?.(NOT_KEYS)) return;
     if (follow(dir)) e.preventDefault();
   };
-  const onToggle = () => {
-    const d = root.querySelector(".den-pager-opts");
-    if (d?.open) d.querySelector("select,a[href],button")?.focus();
+  const menu = root.querySelector(".den-pager-menu[popover]");
+  const opener = root.querySelector(".den-pager-opts");
+  const onToggle = (e) => {
+    if (e.newState !== "open") return;
+    const narrow = root.getBoundingClientRect().width <= 600;
+    menu.classList.toggle("den-pager-sheet", narrow);
+    if (!narrow && opener) {
+      const r = opener.getBoundingClientRect();
+      menu.style.setProperty(
+        "--den-pager-pop-x",
+        `${Math.max(8, r.right - menu.offsetWidth)}px`,
+      );
+      menu.style.setProperty(
+        "--den-pager-pop-y",
+        `${Math.max(8, r.top - menu.offsetHeight - 4)}px`,
+      );
+    }
+    menu.querySelector("select,a[href],button")?.focus();
   };
-  const onEsc = (e) => {
-    const d = root.querySelector(".den-pager-opts[open]");
-    if (e.key !== "Escape" || !d) return;
-    d.open = false;
-    d.querySelector("summary")?.focus();
-  };
-  const onOutside = (e) => {
-    const d = root.querySelector(".den-pager-opts[open]");
-    if (d && !d.contains(e.target)) d.open = false;
-  };
-  const opts$ = root.querySelector(".den-pager-opts");
   root.addEventListener("change", onChange);
   root.addEventListener("submit", onSubmit);
   root.addEventListener("click", onClick);
   root.addEventListener("keydown", onRootKey);
-  root.addEventListener("keydown", onEsc);
-  opts$?.addEventListener("toggle", onToggle);
+  menu?.addEventListener("toggle", onToggle);
   doc.addEventListener("keydown", onDocKey);
-  doc.addEventListener("pointerdown", onOutside);
   return {
     destroy() {
       root.removeEventListener("change", onChange);
       root.removeEventListener("submit", onSubmit);
       root.removeEventListener("click", onClick);
       root.removeEventListener("keydown", onRootKey);
-      root.removeEventListener("keydown", onEsc);
-      opts$?.removeEventListener("toggle", onToggle);
+      menu?.removeEventListener("toggle", onToggle);
       doc.removeEventListener("keydown", onDocKey);
-      doc.removeEventListener("pointerdown", onOutside);
       delete root.dataset.denPagerLive;
     },
   };
