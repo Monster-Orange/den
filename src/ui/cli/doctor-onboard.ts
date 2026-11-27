@@ -33,6 +33,7 @@ import { approvalsState } from "../mcp/tools.js";
 import type { WebProbe } from "./mcp-connect.js";
 import { denWebBase } from "../../shared/web/web-dial.js";
 import { readWebUrl } from "../../shared/web/web-url.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export type CheckStatus = "ok" | "warn" | "fail";
 
@@ -91,8 +92,8 @@ export interface OnboardCheck {
 export const SIGNIN_HOST_RISK =
   "the sign-in lives on this machine's own name, so other apps you open on it could see the sign-in: set up the https address";
 
-/** Settings' row for this install's address (web.url), as a ?q= link. */
-export const ADDRESS_SETTINGS_LINK = "/settings?q=web.url";
+/** Settings' row for this install's address (web.url), in the Settings pop-up. */
+export const ADDRESS_SETTINGS_LINK = settingsLink("server", "server.address");
 
 export interface OnboardDeps {
   /** process.versions.node */

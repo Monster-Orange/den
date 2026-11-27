@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
 import type { NotificationStore } from "./notifications.js";
+import { settingsLink } from "./settings-links.js";
 
 export function bestEffort(f: () => unknown): void {
   try {
@@ -52,7 +53,7 @@ export function clearAgentsNotCovered(stateDir: string): void {
 
 export const AGENT_GRANT_NOTE_SUBJECT = "record:hub-agent-grant";
 
-export const AGENT_GRANT_NOTE_LINK = "/settings#agents.hub";
+export const AGENT_GRANT_NOTE_LINK = settingsLink("hub", "agents.hub");
 
 export function syncAgentGrantNote(
   store: Pick<NotificationStore, "add" | "remove" | "list">,

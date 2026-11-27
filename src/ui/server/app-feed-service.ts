@@ -43,6 +43,7 @@ import {
 } from "../../shared/agents/feed-address.js";
 import { pinnedFetch, type PinnedFetch } from "./feed-pinned-request.js";
 import type { NotificationStore } from "../../shared/notifications.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export interface AppFeedLimits {
   maxStreams: number;
@@ -606,7 +607,7 @@ export class AppFeeds {
           key: `bell.m.appFeed.${code}`,
           vars: { name: feed.name, agent: feed.agent },
         },
-        link: "/settings",
+        link: settingsLink("workspace", "workspace.event_feeds"),
       });
     } catch {
       /* best effort: Settings still shows it */

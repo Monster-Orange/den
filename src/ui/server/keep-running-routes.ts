@@ -28,6 +28,7 @@ import type * as http from "http";
 import * as path from "path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 import type { ServiceMode } from "../cli/doctor-where.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export interface KeepRunningDeps {
   /** An agent's request (its token or actor header): never applies it. */
@@ -177,7 +178,7 @@ export function noteKeepRunningOffer(
     scope: "workspace/den-server",
     text: "Keep agents running after logout: Apply",
     msg: { key: "bell.m.keepOffer", vars: {} },
-    link: "/settings#agents.keep_running",
+    link: settingsLink("agents", "agents.keep_running"),
   });
   try {
     fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });

@@ -9,6 +9,7 @@ import {
   type DeliveryTrouble,
 } from "../../shared/hub/hub-delivery.js";
 import type { NotificationStore } from "../../shared/notifications.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export const HUB_COMMENTS_SUBJECT = "record:hub-comments-arriving";
 
@@ -47,7 +48,7 @@ export function hubCommentsBell(
       scope: "workspace/den-server",
       text: `Hub comments aren't arriving: ${TROUBLE_TEXT[reason]}`,
       msg: { key: HUB_COMMENTS_KEYS[reason], vars: {} },
-      link: "/settings#hub",
+      link: settingsLink("hub"),
     });
   };
 }

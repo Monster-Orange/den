@@ -47,6 +47,7 @@ import { getStateDir } from "../../shared/paths.js";
 import { readUserConfig } from "../../shared/den-config.js";
 import { embedSettings } from "./embed-settings.js";
 import { fixtureTestInstall } from "./fixture-projects.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 const PUMP_MS = 2000;
 /** Issue 702: how often the bell checks hub.delivery_alert_minutes. */
@@ -379,7 +380,7 @@ export function badDeliveryFile(
       scope: "den",
       text,
       msg: { key, vars: n === null ? { file, moved } : { file, moved, n } },
-      link: "/settings",
+      link: settingsLink("hub", "agents.hub_delivery_loop"),
     });
   if (o.store) go(o.store);
   else

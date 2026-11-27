@@ -72,6 +72,8 @@ config and manifest changes a distribution must make to move to it under
 
 - In the Settings pop-up, the Agents and Project setup panes group their rows under subheadings. Agents has Approvals and permissions, How many agents, Runtimes, skills and personas, Resume and reconnect, Context and compaction, Issues and GitHub, Waits and hooks, and The Agents page. Project setup has This project, Hub, Agents in this project, and Tools and feeds. The rows and their saves are unchanged. (issue 1926)
 
+- Links that Den's bell items, tools and command line give for a setting open the Settings pop-up over Home, on that setting's pane and row (`/?settings=hub&at=agents.hub`). Links to your notifications open Account. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed
