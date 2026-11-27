@@ -1250,15 +1250,18 @@
             if (!name) return;
             checkTimer = setTimeout(() => {
               fetch(`${base}&name=${encodeURIComponent(name)}`)
-                .then((r) => r.json())
-                .catch(() => ({}))
+                .then((r) => (r.ok ? r.json() : null))
+                .catch(() => null)
                 .then((r) => {
                   if (n !== checkSeq) return;
+                  const known = typeof r?.exists === "boolean";
                   state.depBranchOk = r?.exists === true;
                   msg.classList.toggle("err-text", !state.depBranchOk);
                   msg.textContent = state.depBranchOk
                     ? ""
-                    : t("rel.dep.noBranch", { branch: name });
+                    : known
+                      ? t("rel.dep.noBranch", { branch: name })
+                      : t("rel.dep.checkFailed");
                   updateDeployModal(repo, isProd);
                 });
             }, 300);
@@ -1268,7 +1271,11 @@
             free: true,
             load,
             onType: check,
-            words: { more: t("combo.narrow"), none: t("combo.none") },
+            words: {
+              more: t("combo.narrow"),
+              none: t("combo.none"),
+              error: t("combo.error"),
+            },
           });
           void load("").then((r) => {
             const first = r.items[0]?.id ?? "main";

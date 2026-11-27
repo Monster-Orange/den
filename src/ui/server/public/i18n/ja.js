@@ -4153,8 +4153,12 @@
     "addSvc.group.managed": "__DEN_TITLE__ が管理",
     "combo.narrow": "ほかにもあります。入力して絞り込んでください",
     "combo.none": "一致なし",
+    "combo.error":
+      "リストを読み込めませんでした。入力してもう一度お試しください。",
     "rel.dep.checking": "ブランチを確認中…",
     "rel.dep.noBranch": "{branch} というブランチはありません。",
+    "rel.dep.checkFailed":
+      "ブランチを確認できませんでした。もう一度お試しください。",
     "addSvc.ghLoading": "GitHub のリポジトリを読み込み中…",
     "addSvc.ghNoMatch": "「{q}」に一致するリポジトリがありません",
     "addSvc.ghNone": "GitHub のリポジトリがありません",

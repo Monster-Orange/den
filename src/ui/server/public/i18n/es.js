@@ -4293,8 +4293,11 @@
     "addSvc.group.managed": "Gestionados por __DEN_TITLE__",
     "combo.narrow": "Hay más: escribe para acotar",
     "combo.none": "Sin coincidencias",
+    "combo.error":
+      "No se pudo cargar la lista. Escribe para volver a intentarlo.",
     "rel.dep.checking": "Comprobando la rama…",
     "rel.dep.noBranch": "No hay ninguna rama llamada {branch}.",
+    "rel.dep.checkFailed": "No se pudo comprobar la rama. Inténtalo de nuevo.",
     "addSvc.ghLoading": "Cargando repositorios de GitHub…",
     "addSvc.ghNoMatch": "Ningún repositorio coincide con «{q}»",
     "addSvc.ghNone": "No hay repositorios de GitHub",

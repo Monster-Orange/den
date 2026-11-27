@@ -50,9 +50,11 @@ export const pageLoad =
     const p = new URLSearchParams({ limit: String(limit) });
     if (q) p.set("q", q);
     const r = await fetch(`${u}${u.includes("?") ? "&" : "?"}${p}`)
-      .then((res) => (res.ok ? res.json() : {}))
-      .catch(() => ({}));
-    const names = Array.isArray(r?.items) ? r.items : [];
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null);
+    if (!Array.isArray(r?.items))
+      return { items: [], more: false, error: true };
+    const names = r.items;
     return {
       items: names.map((n) => ({ id: String(n), label: String(n) })),
       more: !!r?.next,
@@ -92,10 +94,10 @@ export function wireCombo(
   const fetchFor = (q) => {
     const n = ++seq;
     Promise.resolve(load(q))
-      .catch(() => ({ items: [], more: false }))
+      .catch(() => ({ items: [], more: false, error: true }))
       .then((r) => {
         if (n !== seq) return;
-        found = { items: r?.items ?? [], more: !!r?.more };
+        found = { items: r?.items ?? [], more: !!r?.more, error: !!r?.error };
         if (document.activeElement === input) draw();
       });
   };
@@ -125,7 +127,7 @@ export function wireCombo(
         (load && found.more
           ? `<li class="den-combo-more" aria-disabled="true">${esc(words.more ?? "")}</li>`
           : "")
-      : `<li class="den-combo-none" aria-disabled="true">${esc(words.none ?? "No match")}</li>`;
+      : `<li class="den-combo-none" aria-disabled="true">${esc((load && found.error ? words.error : null) ?? words.none ?? "No match")}</li>`;
     show(true);
     place();
     input.setAttribute("aria-expanded", "true");

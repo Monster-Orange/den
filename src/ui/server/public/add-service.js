@@ -456,7 +456,11 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
         ? `/api/github/branches?gh=${encodeURIComponent(st.selGh.nameWithOwner)}`
         : "",
     ),
-    words: { more: t("combo.narrow"), none: t("combo.none") },
+    words: {
+      more: t("combo.narrow"),
+      none: t("combo.none"),
+      error: t("combo.error"),
+    },
   });
   pg.stop?.();
   pg.stop = watchPagers(d, ghNavigate, { url: false });
