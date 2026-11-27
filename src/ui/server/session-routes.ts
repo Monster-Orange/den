@@ -45,6 +45,7 @@ import {
   parseSeen,
   VIEW_LIST,
   viewPage,
+  type ViewGroup,
   type ViewPage,
 } from "./agents-view.js";
 import {
@@ -1165,15 +1166,17 @@ export async function handleSessionList(
         (r.server ? !picked : r.orphan === true || scope.includes(r.workspace)),
     );
     const serverWs = first.find((r) => r.server)?.workspace;
+    const by = params.get("by");
     const view = viewPage(
       first,
       {
-        by: params.get("by") === "project" ? "project" : "need",
+        by: by === "project" || by === "group" ? by : "need",
         limit: ask.limit,
         page: ask.at === "last" ? "last" : (ask.page ?? 1),
         seen: parseSeen(params.get("seen")),
       },
       [...(serverWs ? [serverWs] : []), ...scope],
+      by === "group" ? await ownGroups() : [],
     );
     const openIds = new Set(
       (params.get("open") ?? "").split(",").filter(Boolean).slice(0, 20),
@@ -1247,6 +1250,36 @@ export async function handleSessionList(
 }
 
 export const SESSIONS_LIST = "sessions";
+
+type GroupMember = { kind?: unknown; agentId?: unknown; here?: unknown };
+
+async function ownGroups(): Promise<ViewGroup[]> {
+  try {
+    const m = await import("./hub-groups-routes.js");
+    const read = await m.groupsView(await m.defaultHubGroupsDeps());
+    if (read.state !== "ok" || !Array.isArray(read.groups)) return [];
+    const own = (x: GroupMember | null | undefined) =>
+      x?.kind === "agent" && x.here === true && typeof x.agentId === "string"
+        ? [x.agentId]
+        : [];
+    return (
+      read.groups as {
+        slug?: unknown;
+        lead?: GroupMember | null;
+        members?: GroupMember[];
+      }[]
+    ).flatMap((g) => {
+      if (typeof g.slug !== "string") return [];
+      const lead = own(g.lead);
+      const rest = (g.members ?? [])
+        .flatMap(own)
+        .filter((id) => !lead.includes(id));
+      return [{ slug: g.slug, agents: [...lead, ...rest] }];
+    });
+  } catch {
+    return [];
+  }
+}
 
 /** Whether `pathname` is a session's io route. */
 export function isSessionIoPath(pathname: string): boolean {

@@ -522,11 +522,13 @@ function paintList() {
   const goesOn = (key) =>
     !!(paged && st.data.continues && firstItem) &&
     key ===
-      (inStopped(firstItem)
-        ? "stopped"
-        : st.by === "project"
-          ? `p:${firstItem.workspace}`
-          : `b:${bandsOf([firstItem], { seenNow: seenMap() })[0]?.state}`);
+      (st.data.groups
+        ? st.data.groups.items[0]
+        : inStopped(firstItem)
+          ? "stopped"
+          : st.by === "project"
+            ? `p:${firstItem.workspace}`
+            : `b:${bandsOf([firstItem], { seenNow: seenMap() })[0]?.state}`);
   const named = (key, text) =>
     goesOn(key) ? t("ag.continued", { group: text }) : text;
   const runningCount = (ws, n) => {
@@ -554,6 +556,7 @@ function paintList() {
       rowHtml,
       groupsUrl: st.groupsRead.groupsUrl,
       order: need,
+      paged: paged && st.data.groups ? pagedGroups(st.data, named) : null,
     });
   else if (byProject) {
     const groups = shown
@@ -1072,11 +1075,11 @@ async function refreshOnce() {
     );
     let r;
     try {
-      const paged = PAGE !== "terminal" && st.by !== "group";
+      const paged = PAGE !== "terminal";
       const picked = paged ? pickedWorkspace() : ws;
       r = await fetch(
         paged
-          ? `/api/sessions?${agentsViewQuery({ by: st.by, ws: picked, seen: seenMap(), open: st.open })}`
+          ? `/api/sessions?${agentsViewQuery({ by: st.by === "group" && !groupsOffered(st.groupsRead) ? "need" : st.by, ws: picked, seen: seenMap(), open: st.open })}`
           : ws
             ? `/api/sessions?all=1&ws=${encodeURIComponent(ws)}`
             : "/api/sessions?all=1",
@@ -1168,6 +1171,20 @@ async function refreshOnce() {
 }
 
 window.addEventListener("popstate", () => void refreshOnce());
+
+function pagedGroups(data, named) {
+  const keys = data.groups;
+  const rowsOf = (key) => [
+    ...data.pinned.filter((_, i) => keys.pinned[i] === key),
+    ...data.items.filter((_, i) => keys.items[i] === key),
+  ];
+  return {
+    rowsOf,
+    count: (key) => keys.totals[key] ?? 0,
+    showEmpty: (key) => !keys.totals[key] && (data.page ?? 1) === 1,
+    named,
+  };
+}
 
 function nextRefresh(listed) {
   if (!st.root?.isConnected) return;

@@ -15,7 +15,7 @@ const SEEN_ID = /^[A-Za-z0-9][\w.-]{0,127}$/;
 export const VIEW_LIST = "sessions.view";
 
 export interface ViewAsk {
-  by: "need" | "project";
+  by: "need" | "project" | "group";
   limit: number;
   page: number | "last";
   seen: ReadonlyMap<string, string>;
@@ -31,6 +31,16 @@ export interface ViewPage {
   bands: Record<ViewBand, number>;
   projects?: Record<string, Record<ViewBand, number>>;
   continues: boolean;
+  groups?: {
+    pinned: string[];
+    items: string[];
+    totals: Record<string, number>;
+  };
+}
+
+export interface ViewGroup {
+  slug: string;
+  agents: readonly string[];
 }
 
 export function parseSeen(v: string | null): Map<string, string> {
@@ -103,15 +113,45 @@ const zero = (): Record<ViewBand, number> => ({
   stopped: 0,
 });
 
+type Entry = { band: ViewBand; r: ListedSession; key: string };
+
+function byGroups(
+  rows: readonly ListedSession[],
+  groups: readonly ViewGroup[],
+  seen: ReadonlyMap<string, string>,
+): Entry[] {
+  const inSome = new Set<ListedSession>();
+  const out: Entry[] = [];
+  for (const g of groups) {
+    const mine: ListedSession[] = [];
+    for (const id of g.agents) {
+      const r = rows.find((x) => x.kind === "agent" && x.agent === id);
+      if (r && !mine.includes(r)) mine.push(r);
+    }
+    for (const r of mine) inSome.add(r);
+    out.push(
+      ...inBandOrder(mine, seen).map((x) => ({ ...x, key: `g:${g.slug}` })),
+    );
+  }
+  out.push(
+    ...inBandOrder(
+      rows.filter((r) => !inSome.has(r)),
+      seen,
+    ).map((x) => ({ ...x, key: "g:" })),
+  );
+  return out;
+}
+
 export function viewPage(
   rows: readonly ListedSession[],
   ask: ViewAsk,
   projects: readonly string[],
+  groups: readonly ViewGroup[] = [],
 ): ViewPage {
   const seen = ask.seen;
   const bands = zero();
   for (const r of rows) bands[viewBand(r, seen)]++;
-  let ordered: { band: ViewBand; r: ListedSession }[];
+  let ordered: Entry[];
   let perProject: Record<string, Record<ViewBand, number>> | undefined;
   if (ask.by === "project") {
     perProject = {};
@@ -129,24 +169,28 @@ export function viewPage(
         inBandOrder(
           running.filter((r) => r.workspace === ws),
           seen,
-        ),
+        ).map((x) => ({ ...x, key: `p:${ws}` })),
       ),
       ...inBandOrder(
         rows.filter((r) => viewBand(r, seen) === "stopped"),
         seen,
-      ),
+      ).map((x) => ({ ...x, key: "b:stopped" })),
     ];
-  } else ordered = inBandOrder(rows, seen);
-  const pinned = ordered.filter((x) => x.band === "needs").map((x) => x.r);
+  } else if (ask.by === "group") ordered = byGroups(rows, groups, seen);
+  else
+    ordered = inBandOrder(rows, seen).map((x) => ({
+      ...x,
+      key: `b:${x.band}`,
+    }));
+  const pinnedAt = ordered.filter((x) => x.band === "needs");
+  const pinned = pinnedAt.map((x) => x.r);
   const restAt = ordered.filter((x) => x.band !== "needs");
   const rest = restAt.map((x) => x.r);
-  const groupOf = (x: { band: ViewBand; r: ListedSession }) =>
-    ask.by === "project" && x.band !== "stopped"
-      ? `p:${x.r.workspace}`
-      : `b:${x.band}`;
   const pages = Math.max(1, Math.ceil(rest.length / ask.limit));
   const page = ask.page === "last" ? pages : Math.min(ask.page, pages);
   const offset = (page - 1) * ask.limit;
+  const totals: Record<string, number> = {};
+  for (const x of ordered) totals[x.key] = (totals[x.key] ?? 0) + 1;
   return {
     pinned,
     items: rest.slice(offset, offset + ask.limit),
@@ -158,7 +202,16 @@ export function viewPage(
     continues:
       offset > 0 &&
       offset < restAt.length &&
-      groupOf(restAt[offset - 1]) === groupOf(restAt[offset]),
+      restAt[offset - 1].key === restAt[offset].key,
     ...(perProject ? { projects: perProject } : {}),
+    ...(ask.by === "group"
+      ? {
+          groups: {
+            pinned: pinnedAt.map((x) => x.key),
+            items: restAt.slice(offset, offset + ask.limit).map((x) => x.key),
+            totals,
+          },
+        }
+      : {}),
   };
 }

@@ -41,7 +41,7 @@ export function agentsPageNo() {
 export function agentsViewQuery({ by, ws, seen, open }) {
   const q = new URLSearchParams({
     view: "agents",
-    by: by === "project" ? "project" : "need",
+    by: by === "project" || by === "group" ? by : "need",
     page: String(agentsPageNo()),
     limit: String(agentsPer()),
   });
