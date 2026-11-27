@@ -1368,7 +1368,10 @@
             pane.paneEl.querySelector(".log-search-pager")?.remove();
             const shown = (data.items ?? []).length;
             const trail = here.get("lsBack")
-              ? here.get("lsBack").split(".").length
+              ? here
+                  .get("lsBack")
+                  .split(".")
+                  .filter((c) => c !== "~").length
               : 0;
             const from = trail * per + 1;
             const foot = document.createElement("div");
