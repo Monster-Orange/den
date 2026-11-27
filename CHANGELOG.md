@@ -6,11 +6,13 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Fixed
+
+- A menu (the top bar's project drop-down among them) is never wider than the screen. A name too long for it is cut short with an ellipsis on one line, its ✓ still at the end, instead of running off the screen. It showed with long names in wide characters, such as Japanese, on an iPad. UI kit 0.23.0. (issue 1917)
+
 ## [0.4.92] - unreleased
 
 ### Changed
-
-- A menu (the top bar's project drop-down among them) is never wider than the screen. A name too long for it is cut short with an ellipsis on one line, its ✓ still at the end, instead of running off the screen. It showed with long names in wide characters, such as Japanese, on an iPad. UI kit 0.23.0. (issue 1917)
 
 - A pull request that changes `shell.js` or a data file at the top of `tests/` (such as `tests/affected-map.json`) no longer runs every test. A `shell.js` change runs every browser spec, the tests that read it and the tests that use a helper that reads it; a data file runs the tests that read it, and the map runs its own tests. The CI replay now picks the tests that read a changed file by path, as CI does. (issue 1805)
 
