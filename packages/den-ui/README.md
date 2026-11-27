@@ -688,6 +688,77 @@ never converted to HTML and back).
   motion. A transparent border shows the track in forced colours.
 - Under `style-src 'self'`: no inline styles, nothing injected.
 
+## Pagination
+
+- `src/pager.js`, `src/pager.css` (exports `./pager`, `./pager.css`): one
+  row under a long list (DS component #2, v6). Link `pager.css` after
+  `tokens.css`; more mode also uses `busy.css`.
+
+      import { pagerHtml, hydratePager } from "@monster-orange/den-ui/pager";
+      foot.innerHTML = pagerHtml({ from: 101, to: 150, total: 809,
+        page: 3, per: 50, href: (t) => listUrl(t), lang: "en", words });
+      hydratePager(foot.querySelector(".den-pager"), { list: "docs" });
+
+- The model: `mode` (`"pages"`, the default, or `"more"`), `from`, `to`,
+  `total?`, `hasNext`, `page?`, `pages?` (else from `total` and `per`),
+  `per`, `perOptions` (default 25, 50, 100, 200), `href(target)`, `lang`
+  and `words`. `href` is the host's: it returns the URL, filters, sort and
+  `#list` kept, for `"first"`, `"prev"`, `"next"`, `"last"`, `{ page }` or
+  `{ per }`. One page only, or none: nothing is drawn.
+- With a total: "1–50 of 809", then « First, ‹ Previous, "Page [3 ▾] of
+  17", Next ›, Last », then "[50 ▾] per page". The page picker is a select
+  of every page, or a number field with Go over 500 pages. An end with no
+  link is shown but `aria-disabled`, so nothing moves.
+- With no total (a cursor list): "1–50", ‹ Previous and Next ›
+  (`hasNext`), « First from page 2 on, no Last and no picker. A server
+  that can only page forward: build `href` with `cursorHref(url, target,
+nextCursor)`, which keeps the cursors already visited in the URL
+  (`back`), so Previous and the browser's Back step back through them.
+  It keeps the last 20 (`keep`); past that, Previous is off at the oldest
+  one kept, and « First still goes to the start. The first row's offset
+  rides in the URL too (`o`, a plain number the cap doesn't touch):
+  `cursorStart(url)` gives it, so `from` is `cursorStart(url) + 1`.
+- The layout follows the row's own width (a container query). Above
+  600px the full row shows, never a ⋯; under 760px the range and the
+  per-page choice go below the controls. At 600px or less it is the
+  folded form only: « ‹ [3 / 17 ▾] › » ⋯, where ⋯ opens a pop-over (a
+  bottom sheet on a narrow row) with the range and the per-page choice.
+  With no total the middle is the range ("‹ 1–50 ›"). The two forms never
+  show together. Buttons are 36px, and 44px only in a window 600px wide
+  or less or with a coarse pointer.
+- More mode with `loaded: true` keeps its row once every row is shown
+  ("All 70 shown", no button), for a list redrawn whole after its last
+  chunk. A press calls `load()`, or `onNavigate({ kind: "more" })` when
+  there is no `load`, holding the button with dots until it settles.
+- With no script every control is a link, and each select sits in a GET
+  form with Go (its action and other values come from two of `href`'s
+  own links). `hydratePager(el, { list, onNavigate?, shortcuts? })` hides
+  Go, follows a select at once, places the ⋯ pop-over (a sheet on a
+  narrow row), and adds keys: ← and → go back and forward while focus is on
+  the page body, the list or the pager (never in a field, select,
+  editable area, dialog or `role="application"`), and Home and End on the
+  pager go to the first and last page. `shortcuts` (a boolean or a
+  function) follows the person's single-key shortcuts choice. Each move
+  fires a cancelable `den-pager-nav` event (`{ kind, target, href }`);
+  with `onNavigate` the host moves itself (a client-side list).
+- `words` are the host's: `range`, `rangeOpen`, `label`, `first`,
+  `firstSr`, `prev`, `prevSr`, `next`, `nextSr`, `last`, `lastSr`,
+  `pageOf` ("Page {select} of {n}"), `pageShort` ("{p} / {n}"), `pageSr`,
+  `go`, `perPage` ("{select} per page"), `more` (the ⋯ menu's name), and
+  for more mode `moreN` ("Show {n} more"), `lastN` ("Show the last {n}"),
+  `all` and `moreErr`. `{select}` places the select in the sentence. The
+  kit adds none.
+- More mode: one "Show 50 more" link that works with no script. With
+  `hydratePager(el, { load, list })` a press (or Space) holds it with the
+  kit's dots, calls `load()` for `{ html, to, moreHref?, hasNext? }`, adds
+  the rows to `list` (an element or its id; default the element before
+  the pager), moves focus to the first new row and updates the range,
+  which is a polite live region. On the last chunk it says `lastN`; once
+  every row is shown the button goes and the range says `all`. A failed
+  load shows `moreErr` beside the button, and a press tries again.
+- 36px tall, 44px at 600px wide or less or with a coarse pointer. Tokens
+  only.
+
 ## A list's filter bar and bulk bar
 
 Two parts for a list of things (issues 552 and 553). Both are data-only:

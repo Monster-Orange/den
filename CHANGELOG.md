@@ -6,9 +6,14 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Added
+
+- UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", « First, ‹ Previous, a page picker ("Page 3 of 17"), Next ›, Last » and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's. More mode can hand its press to `onNavigate` (a list that redraws itself whole), and the 44px size follows a phone-width window or a touch screen, never the width of the box the pager sits in. The ⋯ menu and the short "3 / 17" picker appear only when the pager's box is 600px wide or less, in place of the full controls; above that the full row shows, in two lines when it must. A More list redrawn whole after its last chunk can keep its row with "All N shown" (`loaded: true`).
+
 ### Changed
 
 - A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
+- The bell loads 20 rows of each section (Needs you, waiting, Done, Updates and Older) and shows the kit's More button under a section that has more: "1–20 of 70", Show 20 more, and the next 20 are added. Its refresh asks only for the first 20 and the counts. Closing the bell goes back to the first 20.
 - The bell's `GET /api/notifications` and the `notifications_list` MCP tool answer one page of each section (recent, updates, older): `?limit`, `?section` with `?cursor`, `?page` or `?at`, and per section `next`, `prev`, `total`, `offset`, `page` and `pages`. `waiting`, `done` and `seenDone` page the same way, with their page in `waitingPage`, `donePage` and `seenDonePage`, and the badge counts every done agent. Each section's `count`, its `unread` and the badge still count every row, and an agent's scope filters before the cut.
 
 ## [0.4.92] - unreleased
