@@ -1,7 +1,7 @@
 /**
  * Issue 172: the server's one place an alert is decided (alerts.ts says
  * what one says). A new need comes in (Attention's wait, a held write);
- * the person's switches and quiet hours decide; then it goes two ways:
+ * the person's switches, mutes and quiet hours decide; then it goes two ways:
  *
  *   - the feed: the last 50 alerts, numbered, that an open Den tab reads
  *     with GET /api/alerts?after=<seq> and shows as a browser
@@ -15,13 +15,14 @@
  */
 import { randomUUID } from "node:crypto";
 import {
+  ALERT_KINDS,
   agentLink,
   alertBody,
   type AlertPrefs,
   type AlertWhy,
   inQuietHours,
 } from "./alerts.js";
-import type { UiLanguage } from "./ui-language.js";
+import type { UiLanguage } from "../../shared/ui-language.js";
 
 export interface Alert {
   seq: number;
@@ -31,8 +32,8 @@ export interface Alert {
   agent: string;
   /** The product's title (the notification's heading). */
   title: string;
-  /** The bell's words: who, and what it waits on. Nothing else. */
   body: string;
+  project: string;
   /** The agent's page. */
   link: string;
 }
@@ -44,6 +45,7 @@ export interface AlertFeedDeps {
   title: () => string;
   nameOf: (agent: string) => string;
   now?: () => number;
+  muted?: (agent: string, workspace: string) => boolean;
   /** Web Push to the person's devices (S2); absent, none. */
   push?: (a: Alert, prefs: AlertPrefs) => Promise<unknown>;
 }
@@ -61,8 +63,7 @@ export class AlertFeed {
   }
 
   /**
-   * Agent `agent` in `workspace` began to need its person. The alert, or
-   * null when the person's quiet hours hold it back.
+   * An agent began to need its person or finished a turn: the alert, or null if held back.
    */
   needs(n: { agent: string; workspace: string; why: AlertWhy }): Alert | null {
     let prefs: AlertPrefs;
@@ -79,6 +80,12 @@ export class AlertFeed {
       zone = null;
     }
     if (inQuietHours(prefs, at, zone)) return null;
+    if (ALERT_KINDS[n.why]?.alert === "opt-in" && !prefs.finished) return null;
+    try {
+      if (this.d.muted?.(n.agent, n.workspace)) return null;
+    } catch {
+      /* can't tell: it alerts */
+    }
     let lang: UiLanguage = "en";
     let name = n.agent;
     let title = "";
@@ -98,6 +105,7 @@ export class AlertFeed {
       title,
       body: alertBody(lang, n.why, name),
       link: agentLink(n.workspace, n.agent),
+      project: n.workspace,
     };
     this.items.push(a);
     if (this.items.length > ALERT_FEED_MAX)
@@ -107,24 +115,33 @@ export class AlertFeed {
     return a;
   }
 
+  latest(): number {
+    return this.seq;
+  }
+
   /**
    * What a tab reads: the alerts after `after` (none on its first read,
-   * `after` null: it starts from now), and the number to ask after next.
-   * Desktop off: none, and the count still moves.
+   * `after` null: it starts from now), the number to ask after next, the switches.
    */
-  after(after: number | null): { seq: number; alerts: Alert[] } {
-    let desktop = true;
+  after(after: number | null): {
+    seq: number;
+    alerts: Alert[];
+    prefs: { desktop: boolean; sound: boolean; tab_count: boolean };
+  } {
+    let p = { desktop: true, sound: false, tab_count: true };
     try {
-      desktop = this.d.prefs().desktop;
+      const x = this.d.prefs();
+      p = { desktop: x.desktop, sound: x.sound, tab_count: x.tabCount };
     } catch {
-      desktop = true;
+      /* the defaults */
     }
     // A count from before a restart (higher than ours): start from now.
-    if (after === null || after > this.seq || !desktop)
-      return { seq: this.seq, alerts: [] };
+    if (after === null || after > this.seq || (!p.desktop && !p.sound))
+      return { seq: this.seq, alerts: [], prefs: p };
     return {
       seq: this.seq,
       alerts: this.items.filter((a) => a.seq > after),
+      prefs: p,
     };
   }
 }

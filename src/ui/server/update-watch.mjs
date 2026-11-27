@@ -10,9 +10,7 @@
  *   node watch.mjs <plan.json>
  *
  * The plan (written by den-update.ts, 0600, no secrets):
- *   { port, to, from, fromPid, waitMs, pollMs?, root, backups: [{ saved,
- *     path }], npm: [cmd, ...args], restart: [cmd, ...args], stateFile,
- *     restartMarker: { path, marker } }
+ *   { port, to, from, fromPid, waitMs, pollMs?, root, backups, npm, restart, restartEnv, stateFile, restartMarker }
  *
  * It waits up to waitMs for this Den's /api/server-info to answer the new
  * version from a new pid. Then it writes { state: "good" } and exits.
@@ -32,7 +30,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function writeJson(file, v) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(v) + "\n", { mode: 0o600 });
+  fs.writeFileSync(tmp, JSON.stringify(v) + "\n", { mode: 0o600, flush: true });
   fs.renameSync(tmp, file);
 }
 
@@ -89,9 +87,10 @@ async function upOn(version, notPid, deadline) {
   return { ok: false, last };
 }
 
-function run(argv) {
+function run(argv, extraEnv = {}) {
   const r = spawnSync(argv[0], argv.slice(1), {
     cwd: plan.root,
+    env: { ...process.env, ...extraEnv },
     encoding: "utf8",
     timeout: 10 * 60_000,
   });
@@ -140,7 +139,7 @@ writeJson(plan.restartMarker.path, {
   at: new Date().toISOString(),
 });
 const before = (await info())?.pid ?? 0;
-run(plan.restart);
+run(plan.restart, plan.restartEnv ?? {});
 const back = await upOn(plan.from, before, Date.now() + plan.waitMs);
 say(back.ok ? "rolled_back" : "rollback_failed", {
   why,

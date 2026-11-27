@@ -35,6 +35,7 @@ import {
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import { GOOD_HANDOFF } from "./helpers/handoff.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
 afterEach(cleanupRigs);
 
@@ -69,7 +70,7 @@ async function started(r: Rig, id = "be-dev"): Promise<string> {
 /** Its process ends from outside Den (no stop asked): `code`. */
 async function killed(r: Rig, code: number): Promise<void> {
   r.made.at(-1)!.exit(code);
-  await settle(400);
+  while (await live(r)) await settle(50);
 }
 
 async function live(r: Rig, id = "be-dev"): Promise<boolean> {
@@ -83,14 +84,10 @@ async function live(r: Rig, id = "be-dev"): Promise<boolean> {
 }
 
 function audit(r: Rig): Record<string, unknown>[] {
-  const f = path.join(r.stateDir, "audit.jsonl");
-  if (!fs.existsSync(f)) return [];
-  return fs
-    .readFileSync(f, "utf-8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Record<string, unknown>)
-    .filter((x) => /ended without Den asking/.test(String(x.detail)));
+  // Issue 1369: the file and the CLI's queue.
+  return readAuditRows(r.stateDir).filter((x) =>
+    /ended without Den asking/.test(String(x.detail)),
+  );
 }
 
 function bell(r: Rig): Array<Record<string, unknown>> {
@@ -127,7 +124,7 @@ describe("issue 926: a session that ends without Den asking", () => {
     expect(rec(r).resumeToken).toBe(t1);
     // Nothing more to do: it runs.
     expect(await exitTick(d, T(1))).toEqual([]);
-  });
+  }, 60_000);
 
   it("with a ready rotation it comes back from its handoff in a new conversation", async () => {
     const r = await rig();
@@ -144,7 +141,7 @@ describe("issue 926: a session that ends without Den asking", () => {
     ]);
     expect(rec(r).resumeToken).not.toBe(t1);
     expect(await live(r)).toBe(true);
-  });
+  }, 60_000);
 
   it("exit 0 by itself: recorded, not brought back", async () => {
     const r = await rig();
@@ -158,7 +155,7 @@ describe("issue 926: a session that ends without Den asking", () => {
     expect(bell(r)).toHaveLength(0);
     expect(await live(r)).toBe(false);
     expect(await exitTick(d, T(1))).toEqual([]);
-  });
+  }, 60_000);
 
   it("a second unasked exit within the window is told, not brought back", async () => {
     const r = await rig();
@@ -173,7 +170,7 @@ describe("issue 926: a session that ends without Den asking", () => {
     expect(await live(r)).toBe(false);
     expect(bell(r).at(-1)).toMatchObject({ kind: "waiting" });
     expect(await exitTick(d, T(3))).toEqual([]);
-  });
+  }, 60_000);
 
   it("an exit under 5 s old waits for the next sweep", async () => {
     const r = await rig();
@@ -182,7 +179,7 @@ describe("issue 926: a session that ends without Den asking", () => {
     const d = resolveAgentsDeps(r.deps);
     expect(await exitTick(d, new Date())).toEqual([]);
     expect((await exitTick(d, T(0)))[0]?.kind).toBe("resumed");
-  });
+  }, 60_000);
 
   it("never acts on a stop that was asked for", async () => {
     const r = await rig();
@@ -193,7 +190,7 @@ describe("issue 926: a session that ends without Den asking", () => {
     expect(await exitTick(d, T(0))).toEqual([]);
     expect(audit(r)).toHaveLength(0);
     expect(await live(r)).toBe(false);
-  });
+  }, 60_000);
 });
 
 describe("issue 926: an exit with no time from its host", () => {

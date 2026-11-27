@@ -29,7 +29,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 /** The bed's poster when DEN_BED_POSTER isn't set: its workflow's GITHUB_TOKEN. */
 export const DEFAULT_POSTER = "github-actions[bot]";
@@ -44,7 +44,7 @@ export const DEFAULT_POSTER = "github-actions[bot]";
  * the poster's statuses on commits with this tree, the newest decides.
  *
  * @param {{ tree: string,
- *   green: { tree: string, sha: string, run: number, event?: string }[],
+ *   green: { tree: string, sha: string, run: number, attempt?: number, event?: string }[],
  *   statuses: { tree: string, sha: string, context: string, state: string,
  *     creator: string, at: string }[],
  *   context: string, poster?: string, required?: boolean }} o
@@ -57,13 +57,19 @@ export function decide({ tree, green, statuses, context, poster, required }) {
   if (!same.length)
     return {
       ok: false,
-      line: `tree ${tree}: no green pull-request or merge-queue CI run recorded this tree as tested, so it was never tested (only the newest 100 runs per event are searched)`,
+      line: `tree ${tree}: no green pull-request or merge-queue CI run recorded this tree as tested, so it was never tested (the newest 100 runs per event, and the tag's own runs, are searched)`,
     };
-  const run = same.find((g) => g.selection === "all");
-  if (!run)
+  const full = same.filter((g) => g.selection === "all");
+  if (!full.length)
     return {
       ok: false,
       line: `tree ${tree}: green CI run(s) ${same.map((g) => g.run).join(", ")} ran only the affected tests, not the full suite`,
+    };
+  const run = full.find((g) => (g.attempt ?? 1) === 1);
+  if (!run)
+    return {
+      ok: false,
+      line: `tree ${tree}: green full-suite CI ${full.map((g) => `run ${g.run} attempt ${g.attempt}`).join(", ")} came from a re-run, and a re-run's green doesn't count as tested: a red is fixed in a fresh head, never re-run to green`,
     };
   const ran = `${run.event === "merge_group" ? "merge_group" : "pull-request CI"} run ${run.run} attempt ${run.attempt ?? 1} on ${run.sha.slice(0, 8)}`;
   if (!required)
@@ -122,6 +128,27 @@ export function candidates(runs, tree, { repo, ciBlob }) {
   );
 }
 
+export function greenRuns(get, repo, sha) {
+  const base = `repos/${repo}/actions/workflows/ci.yml/runs`;
+  const lists = [
+    ...["pull_request", "merge_group"].map(
+      (e) =>
+        get(`${base}?event=${e}&status=success&per_page=100`)?.workflow_runs ??
+        [],
+    ),
+    get(`${base}?head_sha=${sha}&per_page=100`)?.workflow_runs ?? [],
+  ];
+  const seen = new Map();
+  for (const r of lists.flat())
+    if (
+      r.conclusion === "success" &&
+      (r.event === "pull_request" || r.event === "merge_group") &&
+      !seen.has(r.id)
+    )
+      seen.set(r.id, r);
+  return [...seen.values()];
+}
+
 /**
  * A run's entry, from its `tested` artifact (tested.json): null when there
  * is none, or it names no tree. A run with no artifact doesn't count.
@@ -132,7 +159,10 @@ export function entryOf(run, tested) {
     tree: tested.tree,
     sha: run.head_sha,
     run: run.id,
-    attempt: Number(tested.attempt ?? run.run_attempt ?? 1),
+    attempt: Math.max(
+      Number(tested.attempt ?? 1),
+      Number(run.run_attempt ?? 1),
+    ),
     selection: tested.selection === "all" ? "all" : "affected",
     event: String(tested.event ?? ""),
   };
@@ -228,7 +258,12 @@ export function appliedTree(tag, version) {
     execFileSync(
       process.execPath,
       [
-        path.resolve("scripts/release-dry-run.mjs"),
+        // Beside this script, never the checkout's: a release runs main's
+        // copy against the promoted tree (issue 922).
+        path.join(
+          path.dirname(fileURLToPath(import.meta.url)),
+          "release-dry-run.mjs",
+        ),
         "apply",
         version,
         kit,
@@ -282,22 +317,22 @@ function main(version) {
   console.log(
     `${tag} (${tagTree}) is the tested candidate; this commit only sets the release's versions`,
   );
-  // A pull request's run, or the merge queue's (the base and the pull
-  // request together: the tree that lands). Each counts by what its own
-  // `tested` artifact recorded, never by its head's tree.
+  // A pull request's run, or the merge queue's: the newest 100, plus the tag's
+  // own runs by head_sha (GitHub's filtered list can leave one out). Each counts
+  // by what its own `tested` artifact recorded, never by its head's tree.
   const ciBlob = blobAt("HEAD");
   const green = [];
-  for (const event of ["pull_request", "merge_group"]) {
-    const runs = gh(
-      `repos/${repo}/actions/workflows/ci.yml/runs?event=${event}&status=success&per_page=100`,
-    ).workflow_runs;
-    // only runs whose head has the tree are worth a ci.yml lookup
-    for (const r of runs)
-      if (r.head_commit?.tree_id === tagTree) r.ci_blob = blobAt(r.head_sha);
-    for (const r of candidates(runs, tagTree, { repo, ciBlob })) {
-      const e = entryOf(r, testedOf(repo, r.id));
-      if (e) green.push(e);
-    }
+  const runs = greenRuns(
+    (p) => gh(p),
+    repo,
+    git("rev-parse", `${tag}^{commit}`),
+  );
+  // only runs whose head has the tree are worth a ci.yml lookup
+  for (const r of runs)
+    if (r.head_commit?.tree_id === tagTree) r.ci_blob = blobAt(r.head_sha);
+  for (const r of candidates(runs, tagTree, { repo, ciBlob })) {
+    const e = entryOf(r, testedOf(repo, r.id));
+    if (e) green.push(e);
   }
   const required = process.env.DEN_BED_REQUIRED === "true";
   const shas = new Set([

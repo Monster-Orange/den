@@ -17,6 +17,7 @@ import {
 import {
   COACH_DEFAULTS,
   FINDING_DEFAULTS,
+  JUDGE_DEFAULTS,
   checkCoachConfig,
 } from "../../../src/shared/coach/settings.js";
 import {
@@ -24,6 +25,7 @@ import {
   coachWindow,
   mapLimited,
 } from "../../../src/shared/coach/breakdown.js";
+import { runCoach } from "../../../src/shared/coach/run.js";
 import {
   readCoachReport,
   writeCoachReport,
@@ -131,6 +133,7 @@ describe("agents.coach settings", () => {
       window_days: 7,
       keep_runs: 100,
       findings: FINDING_DEFAULTS,
+      judge: JUDGE_DEFAULTS,
     });
     expect(checkCoachConfig(undefined)).toEqual(COACH_DEFAULTS);
     expect(checkCoachConfig({ enabled: true, window_days: 14 })).toEqual({
@@ -138,6 +141,7 @@ describe("agents.coach settings", () => {
       window_days: 14,
       keep_runs: 100,
       findings: FINDING_DEFAULTS,
+      judge: JUDGE_DEFAULTS,
     });
   });
 
@@ -215,6 +219,90 @@ describe("the per-agent breakdown", () => {
       subagent: { "claude-sonnet-5-5": 6, "claude-opus-5-5": 2 },
     });
     expect(a.metrics?.subagent_opus_pct).toBe(25);
+  });
+
+  it("T-c: reads asks from the main transcripts only, when the source can", async () => {
+    const st = state();
+    writeRecord(st, rec("a", { resumeToken: "c2" }));
+    const asked: string[] = [];
+    const src: UsageSource = {
+      ...fakeSource({
+        "c2.jsonl": stats("c2.jsonl"),
+        "c2/subagents/x.jsonl": stats("c2/subagents/x.jsonl", {
+          subagent: true,
+        }),
+      }),
+      asks: async (f, o) => {
+        asked.push(f);
+        expect(o?.maxWords).toBe(30);
+        return {
+          asks: [
+            {
+              at: NOW - DAY,
+              tool: "ask_human",
+              text: "1. Ship it?",
+              problems: [],
+            },
+          ],
+          sends: [],
+          received: [],
+        };
+      },
+    };
+    const r = await coachBreakdown([rec("a", { resumeToken: "c2" })], {
+      stateDir: st,
+      now: NOW,
+      days: 7,
+      source: () => src,
+      sentenceWords: 30,
+    });
+    expect(asked).toEqual(["c2.jsonl"]);
+    expect(r.agents[0].asks?.stats?.asks).toHaveLength(1);
+    expect(r.agents[0].asks?.metrics).toMatchObject({
+      asks: 1,
+      ask_r12_pass_pct: 100,
+    });
+  });
+
+  it("T-c: a saved report holds no ask or send text beyond the finding samples", async () => {
+    const st = state();
+    writeRecord(st, rec("a", { resumeToken: "c2" }));
+    const asks = Array.from({ length: 6 }, (_, i) => ({
+      at: NOW - DAY + i,
+      tool: "ask_human" as const,
+      text: `secret-ask-${i} about #${900 + i}?`,
+      problems: [`"#${900 + i}" is not explained.`],
+    }));
+    const src: UsageSource = {
+      ...fakeSource({ "c2.jsonl": stats("c2.jsonl") }),
+      asks: async () => ({
+        asks,
+        sends: [{ at: NOW - DAY, to: "B", hash: "h", text: "secret-send-0" }],
+        received: [],
+        prompts: [{ at: NOW - DAY, text: "secret-prompt-0" }],
+      }),
+    };
+    const r = await runCoach({
+      stateDir: st,
+      settings: COACH_DEFAULTS,
+      now: NOW,
+      records: () => [rec("a", { resumeToken: "c2" })],
+      source: () => src,
+      rotateAfter: () => 3,
+    });
+    expect(r.findings?.find((f) => f.kind === "ask_r12")?.samples).toHaveLength(
+      3,
+    );
+    const saved = [
+      path.join(st, "coach", "latest.json"),
+      ...fs
+        .readdirSync(coachRunsDir(st))
+        .map((f) => path.join(coachRunsDir(st), f)),
+    ].map((f) => fs.readFileSync(f, "utf-8"));
+    for (const text of [...saved, JSON.stringify(r)]) {
+      expect(text).not.toMatch(/secret-send|secret-prompt|secret-ask-[345]/);
+      expect(text.match(/secret-ask-\d/g)?.length ?? 0).toBeLessThanOrEqual(3);
+    }
   });
 
   it("skips a conversation that ended before the window", async () => {

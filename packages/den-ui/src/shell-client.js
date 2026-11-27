@@ -21,6 +21,9 @@
  *                              same entry; false when it was the same
  *                              (force: paint it anyway)
  *   shell.setCollapsed(on)     body.den-rail-collapsed
+ *   shell.folds                issue 1444: the rail's section folds
+ *                              (hydrateRailFolds; opts.folds: its store,
+ *                              or false for none)
  *   shell.openDrawer(), closeDrawer(refocus), drawerOpen()
  *   shell.unpin(id)            Delete's path: onUnpin, then focus
  *   syncPinToggles(root, isPinned, lang)   every [data-pin-toggle] in root:
@@ -58,8 +61,12 @@
  *       onEscape(e) (true: the host took that Esc), id, lang. A click
  *       toggles it; Esc closes it and focus goes back to the bell (in
  *       Safari too); a click outside closes it. Opening focuses its first
- *       link or button.
+ *       link or button. Issue 420: a row opens on a click anywhere on it
+ *       (wireRowOpens), as its link does.
  *       → { el, open(), close(focus), isOpen(), paint(), setCount(n) }
+ *   wireRowOpens(root, rowSelector)   issue 420: a click anywhere on a
+ *       row (its time, its dot, the space around) clicks the row's link,
+ *       except on the row's own controls. → a function that unwires it
  *   hydrateAccount(root, { onAction(event), menu(), onPick, onSubmit,
  *       lang })   the account entry: as an action (no href), a click or
  *       Enter calls onAction; with `menu: true` on the entry, its menu
@@ -93,6 +100,7 @@ import {
   menuFilterParts,
   menuHasFilter,
   pageMenuHtml,
+  reportButtonHtml,
   waitingHtml,
 } from "./shell-html.js";
 import { focusBack } from "./dialog.js";
@@ -163,15 +171,55 @@ export function hydrateShell(root, opts = {}) {
       attributeFilter: ["title", "aria-label"],
     });
 
+  /**
+   * Issue 1444: what the arrows walk: the shown entries and, with the
+   * rail at full width, the section headings that fold (each a button).
+   * A folded section's entries are not shown, so they're not walked.
+   */
+  function walk() {
+    if (!nav) return [];
+    const icons =
+      document.body &&
+      document.body.classList.contains("den-rail-collapsed") &&
+      window.innerWidth > 720;
+    return all(nav, ".den-ni, button.den-gh").filter(
+      (a) =>
+        a.getClientRects().length > 0 &&
+        !(icons && a.classList.contains("den-gh")),
+    );
+  }
   function rove() {
     if (!nav) return;
-    const links = all(nav, ".den-ni");
+    const items = all(nav, ".den-ni, button.den-gh");
+    const links = walk().filter((a) => a.classList.contains("den-ni"));
     let stop = null;
     for (const a of links)
       if (a.getAttribute("aria-current") === "page") stop = a;
     if (!stop) stop = links[0];
-    for (const a of links) a.tabIndex = a === stop ? 0 : -1;
+    for (const a of items) a.tabIndex = a === stop ? 0 : -1;
   }
+
+  // Issue 1341: the sticky foot's height, as the rail's scroll padding,
+  // so a focused entry scrolls to above the foot. Kept as the foot
+  // changes size (the account's lines, the drawer's Report).
+  const footRo =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => padFoot())
+      : null;
+  function padFoot() {
+    const f = nav && nav.querySelector(".den-rail-foot");
+    if (!nav) return;
+    if (f) nav.style.setProperty("--den-rail-foot-h", f.offsetHeight + "px");
+    else nav.style.removeProperty("--den-rail-foot-h");
+  }
+  function watchFoot() {
+    if (!nav) return;
+    if (footRo) footRo.disconnect();
+    const f = nav.querySelector(".den-rail-foot");
+    if (f && footRo) footRo.observe(f);
+    padFoot();
+  }
+  watchFoot();
 
   let lastHtml = null;
   function paint(html, force) {
@@ -184,6 +232,8 @@ export function hydrateShell(root, opts = {}) {
         : null;
     lastHtml = html;
     nav.innerHTML = html;
+    watchFoot();
+    if (folds) folds.apply();
     rove();
     if (keep) {
       const again = nav.querySelector('[data-nav="' + keep + '"]');
@@ -247,6 +297,17 @@ export function hydrateShell(root, opts = {}) {
     railBox.setAttribute("role", "dialog");
     railBox.setAttribute("aria-modal", "true");
     railBox.setAttribute("aria-label", kitT(lang(), "kit.pages"));
+    // Issue 81: the drawer's scrim covers the top bar (and its Report), so
+    // the drawer has Report of its own while it is open; never on the
+    // wide rail (issue 94: Report is in the top bar there). It ends the
+    // rail's foot, so it stays in view with it (issue 1341).
+    if (nav && !nav.querySelector(".den-rb-drawer"))
+      (nav.querySelector(".den-rail-foot") || nav).insertAdjacentHTML(
+        "beforeend",
+        '<div class="den-rb-foot den-rb-drawer" data-den-drawer-report>' +
+          reportButtonHtml({ inFoot: true, lang: lang() }) +
+          "</div>",
+      );
     if (!scrim) {
       scrim = document.createElement("div");
       scrim.className = "den-scrim";
@@ -268,6 +329,7 @@ export function hydrateShell(root, opts = {}) {
     railBox.removeAttribute("role");
     railBox.removeAttribute("aria-modal");
     railBox.removeAttribute("aria-label");
+    nav?.querySelector(".den-rb-drawer")?.remove();
     if (scrim) scrim.remove();
     setInert(false);
     if (refocus && menu) menu.focus();
@@ -281,9 +343,10 @@ export function hydrateShell(root, opts = {}) {
         e.preventDefault();
         return;
       }
-      const links = all(nav, ".den-ni");
+      const links = walk();
       const i = links.indexOf(document.activeElement);
       if (i < 0) return;
+      const pages = links.filter((a) => a.classList.contains("den-ni"));
       const pinId =
         links[i].dataset && links[i].dataset.pin ? links[i].dataset.pin : null;
       if (pinId && (e.key === "Delete" || e.key === "Backspace")) {
@@ -297,9 +360,9 @@ export function hydrateShell(root, opts = {}) {
           : e.key === "ArrowUp"
             ? (i - 1 + links.length) % links.length
             : e.key === "Home"
-              ? 0
+              ? links.indexOf(pages[0])
               : e.key === "End"
-                ? links.length - 1
+                ? links.indexOf(pages[pages.length - 1])
                 : -1;
       if (next < 0) return;
       e.preventDefault();
@@ -337,11 +400,21 @@ export function hydrateShell(root, opts = {}) {
     if (drawerOpen() && window.innerWidth > 720) closeDrawer(false);
   });
 
+  const folds =
+    nav && opts.folds !== false
+      ? hydrateRailFolds(nav, {
+          lang,
+          ...(opts.folds && typeof opts.folds === "object"
+            ? { store: opts.folds }
+            : {}),
+        })
+      : null;
   rove();
   return {
     nav,
     rove,
     paint,
+    folds,
     setCollapsed,
     unpin,
     openDrawer,
@@ -664,6 +737,37 @@ export function patchChildren(live, next) {
   for (const c of [...live.childNodes]) if (!used.has(c)) c.remove();
 }
 
+/**
+ * Issue 420: what stays itself inside a row that opens: its link, its
+ * buttons, its fields.
+ */
+const ROW_CONTROLS =
+  'a[href], button, input, select, textarea, label, summary, [role="button"], [contenteditable="true"]';
+
+/**
+ * Issue 420: a click anywhere on a row (`rowSelector`, under `root`)
+ * clicks the row's first link, as a click on the link would. A click on
+ * the row's own controls is theirs alone. A row with no link does nothing.
+ * @param {Element} root
+ * @param {string} rowSelector
+ * @returns {() => void} unwires it
+ */
+export function wireRowOpens(root, rowSelector) {
+  /** @param {Event} e */
+  const onClick = (e) => {
+    const t = /** @type {Element | null} */ (e.target);
+    if (!t || !t.closest) return;
+    const row = t.closest(rowSelector);
+    if (!row || !root.contains(row)) return;
+    const inner = t.closest(ROW_CONTROLS);
+    if (inner && row.contains(inner)) return;
+    const a = /** @type {HTMLElement | null} */ (row.querySelector("a[href]"));
+    if (a) a.click();
+  };
+  root.addEventListener("click", onClick);
+  return () => root.removeEventListener("click", onClick);
+}
+
 /** The bell and its panel (see the top). */
 export function hydrateBell(btn, opts = {}) {
   const lang = () =>
@@ -727,9 +831,13 @@ export function hydrateBell(btn, opts = {}) {
       c > 0 ? kitT(lang(), "kit.bell.n", { n: c }) : word,
     );
   }
+  // Issue 420: a row opens on a click anywhere on it, as Den's bell does.
+  wireRowOpens(pop, ".den-bell-row");
   btn.addEventListener("click", () => (isOpen() ? close() : open()));
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !isOpen()) return;
+    for (const dlg of document.querySelectorAll("dialog[open]"))
+      if (!dlg.contains(pop)) return;
     if (opts.onEscape && opts.onEscape(e) === true) return;
     e.preventDefault();
     close(true);
@@ -997,4 +1105,207 @@ export function setWaiting(o, root = document) {
   pill._onClick = o.onClick || null;
   pill.style.display = "";
   return pill;
+}
+
+/** Issue 1444: where the kit keeps the folded sections by default. */
+export const RAIL_FOLD_KEY = "den.rail.folded";
+
+/**
+ * The default store: the folded sections' ids in `storage` (localStorage
+ * when none is given). Anything it can't read is "all open"; it never
+ * throws.
+ */
+export function railFoldStore(storage) {
+  const box = () => {
+    if (storage !== undefined) return storage;
+    try {
+      return typeof localStorage === "undefined" ? null : localStorage;
+    } catch {
+      return null;
+    }
+  };
+  return {
+    get() {
+      try {
+        const v = JSON.parse(box()?.getItem(RAIL_FOLD_KEY) || "[]");
+        return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+      } catch {
+        return [];
+      }
+    },
+    set(ids) {
+      try {
+        box()?.setItem(RAIL_FOLD_KEY, JSON.stringify(ids));
+      } catch {
+        /* no storage: it stays as it is on this page */
+      }
+    },
+  };
+}
+
+/** The list with `id` added, or taken out when it was there. */
+export function toggleFolded(ids, id) {
+  return ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+}
+
+/** A folded section's count: its entries' badges summed; bad if any is. */
+export function foldCount(badges) {
+  let n = 0;
+  let bad = false;
+  for (const b of badges) {
+    const v = parseInt(String(b.n), 10);
+    if (Number.isFinite(v) && v > 0) n += v;
+    if (b.bad) bad = true;
+  }
+  return { n, bad };
+}
+
+const CHEVRON =
+  '<svg class="den-gh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+
+/**
+ * Issue 1444: the rail's sections fold. `root` holds .den-rail-group
+ * sections (railHtml's). apply() makes each section's heading its toggle:
+ * the whole row a <button> with aria-expanded and aria-controls (its
+ * entries, div.den-gb), the kit's name for it ("Hide Tools" / "Show
+ * Tools, 5"), the folded count (its entries' badges summed, only above 0)
+ * and the chevron. A click, Enter or Space folds or opens it and keeps it
+ * in `store` ({ get(), set(ids) }; default railFoldStore()). A section
+ * holding the current page opens. Clicks are taken on `root`, so they
+ * outlive a repaint; call apply() after one (hydrateShell does).
+ *   → { apply(), folded(), destroy() }
+ */
+export function hydrateRailFolds(root, opts = {}) {
+  const lang = () =>
+    typeof opts.lang === "function" ? opts.lang() : opts.lang;
+  const store = opts.store || railFoldStore();
+  const load = () => {
+    try {
+      const v = store.get();
+      return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+    } catch {
+      return [];
+    }
+  };
+  let ids = load();
+  const save = () => {
+    try {
+      store.set(ids.slice());
+    } catch {
+      /* the store failed: the page keeps its state */
+    }
+  };
+
+  function sectionOf(group) {
+    const label = group.getAttribute("aria-labelledby") || "";
+    return label.startsWith("den-gh-") ? label.slice(7) : null;
+  }
+
+  function draw(group) {
+    const id = sectionOf(group);
+    let head = group.querySelector(":scope > .den-gh");
+    if (!id || !head) return;
+    let body = group.querySelector(":scope > .den-gb");
+    if (!body) {
+      body = document.createElement("div");
+      body.className = "den-gb";
+      body.id = "den-gb-" + id;
+      for (const el of [...group.children])
+        if (el !== head && !el.classList.contains("den-sr")) body.append(el);
+      group.append(body);
+    }
+    if (head.tagName !== "BUTTON") {
+      const b = document.createElement("button");
+      b.type = "button";
+      for (const a of head.attributes) b.setAttribute(a.name, a.value);
+      b.setAttribute("data-den-fold", id);
+      b.setAttribute("aria-controls", body.id);
+      while (head.firstChild) b.append(head.firstChild);
+      b.insertAdjacentHTML("beforeend", CHEVRON);
+      head.replaceWith(b);
+      head = b;
+    }
+    const folded = ids.includes(id);
+    group.toggleAttribute("data-folded", folded);
+    head.setAttribute("aria-expanded", folded ? "false" : "true");
+    const word = (
+      head.querySelector("#den-gh-" + CSS.escape(id)) || head
+    ).textContent.trim();
+    const c = foldCount(
+      [...body.querySelectorAll(".den-bdg")].map((e) => ({
+        n: e.textContent,
+        bad: e.classList.contains("bad"),
+      })),
+    );
+    // The folded count, drawn only while folded with something to count.
+    const shown = folded && c.n > 0;
+    let n = head.querySelector("[data-den-fold-n]");
+    if (shown && !n) {
+      n = document.createElement("span");
+      n.className = "den-bdg";
+      n.setAttribute("aria-hidden", "true");
+      n.setAttribute("data-den-fold-n", "");
+      head.insertBefore(n, head.querySelector(".den-gh-chev"));
+    } else if (!shown && n) {
+      n.remove();
+      n = null;
+    }
+    if (n) {
+      n.textContent = c.n > 99 ? "99+" : String(c.n);
+      n.classList.toggle("bad", c.bad);
+    }
+    head.setAttribute(
+      "aria-label",
+      shown
+        ? c.n > 99
+          ? kitT(lang(), "kit.rail.unfoldMany", { section: word })
+          : kitT(lang(), "kit.rail.unfoldN", {
+              section: word,
+              n: n.textContent,
+            })
+        : kitT(lang(), folded ? "kit.rail.unfold" : "kit.rail.fold", {
+            section: word,
+          }),
+    );
+  }
+
+  function apply() {
+    // The store is the truth: a host's copy may have arrived since.
+    ids = load();
+    let changed = false;
+    for (const g of root.querySelectorAll(".den-rail-group")) {
+      const id = sectionOf(g);
+      // The current page's section opens, and stays open.
+      if (id && ids.includes(id) && g.querySelector('[aria-current="page"]')) {
+        ids = ids.filter((x) => x !== id);
+        changed = true;
+      }
+      draw(g);
+    }
+    if (changed) save();
+  }
+
+  function onClick(e) {
+    const head =
+      e.target && e.target.closest ? e.target.closest("[data-den-fold]") : null;
+    if (!head || !root.contains(head)) return;
+    const group = head.closest(".den-rail-group");
+    const id = head.getAttribute("data-den-fold");
+    ids = toggleFolded(ids, id);
+    save();
+    if (group) draw(group);
+    if (opts.onChange) opts.onChange(ids.slice());
+  }
+  root.addEventListener("click", onClick);
+  apply();
+  // Only now may a folded section hide (shell.css): its heading can open it.
+  root.setAttribute("data-folds", "");
+  return {
+    apply,
+    folded: () => ids.slice(),
+    destroy() {
+      root.removeEventListener("click", onClick);
+      root.removeAttribute("data-folds");
+    },
+  };
 }

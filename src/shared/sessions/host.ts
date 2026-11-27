@@ -46,6 +46,7 @@ import {
   type SessionInfo,
   type SessionPool,
 } from "./types.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export const BACKEND_ID = "den-pty";
 
@@ -112,6 +113,7 @@ interface Session {
   size?: { cols: number; rows: number };
   /** The cap it counts against (start's `pool`), when one was named. */
   pool?: SessionPool;
+  project?: string;
   /** NT-1: reads its output for a bell. */
   bell: BellScanner;
 }
@@ -483,6 +485,7 @@ export class SessionHost {
   }
 
   private persist(s: Session): void {
+    if (this.closed && !fs.existsSync(this.paths.dir)) return;
     const rec = {
       id: s.info.ref.id,
       name: s.info.name,
@@ -500,11 +503,9 @@ export class SessionHost {
       // Whole or not at all: a reader (an agent token's check) never sees
       // it half-written.
       const file = path.join(this.paths.dir, `${s.info.ref.id}.json`);
-      const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(rec, null, 2) + "\n", {
+      writeFileAtomic(file, JSON.stringify(rec, null, 2) + "\n", {
         mode: 0o600,
       });
-      fs.renameSync(tmp, file);
     } catch (e) {
       this.log(
         `could not save session ${s.info.ref.id}: ${(e as Error).message}`,
@@ -773,6 +774,22 @@ export class SessionHost {
       if (live >= req.limit)
         throw new Refusal("cap", capMessage(live, req.limit, pool));
     }
+    const project = typeof req.project === "string" ? req.project : undefined;
+    if (req.projectLimit !== undefined) {
+      if (!isInt(req.projectLimit, 0, 100_000))
+        throw new Refusal(
+          "bad-request",
+          "projectLimit must be a whole number, 0 or more (0: no limit)",
+        );
+      const mine = [...this.sessions.values()].filter(
+        (s) => !s.info.exited && s.pool === "agents" && s.project === project,
+      ).length;
+      if (project && req.projectLimit > 0 && mine >= req.projectLimit)
+        throw new Refusal(
+          "cap",
+          `${mine} agent${mine === 1 ? " is" : "s are"} running in project ${project} and its cap is ${req.projectLimit} (agents.max_per_project)`,
+        );
+    }
     const load = this.opts.pty();
     if (!load.available) throw new Refusal("unavailable", load.reason);
 
@@ -820,12 +837,15 @@ export class SessionHost {
       bell: new BellScanner(),
       size: { cols, rows },
       ...(pool !== undefined ? { pool: pool as SessionPool } : {}),
+      ...(project ? { project } : {}),
     };
     this.sessions.set(id, s);
     this.persist(s);
     pty.onData((d) => {
       s.log.append(d);
       if (s.bell.feed(d)) s.info.bellAt = new Date().toISOString();
+      const st = s.bell.takeStatus();
+      if (st) s.info.status = { ...st, at: new Date().toISOString() };
       if (!s.attachments.size) {
         s.info.unread = true;
         return;
@@ -912,6 +932,10 @@ export class SessionHost {
       if (c) c.send({ ev: "size", aid, ...s.size });
       else s.sizeAids.delete(aid);
     }
+  }
+
+  attachmentCount(id: string): number {
+    return this.sessions.get(id)?.attachments.size ?? 0;
   }
 
   /** Stop serving: running sessions get SIGHUP, scrollback is flushed. */

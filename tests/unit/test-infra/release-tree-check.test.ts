@@ -312,16 +312,45 @@ describe("release-tree-check: the tree CI tested, with the whole suite (its `tes
     expect(r.line).toMatch(/full suite/);
   });
 
-  it("the accepted line names the run's attempt, so a re-run to green shows", () => {
+  it("a green from a re-run is refused, its run and attempt named", () => {
+    const r = decide({
+      tree: T,
+      green: [{ ...green[0], attempt: 2 }],
+      statuses: [],
+      context: "den/bed",
+      required: false,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.line).toMatch(/run 101 attempt 2/);
+    expect(r.line).toMatch(/re-run/);
+  });
+
+  it("a re-run's green doesn't count even when the bed passed", () => {
     const r = decide({
       tree: T,
       green: [{ ...green[0], attempt: 3 }],
+      statuses: [bed("success")],
+      context: "den/bed",
+      poster: POSTER,
+      required: true,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.line).toMatch(/run 101 attempt 3/);
+  });
+
+  it("a first-attempt full run counts beside a re-run of another, and the line names attempt 1", () => {
+    const r = decide({
+      tree: T,
+      green: [
+        { ...green[0], run: 102, attempt: 2 },
+        { ...green[0], run: 103, attempt: 1 },
+      ],
       statuses: [],
       context: "den/bed",
       required: false,
     });
     expect(r.ok).toBe(true);
-    expect(r.line).toMatch(/run 101 attempt 3/);
+    expect(r.line).toMatch(/run 103 attempt 1/);
   });
 
   it("the no-match line says only the newest 100 runs per event are searched", () => {
@@ -378,6 +407,97 @@ describe("release-tree-check: the tree CI tested, with the whole suite (its `tes
     });
   });
 
+  describe("greenRuns: a run GitHub's filtered list leaves out still counts", () => {
+    const REPO = "owner-x/repo-x";
+    const SHA = "c".repeat(40);
+    const base = `repos/${REPO}/actions/workflows/ci.yml/runs`;
+    const r = (id: number, o: Record<string, unknown> = {}) => ({
+      id,
+      event: "pull_request",
+      conclusion: "success",
+      head_sha: SHA,
+      ...o,
+    });
+    const runsFrom = (answers: Record<string, unknown>): number[] =>
+      JSON.parse(
+        execFileSync(
+          process.execPath,
+          [
+            "--input-type=module",
+            "-e",
+            `const m = await import(${JSON.stringify("file://" + path.join(SCRIPTS, "release-tree-check.mjs"))});` +
+              `const a = JSON.parse(process.argv[1]);` +
+              `console.log(JSON.stringify(m.greenRuns((p) => a[p], ${JSON.stringify(REPO)}, ${JSON.stringify(SHA)}).map((x) => x.id)));`,
+            JSON.stringify(answers),
+          ],
+          { encoding: "utf8" },
+        ),
+      );
+
+    it("the tag's own green run, missing from the filtered list, is found by head_sha", () => {
+      expect(
+        runsFrom({
+          [`${base}?event=pull_request&status=success&per_page=100`]: {
+            workflow_runs: [r(1)],
+          },
+          [`${base}?event=merge_group&status=success&per_page=100`]: {
+            workflow_runs: [],
+          },
+          [`${base}?head_sha=${SHA}&per_page=100`]: {
+            workflow_runs: [r(2), r(1)],
+          },
+        }).sort(),
+      ).toEqual([1, 2]);
+    });
+
+    it("a fork's run found only by head_sha is still refused by candidates", () => {
+      const found = runsFrom({
+        [`${base}?head_sha=${SHA}&per_page=100`]: { workflow_runs: [r(5)] },
+      });
+      expect(found).toEqual([5]);
+      const kept = call(
+        "release-tree-check.mjs",
+        "candidates",
+        [
+          {
+            ...r(5),
+            path: ".github/workflows/ci.yml",
+            head_commit: { tree_id: T },
+            head_repository: { full_name: "fork-y/repo-x" },
+            ci_blob: "d".repeat(40),
+          },
+        ],
+        T,
+        { repo: REPO, ciBlob: "d".repeat(40) },
+      ) as unknown[];
+      expect(kept).toEqual([]);
+    });
+
+    it("a head_sha run whose artifact ran only the affected tests is still refused", () => {
+      const r2 = decide({
+        tree: T,
+        green: [{ ...green[0], selection: "affected" }],
+        statuses: [],
+        context: "den/bed",
+        required: false,
+      });
+      expect(r2.ok).toBe(false);
+    });
+
+    it("a head_sha run that failed, or came from a push, doesn't count", () => {
+      expect(
+        runsFrom({
+          [`${base}?head_sha=${SHA}&per_page=100`]: {
+            workflow_runs: [
+              r(3, { conclusion: "failure" }),
+              r(4, { event: "push" }),
+            ],
+          },
+        }),
+      ).toEqual([]);
+    });
+  });
+
   it("a run's entry comes from its artifact; no artifact, no entry", () => {
     const r = { id: 7, head_sha: "7".repeat(40), run_attempt: 2 };
     expect(
@@ -395,6 +515,14 @@ describe("release-tree-check: the tree CI tested, with the whole suite (its `tes
       selection: "all",
       event: "merge_group",
     });
+    expect(
+      call("release-tree-check.mjs", "entryOf", r, {
+        tree: T,
+        selection: "all",
+        attempt: 1,
+        event: "pull_request",
+      }),
+    ).toMatchObject({ run: 7, attempt: 2 });
     expect(call("release-tree-check.mjs", "entryOf", r, null)).toBeNull();
     expect(
       call("release-tree-check.mjs", "entryOf", r, { selection: "all" }),
@@ -487,8 +615,10 @@ describe("ci.yml: tests run on the pull request, not again on main", () => {
     expect(ci.jobs.pr.if).toBe(
       "github.event_name == 'pull_request' || github.event_name == 'merge_group'",
     );
-    // pr-shards follows pr (it needs pr's shard list)
+    // pr-shards follows pr (it needs pr's shard list), and the fast
+    // static checks (issue 843)
     expect(([] as string[]).concat(ci.jobs["pr-shards"].needs ?? [])).toEqual([
+      "fast",
       "pr",
     ]);
     const raw = fs.readFileSync(path.join(DIR, "ci.yml"), "utf8");
@@ -505,7 +635,8 @@ describe("release.yml: no test suite, only a tested tree", () => {
   const rel = wf("release.yml");
 
   it("calls the gates without their tests", () => {
-    expect(rel.jobs.gates.with).toEqual({ tests: false });
+    // Issue 922: and the promoted commit to build (ref, dev-tag, dev-commit).
+    expect(rel.jobs.gates.with).toMatchObject({ tests: false });
   });
 
   it("hands the script the bed's switch and poster from the repository variables", () => {

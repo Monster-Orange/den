@@ -33,7 +33,7 @@ import { depService } from "../manifest/deps.js";
 import { getDistRoot } from "../paths.js";
 import { readCatalog } from "./catalog.js";
 import { auditConfig, callerName } from "../config-audit.js";
-import { noteLinksSeen } from "../hub-links-seen.js";
+import { noteLinksSeen } from "../hub/hub-links-seen.js";
 
 import { product } from "../product.js";
 const ROOT = getDistRoot();
@@ -352,22 +352,10 @@ export function writeWorkspacesFile(
       ]),
     ),
   };
-  // Write to a temp file then atomically rename, so a crash or a concurrent
-  // den process can never observe a half-written workspaces.yml.
-  const tmp = path.join(dir, `.workspaces.${process.pid}.tmp`);
-  try {
-    fs.writeFileSync(tmp, yaml.stringify(out), "utf-8");
-    fs.renameSync(tmp, WORKSPACES_PATH);
-    auditWorkspacesWrite(before, out, by);
-  } catch (err) {
-    // Don't leave an orphaned temp file behind when the write/rename fails.
-    try {
-      fs.unlinkSync(tmp);
-    } catch {
-      /* ignore cleanup failure */
-    }
-    throw err;
-  }
+  // Written whole (atomic-write), so a crash or a concurrent den process
+  // can never observe a half-written workspaces.yml.
+  writeFileAtomic(WORKSPACES_PATH, yaml.stringify(out));
+  auditWorkspacesWrite(before, out, by);
 }
 
 /** workspaces.yml as it is on disk now (for the audit's diff); {} if none. */
@@ -620,7 +608,14 @@ export function setActiveWorkspace(name: string): void {
  * the name kept when it differs. Returns the slug. Throws what
  * workspaceNameRefusal says, so nothing is made the next step refuses.
  */
-export function createWorkspace(name: string, config: WorkspaceConfig): string {
+export function createWorkspace(
+  name: string,
+  config: WorkspaceConfig,
+  opts: {
+    /** Issue 1215: the server's fixture create, on a test install, only. */
+    fixtureMade?: boolean;
+  } = {},
+): string {
   const file = readWorkspacesFile();
   const refusal = workspaceNameRefusal(name, file.workspaces);
   if (refusal) throw new Error(refusal);
@@ -630,7 +625,15 @@ export function createWorkspace(name: string, config: WorkspaceConfig): string {
   const reserved =
     reservedWorkspaceError(slug) ?? reservedWorkspaceError(typed);
   if (reserved) throw new Error(reserved);
-  file.workspaces[slug] = typed === slug ? config : { ...config, name: typed };
+  // Issue 1215: the fixture person's marker only when the server's
+  // fixture create asks for it, never copied from a config passed in.
+  const { fixture_made: _never, ...rest } = config;
+  void _never;
+  const record: WorkspaceConfig = {
+    ...rest,
+    ...(opts.fixtureMade ? { fixture_made: true as const } : {}),
+  };
+  file.workspaces[slug] = typed === slug ? record : { ...record, name: typed };
   writeWorkspacesFile(file);
   return slug;
 }
@@ -1209,6 +1212,28 @@ export function setWorkspaceMcpServers(
   const agents = { ...(cfg.agents ?? {}) };
   if (servers.length) agents.mcp_servers = servers;
   else delete agents.mcp_servers;
+  const next = { ...cfg };
+  if (Object.keys(agents).length) next.agents = agents;
+  else delete next.agents;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file);
+}
+
+/**
+ * Issue 1480: write workspace `ws`'s `agents.event_feeds` (the list as
+ * written: entries Den can't read stay as they are). The caller checks
+ * each entry it adds. An empty list takes the key out.
+ */
+export function setWorkspaceEventFeeds(
+  ws: string,
+  feeds: Record<string, unknown>[],
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
+  const agents = { ...(cfg.agents ?? {}) };
+  if (feeds.length) agents.event_feeds = feeds;
+  else delete agents.event_feeds;
   const next = { ...cfg };
   if (Object.keys(agents).length) next.agents = agents;
   else delete next.agents;

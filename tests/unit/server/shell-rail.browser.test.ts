@@ -104,7 +104,13 @@ async function postsAtLeast(
 
 const rail = (p: Page) =>
   p.evaluate(() =>
-    [...document.querySelectorAll(".den-rail > *")].map((g) =>
+    // The foot's entries are listed one by one (issue 1341: they sit in
+    // one .den-rail-foot after the spacer).
+    [
+      ...document.querySelectorAll(
+        ".den-rail > :not(.den-rail-foot), .den-rail > .den-rail-foot > *",
+      ),
+    ].map((g) =>
       g.classList.contains("den-rail-group")
         ? {
             heading: g.querySelector(".den-gh > span")?.textContent,

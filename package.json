@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den",
-  "version": "0.4.84",
+  "version": "0.4.93-dev.0",
   "description": "Den: a local multi-repo dev orchestrator, HTTPS edge and E2E harness",
   "type": "module",
   "bin": {
@@ -38,9 +38,12 @@
     "THIRD_PARTY_NOTICES",
     "README.md",
     "CHANGELOG.md",
+    "release.json",
     "docs/",
     "!docs/images/",
-    "skills/"
+    "skills/",
+    "skill-packs/",
+    "!skill-packs/patches/"
   ],
   "scripts": {
     "cli": "tsx src/ui/cli/index.ts menu",
@@ -48,6 +51,7 @@
     "build:pw-guard": "node scripts/build-pw-guard.mjs",
     "test:unit": "jest --coverage --forceExit",
     "test:unit:watch": "jest --watch",
+    "test:load": "jest -c jest.load.config.js --runInBand --forceExit",
     "test:framework": "npm run test:unit",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
@@ -59,6 +63,7 @@
     "test": "jest --forceExit",
     "gate:org-names": "node scripts/org-name-gate.mjs",
     "gate:words": "node scripts/words-gate.mjs",
+    "pw:server": "node scripts/pw-server.mjs",
     "gate:den-ui": "node packages/den-ui/bin/den-ui-parity.mjs --root . --src src",
     "docs:shots": "node scripts/doc-shots.mjs",
     "docs:links": "node scripts/docs-links.js",
@@ -121,7 +126,13 @@
   "overrides": {
     "flatted": "^3.4.2",
     "picomatch": "^2.3.2",
-    "brace-expansion": "^2.0.3"
+    "brace-expansion": "^2.0.3",
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": {
+        ".": "^11.0.1",
+        "brace-expansion": "^5.0.12"
+      }
+    }
   },
   "engines": {
     "node": ">=22.13",

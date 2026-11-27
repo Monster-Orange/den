@@ -18,6 +18,7 @@ import {
   type ScheduleAllow,
   type ScheduleSettings,
 } from "./schedules.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export type SkipReason =
   | "needs-allow"
@@ -106,9 +107,7 @@ export function noteScheduleRun(
   all[id] = next;
   const file = fileOf(stateDir, project);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(all, null, 2) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify(all, null, 2) + "\n", { mode: 0o600 });
   return next;
 }
 
@@ -143,7 +142,7 @@ export function takeScheduleLock(
   const mine = `${process.pid} ${now} ${Math.random().toString(36).slice(2)}\n`;
   for (let i = 0; i < 2; i++) {
     try {
-      fs.writeFileSync(file, mine, { flag: "wx", mode: 0o600 });
+      writeFileAtomic(file, mine, { exclusive: true, mode: 0o600 });
       return () => {
         try {
           if (fs.readFileSync(file, "utf-8") === mine) fs.unlinkSync(file);

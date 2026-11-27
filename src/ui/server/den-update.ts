@@ -25,6 +25,8 @@
 import { execFile, spawn } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { readPinRecord, type PinRecord } from "../../shared/pin-record.js";
 
 /** What one command came to (exit code, the end of its output). */
 export interface Ran {
@@ -59,10 +61,34 @@ export interface UpdateDeps {
   beforeRestart?: (keepAlive: () => void) => Promise<void>;
   /** Restart this Den (D64's path, after this answer goes out). */
   restart: () => void;
+  restartEnv?: Record<string, string>;
   port: number;
   pid: number;
   waitMs: number;
   now?: () => number;
+  /**
+   * Issue 1403: a routine update on a personal install. The version npm
+   * resolves to must be a stable release at or above the running one, or
+   * nothing happens and the person decides (needsPerson).
+   */
+  stableNotOlder?: boolean;
+}
+
+/**
+ * Issue 1403 (Den Builder): whether `to` is a stable release (no
+ * prerelease or dev tag) at or above `from`, the running version. A
+ * version that can't be read is neither.
+ */
+export function stableNotOlder(to: string, from: string | null): boolean {
+  const core = (v: string) => {
+    const m = /^(\d+)\.(\d+)\.(\d+)(-.+)?$/.exec(v);
+    return m ? { n: [+m[1], +m[2], +m[3]], pre: m[4] !== undefined } : null;
+  };
+  const t = core(to);
+  const f = from ? core(from) : null;
+  if (!t || !f || t.pre) return false;
+  for (let i = 0; i < 3; i++) if (t.n[i] !== f.n[i]) return t.n[i] > f.n[i];
+  return true; // the same release, or the release of a running prerelease
 }
 
 export type UpdateResult =
@@ -73,7 +99,21 @@ export type UpdateResult =
       restarting: true;
       doctor: string[];
     }
-  | { ok: false; error: string; from?: string; to?: string };
+  | {
+      ok: false;
+      error: string;
+      from?: string;
+      to?: string;
+      /** Issue 1403: a routine update stopped; the person decides. */
+      needsPerson?: true;
+      rollbackFailed?: RollbackFailed;
+    };
+
+export interface RollbackFailed {
+  from: string;
+  root: string;
+  why: string;
+}
 
 export const UPDATE_SPEC_RE = /^(latest|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/;
 /** A state file newer than this, not finished, is an update in flight. */
@@ -119,6 +159,7 @@ export interface UpdateDoctor {
 /** The last update, and its doctor results when doctor ran for it. */
 export type LastUpdate = UpdateState & {
   doctor?: { at: string; lines: string[] };
+  pin?: Omit<PinRecord, "noted">;
 };
 
 function readUpdateDoctor(stateDir: string): UpdateDoctor | null {
@@ -151,9 +192,15 @@ export function lastUpdate(stateDir: string): LastUpdate | null {
   const s = readUpdateState(stateDir);
   if (!s) return null;
   const d = readUpdateDoctor(stateDir);
-  return d && d.from === s.from && d.to === s.to
-    ? { ...s, doctor: { at: d.at, lines: d.lines } }
-    : s;
+  const rec = readPinRecord(stateDir);
+  const pin = rec ? (({ noted: _n, ...r }) => r)(rec) : null;
+  return {
+    ...s,
+    ...(d && d.from === s.from && d.to === s.to
+      ? { doctor: { at: d.at, lines: d.lines } }
+      : {}),
+    ...(pin ? { pin } : {}),
+  };
 }
 
 export function readUpdateState(stateDir: string): UpdateState | null {
@@ -169,9 +216,7 @@ export function readUpdateState(stateDir: string): UpdateState | null {
 
 function writeJson(file: string, v: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(v) + "\n", { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, JSON.stringify(v) + "\n", { mode: 0o600 });
 }
 
 /**
@@ -242,6 +287,16 @@ export async function updateDen(
   const to = await d.npmView(`${d.pkg.name}@${want}`);
   if (!to)
     return { ok: false, error: `npm has no ${d.pkg.name}@${want}`, from };
+  // Issue 1403: checked again against what "latest" (or the version named)
+  // is now, and the version running now. Nothing is touched yet.
+  if (d.stableNotOlder && !stableNotOlder(to, from))
+    return {
+      ok: false,
+      needsPerson: true,
+      error: `${to} is not a stable release at or above ${from}, the version running: the person decides`,
+      from,
+      to,
+    };
   if (to === from)
     return { ok: false, error: `Den is on ${to} already`, from, to };
 
@@ -302,6 +357,7 @@ export async function updateDen(
         error: `${both}. The rollback failed: Den ${from} may not start. A person must put the pin back on ${from} in ${d.root} and run npm install there.`,
         from,
         to,
+        rollbackFailed: { from, root: d.root, why: both },
       };
     }
     state("rolled_back", why);
@@ -398,6 +454,7 @@ export async function updateDen(
         "--port",
         String(d.port),
       ],
+      restartEnv: d.restartEnv ?? {},
       stateFile: updateStateFile(d.stateDir),
       restartMarker: d.note(`update Den ${from} → ${to}`),
     });

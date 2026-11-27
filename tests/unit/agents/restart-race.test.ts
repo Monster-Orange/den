@@ -6,9 +6,9 @@
  * which project, and the outcome.
  *
  * A real host on a temp socket with a scripted PTY: nothing real runs.
- * Invented names only.
+ * Invented names only. 60 s a case: a slow CI runner (8×) ran past 10 s.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
 import { readRecord } from "../../../src/shared/agents/records.js";
@@ -20,7 +20,9 @@ import {
   resumeAgent,
 } from "../../../src/ui/cli/agent-ops.js";
 import { cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { readAuditRows } from "../../../src/shared/audit-queue.js";
 
+jest.setTimeout(60_000);
 afterEach(cleanupRigs);
 
 /** Stop waits for the session to end, and each scripted one ends on TERM. */
@@ -79,14 +81,8 @@ async function idleAgent(): Promise<Rig> {
 
 /** The audit rows the CLI wrote for agents (audit.jsonl in its state). */
 function agentRows(r: Rig): Record<string, unknown>[] {
-  const f = path.join(r.stateDir, "audit.jsonl");
-  if (!fs.existsSync(f)) return [];
-  return fs
-    .readFileSync(f, "utf-8")
-    .split("\n")
-    .filter(Boolean)
-    .map((l) => JSON.parse(l) as Record<string, unknown>)
-    .filter((e) => e.verb === "agents");
+  // Issue 1369: the file and the CLI's queue.
+  return readAuditRows(r.stateDir).filter((e) => e.verb === "agents");
 }
 
 describe("two restarts of one agent at once (issue 216)", () => {
@@ -125,7 +121,13 @@ describe("two restarts of one agent at once (issue 216)", () => {
     const rows = agentRows(r);
     expect(rows).toHaveLength(2);
     for (const row of rows) {
-      expect(String(row.principal)).toMatch(/^person:/);
+      // Issue 1369: no server here, so each is queued: the person's
+      // CLI's report, unverified, its who kept as what it reported.
+      expect(row.unverified).toBe(true);
+      expect(row).not.toHaveProperty("principal");
+      expect(
+        String((row.reported as { principal?: string }).principal),
+      ).toMatch(/^person:/);
       expect(String(row.detail)).toMatch(/restart planner in north/);
       expect(row.outcome).toBeUndefined();
     }

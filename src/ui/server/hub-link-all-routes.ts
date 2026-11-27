@@ -19,7 +19,7 @@ import type * as http from "http";
 import type {
   HubProjectChoice,
   HubProjectLink,
-} from "../../shared/hub-project-link.js";
+} from "../../shared/hub/hub-project-link.js";
 import { isCatchAllProject } from "../../shared/catch-all-project.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 import { readBody, sendJson } from "./http-helpers.js";
@@ -32,6 +32,8 @@ type Suggestion = HubProjectChoice & { why?: "repo" | "name" };
 export interface HubLinkAllDeps {
   /** Every project here (the server agent's scope is never one). */
   projects: () => string[];
+  /** Issue 1334: an empty project (no repos, services or agents); never offered. */
+  empty?: (ws: string) => boolean;
   /** Hub's projects and suggestions for `ws`; null: Hub isn't connected. */
   choices: (ws: string) => Promise<{
     suggestions: Suggestion[];
@@ -57,7 +59,7 @@ const MAX_LINKS = 200;
  * catch-all project: a person links it by hand in Project setup.
  */
 const linkable = (d: HubLinkAllDeps) =>
-  d.projects().filter((p) => !isCatchAllProject(p));
+  d.projects().filter((p) => !isCatchAllProject(p) && !d.empty?.(p));
 
 /**
  * 0.4.45: which Hub project fits a project, from Hub's suggestions. Clear:
@@ -87,35 +89,6 @@ export function unclearReason(
 ): "repos" | "split" | "names" {
   const byRepo = unclear.filter((s) => s.why === "repo").length;
   return byRepo >= 2 ? "repos" : byRepo === 1 ? "split" : "names";
-}
-
-/**
- * 0.4.45 (projects follow Connect): link every unlinked project whose Hub
- * project is clear; the unclear ones wait for a person's pick. Hub can't
- * suggest (an older Hub, or it doesn't answer): nothing is linked.
- */
-export async function linkClearProjects(
-  d: HubLinkAllDeps,
-): Promise<{ linked: string[]; unclear: string[] } | { cannot: true }> {
-  const todo = linkable(d).filter((p) => !d.read(p));
-  const found: { project: string; m: ReturnType<typeof hubMatchOf> }[] = [];
-  for (const project of todo) {
-    const c = await d.choices(project).catch(() => null);
-    if (c === null) return { cannot: true };
-    found.push({ project, m: hubMatchOf(c.suggestions) });
-  }
-  const linked: string[] = [];
-  const unclear: string[] = [];
-  for (const { project, m } of found) {
-    if ("clear" in m) {
-      const link = { id: m.clear.id, slug: m.clear.slug, name: m.clear.name };
-      d.write(project, link);
-      d.audit(`${project} → ${link.slug} (on Connect)`);
-      linked.push(project);
-    } else if ("unclear" in m) unclear.push(project);
-  }
-  if (linked.length) d.changed();
-  return { linked, unclear };
 }
 
 export async function hubLinkAllRoute(
@@ -271,11 +244,13 @@ export async function defaultLinkAllDeps(
 ): Promise<HubLinkAllDeps> {
   const [hp, link, w, sa] = await Promise.all([
     import("./hub-project-routes.js"),
-    import("../../shared/hub-project-link.js"),
+    import("../../shared/hub/hub-project-link.js"),
     import("../../shared/environment-manager/workspaces.js"),
     import("../../shared/agents/server-agent.js"),
   ]);
+  const { emptyProjectsNow } = await import("../../shared/empty-project.js");
   return {
+    empty: await emptyProjectsNow(),
     projects: () => {
       try {
         return Object.keys(w.readWorkspacesFile().workspaces ?? {})
@@ -330,33 +305,8 @@ export function pickDone(
   if (!item) return;
   const was = Number(item.msg?.vars?.n);
   const left = (Number.isFinite(was) ? was : 0) - n;
-  if (left > 0) store.add(pickNote(left));
+  // Issue 646: it keeps where it opened (Connect's review, or here).
+  if (left > 0)
+    store.add({ ...pickNote(left), link: item.link || HUB_PICK_LINK });
   else store.withdraw(PICK_SUBJECT, "decision");
-}
-
-/**
- * 0.4.45: what Connect runs once connected: link the clear projects, and
- * put "N projects need your pick" in the bell for the unclear ones.
- */
-export async function defaultLinkAfter(): Promise<
-  Awaited<ReturnType<typeof linkClearProjects>>
-> {
-  const { recordAction } = await import("./audit.js");
-  const d = await defaultLinkAllDeps("Connect to Hub", (line) =>
-    recordAction(null, { verb: "hub-link", detail: line.slice(0, 400) }),
-  );
-  const r = await linkClearProjects(d);
-  // The ones linked before: Hub's names now (a rename while apart).
-  void import("./hub-sync-service.js")
-    .then((m) => m.refreshHubNamesNow())
-    .catch(() => undefined);
-  if ("unclear" in r) {
-    const { notificationDeps } = await import("./notification-service.js");
-    const store = notificationDeps().store;
-    // Issue 726: after a Hub change the bell offered every project that
-    // had a link; now the count is what still needs a pick (none: it goes).
-    if (r.unclear.length) store.add(pickNote(r.unclear.length));
-    else store.withdraw(PICK_SUBJECT, "decision");
-  }
-  return r;
 }

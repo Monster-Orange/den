@@ -111,6 +111,16 @@ describe("issue 172: alerts on the real server", () => {
     expect(text).not.toContain("sk-live");
     expect(text).not.toContain("southward");
     expect(alerts[0].title).toBeTruthy();
+    expect(alerts.map((a) => (a as A & { project: string }).project)).toEqual([
+      "north",
+      "north",
+    ]);
+    expect(got.json.count).toBe(1);
+    expect(got.json.prefs).toEqual({
+      desktop: true,
+      sound: false,
+      tab_count: true,
+    });
 
     const byAgent = await call("GET", "/api/alerts", undefined, "agent");
     expect(byAgent.status).toBe(403);
@@ -176,7 +186,8 @@ describe("issue 172: alerts on the real server", () => {
       const got = stub.received[0];
       expect(got.vapidOk).toBe(true);
       expect(JSON.parse(got.text!)).toMatchObject({
-        body: "planner asked you",
+        title: "planner asked you",
+        body: "north",
         link: "/agents?project=north&agent=planner",
       });
       expect(got.text).not.toContain("424242");

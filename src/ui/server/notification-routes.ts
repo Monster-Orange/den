@@ -10,6 +10,7 @@
  *                                     the person's kinds that are on;
  *                                     items older than foldDays in
  *                                     `older`; unread counts what is shown.
+ *                                     `done`: agents done since they looked.
  *   POST /api/notifications/read     {id} | {subject} | {scope} | {all: true}
  *                                     (all: what is shown only)
  *   POST /api/notifications/clear    the read ones ({scope} or all).
@@ -17,9 +18,11 @@
  *                                     unmutes.
  *   POST /api/notifications/looking  NT-2: a page shows these agents now,
  *                                     visible and focused: {agents: [...]}.
+ *                                     The person has seen their
+ *                                     finished work (the seen mark).
  *   GET  /api/alerts?after=<seq>     issue 172: the alerts after `after`
  *                                     for an open tab to show (alert-feed.ts),
- *                                     {seq, alerts}; the person's only.
+ *                                     {seq, alerts, prefs, count}; theirs only.
  *   GET  /api/alerts/push-key        S2: this install's VAPID public key.
  *   POST /api/alerts/subscribe       S2: {subscription} (a device's
  *                                     PushSubscription.toJSON()).
@@ -48,6 +51,7 @@ import {
   bellView,
   needsYou,
   groupNotifications,
+  type Notification,
   type NotificationStore,
   type Which,
 } from "../../shared/notifications.js";
@@ -57,6 +61,8 @@ import { recordAction } from "./audit.js";
 import { heldWaiting } from "./held-bell.js";
 import type { GateOverrunWaiting } from "./gate-overrun-bell.js";
 import type { AlertFeed } from "./alert-feed.js";
+import type { AlertHandoff } from "./alert-handoff.js";
+import { FIXTURE_PRINCIPAL } from "../../shared/fixture-person.js";
 import {
   deviceId,
   deviceOf,
@@ -68,9 +74,14 @@ import {
 import { readBody, sendJson } from "./http-helpers.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   principalOf,
 } from "./request-guard.js";
+import type { SeenMarks } from "../../shared/seen-mark.js";
+import { agentSubject, personKey, type DoneAgent } from "./agent-state.js";
+import { listRecords } from "../../shared/agents/records.js";
+import { getStateDir } from "../../shared/paths.js";
 
 /** Issue 1008: a withdraw's reason, one line. */
 export const WITHDRAW_REASON_MAX = 200;
@@ -90,12 +101,16 @@ export const NOTIFICATION_PATHS = [
   "/api/alerts/devices",
   "/api/alerts/test",
   "/api/alerts/forget",
+  "/api/alerts/stream",
+  "/api/alerts/presence",
+  "/api/alerts/ack",
 ] as const;
 
 export const isNotificationPath = (p: string) =>
   (NOTIFICATION_PATHS as readonly string[]).includes(p);
 
 export interface NotificationRouteDeps {
+  agentProjects?: () => ReadonlyMap<string, string>;
   store: NotificationStore;
   attention: Attention;
   /** ask_human's limit (notifications.asks_per_hour); absent, none. */
@@ -111,6 +126,7 @@ export interface NotificationRouteDeps {
     /** A test alert to every device: each one's push service's answer. */
     test?: () => Promise<{ endpoint: string; status: number }[]>;
   };
+  handoff?: AlertHandoff;
   /**
    * Issue 746: the held writes waiting on the person (the approval
    * queue's pending()); they lead `waiting`, kind "allow".
@@ -121,6 +137,10 @@ export interface NotificationRouteDeps {
    * estimate; they follow the held writes in `waiting`, kind gate_overrun.
    */
   gateOverruns?: () => readonly GateOverrunWaiting[];
+  seen?: SeenMarks;
+  doneAgents?: (person: string) => DoneAgent[];
+  seenDone?: (person: string) => DoneAgent[];
+  needsYou?: () => number | Promise<number>;
 }
 
 /** A device as a page sees it: no endpoint, no keys. */
@@ -152,6 +172,13 @@ const refuse = (
   code: string,
   error: string,
 ) => sendJson(res, { ok: false, code, error }, status);
+
+function tabPerson(req: http.IncomingMessage, agent: unknown): string | null {
+  if (agent) return null;
+  const p = personKey(req);
+  if (p === FIXTURE_PRINCIPAL || !p.startsWith("person:")) return null;
+  return p;
+}
 
 const str = (v: unknown, max = 300) =>
   typeof v === "string" && v ? v.slice(0, max) : undefined;
@@ -394,9 +421,16 @@ export async function handleNotificationRoutes(
     const raw = new URL(req.url ?? "/", "http://x").searchParams.get("after");
     const after = raw !== null && /^\d{1,12}$/.test(raw) ? Number(raw) : null;
     res.setHeader("Cache-Control", "no-store");
+    let count = 0;
+    try {
+      count = (await deps.needsYou?.()) ?? 0;
+    } catch {
+      count = 0;
+    }
     sendJson(res, {
       ok: true,
       ...(deps.alerts?.after(after) ?? { seq: 0, alerts: [] }),
+      count,
     });
     return true;
   }
@@ -419,6 +453,41 @@ export async function handleNotificationRoutes(
     return true;
   }
 
+  if (pathname === "/api/alerts/stream") {
+    if (method !== "GET")
+      return (refuse(res, 405, "method", "GET only."), true);
+    const person = tabPerson(req, agent);
+    if (!person || !deps.handoff) {
+      refuse(res, 403, "person_only", "Alerts are the person's.");
+      return true;
+    }
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+    });
+    const handoff = deps.handoff;
+    let tab = "";
+    let beat: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (beat) clearInterval(beat);
+      beat = null;
+      if (tab) handoff.close(tab);
+    };
+    tab = handoff.open(
+      person,
+      (e) => void res.write(`data: ${JSON.stringify(e)}\n\n`),
+      () => {
+        stop();
+        res.end();
+      },
+    );
+    beat = setInterval(() => void res.write(": beat\n\n"), 25_000);
+    beat.unref?.();
+    req.on("close", stop);
+    return true;
+  }
+
   if (pathname === "/api/alerts/devices") {
     if (method !== "GET")
       return (refuse(res, 405, "method", "GET only."), true);
@@ -437,10 +506,36 @@ export async function handleNotificationRoutes(
   if (pathname === "/api/notifications") {
     if (method !== "GET" && method !== "HEAD")
       return (refuse(res, 405, "method", "GET only."), true);
-    const v = bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null));
-    sendJson(res, {
+    const prefs = (deps.prefs ?? bellPrefs)(null);
+    const all = bellView(deps.store.list(), prefs);
+    let done: DoneAgent[] = [];
+    if (!prefs.finishedChosenOff)
+      try {
+        done = deps.doneAgents?.(personKey(req)) ?? [];
+      } catch {
+        /* the bell is best effort: no Done section this time */
+      }
+    let seenDone: DoneAgent[] = [];
+    if (!prefs.finishedChosenOff)
+      try {
+        seenDone = deps.seenDone?.(personKey(req)) ?? [];
+      } catch {
+        /* best effort: no seen rows this time */
+      }
+    const inDone = new Set(
+      [...done, ...seenDone].map((d) => agentSubject(d.agent)),
+    );
+    const once = (ns: Notification[]) =>
+      ns.filter((n) => !(n.kind === "finished" && inDone.has(n.subject)));
+    const v = { ...all, updates: once(all.updates), older: once(all.older) };
+    const keep = agentRowFilter(req);
+    const mine = (ds: DoneAgent[]) =>
+      keep ? ds.filter((d) => keep(d.workspace)) : ds;
+    const bell = {
       ok: true,
       unread: v.unread,
+      done: mine(done),
+      seenDone: mine(seenDone),
       // Issue 746: a held write waiting for the person's Allow first,
       // then (issue 327) each agent waiting, what on, since when.
       waiting: [
@@ -467,7 +562,8 @@ export async function handleNotificationRoutes(
       off: v.off,
       foldDays: v.foldDays,
       mutes: deps.store.mutes(),
-    });
+    };
+    sendJson(res, keep ? narrowBell(bell, keep, deps) : bell);
     return true;
   }
 
@@ -489,8 +585,51 @@ export async function handleNotificationRoutes(
       );
       return true;
     }
-    deps.push.subs.add({ ...sub, device: deviceOf(req.headers["user-agent"]) });
+    const who = tabPerson(req, agent);
+    deps.push.subs.add({
+      ...sub,
+      device: deviceOf(req.headers["user-agent"]),
+      ...(who ? { person: who } : {}),
+    });
     sendJson(res, { ok: true });
+    return true;
+  }
+  if (pathname === "/api/alerts/presence" || pathname === "/api/alerts/ack") {
+    const person = tabPerson(req, agent);
+    const tab = str(b.tab, 64);
+    if (!person || !deps.handoff || !tab) {
+      refuse(res, 403, "forbidden", "Not this person's tab.");
+      return true;
+    }
+    if (pathname === "/api/alerts/ack") {
+      const id = str(b.id, 200);
+      const r = id ? deps.handoff.ack(tab, person, id) : "not_pending";
+      if (r === "forbidden")
+        refuse(res, 403, "forbidden", "Not this person's tab.");
+      else if (r === "not_pending")
+        refuse(
+          res,
+          409,
+          "not_pending",
+          "Nothing of that alert waits on this tab.",
+        );
+      else sendJson(res, { ok: true });
+      return true;
+    }
+    const endpoint =
+      b.endpoint === null ? null : str(b.endpoint, 2048) || undefined;
+    const subs = deps.push?.subs.list() ?? [];
+    const r = deps.handoff.presence(
+      tab,
+      person,
+      { endpoint, visible: b.visible === true },
+      (e) => subs.some((s) => s.endpoint === e && s.person === person),
+    );
+    if (r === "forbidden")
+      refuse(res, 403, "forbidden", "Not this person's tab.");
+    else if (r === "not_yours")
+      refuse(res, 403, "not_yours", "That device is not one of this person's.");
+    else sendJson(res, { ok: true, claimed: !!endpoint });
     return true;
   }
   if (pathname === "/api/alerts/unsubscribe") {
@@ -536,6 +675,11 @@ export async function handleNotificationRoutes(
       ? b.agents.filter((x): x is string => typeof x === "string").slice(0, 16)
       : [];
     deps.attention.lookingAt(agents);
+    if (deps.seen) {
+      const person = personKey(req);
+      for (const a of agents)
+        deps.seen.markSeen({ subject: agentSubject(a), person });
+    }
     // ATTN-5 (den#142): opening an agent clears its updates (they leave
     // the list, and its count drops); what needs you stays until answered.
     const opened = new Set(agents.map((a) => `agent:${a}`));
@@ -574,26 +718,91 @@ export async function handleNotificationRoutes(
     return true;
   }
   // Bell v6: Mark all read marks what is shown (kinds off stay unread).
-  const shownAll =
-    pathname === "/api/notifications/read" && "all" in which
-      ? (() => {
-          const v = bellView(
-            deps.store.list(),
-            (deps.prefs ?? bellPrefs)(null),
-          );
-          return [...v.recent, ...v.updates, ...v.older].filter((x) => !x.read);
-        })()
+  const peek =
+    pathname === "/api/notifications/read" &&
+    b.seen === true &&
+    "subject" in which &&
+    /^agent:/.test(which.subject)
+      ? which.subject
       : null;
-  const n = shownAll
-    ? shownAll.reduce((k, x) => k + deps.store.markRead({ id: x.id }), 0)
-    : pathname === "/api/notifications/read"
-      ? deps.store.markRead(which)
-      : deps.store.clearRead(which);
+  if (peek) deps.seen?.markSeen({ subject: peek, person: personKey(req) });
+  // Issue 1339: one view build, one write for the whole set.
+  const prefs = (deps.prefs ?? bellPrefs)(null);
+  const markShown = (keep: (x: { subject: string }) => boolean) => {
+    const v = bellView(deps.store.list(), prefs);
+    return deps.store.markReadMany(
+      [...v.recent, ...v.updates, ...v.older]
+        .filter((x) => !x.read && keep(x))
+        .map((x) => x.id),
+    );
+  };
+  const n = peek
+    ? // A peek marks only what the bell showed for the agent.
+      markShown((x) => x.subject === peek)
+    : pathname === "/api/notifications/read" && "all" in which
+      ? markShown(() => true)
+      : pathname === "/api/notifications/read"
+        ? deps.store.markRead(which)
+        : deps.store.clearRead(which);
   sendJson(res, {
     ok: true,
     changed: n,
     // The badge's number: what is shown.
-    unread: bellView(deps.store.list(), (deps.prefs ?? bellPrefs)(null)).unread,
+    unread: bellView(deps.store.list(), prefs).unread,
   });
   return true;
+}
+
+type BellGroups = ReturnType<typeof groupNotifications>;
+
+function recordProjects(): ReadonlyMap<string, string> {
+  const m = new Map<string, string>();
+  for (const r of listRecords(getStateDir())) {
+    m.set(r.id, r.workspace);
+    m.set(`agent:${r.id}`, r.workspace);
+    if (r.sessionName) m.set(r.sessionName, r.workspace);
+  }
+  return m;
+}
+
+export function narrowBell<
+  T extends {
+    unread: number;
+    waiting: { agent?: string }[];
+    groups: BellGroups;
+    updates: { count: number; unread: number; groups: BellGroups };
+    older: { count: number; groups: BellGroups };
+    mutes: readonly { target: string }[];
+  },
+>(
+  bell: T,
+  keep: (ws: string) => boolean,
+  deps: Pick<NotificationRouteDeps, "agentProjects">,
+): T {
+  const projects = (deps.agentProjects ?? recordProjects)();
+  const reach = (target: string | undefined): boolean => {
+    if (!target) return false;
+    if (target.startsWith("workspace/")) return keep(target.slice(10));
+    const ws = projects.get(target);
+    return ws !== undefined && keep(ws);
+  };
+  const groups = (g: BellGroups) => g.filter((x) => reach(x.scope));
+  const items = (g: BellGroups) =>
+    g.flatMap((x) => x.subjects.flatMap((s) => s.items));
+  const recent = groups(bell.groups);
+  const updates = groups(bell.updates.groups);
+  const older = groups(bell.older.groups);
+  return {
+    ...bell,
+    unread: items(recent).filter((n) => !n.read).length,
+    waiting: bell.waiting.filter((w) => reach(w.agent)),
+    groups: recent,
+    updates: {
+      count: items(updates).length,
+      unread: items(updates).filter((n) => !n.read).length,
+      groups: updates,
+    },
+    older: { count: items(older).length, groups: older },
+    mutes: bell.mutes.filter((m) => reach(m.target)),
+  };
 }

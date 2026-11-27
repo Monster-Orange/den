@@ -5,7 +5,6 @@
  */
 import { describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import type { VerifyModule } from "../../../src/shared/verify/config.js";
 import {
@@ -21,10 +20,13 @@ import {
   scheduleLockOf,
   takeScheduleLock,
 } from "../../../src/shared/verify/schedule-tick.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 // A repo with the script the scheduled commands run (Den follows only a
 // command whose files it can find).
-const REPO = fs.mkdtempSync(path.join(os.tmpdir(), "den-sched-repo-"));
+const REPO = tempDir("den-sched-repo-");
 fs.mkdirSync(path.join(REPO, "scripts"));
 fs.writeFileSync(path.join(REPO, "scripts/speed.sh"), "echo ok\n");
 // Commands on a shared environment: on (off is Den's default; its own tests).
@@ -59,7 +61,7 @@ const staging: Schedule = listSchedules("shop", [
   mod("web/speed", "staging"),
 ])[0];
 const local: Schedule = listSchedules("shop", [mod("web/speed", "local")])[0];
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "den-tick-"));
+const tmp = () => tempDir("den-tick-");
 
 describe("decide", () => {
   it("schedule Allow scope: a command on a shared environment is skipped by default (commands-off), even when allowed", () => {

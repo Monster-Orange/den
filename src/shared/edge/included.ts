@@ -6,7 +6,6 @@
  *
  * Read-only: the files are parsed, never written, and only `http.routers`
  * is read. The same files `edge up` copies in (top-level YAML, not the
- * generated edge.yml, not a stack's own route file).
  *
  * Since 0.3.0-dev.32 (a consumer's finding) also the stacks' own route
  * files: Den writes `stack-<project>.yml` into the edge's dynamic directory

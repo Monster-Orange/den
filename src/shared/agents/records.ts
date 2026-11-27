@@ -16,6 +16,8 @@
  * the ones older than the undo window. The runtime's own conversation
  * history is never touched.
  */
+import { agentSeenSubject, seenMarks } from "../seen-mark.js";
+import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { WORKSPACE_NAME_RE } from "../agent-actor.js";
@@ -29,6 +31,7 @@ import {
   type ConversationEntry,
 } from "./conversation-history.js";
 import type { PermissionIntent } from "./permissions.js";
+import { writeFileAtomic } from "../atomic-write.js";
 
 export interface AgentRecord {
   id: string;
@@ -48,6 +51,7 @@ export interface AgentRecord {
    * runtime that takes one (Runtime.subagentModel).
    */
   subagents?: { model?: string; from: "persona" | "org" | "default" };
+  skillPackDirs?: string[];
   workspace: string;
   cwd: string;
   /**
@@ -71,8 +75,14 @@ export interface AgentRecord {
   stoppedAt?: string;
   /** Set when a resume started its current session. */
   resumedAt?: string;
+  /**
+   * Issue 1223: the Den version its current session started on: its Den
+   * tools (MCP) keep that code until it restarts.
+   */
+  denVersion?: string;
   /** The runtime's handle for resume (den-claude: the conversation id). */
   resumeToken?: string;
+  recordId?: string;
   /**
    * AG-17.1: brought in from a conversation started outside Den (when);
    * Den's token, hooks and guards apply from then on.
@@ -109,10 +119,24 @@ export interface AgentRecord {
    * a token. Unset: none was picked (desktop sign-in, or no token).
    */
   signIn?: { id: string; label: string };
+  envHold?: { applied: boolean; legacy?: true };
+  /**
+   * Issue 936: whether its session started in the OS sandbox (Den's state
+   * read-only to it): the tool, or why not.
+   */
+  sandbox?:
+    | { applied: true; tool?: string }
+    /** legacy: from before the sandbox, outside it until it is turned on. */
+    | { applied: false; legacy?: true; reason?: string };
   /** When its session was seen to end on its own (AG-14: "Exited"). */
   endedAt?: string;
   /** That session's exit code, when the host said it. */
   exitCode?: number;
+  /**
+   * Issue 1325: its sandboxed session's own temp folder (TMPDIR), removed
+   * when that session ends.
+   */
+  sessionTmp?: string;
   /**
    * Set when its session was gone after Den or the machine restarted
    * (AG-14.3: "Interrupted"); cleared by a resume or a start.
@@ -308,10 +332,7 @@ function ensureDir(dir: string): void {
 /** Write `content` to `file`, owner-only from the start, atomically. */
 export function writePrivate(file: string, content: string): void {
   ensureDir(path.dirname(file));
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, content, { mode: 0o600 });
-  fs.chmodSync(tmp, 0o600);
-  fs.renameSync(tmp, file);
+  writeFileAtomic(file, content, { mode: 0o600 });
 }
 
 function recordFile(stateDir: string, id: string): string {
@@ -321,10 +342,29 @@ function recordFile(stateDir: string, id: string): string {
 
 export function writeRecord(stateDir: string, rec: AgentRecord): void {
   keepConversations(stateDir, rec);
+  const file = recordFile(stateDir, rec.id);
+  const recordId = rec.recordId ?? keptRecordId(file);
   writePrivate(
-    recordFile(stateDir, rec.id),
-    JSON.stringify(rec, null, 2) + "\n",
+    file,
+    JSON.stringify(recordId ? { ...rec, recordId } : rec, null, 2) + "\n",
   );
+}
+
+function keptRecordId(file: string): string | undefined {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(file, "utf-8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException)?.code === "ENOENT")
+      return randomBytes(12).toString("hex");
+    throw e;
+  }
+  try {
+    const v = (JSON.parse(raw) as { recordId?: unknown })?.recordId;
+    return typeof v === "string" && v ? v : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -433,7 +473,6 @@ export function restoreRecord(stateDir: string, id: string): boolean {
   return true;
 }
 
-/** Forget removed records older than `keepMs` for good. */
 export function purgeRemoved(
   stateDir: string,
   keepMs = UNDO_KEEP_MS,
@@ -449,7 +488,14 @@ export function purgeRemoved(
     if (!n.endsWith(".json") || !AGENT_ID_RE.test(n.slice(0, -5))) continue;
     const f = path.join(removedDir(stateDir), n);
     try {
-      if (now - fs.statSync(f).mtimeMs > keepMs) fs.unlinkSync(f);
+      if (now - fs.statSync(f).mtimeMs > keepMs) {
+        fs.unlinkSync(f);
+        try {
+          seenMarks(stateDir).forget(agentSeenSubject(n.slice(0, -5)));
+        } catch {
+          /* best effort: the marks are small */
+        }
+      }
     } catch {
       /* gone already */
     }

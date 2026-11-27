@@ -4,6 +4,8 @@
  * host (never starts one); a check every 2 s clears a waiting mark whose
  * agent's output moved.
  */
+import { projectDisplayName } from "../../shared/workspace-name.js";
+import { readWorkspacesFile } from "../../shared/environment-manager/workspaces.js";
 import crypto from "node:crypto";
 import {
   listRecords,
@@ -19,16 +21,26 @@ import {
   readNotificationConfig,
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
-import { Attention } from "./attention.js";
+import { Attention, type StatusReport } from "./attention.js";
+import { AlertHandoff } from "./alert-handoff.js";
+import { noteActivity } from "../../shared/agents/activity.js";
 import { AlertFeed } from "./alert-feed.js";
 import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
-import { uiLanguage } from "./ui-language.js";
+import { uiLanguage } from "../../shared/ui-language.js";
 import { timeZonePref } from "./time-zone-pref.js";
 import { product } from "../../shared/product.js";
-import { readWebUrl } from "../../shared/web-url.js";
+import { readWebUrl } from "../../shared/web/web-url.js";
 import { pushContact } from "../../shared/push-contact.js";
 import { PushSubscriptions, pushAll, pushEach, vapidKeys } from "./web-push.js";
 import { leadCandidates, pickLead, tellLead } from "./lead-routing.js";
+import { seenMarks } from "../../shared/seen-mark.js";
+import {
+  agentSubject,
+  doneAgents,
+  seenDoneAgents,
+  type AgentStateDeps,
+  type DoneAgent,
+} from "./agent-state.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
@@ -186,26 +198,55 @@ export function bellsOf(
     }));
 }
 
-/**
- * NT-1 (3): the agents whose session rang the terminal's bell. Claude
- * Code's agents are left out: their hooks say it, more exactly.
- */
-async function sessionBells(): Promise<
-  { agent: string; workspace: string; bellAt: string }[]
-> {
+export function statusesOf(
+  sessions: readonly SessionInfo[],
+  records: readonly AgentRecord[],
+): StatusReport[] {
+  const said = new Map(
+    sessions
+      .filter((x) => x.status && !x.exited)
+      .map((x) => [x.ref.id, x.status!]),
+  );
+  return records
+    .filter(
+      (r) =>
+        !HOOKED_RUNTIMES.has(r.runtime) &&
+        !r.stoppedAt &&
+        said.has(r.session.id),
+    )
+    .map((r) => {
+      const st = said.get(r.session.id)!;
+      return {
+        agent: r.id,
+        workspace: r.workspace,
+        state: st.state,
+        at: st.at,
+      };
+    });
+}
+
+async function sessionSignals(): Promise<{
+  bells: { agent: string; workspace: string; bellAt: string }[];
+  statuses: StatusReport[];
+}> {
+  const none = { bells: [], statuses: [] };
   try {
     const { webDeps } = await import("./agent-routes.js");
     const c = await webDeps().connectExisting();
-    if (!c) return [];
+    if (!c) return none;
     try {
       const sessions = await c.list();
-      if (!sessions.some((x) => x.bellAt)) return [];
-      return bellsOf(sessions, listRecords(getStateDir()));
+      if (!sessions.some((x) => x.bellAt || x.status)) return none;
+      const records = listRecords(getStateDir());
+      return {
+        bells: bellsOf(sessions, records),
+        statuses: statusesOf(sessions, records),
+      };
     } finally {
       c.close();
     }
   } catch {
-    return [];
+    return none;
   }
 }
 
@@ -264,6 +305,15 @@ export function pushDeps(): {
   };
 }
 
+let handoff: AlertHandoff | null = null;
+export function alertHandoff(): AlertHandoff {
+  handoff ??= new AlertHandoff({
+    windowMs: () => alertPrefs(readUserConfig()).tabFirstSeconds * 1000,
+    maxTabs: () => alertPrefs(readUserConfig()).maxStreams,
+  });
+  return handoff;
+}
+
 export function alertFeed(): AlertFeed {
   alerts ??= new AlertFeed({
     prefs: () => alertPrefs(readUserConfig()),
@@ -271,17 +321,29 @@ export function alertFeed(): AlertFeed {
     zone: () => timeZonePref(readUserConfig().time_zone),
     title: () => product().title,
     nameOf,
-    push: (a, prefs) =>
-      pushAll(
-        { title: a.title, body: a.body, link: a.link, tag: a.id },
-        {
-          subs: pushDeps().subs,
-          keys: () => vapidKeys(getStateDir()),
-          subject: pushSubject(),
-          timeoutMs: prefs.pushTimeoutSeconds * 1000,
-          ttlSeconds: prefs.pushTtlSeconds,
-        },
+    muted: (agent, workspace) =>
+      (store ?? notificationDeps().store).muted(
+        `agent:${agent}`,
+        `workspace/${workspace}`,
       ),
+    push: async (a, prefs) => {
+      const send = (only: string[]) =>
+        void pushAll(
+          { title: a.body, body: a.project, link: a.link, tag: a.id },
+          {
+            subs: pushDeps().subs,
+            keys: () => vapidKeys(getStateDir()),
+            subject: pushSubject(),
+            timeoutMs: prefs.pushTimeoutSeconds * 1000,
+            ttlSeconds: prefs.pushTtlSeconds,
+            only,
+          },
+        ).catch(() => undefined);
+      const all = pushDeps()
+        .subs.list()
+        .map((x) => x.endpoint);
+      if (all.length) alertHandoff().deliver(a, all, send);
+    },
   });
   return alerts;
 }
@@ -291,14 +353,22 @@ export function notificationDeps(): {
   attention: Attention;
   alerts: AlertFeed;
   push: ReturnType<typeof pushDeps>;
+  handoff: AlertHandoff;
   asks: { limit: AskLimit; perHour: () => number };
   prefs: () => BellPrefs;
+  seen: ReturnType<typeof seenMarks>;
+  doneAgents: (person: string) => DoneAgent[];
+  seenDone: (person: string) => DoneAgent[];
 } {
   store ??= new NotificationStore(getStateDir());
   attention ??= new Attention({
     store,
     outputMark,
     nameOf,
+    // Issue 1129: a resume after a restart starts the working ones first.
+    activity: (id, working) => {
+      noteActivity(getStateDir(), id, working);
+    },
     hooked: (id) =>
       HOOKED_RUNTIMES.has(readRecord(getStateDir(), id)?.runtime ?? ""),
     endedAsking,
@@ -308,6 +378,12 @@ export function notificationDeps(): {
     // Issue 101: a question goes to the project's lead, when it has one.
     leadOf: async (id, ws) => pickLead(await leadCandidates(), ws, id),
     tellLead,
+    turnEnded: (id, at) =>
+      seenMarks(getStateDir()).noteVersion(
+        agentSubject(id),
+        String(at),
+        new Date(at).toISOString(),
+      ),
     // Issue 1008: an answer after a withdraw; the agent is told.
     tell: tellLead,
   });
@@ -318,13 +394,18 @@ export function notificationDeps(): {
       busy = true;
       void attention!
         .check()
-        .then(async () => attention!.bells(await sessionBells()))
+        .then(async () => {
+          const sig = await sessionSignals();
+          await attention!.bells(sig.bells);
+          await attention!.statuses(sig.statuses);
+        })
         .catch(() => undefined)
         .finally(() => (busy = false));
     }, 2000);
     timer.unref();
   }
   return {
+    handoff: alertHandoff(),
     store,
     attention,
     alerts: alertFeed(),
@@ -343,6 +424,46 @@ export function notificationDeps(): {
         return bellPrefs(null);
       }
     },
+    seen: seenMarks(getStateDir()),
+    doneAgents: (person) =>
+      doneAgents(
+        listRecords(getStateDir()),
+        person,
+        agentStateDeps(),
+        busyNow(attention!),
+        doneProjectName(),
+      ),
+    seenDone: (person) =>
+      seenDoneAgents(
+        listRecords(getStateDir()),
+        person,
+        agentStateDeps(),
+        busyNow(attention!),
+        doneProjectName(),
+      ),
+  };
+}
+
+function busyNow(a: Attention): Set<string> {
+  return new Set(
+    [...a.waitingNow()]
+      .filter(([, why]) => why !== "input")
+      .map(([agent]) => agent),
+  );
+}
+
+function doneProjectName(): (ws: string) => string {
+  const ws = readWorkspacesFile().workspaces ?? {};
+  return (slug) => projectDisplayName(slug, ws[slug]);
+}
+
+export function agentStateDeps(): AgentStateDeps {
+  const a = notificationDeps().attention;
+  return {
+    seen: seenMarks(getStateDir()),
+    working: () => a.workingNow(),
+    waitingSince: (agent) => a.waitingDetail(agent)?.since,
+    waitingWhat: (agent) => a.waitingDetail(agent)?.what,
   };
 }
 
@@ -391,6 +512,10 @@ export async function reconcileKeptWaits(): Promise<void> {
 /** NT-3b: the agents the hooks say wait for their person, and why. */
 export function attentionWaiting(): Map<string, string> {
   return attention ? attention.waitingNow() : new Map();
+}
+
+export function attentionActivity(): Map<string, "working" | "idle"> {
+  return attention ? attention.activityNow() : new Map();
 }
 
 /** Issue 327: what `agent` waits on and since when, or null. */

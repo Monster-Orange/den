@@ -548,6 +548,9 @@ function editorBody(dlg, s) {
     version: v("#pe-ver") || "latest",
     permission: s.intent,
     allowedCommands: splitCommands(v("#pe-tools")),
+    ...(v("#pe-packs") === "list"
+      ? {}
+      : { skillPacks: v("#pe-packs") === "off" ? "off" : null }),
   };
 }
 
@@ -592,6 +595,7 @@ export function openPersonaEditor(o) {
         version: src.version || "latest",
         permission: src.permission || "ask",
         allowedCommands: [...(src.allowedCommands ?? [])],
+        skillPacks: src.skillPacks ?? null,
       }
     : {
         displayName: "",
@@ -604,6 +608,7 @@ export function openPersonaEditor(o) {
         version: "latest",
         permission: firstRole?.mode || "ask",
         allowedCommands: [],
+        skillPacks: null,
       };
   const s = {
     intent: d.permission,
@@ -635,6 +640,13 @@ export function openPersonaEditor(o) {
     `<div class="two"><label class="fld"><span>${esc(t("pe.runtime"))}</span><select id="pe-rt"${dis}>${runtimeOptionsHtml(data, d.runtime)}</select></label>` +
     `<label class="fld"><span>${esc(t("pe.model"))}</span><select id="pe-model"${dis}>${modelOptionsHtml(data, d.runtime, d.model, t("pe.rtDefault"))}</select></label></div>` +
     `<div class="two"><label class="fld"><span>${esc(t("pe.ver"))}</span><select id="pe-ver"${dis}>${versionOptionsHtml(data, d.runtime, d.model, d.version)}</select></label><span class="helpl" id="pe-newer">${isStale(data, d.runtime, d.model, d.version) ? `${newerBadge()} <button type="button" class="lnk" data-x="latest">${esc(t("ver.use"))}</button>` : ""}</span></div>` +
+    `<label class="fld"><span>${esc(t("pe.packs"))}</span><select id="pe-packs"${dis}>` +
+    `<option value=""${d.skillPacks === null ? " selected" : ""}>${esc(t("ag.packs.default"))}</option>` +
+    `<option value="off"${d.skillPacks === "off" ? " selected" : ""}>${esc(t("ag.packs.off"))}</option>` +
+    (Array.isArray(d.skillPacks)
+      ? `<option value="list" selected>${esc(t("pe.packsList", { list: d.skillPacks.join(", ") }))}</option>`
+      : "") +
+    `</select></label>` +
     `<div class="pblk">${permBlockHtml("pe", data, { ...s, disabled: ro, extrasOpen: s.extras.length > 0 })}</div>` +
     `<p class="err" id="pe-err" role="alert" hidden></p>` +
     `<div class="btns">${!isNew && src.origin === "local" ? `<button type="button" class="den-btn" data-x="del">${esc(t("pe.del"))}</button>` : ""}<span class="sp"></span>` +
@@ -736,6 +748,9 @@ export function openPersonaEditor(o) {
       close();
       openPersonaEditor({ ...o, dup: true });
     } else if (x === "del") {
+      const release = window.denShell?.holdDots
+        ? window.denShell.holdDots(b)
+        : () => {};
       try {
         await api("DELETE", `/api/personas/${encodeURIComponent(src.id)}`);
         forgetPersonaDetails();
@@ -745,6 +760,8 @@ export function openPersonaEditor(o) {
         await o.onSaved?.(null);
       } catch (err) {
         showErr(err);
+      } finally {
+        void release();
       }
     }
   });
@@ -760,7 +777,9 @@ export function openPersonaEditor(o) {
     const bad = body.allowedCommands.find((c) => commandProblem(c));
     if (bad) return showErr(new Error(t("pe.badCmd", { c: bad })));
     const go = $("#pe-go");
-    go.disabled = true;
+    const release = window.denShell?.holdDots
+      ? window.denShell.holdDots(go)
+      : () => {};
     try {
       const r = isNew
         ? await api("POST", "/api/personas", body)
@@ -777,7 +796,7 @@ export function openPersonaEditor(o) {
     } catch (err) {
       showErr(err);
     } finally {
-      go.disabled = false;
+      void release();
     }
   });
   if (typeof dlg.showModal === "function") dlg.showModal();
@@ -866,6 +885,10 @@ export function renderPersonasSettings(host, ctx) {
     if (x === "new") return void openPersonaEditor({ data, onSaved: reload });
     const id = b.closest("[data-pid]")?.dataset.pid;
     if (!id) return;
+    // The pressed row button holds the kit's dots until the answer.
+    const release = window.denShell?.holdDots
+      ? window.denShell.holdDots(b)
+      : () => {};
     try {
       const p = await personaDetail(id);
       if (x === "del") {
@@ -892,6 +915,8 @@ export function renderPersonasSettings(host, ctx) {
       openPersonaEditor({ data, src: p, dup: x === "dup", onSaved: reload });
     } catch (err) {
       window.denShell?.errorToast?.(err);
+    } finally {
+      void release();
     }
   });
   void load();

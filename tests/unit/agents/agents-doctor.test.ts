@@ -17,12 +17,16 @@ afterEach(async () => {
   await cleanupRigs();
 });
 
-const doctor = (r: Rig, ...args: string[]) =>
-  cmdAgents(["doctor", ...args], {
+const doctor = (r: Rig, ...args: string[]) => {
+  const sessionTmpBase = path.join(r.dir, "tmp");
+  fs.mkdirSync(sessionTmpBase, { recursive: true });
+  return cmdAgents(["doctor", ...args], {
+    sessionTmpBase,
     ...r.deps,
     loginPath: async () => {},
     apiOnly: () => ({ services: [] }),
   });
+};
 
 describe("agents doctor: subagents (den#3)", () => {
   it("the org's model and connectors, each persona that overrides it, and each agent as it last started", async () => {
@@ -121,6 +125,11 @@ describe("agents doctor", () => {
       "",
       "Agents and their repos",
       "  every agent is linked to a repo",
+      "",
+      // Issue 936: the rig's sandbox step applies (without a real tool).
+      "Agent sandbox (agents can't write Den's state)",
+      "  ✓ on here (the OS sandbox)",
+      "  ✓ every running agent is inside it",
       "",
       "`acme doctor --probe` checks the env each runtime's session gets.",
     ]);

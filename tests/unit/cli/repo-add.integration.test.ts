@@ -174,6 +174,12 @@ beforeAll(() => {
     ACME_HOME: path.join(tmp, "acme-home"),
     NO_COLOR: "1",
     GIT_CONFIG_NOSYSTEM: "1",
+    // The gate's machine readings, pinned as tests/setup.ts pins them (the
+    // DEN_ filter above drops them): doctor never reads this machine's VMs.
+    DEN_GATE_LOAD5: "0",
+    DEN_GATE_FREE_MEM: "100",
+    DEN_GATE_SWAP_GB: "0",
+    DEN_GATE_VMS: "0",
   };
   fs.mkdirSync(path.join(tmp, "home"));
 });
