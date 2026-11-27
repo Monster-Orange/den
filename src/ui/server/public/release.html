@@ -589,6 +589,18 @@
         color: var(--bad);
         font-size: 11px;
       }
+      #modal-body .den-combo {
+        display: flex;
+      }
+      .dep-msg {
+        min-height: 16px;
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .dep-msg.err-text {
+        color: var(--bad);
+      }
     </style>
   </head>
   <body>
@@ -1213,8 +1225,9 @@
           const isProd = state.env === "prod";
           openModal(
             t("rel.dep.title", { repo, env: state.env }),
-            `<label for="dep-branch">${esc(t("rel.dep.ref"))} <span id="dep-branch-msg" class="err-text" aria-live="polite"></span></label>
+            `<label for="dep-branch">${esc(t("rel.dep.ref"))}</label>
          ${comboHtml({ id: "dep-branch", label: t("rel.dep.ref"), bare: true })}
+         <div id="dep-branch-msg" class="dep-msg" aria-live="polite"></div>
          <div id="dep-hotfix"></div>
          <div id="dep-confirm-wrap"></div>
          <div id="dep-err" class="err-text"></div>`,
@@ -1232,6 +1245,7 @@
             const msg = $("dep-branch-msg");
             state.depBranchOk = false;
             $("dep-go").disabled = true;
+            msg.classList.remove("err-text");
             msg.textContent = name ? t("rel.dep.checking") : "";
             if (!name) return;
             checkTimer = setTimeout(() => {
@@ -1241,6 +1255,7 @@
                 .then((r) => {
                   if (n !== checkSeq) return;
                   state.depBranchOk = r?.exists === true;
+                  msg.classList.toggle("err-text", !state.depBranchOk);
                   msg.textContent = state.depBranchOk
                     ? ""
                     : t("rel.dep.noBranch", { branch: name });

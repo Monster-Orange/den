@@ -76,6 +76,13 @@ export function wireCombo(
   const input = root.querySelector(`#${CSS.escape(id)}`);
   const ul = root.querySelector(`#${CSS.escape(id)}-list`);
   if (!input || !ul) return null;
+  const pop = typeof ul.showPopover === "function";
+  if (pop) ul.popover = "manual";
+  const show = (on) => {
+    ul.hidden = !on;
+    if (pop && on !== ul.matches(":popover-open"))
+      on ? ul.showPopover() : ul.hidePopover();
+  };
   let picked = "";
   let shown = [];
   let sel = 0;
@@ -93,7 +100,7 @@ export function wireCombo(
       });
   };
   const close = () => {
-    ul.hidden = true;
+    show(false);
     input.setAttribute("aria-expanded", "false");
     input.removeAttribute("aria-activedescendant");
   };
@@ -119,7 +126,7 @@ export function wireCombo(
           ? `<li class="den-combo-more" aria-disabled="true">${esc(words.more ?? "")}</li>`
           : "")
       : `<li class="den-combo-none" aria-disabled="true">${esc(words.none ?? "No match")}</li>`;
-    ul.hidden = false;
+    show(true);
     place();
     input.setAttribute("aria-expanded", "true");
     if (shown.length)

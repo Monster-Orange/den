@@ -17,11 +17,14 @@
 }
 .den-combo-list {
   position: fixed;
+  inset: auto;
   z-index: 20;
+  color: var(--text);
   max-height: 240px;
   overflow-y: auto;
   margin: 0;
   padding: 4px;
+  box-sizing: border-box;
   list-style: none;
   background: var(--surface);
   border: 1px solid var(--border);
