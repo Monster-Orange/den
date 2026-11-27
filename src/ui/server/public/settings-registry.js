@@ -3499,6 +3499,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) =>
       ctx.post({ web_github: { owner_name_timeout_seconds: v } }),
   },
+  {
+    id: "server.list_page_max",
+    category: "server",
+    label: "Longest list page, in rows",
+    description:
+      "The most rows one page of a list may hold, when a page or an agent asks for more. A page holds 50 rows unless it asks for another number. __DEN_CLI__ config web.list_page_max=200",
+    keywords: ["list", "page", "rows", "limit", "web.list_page_max"],
+    scope: "user",
+    keys: ["web_lists.page_max"],
+    control: { type: "number", min: 10, max: 5000, step: 10 },
+    read: (ctx) => ctx.data.web_lists?.pageMax ?? 200,
+    write: (v, ctx) => ctx.post({ web_lists: { page_max: v } }),
+  },
   // The shared GitHub watcher (MCP github_watch): its pace and API budget.
   {
     id: "server.github_watch_interval",
