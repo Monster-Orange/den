@@ -15,6 +15,7 @@
     ["server.report_visibility_retry", "server"],
     ["server.lookup_first", "server"],
     ["server.lookup_retry", "server"],
+    ["server.menu_load_timeout", "server"],
     ["server.address_check_timeout", "server"],
     ["server.address_check_retries", "server"],
     ["server.address_check_cache", "server"],

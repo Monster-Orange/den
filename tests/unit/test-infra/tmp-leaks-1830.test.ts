@@ -60,6 +60,83 @@ describe("issue 1830: a run's den-* temp folders, by the test file that made the
     ]);
   });
 
+  it("each remove form notes a removed den-* folder with its time; the list still names only what is left", async () => {
+    const run = fs.mkdtempSync(path.join(base, "run-"));
+    const env = {
+      DEN_TEST_GLOBAL_STUBS: path.join(run, "no-vendor-cli"),
+      TMPDIR: base,
+    };
+    const fake = {
+      ...fs,
+      promises: { ...fs.promises },
+      [Symbol.for("den.tmpLeaks")]: false,
+    } as typeof fs;
+    tmpLeaks.armTmpLeaks(fake, env);
+    tmpLeaks.setTestFile("tests/y.test.ts", fake);
+    const before = Date.now();
+    const made = ["a", "b", "c", "d"].map((n) =>
+      fake.mkdtempSync(path.join(base, `den-rm-${n}-`)),
+    );
+    fake.rmSync(made[0], { recursive: true, force: true });
+    await new Promise<void>((r, j) =>
+      fake.rm(made[1], { recursive: true }, (e) => (e ? j(e) : r())),
+    );
+    await fake.promises.rm(made[2], { recursive: true });
+    fake.rmdirSync(made[3]);
+    const kept = fake.mkdtempSync(path.join(base, "den-rm-kept-"));
+    const h = tmpLeaks.historyIn(run);
+    for (const d of made) {
+      expect(h.get(d)?.made).toEqual([
+        { owner: "tests/y.test.ts", at: expect.any(Number) },
+      ]);
+      expect(h.get(d)?.removed).toEqual([
+        { owner: "tests/y.test.ts", at: expect.any(Number) },
+      ]);
+      expect(h.get(d)!.removed[0].at).toBeGreaterThanOrEqual(before);
+    }
+    expect(h.get(kept)?.removed).toEqual([]);
+    expect(tmpLeaks.leaksIn(run).leaks).toEqual([
+      { file: "tests/y.test.ts", dirs: [kept] },
+    ]);
+  });
+
+  it("a leak's report: when it was made and removed, then its files by path and time, newest first, never their contents", () => {
+    const run = fs.mkdtempSync(path.join(base, "run-"));
+    const list = path.join(run, "tmp-made-2.log");
+    const back = fs.mkdtempSync(path.join(base, "den-back-"));
+    const never = fs.mkdtempSync(path.join(base, "den-never-"));
+    tmpLeaks.record(list, back, "tests/z.test.ts", fs, "made", 1000);
+    tmpLeaks.record(list, back, "tests/z.test.ts", fs, "removed", 2000);
+    tmpLeaks.record(list, never, "tests/z.test.ts", fs, "made", 1000);
+    fs.mkdirSync(path.join(back, "home", ".den"), { recursive: true });
+    const older = path.join(back, "home", ".den", "web-boots.json");
+    const newer = path.join(back, "home", ".den", "web-sessions.json");
+    fs.writeFileSync(older, "SECRET-OLDER");
+    fs.writeFileSync(newer, "SECRET-NEWER");
+    fs.utimesSync(older, new Date(3000), new Date(3000));
+    fs.utimesSync(newer, new Date(4000), new Date(4000));
+    const h = tmpLeaks.historyIn(run);
+    const lines = tmpLeaks.describeLeak(back, h);
+    expect(lines).toEqual([
+      "made 1970-01-01T00:00:01.000Z (tests/z.test.ts); removed 1970-01-01T00:00:02.000Z (tests/z.test.ts): made again after its remove",
+      "1970-01-01T00:00:04.000Z  home/.den/web-sessions.json",
+      "1970-01-01T00:00:03.000Z  home/.den/web-boots.json",
+    ]);
+    expect(lines.join("\n")).not.toContain("SECRET");
+    expect(tmpLeaks.describeLeak(never, h)).toEqual([
+      "made 1970-01-01T00:00:01.000Z (tests/z.test.ts); no fs remove of it was seen",
+    ]);
+  });
+
+  it("a leak's file list stops at its limit and says how many more", () => {
+    const dir = fs.mkdtempSync(path.join(base, "den-many-"));
+    for (let i = 0; i < 5; i++) fs.writeFileSync(path.join(dir, `f${i}`), "");
+    const lines = tmpLeaks.describeLeak(dir, new Map(), fs, 3);
+    expect(lines[0]).toBe("no record of it being made");
+    expect(lines).toHaveLength(5);
+    expect(lines[4]).toBe("(2 more)");
+  });
+
   it("a file over its baseline count fails; one not listed may leave none; one under is reported", () => {
     const leak = (file: string, n: number) => ({
       file,

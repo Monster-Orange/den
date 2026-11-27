@@ -4,6 +4,8 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.93] - unreleased
+
 ## [0.4.92] - unreleased
 
 ### Changed
@@ -25,6 +27,7 @@ config and manifest changes a distribution must make to move to it under
 
 - Agents can be kept from seeing secret-looking environment variables (`*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, `OP_SESSION_*`): set `agents.env_hold` in config/local/user.yml, or use a strict install, which holds them back by default. A name an agent needs goes in `agents.env_allow`. `env`, `printenv` and `set` in an agent's shell show those values masked. Agents started before keep theirs until you pick Keep these or Remove in the bell, and `den doctor` lists what is held back, by name only. (issue 974) It was held back from 0.4.91: on 0.4.91-dev.1 its live check (gate/974) failed because of a bug in the check itself (it sent multi-line shell probes, and read a cut-off copy of settings.json), not in the env hold. The fixed check is the proof: on that same build it passed with the hold on and with it off.
 - `nice`, `timeout`, `stdbuf` and `xargs` in front of `env` or `printenv`, and `env` running one of them (`-S` included), now show secret-looking values masked too. (issue 1837)
+- An agent's sandbox now hides each Hub token file Den keeps: the per-Hub token files Connect makes (`hub/token-<slot>`), the agents' own Hub tokens (`hub/agents/`) and tokens waiting for a revoke (`hub/unrevoked/`), on macOS and Linux, even if a read rule were to name their folder. On Linux the old `hub/token` is now masked in that case too.
 
 - Every link Den gives to the server agent (a bell row, its question, a notification, the link in its own replies, its held write's Allow) opens the server agent's page. Before, each opened an Agents page for a project nobody can see, with nothing to answer (issue 1811)
 - The Agents list's switch now says Need, Project and Group, without "By" (es: Urgencia, Proyecto, Grupo; ja: プロジェクト, グループ), so it takes less room.
@@ -47,6 +50,8 @@ config and manifest changes a distribution must make to move to it under
 - Agents page: after an agent restarts, its pane no longer shows the old session's terminal size while the new session connects.
 
 - With `DEN_LOGIN_SHELL=off`, `den doctor` and the server no longer start the person's shell to list the names in its environment. Den's tests set it, so a test no longer runs the developer's shell profile. (issue 1857)
+
+- Top bar: a project menu load that stalls (no answer, or headers with no body) now counts as failed after a while and is tried again, so the menu no longer stays hidden until a reload. The wait is a Setting, Settings › Server › Project menu load wait (`web.menu_load_timeout_ms`, 8 s by default, 1 s to 10 min). (issues 1051, 1044)
 
 ## [0.4.91] - 2026-11-26
 
