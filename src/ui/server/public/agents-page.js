@@ -1852,10 +1852,12 @@ function repaintNames() {
  */
 async function refresh() {
   clearTimeout(st.timer);
+  let listed = false;
   try {
     await refreshOnce();
+    listed = true;
   } finally {
-    nextRefresh();
+    nextRefresh(listed);
   }
 }
 
@@ -1960,11 +1962,12 @@ async function refreshOnce() {
   if (strip) paintTabs(strip);
 }
 
-function nextRefresh() {
+function nextRefresh(listed) {
   if (!st.root?.isConnected) return;
   // A pane whose session just ended may have a new one soon (a persona
   // change, a resume): look again every second for a while.
-  const soon = Date.now() < (st.followUntil ?? 0);
+  const soon =
+    Date.now() < (st.followUntil ?? 0) || (listed && !!st.data?.helpersPending);
   st.timer = setTimeout(
     () => {
       if (!document.hidden) void refresh();

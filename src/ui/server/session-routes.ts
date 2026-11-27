@@ -563,6 +563,7 @@ export interface ListedSession {
   lastRotation?: RotationEntry;
   /** D32: its helpers (counts and the recent ones). */
   helpers?: AgentRow["helpers"];
+  helpersPending?: true;
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
   /** Issue 749: MCP servers whose tools failed to load in its session. */
@@ -1021,10 +1022,19 @@ async function listWithHelpers(
     asks,
     all.refreshSeconds * 1000,
     all.factsCacheMb * 1024 * 1024,
+    { waitMs: all.listWaitSeconds * 1000, restMs: all.readerRestMs },
   );
-  if (!fresh) return first;
-  asks.length = 0;
-  return listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
+  if (fresh) asks.length = 0;
+  const listed = fresh
+    ? listedSessions(sessions, { ...d, helpersOf }, also, hubUrl)
+    : first;
+  const pending = new Set(asks.filter((a) => !rows.known(a)).map((a) => a.id));
+  if (!pending.size) return listed;
+  return listed.map((r) =>
+    r.kind === "agent" && r.agent && pending.has(r.agent)
+      ? { ...r, helpersPending: true as const }
+      : r,
+  );
 }
 
 /** D32: the helpers count, under /api/sessions/ but no session's route. */
@@ -1109,6 +1119,7 @@ export async function handleSessionList(
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
+    ...(rows.some((r) => r.helpersPending) ? { helpersPending: true } : {}),
     // den#156: how long the page waits for its next list.
     refreshTimeoutSeconds: waits.refresh_timeout_seconds,
     backend: pty.available

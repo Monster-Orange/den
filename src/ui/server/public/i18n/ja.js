@@ -3341,6 +3341,7 @@
     "hp.rowRunning": "実行中のヘルパー {n}",
     "hp.runningN": "実行中 {n}",
     "hp.chip": "ヘルパー {n}",
+    "hp.counting": "ヘルパーを確認中…",
     "hp.groupOf": "{name} のヘルパー",
     "hp.open": "{what}、{status}: トランスクリプトを開く",
     "hp.dlg": "{name} のヘルパー",

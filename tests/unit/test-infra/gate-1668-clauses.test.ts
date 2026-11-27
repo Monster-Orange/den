@@ -40,18 +40,14 @@ const limits = JSON.parse(
 
 type SRow = Row & { skip?: string };
 
-function rows(result: unknown, awaits?: number | null): SRow[] {
-  const call =
-    awaits === undefined
-      ? `g.expect([{ cell: { browser: "chromium", width: 1280 }, result: ${JSON.stringify(result)} }])`
-      : `g.judge(${JSON.stringify(result)}, ${JSON.stringify(awaits)})`;
+function rows(result: unknown): SRow[] {
+  const call = `g.expect([{ cell: { browser: "chromium", width: 1280 }, result: ${JSON.stringify(result)} }])`;
   return JSON.parse(
     run(`
     const g = await import("./gate/1668.mjs");
     console.log(JSON.stringify(${call}));`),
   ) as SRow[];
 }
-const live = (result: unknown) => rows(result, null);
 const [W, C, WP, CP, B] = [0, 1, 2, 3, 4];
 
 const times = (ms: number) =>
@@ -98,9 +94,8 @@ const fast = {
 };
 
 describe("gate/1668 rows", () => {
-  it("a list and a probe under their limits pass every row, masked or live", () => {
+  it("a list and a probe under their limits pass every row", () => {
     expect(rows(fast).map((r) => r.ok)).toEqual([true, true, true, true, true]);
-    expect(live(fast).map((r) => r.ok)).toEqual([true, true, true, true, true]);
   });
 
   it("the bars are fixed: 1500 ms for any list, cold or warm, and 250 ms for server-info", () => {
@@ -120,71 +115,33 @@ describe("gate/1668 rows", () => {
     expect(r[B].clause).toContain(`${limits.big} MB`);
   });
 
-  it("issue 1861: the slow cold rows FAIL when judged live, and are NOT_RUN awaits-1861 while COLD_KNOWN is set, with the numbers", () => {
+  it("issue 1861: the slow cold rows FAIL, with the numbers", () => {
     const stalled = {
       ...fast,
       coldMs: 7700,
       coldHelperRows: limits.n,
       coldProbe: { ms: 2762, status: 200, inFlight: true },
     };
-    expect(live(stalled).map((x) => x.ok)).toEqual([
-      true,
-      false,
-      true,
-      false,
-      true,
-    ]);
     const m = rows(stalled);
-    expect(m.map((x) => x.ok)).toEqual([true, null, true, null, true]);
-    expect([m[C].skip, m[CP].skip]).toEqual(["awaits-1861", "awaits-1861"]);
+    expect(m.map((x) => x.ok)).toEqual([true, false, true, false, true]);
+    expect([m[C].skip, m[CP].skip]).toEqual([undefined, undefined]);
     expect(m[C].detail).toContain("cold list 7700 ms");
-    expect(m[C].detail).toContain("issue 1861");
     expect(m[CP].detail).toContain("during the cold list 2762 ms");
-    expect(m[CP].detail).toContain("issue 1861");
   });
 
-  it("a cold row within the bar PASSes even while masked, its numbers in the detail", () => {
+  it("a cold row within the bar PASSes, its numbers in the detail", () => {
     const r = rows(fast);
     expect([r[C].ok, r[CP].ok]).toEqual([true, true]);
     expect(r[C].detail).toContain("cold list 30 ms");
     expect(r[CP].detail).toContain("during the cold list 6 ms");
   });
 
-  it("the skip has a ceiling: within COLD_KNOWN_MAX a slow cold row is NOT_RUN, above it the row FAILs, and the detail names the ceiling", () => {
-    const max = JSON.parse(
-      run(
-        `const g = await import("./gate/1668.mjs"); console.log(JSON.stringify(g.COLD_KNOWN_MAX));`,
-      ),
-    ) as { listMs: number; probeMs: number };
-    expect(max).toEqual({ listMs: 15000, probeMs: 6000 });
-    const at = (coldMs: number, probeMs: number) =>
-      rows({
-        ...fast,
-        coldMs,
-        coldProbe: { ms: probeMs, status: 200, inFlight: true },
-      });
-    const under = at(max.listMs, max.probeMs);
-    expect([under[C].ok, under[CP].ok]).toEqual([null, null]);
-    expect(under[C].detail).toContain(`ceiling ${max.listMs} ms`);
-    expect(under[CP].detail).toContain(`ceiling ${max.probeMs} ms`);
-    const overList = at(max.listMs + 1, 100);
-    expect([overList[C].ok, overList[CP].ok]).toEqual([false, true]);
-    expect(overList[C].detail).toContain(
-      `over the known stall's ceiling ${max.listMs} ms`,
-    );
-    const overProbe = at(100, max.probeMs + 1);
-    expect([overProbe[C].ok, overProbe[CP].ok]).toEqual([true, false]);
-    expect(overProbe[CP].detail).toContain(
-      `over the known stall's ceiling ${max.probeMs} ms`,
-    );
-  });
-
-  it("a cold list that didn't answer 200 FAILs, mask or not", () => {
+  it("a cold list that didn't answer 200 FAILs", () => {
     const r = rows({ ...fast, coldStatus: 500 });
     expect(r[C].ok).toBe(false);
   });
 
-  it("a slow warm list and a stalled warm server-info still FAIL while COLD_KNOWN is set", () => {
+  it("a slow warm list and a stalled warm server-info FAIL on their own rows", () => {
     const slow = {
       ...fast,
       tries: times(limits.limit * 5),
@@ -193,13 +150,6 @@ describe("gate/1668 rows", () => {
       maxProbeMs: limits.probe * 5,
     };
     expect(rows(slow).map((r) => r.ok)).toEqual([
-      false,
-      true,
-      false,
-      true,
-      true,
-    ]);
-    expect(live(slow).map((r) => r.ok)).toEqual([
       false,
       true,
       false,
@@ -332,7 +282,7 @@ describe("gate/1668 rows", () => {
     );
   });
 
-  it("server-info stalled while the background reader fills the helpers fails the warm server-info row, with the fill probes, mask or not", () => {
+  it("server-info stalled while the background reader fills the helpers fails the warm server-info row, with the fill probes", () => {
     const stalled = {
       ...fast,
       fill: [
