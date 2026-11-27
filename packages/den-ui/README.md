@@ -789,6 +789,10 @@ Three pieces, data in, the kit's words out (en, es, ja).
     adds a ▾ that turns while open. `disabled` is a native disabled;
     `disabledWhy` keeps the button focusable, puts the reason in `title`
     and `aria-describedby`, and the kit stops its clicks.
+  - Disabled looks the same both ways, in both themes, with no opacity:
+    secondary, primary, danger and the filled danger confirm take a
+    `--sunken` fill, a `--border` edge and `--faint` text; ghost, link and
+    icon stay boxless with `--faint` text. No hover, and no pointer.
   - `holdButton(el, { instant? })` holds it busy (`aria-busy` and
     `aria-disabled`, never `disabled`; the kit's dots at the same width,
     or none when instant) and returns the release.

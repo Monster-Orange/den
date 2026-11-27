@@ -147,15 +147,22 @@ details[open] > summary.den-btn {
 .den-btn.icon.lg {
   padding: 0;
 }
-.den-btn:disabled,
-.den-btn[aria-disabled="true"]:not([aria-busy="true"]) {
-  cursor: not-allowed;
-  color: var(--btn-disabled-text, var(--faint));
+.den-btn:is(:disabled, [aria-disabled="true"]:not([aria-busy="true"])) {
+  cursor: default;
+  background: var(--sunken);
+  border: 1px var(--edge-style, solid) var(--border);
+  color: var(--faint);
 }
-.den-btn.primary:disabled,
-.den-btn.primary[aria-disabled="true"]:not([aria-busy="true"]) {
-  opacity: var(--btn-disabled-opacity, 0.6);
-  color: var(--btn-disabled-text, var(--primary-text, var(--on-accent)));
+:is(.den-btn.ghost, .den-btn.icon):is(
+    :disabled,
+    [aria-disabled="true"]:not([aria-busy="true"])
+  ) {
+  background: transparent;
+  border-color: transparent;
+}
+.den-btn.link:is(:disabled, [aria-disabled="true"]:not([aria-busy="true"])) {
+  background: none;
+  border: 0;
 }
 .den-btn:focus {
   outline: none;
