@@ -115,14 +115,18 @@ describe("issue 1681: the server names a slow request and a blocked event loop",
   });
 
   it("a short block logs no lag line; a long one logs one", async () => {
+    fs.writeFileSync(
+      path.join(s!.tmp, "dist", "config", "local", "user.yml"),
+      "server_log:\n  slow_request_ms: 300\n  event_loop_lag_ms: 2000\n",
+    );
     await s!.req("GET", "/api/_den/block?ms=20");
     await new Promise((r) => setTimeout(r, 1200));
     expect(lagLines()).toEqual([]);
-    await s!.req("GET", "/api/_den/block?ms=1500");
+    await s!.req("GET", "/api/_den/block?ms=3500");
     await new Promise((r) => setTimeout(r, 1200));
     const lines = lagLines();
     expect(lines).toHaveLength(1);
     const ms = Number(/blocked for (\d+) ms/.exec(lines[0])![1]);
-    expect(ms).toBeGreaterThanOrEqual(900);
-  });
+    expect(ms).toBeGreaterThanOrEqual(3000);
+  }, 20_000);
 });

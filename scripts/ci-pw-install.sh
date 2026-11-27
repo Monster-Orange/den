@@ -3,10 +3,10 @@
 # release.yml and repeat.yml call only this;
 # tests/unit/test-infra/pw-install.test.ts keeps it so).
 #
-# `npx playwright install --with-deps chromium webkit` hung twice until the
-# job's 20-minute timeout: its apt part crawled from the Ubuntu mirror, a
-# few kB/s, package after package. So the two parts run apart, each with
-# its own time limit and one retry, and fail loudly after that:
+# `--with-deps` hung twice (apt crawled), so the parts run apart, each with a
+# limit and one retry, then fail loudly. Sources in CI_PW_APT_SOURCES (default
+# /etc/apt/sources.list.d) naming packages.microsoft.com, which once 403ed,
+# are set aside for install-deps and put back on exit (Playwright needs none):
 #   1. `playwright install-deps chromium webkit`: the system packages (apt);
 #   2. `playwright install chromium webkit`: the browsers. CI restores them
 #      from a cache (~/.cache/ms-playwright, keyed by the OS and
@@ -116,6 +116,24 @@ if [ "$n_cached" -gt 0 ]; then
   echo "ci-pw-install: $n_cached cached apt packages into $apt_archives"
   $sudo_ cp "$apt_cache"/*.deb "$apt_archives"/ || echo "::warning::could not copy the cached apt packages; apt fetches them"
 fi
+sources=${CI_PW_APT_SOURCES:-/etc/apt/sources.list.d}
+aside=$(mktemp -d)
+moved=()
+put_back() {
+  local f
+  for f in "${moved[@]+"${moved[@]}"}"; do
+    $sudo_ mv "$aside/$f" "$sources/$f" || echo "::warning::could not put $sources/$f back"
+  done
+  rm -rf "$aside"
+}
+trap put_back EXIT
+while IFS= read -r f; do
+  [ -f "$f" ] || continue
+  if $sudo_ mv "$f" "$aside/"; then
+    moved+=("${f##*/}")
+    echo "ci-pw-install: $f names packages.microsoft.com (not needed for Playwright): set aside until the end"
+  fi
+done < <(grep -lsF packages.microsoft.com "$sources"/* 2>/dev/null)
 attempt install-deps "$deps_s" CI_PW_DEPS_SECONDS || exit 1
 cp "$apt_archives"/*.deb "$apt_cache"/ 2>/dev/null || true
 attempt install "$install_s" CI_PW_INSTALL_SECONDS || exit 1
