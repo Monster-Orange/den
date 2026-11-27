@@ -185,6 +185,7 @@ function ghNavigate(_name, ask) {
         : 0;
   loadGh(false, st.ghQ, pageQuery(pg.reply, target, pg.per), offset);
 }
+const pagerNav = { "gh-repos": ghNavigate };
 
 function renderGhPager() {
   const foot = $("#add-svc-gh-pager");
@@ -463,7 +464,9 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
     },
   });
   pg.stop?.();
-  pg.stop = watchPagers(d, ghNavigate, { url: false });
+  pg.stop = watchPagers(d, (name, ask) => pagerNav[name]?.(name, ask), {
+    url: false,
+  });
   d.addEventListener("input", (e) => {
     if (e.target.id !== "add-svc-global-search") return;
     clearTimeout(ghTimer);
