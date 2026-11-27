@@ -218,6 +218,7 @@ import {
   type PinRecord,
 } from "../../shared/pin-record.js";
 import { ownerCheck, ownerLine } from "./doctor-owner.js";
+import { skillPackLines } from "./doctor-skill-packs.js";
 import {
   formatWhere,
   launchdJobPid,
@@ -1799,6 +1800,7 @@ export function sharedUserLines(
      * from install_mode; a config that can't be read counts as strict.
      */
     trailReadable?: boolean;
+    installMode?: "personal" | "strict";
     /** Agents whose last start was outside the OS sandbox, and their projects. */
     unsandboxed?: () => { id: string; projects: string[] }[];
     /** A project's repo folders. */
@@ -1844,15 +1846,24 @@ export function sharedUserLines(
     : running
       ? `this install isn't in the install registry, though ${title} is running, so other installs' agents on this login aren't denied its files. Restart ${title} to add it`
       : `this install isn't in the install registry yet: ${title} adds it at its next start`;
-  const trailReadable =
-    o.trailReadable ??
+  const installMode =
+    o.installMode ??
     (() => {
       try {
-        return agentsMayReadTrail(readAgentsConfig(), stateDir);
+        return readAgentsConfig().mode;
       } catch {
-        return false;
+        return "strict" as const;
       }
     })();
+  const trailSetAside = agentsMayReadTrail({ mode: installMode }, stateDir);
+  const trailReadable = o.trailReadable ?? trailSetAside;
+  const trailOk = trailSetAside || !running;
+  const trailDetail = trailSetAside
+    ? "agents can read the activity trail"
+    : running
+      ? `agents can't read the activity trail, because the older trail isn't set aside yet. Restart ${title}; if it fails again, ${title}'s log says why`
+      : `agents read the activity trail once ${title} sets the older trail aside, at its next start`;
+  const trailShown = installMode === "personal";
   const rules = bothSpellings(stateDir).flatMap((d) =>
     stateDirDenyRules(d, home, { trailReadable }),
   );
@@ -1926,6 +1937,9 @@ export function sharedUserLines(
       `  registry  ${mark(regOk)}  ${regDetail}`,
       `  0600 files  ${mark(!looseWarn)}  ${looseDetail}`,
       `  state folder  ${mark(!folderShared)}  ${folderDetail}`,
+      ...(trailShown
+        ? [`  activity trail  ${mark(trailOk)}  ${trailDetail}`]
+        : []),
       ...agentRows.map((r) => `  sandbox off  ⚠  ${r.detail}`),
     ],
     checks: [
@@ -1945,6 +1959,15 @@ export function sharedUserLines(
         status: folderShared ? "warn" : "ok",
         detail: folderDetail,
       },
+      ...(trailShown
+        ? [
+            {
+              id: "trail_set_aside",
+              status: trailOk ? ("ok" as const) : ("warn" as const),
+              detail: trailDetail,
+            },
+          ]
+        : []),
       ...agentRows.map((r) => ({
         id: r.id,
         status: "warn" as const,
@@ -3053,6 +3076,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     }
     // Issue 278: instruction files over the share of the context.
     r.checks.push(...instructionSizeLines(readBrand().name).checks);
+    r.checks.push(...skillPackLines(readBrand().name).checks);
     // Issue 1333: sign-in requests in the last day.
     r.checks.push(signinRequestLines(readBrand().name).check!);
     // Issue 1369: audit entries that came in as reports.
@@ -3252,6 +3276,7 @@ export async function cmdDoctor(args: string[]): Promise<number> {
   for (const l of repoSecretLines().lines) console.log(l);
   for (const l of bridgeListenLines(readBrand().name).lines) console.log(l);
   for (const l of instructionSizeLines(readBrand().name).lines) console.log(l);
+  for (const l of skillPackLines(readBrand().name).lines) console.log(l);
   for (const l of signinRequestLines(readBrand().name).lines) console.log(l);
   for (const l of auditReportLines(readBrand().name).lines) console.log(l);
   for (const l of attentionLostLines(readBrand().name).lines) console.log(l);

@@ -239,6 +239,12 @@ import {
   sandboxSetByPerson,
 } from "../../shared/agents/sandbox-rollout.js";
 import * as os from "os";
+import {
+  agentSkillPacks,
+  readSkillPacksConfig,
+  SKILL_PACK_RUNTIMES,
+} from "../../shared/skill-packs/launch.js";
+import { SKILL_PACK_CACHE } from "../../shared/skill-packs/build.js";
 import { announceDir, listAnnounced } from "../../shared/test-install-grant.js";
 import { redactSecrets } from "../../shared/redact.js";
 import {
@@ -467,17 +473,7 @@ import {
   type AccountSource,
   type PickDeps,
 } from "../../shared/agents/signin-accounts.js";
-
-function installTimeZone(): string | undefined {
-  try {
-    const z = readUserConfig().time_zone;
-    if (typeof z !== "string" || !z || z.length > 64) return undefined;
-    new Intl.DateTimeFormat("en", { timeZone: z });
-    return z;
-  } catch {
-    return undefined;
-  }
-}
+import { personTimeZone } from "../../shared/time-zone.js";
 
 export interface AgentsDeps extends SessionsDeps {
   /**
@@ -2361,6 +2357,26 @@ export async function agentHelpers(
   };
 }
 
+export async function runningSubagents(
+  d: AgentsResolved,
+): Promise<{ agent: string; startedAt?: number }[]> {
+  const out: { agent: string; startedAt?: number }[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    const rt = getRuntime(rec.runtime);
+    if (!rt?.helpers) continue;
+    const state = await agentLive(d, rec);
+    if (!state.agentLive) continue;
+    for (const h of rt.helpers(rec, {
+      env: d.env,
+      settings: helperSettings(d),
+      ...state,
+    }))
+      if (h.status === "running" && !h.earlier)
+        out.push({ agent: rec.id, startedAt: h.startedAt });
+  }
+  return out;
+}
+
 /** D45: how many characters of a session's last line the details show. */
 const LAST_LINE_MAX = 300;
 
@@ -3091,6 +3107,7 @@ function personaInputOf(p: Persona): Record<string, unknown> {
     permission: intentOf(p.permissionMode) ?? "ask",
     allowedCommands: [...p.allowedCommands],
     ...(p.subagentModel ? { subagentModel: p.subagentModel } : {}),
+    ...(p.skillPacks === "off" ? { skillPacks: "off" } : {}),
   };
 }
 
@@ -4022,6 +4039,7 @@ function launchInput(
   only?: readonly string[],
   /** AG-13: the intent and the allowed commands (preset and extras). */
   perms: { permission?: PermissionIntent; allow?: string[] } = {},
+  runtimeId?: string,
 ): LaunchInput {
   const grants = only ? [...only] : (cfg.agents[id]?.grants ?? []);
   for (const g of grants)
@@ -4138,6 +4156,7 @@ function launchInput(
       }
     })(),
     rotateAfter: after,
+    ...skillPacksFor(d, cfg, persona, id, runtimeId),
     ...(perms.permission ? { permission: perms.permission } : {}),
     ...(perms.allow?.length ? { allow: [...perms.allow] } : {}),
     // ON-6: the server agent runs Den's own tools without the runtime's
@@ -4152,6 +4171,31 @@ function launchInput(
       call: hookCallSettings(readUserConfig),
     },
   };
+}
+
+function skillPacksFor(
+  d: AgentsResolved,
+  cfg: ResolvedAgentsConfig,
+  persona: Persona,
+  id: string,
+  runtimeId: string | undefined,
+): Pick<LaunchInput, "skillPacks"> {
+  if (!runtimeId) return {};
+  const env = { ...process.env, ...d.env };
+  try {
+    const got = agentSkillPacks({
+      stateDir: d.stateDir(),
+      runtimeId,
+      install: readSkillPacksConfig(cfg.skillPacks?.den, cfg.skillPacks?.user),
+      persona: persona.skillPacks,
+      agent: cfg.agents[id]?.skillPacks,
+      claudeConfigDir:
+        env.CLAUDE_CONFIG_DIR ?? path.join(env.HOME ?? os.homedir(), ".claude"),
+    });
+    return got.packs.length ? { skillPacks: got.packs } : {};
+  } catch (e) {
+    throw refused(`agent ${id}: ${(e as Error).message}`, [], 422);
+  }
 }
 
 export function agentEnvHold(
@@ -4647,6 +4691,7 @@ export async function startAgent(
         ...(ch.permission ? { permission: ch.permission } : {}),
         ...(rt.permissions ? { allow } : {}),
       },
+      rt.id,
     );
     // HUB-1.5: Den Hub's MCP server, when hub.url is set.
     const hub = await agentHub(d, ws);
@@ -4723,6 +4768,7 @@ export async function startAgent(
               ...(req.allow !== undefined ? { allow: ch.extras } : {}),
               ...(ch.overrides.length ? { overrides: ch.overrides } : {}),
               ...subagentsField(rt, persona, cfg),
+              skillPackDirs: (input.skillPacks ?? []).map((x) => x.dir),
               workspace: ws,
               cwd: input.worktree,
               // D65 v2: its project and repo outlive every new conversation.
@@ -7426,6 +7472,7 @@ export async function resumeAgent(
               }
             : {}),
         },
+        rt.id,
       );
       // Resume in the cwd the agent had, wherever the workspace points now.
       // D24 (and D25: a rename since) the name peers see it by.
@@ -7479,7 +7526,7 @@ export async function resumeAgent(
                 firstPrompt: resumeHandoffPrompt(
                   handoff.text,
                   new Date(),
-                  installTimeZone(),
+                  personTimeZone(),
                 ),
               }
             : {}),
@@ -7529,6 +7576,7 @@ export async function resumeAgent(
               ...base,
               ...(permission ? { permission } : {}),
               ...subagentsField(rt, persona, cfg),
+              skillPackDirs: (input.skillPacks ?? []).map((x) => x.dir),
               cwd: rec.cwd,
               peerName,
               ...(token ? { launched: true } : {}),
@@ -9018,6 +9066,114 @@ export function modeCheck(
   };
 }
 
+export interface SkillPackRestarted {
+  agent: string;
+  project: string;
+}
+
+export function skillPackRestartDetail(e: SkillPackRestarted): string {
+  return `restarted ${e.agent} in ${e.project} at idle to take its skill packs, by Den itself`;
+}
+
+function launchedPackDirs(filesDir: string): string[] | null {
+  let deny: unknown;
+  try {
+    deny = (
+      JSON.parse(
+        fs.readFileSync(path.join(filesDir, "settings.json"), "utf-8"),
+      ) as {
+        permissions?: { deny?: unknown };
+      }
+    ).permissions?.deny;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(deny)) return [];
+  const out: string[] = [];
+  for (const r of deny) {
+    const m = typeof r === "string" ? /^Edit\(\/(\/.+)\/\*\*\)$/.exec(r) : null;
+    if (m && m[1]!.split(path.sep).includes(SKILL_PACK_CACHE))
+      out.push(path.resolve(m[1]!));
+  }
+  return out.sort();
+}
+
+export async function skillPackDrift(
+  d: AgentsResolved,
+): Promise<{ id: string; workspace: string }[]> {
+  const c = await d.connectExisting();
+  let live: { ref: { id: string }; exited?: unknown }[] = [];
+  try {
+    live = c ? (await c.list()).filter((x) => !x.exited) : [];
+  } finally {
+    c?.close();
+  }
+  if (!live.length) return [];
+  const find = personaLookup(d);
+  const cfg = agentsConfig(d);
+  const out: { id: string; workspace: string }[] = [];
+  for (const rec of listRecords(d.stateDir())) {
+    if (!live.some((x) => x.ref.id === rec.session.id)) continue;
+    const had =
+      rec.skillPackDirs?.map((x) => path.resolve(x)).sort() ??
+      launchedPackDirs(agentFilesDir(d.stateDir(), rec.id));
+    const p = find(rec);
+    if (!p || !SKILL_PACK_RUNTIMES.includes(rec.runtime)) continue;
+    let want: string[];
+    try {
+      want = (skillPacksFor(d, cfg, p, rec.id, rec.runtime).skillPacks ?? [])
+        .map((x) => path.resolve(x.dir))
+        .sort();
+    } catch {
+      continue;
+    }
+    if (had === null ? !want.length : want.join("\n") !== had.join("\n"))
+      out.push({ id: rec.id, workspace: rec.workspace });
+  }
+  return out;
+}
+
+export function skillPackCheck(
+  d: AgentsResolved,
+  opts: {
+    pollMs?: number;
+    log?: (line: string) => void;
+    onRestarted?: (e: SkillPackRestarted) => void;
+  } = {},
+): ModeCheck {
+  const running = new Map<string, Promise<void>>();
+  return {
+    async tick() {
+      const began: string[] = [];
+      for (const m of await skillPackDrift(d)) {
+        if (running.has(m.id)) continue;
+        began.push(m.id);
+        const p = restartAgent(d, m.id, m.workspace, "after-turn", {
+          pollMs: opts.pollMs,
+        })
+          .then((done) => {
+            if (done.already) return;
+            opts.log?.(
+              `agent ${m.id}: restarted after its turn for its skill packs`,
+            );
+            opts.onRestarted?.({ agent: m.id, project: m.workspace });
+          })
+          .catch((e: unknown) =>
+            opts.log?.(
+              `agent ${m.id}: not restarted for its skill packs: ${(e as Error)?.message ?? e}`,
+            ),
+          )
+          .finally(() => running.delete(m.id));
+        running.set(m.id, p);
+      }
+      return began;
+    },
+    async pending() {
+      await Promise.all([...running.values()]);
+    },
+  };
+}
+
 // ── den#4: relaunch from handoff ────────────────────────────────────────────
 
 export interface Relaunched extends Started {
@@ -9259,7 +9415,7 @@ export async function relaunchAgent(
           compactions,
           manual ? [] : (before?.leftRunning ?? []),
           new Date(),
-          installTimeZone(),
+          personTimeZone(),
         ),
         rotations: [...(rec.rotations ?? []), entry],
         beforeLaunch: () => {

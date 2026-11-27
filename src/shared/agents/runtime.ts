@@ -244,6 +244,7 @@ export interface LaunchInput {
    * `--name`) does, at launch and at resume.
    */
   sessionLabel?: string;
+  skillPacks?: { name: string; dir: string }[];
 }
 
 export interface LaunchOutput {

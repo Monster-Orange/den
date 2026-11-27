@@ -210,25 +210,33 @@ describe("bell v6: a quieter bell", () => {
         ),
       );
     expect(lines).toBeLessThanOrEqual(2);
-    // den#93: the row is the link (its two lines inside it), no Open link.
     await expect(
       asked.locator('a[data-bell="open"]').getAttribute("href"),
     ).resolves.toBe("/agents?project=north&agent=asker");
     expect(await asked.locator('a[data-bell="open"] .den-bell-t').count()).toBe(
       1,
     );
-    expect(await asked.locator("a").count()).toBe(1);
-    expect(await asked.textContent()).not.toMatch(/\bOpen\b/);
+    expect(await asked.locator("a").count()).toBe(2);
+    await expect(
+      asked.locator('a[data-bell="page"]').getAttribute("href"),
+    ).resolves.toBe("/agents?project=north&agent=asker");
+    await expect(
+      asked.locator('a[data-bell="open"]').textContent(),
+    ).resolves.not.toMatch(/\bOpen\b/);
     // Waiting is the one kind with no ⊘ in the row.
     expect(await asked.locator('[data-bell="stop"]').count()).toBe(0);
-    // A click anywhere on the row (here its time) opens it, marked read
-    // first. The read is answered here, so the next test's bell is as it was.
     let read: unknown = null;
     await p.route("**/api/notifications/read", (r) => {
       read = r.request().postDataJSON();
       return r.fulfill({ json: { ok: true } });
     });
     await asked.locator("time").click();
+    await p.locator("dialog#den-peek[open]").waitFor({ timeout: 10_000 });
+    expect(new URL(p.url()).pathname).toBe("/services");
+    expect(read).toEqual({ subject: "agent:asker", seen: true });
+    await p.keyboard.press("Escape");
+    read = null;
+    await asked.locator('a[data-bell="page"]').click();
     await p.waitForURL(/\/agents\?project=north&agent=asker/);
     expect(read).toMatchObject({ id: expect.any(String) });
     await p.context().close();

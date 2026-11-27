@@ -27,6 +27,7 @@ import { formatTime, formatTitle } from "/kit/time.js";
 // gives what is in it and what a row does.
 import { bellPanelHtml } from "/kit/shell-html.js";
 import { hydrateBell } from "/kit/shell-client.js";
+import { openPeek, peekOpen, peekRefresh, peekTarget } from "/peek.js";
 
 const POLL_MS = 5000;
 
@@ -182,6 +183,7 @@ const safeLink = (l) =>
 /** One item's row; `fold` is its ×N toggle and ⊘, on a kind's first. */
 function rowHtml(n, fold) {
   const link = safeLink(n.link);
+  const peek = link ? peekTarget(n) : null;
   const text = noteText(n);
   const sub = noteSub(n);
   const long = n.msg?.key === "bell.m.asked" && text.length > LONG;
@@ -195,8 +197,11 @@ function rowHtml(n, fold) {
     // den#93: the row opens on a click anywhere (its link holds the text,
     // two lines at most for a long question); no separate Open link.
     (link
-      ? `<a href="${esc(link)}" data-bell="open"${long ? ' class="den-bell-tw"' : ""}>${long ? `<span class="den-bell-t long">${esc(text)}</span>` : esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</a>`
+      ? `<a href="${esc(link)}" data-bell="open"${peek ? ` data-peek="${esc(peek.agent)}"` : ""}${long ? ' class="den-bell-tw"' : ""}>${long ? `<span class="den-bell-t long">${esc(text)}</span>` : esc(text)}${sub ? `<span class="den-bell-sub">${esc(sub)}</span>` : ""}</a>`
       : `<span class="den-bell-t${long ? " long" : ""}">${esc(text)}</span>`) +
+    (peek
+      ? `<a href="${esc(link)}" class="den-bell-page" data-bell="page">${esc(tr("bell.openInAgents"))}</a>`
+      : "") +
     (fold?.count > 1
       ? `<button type="button" class="den-bell-x" data-bell="fold" data-key="${esc(fold.key)}" aria-expanded="${fold.open}" aria-label="${esc(tr("bell.rep", { n: fold.count - 1 }))}">×${fold.count}</button>`
       : "") +
@@ -944,6 +949,32 @@ export function initBell(doc = document) {
     // Issue 993: an overrun slot counts until it ends (it has no item).
     bell.setCount(bellCountOf(b) + overrunsOf(b).length);
     if (bell.isOpen()) paint();
+    if (peekOpen()) peekRefresh(b);
+  };
+  const itemOf = (id) => {
+    for (const part of [last, last?.older, last?.updates])
+      for (const g of part?.groups ?? [])
+        for (const s of g.subjects ?? [])
+          for (const n of s.items ?? []) if (n.id === id) return n;
+    return null;
+  };
+  const peekTargetOf = (rowEl) => {
+    const n = itemOf(rowEl?.dataset.id);
+    return n ? peekTarget(n) : null;
+  };
+  const openPeekFrom = async (target, el, id) => {
+    const h = await openPeek(target, {
+      opener: el,
+      bell: () => last,
+    });
+    void h?.handle?.closed?.then(() => {
+      if (!bell.isOpen() || pop.contains(doc.activeElement)) return;
+      pop
+        .querySelector(
+          `.den-bell-row[data-id="${CSS.escape(id ?? "")}"] a[data-bell="open"]`,
+        )
+        ?.focus?.();
+    });
   };
   pop.addEventListener("click", async (e) => {
     const el = e.target.closest("[data-bell]");
@@ -958,13 +989,27 @@ export function initBell(doc = document) {
     }
     const what = el.dataset.bell;
     if (what === "settings") return;
-    if (what === "open" || what === "open-done") {
-      const id = el.closest("[data-id]")?.dataset.id;
+    if (what === "open" || what === "page" || what === "open-done") {
+      const rowEl = el.closest("[data-id]");
+      const id = rowEl?.dataset.id;
       const agent = el.closest("[data-agent]")?.dataset.agent;
+      const peek =
+        what === "open" &&
+        el.dataset.peek &&
+        !(e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button);
+      const target = peek ? peekTargetOf(rowEl) : null;
+      if (target) e.preventDefault();
       const [path, body] =
         what === "open-done"
           ? ["/api/notifications/looking", agent ? { agents: [agent] } : null]
-          : ["/api/notifications/read", id ? { id } : null];
+          : [
+              "/api/notifications/read",
+              target
+                ? { subject: `agent:${target.agent}`, seen: true }
+                : id
+                  ? { id }
+                  : null,
+            ];
       // busy-ok: marked in the background as the link opens
       if (body)
         void fetch(path, {
@@ -973,6 +1018,7 @@ export function initBell(doc = document) {
           body: JSON.stringify(body),
           keepalive: true,
         }).catch(() => {});
+      if (target) void openPeekFrom(target, el, id);
       return;
     }
     e.preventDefault();

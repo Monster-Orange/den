@@ -46,6 +46,7 @@ import {
 import { getStateDir } from "../../shared/paths.js";
 import { readUserConfig } from "../../shared/den-config.js";
 import { embedSettings } from "./embed-settings.js";
+import { fixtureTestInstall } from "./fixture-projects.js";
 
 const PUMP_MS = 2000;
 /** Issue 702: how often the bell checks hub.delivery_alert_minutes. */
@@ -510,6 +511,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       },
     },
     // Issue 701: the person's comment answers the agent's question.
+    testInstall: fixtureTestInstall,
     answered: (agent) => {
       void import("./notification-service.js")
         .then(({ notificationDeps }) =>

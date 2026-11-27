@@ -277,6 +277,7 @@ export async function startDenServer(
     /** How a port is picked (tests of this helper). */
     pickPort?: () => Promise<number>;
     logFile?: string;
+    edgeSettled?: boolean;
   } = {},
 ): Promise<StartedServer> {
   const root = o.root ?? opts.env?.DEN_ROOT ?? String(opts.cwd ?? "");
@@ -308,11 +309,17 @@ export async function startDenServer(
     const waitMs = o.timeoutMs ?? 20_000;
     const deadline = Date.now() + waitMs;
     let foreign = false;
+    let unsettled = false;
     while (!exited && Date.now() < deadline) {
       const info = await serverInfo(port);
       if (info?.code === 200) {
         const r = info.body?.root;
         if (typeof r === "string" && real(r) === want) {
+          if (o.edgeSettled !== false && info.body?.edgeSettled === false) {
+            unsettled = true;
+            await new Promise((r) => setTimeout(r, 200));
+            continue;
+          }
           // Issue 991: this run's own Den answers here, so a box run's
           // "host:*" may reach it.
           boxOwnPort(port);
@@ -336,7 +343,9 @@ export async function startDenServer(
         ? "another server answered"
         : ended
           ? `it exited${how}`
-          : `it never answered within ${waitMs / 1000} s`
+          : unsettled
+            ? `its edge start never settled within ${waitMs / 1000} s`
+            : `it never answered within ${waitMs / 1000} s`
     }\n${shown}`;
     // A server that exits for its own reasons, or never answers, fails now;
     // only a port someone else holds is worth another try.

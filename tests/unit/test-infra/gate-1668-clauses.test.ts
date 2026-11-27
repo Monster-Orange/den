@@ -38,13 +38,21 @@ const limits = JSON.parse(
   wait: number;
 };
 
-function rows(result: unknown): Row[] {
+type SRow = Row & { skip?: string };
+
+function rows(result: unknown, awaits?: number | null): SRow[] {
+  const call =
+    awaits === undefined
+      ? `g.expect([{ cell: { browser: "chromium", width: 1280 }, result: ${JSON.stringify(result)} }])`
+      : `g.judge(${JSON.stringify(result)}, ${JSON.stringify(awaits)})`;
   return JSON.parse(
     run(`
     const g = await import("./gate/1668.mjs");
-    console.log(JSON.stringify(g.expect([{ cell: { browser: "chromium", width: 1280 }, result: ${JSON.stringify(result)} }])));`),
-  ) as Row[];
+    console.log(JSON.stringify(${call}));`),
+  ) as SRow[];
 }
+const live = (result: unknown) => rows(result, null);
+const [W, C, WP, CP, B] = [0, 1, 2, 3, 4];
 
 const times = (ms: number) =>
   Array.from({ length: limits.tries }, () => ({ ms, status: 200 }));
@@ -90,8 +98,9 @@ const fast = {
 };
 
 describe("gate/1668 rows", () => {
-  it("a list and a probe under their limits pass every row", () => {
-    expect(rows(fast).map((r) => r.ok)).toEqual([true, true, true]);
+  it("a list and a probe under their limits pass every row, masked or live", () => {
+    expect(rows(fast).map((r) => r.ok)).toEqual([true, true, true, true, true]);
+    expect(live(fast).map((r) => r.ok)).toEqual([true, true, true, true, true]);
   });
 
   it("the bars are fixed: 1500 ms for any list, cold or warm, and 250 ms for server-info", () => {
@@ -99,18 +108,117 @@ describe("gate/1668 rows", () => {
     expect(limits.probe).toBe(250);
   });
 
+  it("the cold and warm cases are rows of their own: warm list, cold list, warm server-info, cold server-info, 1 GB", () => {
+    expect(limits.clauses).toBe(5);
+    const r = rows(fast);
+    expect(r[W].clause).toContain(`median of ${limits.tries} tries`);
+    expect(r[W].clause).not.toContain("cold");
+    expect(r[C].clause).toContain("the first list right after the seed (cold");
+    expect(r[WP].clause).toContain("while the helpers fill");
+    expect(r[WP].clause).not.toContain("cold");
+    expect(r[CP].clause).toContain("during the cold list");
+    expect(r[B].clause).toContain(`${limits.big} MB`);
+  });
+
+  it("issue 1861: the slow cold rows FAIL when judged live, and are NOT_RUN awaits-1861 while COLD_KNOWN is set, with the numbers", () => {
+    const stalled = {
+      ...fast,
+      coldMs: 7700,
+      coldHelperRows: limits.n,
+      coldProbe: { ms: 2762, status: 200, inFlight: true },
+    };
+    expect(live(stalled).map((x) => x.ok)).toEqual([
+      true,
+      false,
+      true,
+      false,
+      true,
+    ]);
+    const m = rows(stalled);
+    expect(m.map((x) => x.ok)).toEqual([true, null, true, null, true]);
+    expect([m[C].skip, m[CP].skip]).toEqual(["awaits-1861", "awaits-1861"]);
+    expect(m[C].detail).toContain("cold list 7700 ms");
+    expect(m[C].detail).toContain("issue 1861");
+    expect(m[CP].detail).toContain("during the cold list 2762 ms");
+    expect(m[CP].detail).toContain("issue 1861");
+  });
+
+  it("a cold row within the bar PASSes even while masked, its numbers in the detail", () => {
+    const r = rows(fast);
+    expect([r[C].ok, r[CP].ok]).toEqual([true, true]);
+    expect(r[C].detail).toContain("cold list 30 ms");
+    expect(r[CP].detail).toContain("during the cold list 6 ms");
+  });
+
+  it("the skip has a ceiling: within COLD_KNOWN_MAX a slow cold row is NOT_RUN, above it the row FAILs, and the detail names the ceiling", () => {
+    const max = JSON.parse(
+      run(
+        `const g = await import("./gate/1668.mjs"); console.log(JSON.stringify(g.COLD_KNOWN_MAX));`,
+      ),
+    ) as { listMs: number; probeMs: number };
+    expect(max).toEqual({ listMs: 15000, probeMs: 6000 });
+    const at = (coldMs: number, probeMs: number) =>
+      rows({
+        ...fast,
+        coldMs,
+        coldProbe: { ms: probeMs, status: 200, inFlight: true },
+      });
+    const under = at(max.listMs, max.probeMs);
+    expect([under[C].ok, under[CP].ok]).toEqual([null, null]);
+    expect(under[C].detail).toContain(`ceiling ${max.listMs} ms`);
+    expect(under[CP].detail).toContain(`ceiling ${max.probeMs} ms`);
+    const overList = at(max.listMs + 1, 100);
+    expect([overList[C].ok, overList[CP].ok]).toEqual([false, true]);
+    expect(overList[C].detail).toContain(
+      `over the known stall's ceiling ${max.listMs} ms`,
+    );
+    const overProbe = at(100, max.probeMs + 1);
+    expect([overProbe[C].ok, overProbe[CP].ok]).toEqual([true, false]);
+    expect(overProbe[CP].detail).toContain(
+      `over the known stall's ceiling ${max.probeMs} ms`,
+    );
+  });
+
+  it("a cold list that didn't answer 200 FAILs, mask or not", () => {
+    const r = rows({ ...fast, coldStatus: 500 });
+    expect(r[C].ok).toBe(false);
+  });
+
+  it("a slow warm list and a stalled warm server-info still FAIL while COLD_KNOWN is set", () => {
+    const slow = {
+      ...fast,
+      tries: times(limits.limit * 5),
+      probes: probes(limits.probe * 5),
+      medianMs: limits.limit * 5,
+      maxProbeMs: limits.probe * 5,
+    };
+    expect(rows(slow).map((r) => r.ok)).toEqual([
+      false,
+      true,
+      false,
+      true,
+      true,
+    ]);
+    expect(live(slow).map((r) => r.ok)).toEqual([
+      false,
+      true,
+      false,
+      true,
+      true,
+    ]);
+  });
+
   it("one big transcript (300 MB to 1 GB) rides beside the seed, and its cold list has its own row", () => {
     expect(limits.big).toBeGreaterThanOrEqual(300);
     expect(limits.big).toBeLessThanOrEqual(1024);
-    expect(limits.clauses).toBe(3);
-    const r = rows(fast);
-    expect(r[2].clause).toContain(`${limits.big} MB`);
-    expect(r[2].detail).toContain("cold list with the big transcript 60 ms");
+    expect(rows(fast)[B].detail).toContain(
+      "cold list with the big transcript 60 ms",
+    );
   });
 
   it("the cold list with the big transcript over the bar fails only its row", () => {
     const slow = rows({ ...fast, big: { ...fast.big, ms: limits.limit + 1 } });
-    expect(slow.map((x) => x.ok)).toEqual([true, true, false]);
+    expect(slow.map((x) => x.ok)).toEqual([true, true, true, true, false]);
     const stall = rows({
       ...fast,
       big: {
@@ -118,11 +226,11 @@ describe("gate/1668 rows", () => {
         probe: { ms: limits.probe + 1, status: 200, inFlight: true },
       },
     });
-    expect(stall.map((x) => x.ok)).toEqual([true, true, false]);
-    expect(stall[2].detail).toContain(
+    expect(stall.map((x) => x.ok)).toEqual([true, true, true, true, false]);
+    expect(stall[B].detail).toContain(
       `server-info during it ${limits.probe + 1} ms`,
     );
-    expect(rows({ ...fast, big: { ...fast.big, status: 500 } })[2].ok).toBe(
+    expect(rows({ ...fast, big: { ...fast.big, status: 500 } })[B].ok).toBe(
       false,
     );
   });
@@ -135,9 +243,9 @@ describe("gate/1668 rows", () => {
         room: "free disk 120 MB, needs 3072 MB",
       },
     });
-    expect(r.map((x) => x.ok)).toEqual([true, true, null]);
-    expect((r[2] as Row & { skip?: string }).skip).toBe("needs-disk-room");
-    expect(r[2].detail).toContain("free disk 120 MB");
+    expect(r.map((x) => x.ok)).toEqual([true, true, true, true, null]);
+    expect(r[B].skip).toBe("needs-disk-room");
+    expect(r[B].detail).toContain("free disk 120 MB");
   });
 
   it("an unknown disk, a failed write or an unreached list is not measured, never a skip", () => {
@@ -158,7 +266,7 @@ describe("gate/1668 rows", () => {
   });
 
   it("the big agent's helpers are waited for, and never coming within the wait is not measured", () => {
-    expect(rows(fast)[2].detail).toContain(
+    expect(rows(fast)[B].detail).toContain(
       "its helpers showed after 2400 ms, 2 probes, max 9 ms",
     );
     expect(() => rows({ ...fast, big: { ...fast.big, fillMs: null } })).toThrow(
@@ -179,33 +287,22 @@ describe("gate/1668 rows", () => {
         ],
       },
     });
-    expect(r.map((x) => x.ok)).toEqual([true, true, false]);
-    expect(r[2].detail).toContain(`max ${limits.probe + 1} ms`);
+    expect(r.map((x) => x.ok)).toEqual([true, true, true, true, false]);
+    expect(r[B].detail).toContain(`max ${limits.probe + 1} ms`);
   });
 
-  it("a list over the limit, with the server stalled behind it, fails both", () => {
-    const slow = {
-      ...fast,
-      tries: times(limits.limit * 5),
-      probes: probes(limits.probe * 5),
-      medianMs: limits.limit * 5,
-      maxProbeMs: limits.probe * 5,
-    };
-    expect(rows(slow).map((r) => r.ok)).toEqual([false, false, true]);
-  });
-
-  it("server-info waiting behind the list (0.4.90: 9 s against an idle 3-9 ms) fails row 2 and shows the idle time", () => {
+  it("server-info waiting behind the warm list (0.4.90: 9 s against an idle 3-9 ms) fails the warm server-info row and shows the idle time", () => {
     const r = rows({
       ...fast,
       probes: probes(9000),
       maxProbeMs: 9000,
     });
-    expect(r.map((x) => x.ok)).toEqual([true, false, true]);
-    expect(r[1].detail).toContain("server-info idle 5 ms");
-    expect(r[1].detail).toContain("max in flight 9000");
+    expect(r.map((x) => x.ok)).toEqual([true, true, false, true, true]);
+    expect(r[WP].detail).toContain("server-info idle 5 ms");
+    expect(r[WP].detail).toContain("max in flight 9000");
   });
 
-  it("a list fast enough that no probe overlapped it judges both rows on that bound, no throw", () => {
+  it("a list fast enough that no probe overlapped it judges the warm server-info row on that bound, no throw", () => {
     const quick = {
       ...fast,
       tries: times(Math.floor(limits.probe / 10)),
@@ -215,10 +312,10 @@ describe("gate/1668 rows", () => {
       maxProbeMs: null,
     };
     const r = rows(quick);
-    expect(r.map((x) => x.ok)).toEqual([true, true, true]);
-    expect(r[1].detail).toContain("so nothing could wait behind it longer");
+    expect(r.map((x) => x.ok)).toEqual([true, true, true, true, true]);
+    expect(r[WP].detail).toContain("so nothing could wait behind it longer");
     const stuck = rows({ ...quick, probes: probes(limits.probe * 2, 0) });
-    expect(stuck[1].ok).toBe(false);
+    expect(stuck[WP].ok).toBe(false);
   });
 
   it("a slow list no probe overlapped is not measured, never a PASS", () => {
@@ -235,36 +332,28 @@ describe("gate/1668 rows", () => {
     );
   });
 
-  it("0.4.90's cold list, reading every transcript before it answers, fails row 1 even when the warm lists are fast", () => {
-    const r = rows({
-      ...fast,
-      coldMs: limits.limit * 6,
-      coldHelperRows: limits.n,
-      coldProbe: { ms: limits.probe * 18, status: 200, inFlight: true },
-    });
-    expect(r.map((x) => x.ok)).toEqual([false, false, true]);
-    expect(r[0].detail).toContain(`cold list ${limits.limit * 6} ms`);
-    expect(r[1].detail).toContain(
-      `during the cold list ${limits.probe * 18} ms`,
-    );
-  });
-
-  it("server-info stalled while the background reader fills the helpers fails row 2, and its detail shows the fill probes", () => {
-    const r = rows({
+  it("server-info stalled while the background reader fills the helpers fails the warm server-info row, with the fill probes, mask or not", () => {
+    const stalled = {
       ...fast,
       fill: [
         { ms: 6, status: 200 },
         { ms: limits.probe * 8, status: 200 },
       ],
-    });
-    expect(r.map((x) => x.ok)).toEqual([true, false, true]);
-    expect(r[1].detail).toContain(
+    };
+    expect(rows(stalled).map((x) => x.ok)).toEqual([
+      true,
+      true,
+      false,
+      true,
+      true,
+    ]);
+    expect(rows(stalled)[WP].detail).toContain(
       `while the helpers filled 2 probes, max ${limits.probe * 8} ms`,
     );
-    expect(rows(fast)[1].detail).toContain(
+    expect(rows(fast)[WP].detail).toContain(
       "while the helpers filled 2 probes, max 8 ms",
     );
-    expect(rows({ ...fast, fill: [] })[1].detail).toContain(
+    expect(rows({ ...fast, fill: [] })[WP].detail).toContain(
       "none (helpers were there at once)",
     );
   });
@@ -295,10 +384,10 @@ describe("gate/1668 rows", () => {
     ).toThrow(/1668 not measured: seed/);
   });
 
-  it("a try that didn't answer 200 fails its row", () => {
+  it("a try that didn't answer 200 fails the warm list row", () => {
     const tries = times(10);
     tries[2] = { ms: 10, status: 500 };
-    expect(rows({ ...fast, tries })[0].ok).toBe(false);
+    expect(rows({ ...fast, tries })[W].ok).toBe(false);
   });
 
   it("no den2 is an ERROR, naming why", () => {
@@ -307,8 +396,9 @@ describe("gate/1668 rows", () => {
     );
   });
 
-  it("each row says how the agents were seeded", () => {
-    expect(rows(fast)[0].detail).toContain("the gate process then writes");
+  it("each list row says how the agents were seeded", () => {
+    for (const i of [W, C, WP, CP])
+      expect(rows(fast)[i].detail).toContain("the gate process then writes");
   });
 
   it("the limits are named constants, the seed is above the old 64-transcript cache", () => {

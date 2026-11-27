@@ -17,6 +17,7 @@ import {
   takeTestResolveLaunch,
   testInstallRestartEnv,
 } from "../../shared/test-install-launch.js";
+import { patchSkillPacksBody, skillPacksData } from "./skill-pack-settings.js";
 import { maskSecretLine } from "../../shared/secret-values.js";
 import { createLogRing } from "./log-ring.js";
 import {
@@ -1716,6 +1717,8 @@ import {
   startLogoutWatch,
   webDeps as agentWebDeps,
 } from "./agent-routes.js";
+import { SUBAGENT_START_PATH, handleSubagentStart } from "./subagent-routes.js";
+import { SubagentGate } from "../../shared/agents/subagent-gate.js";
 import { hostRestartOp } from "./host-restart-held.js";
 import {
   agentInputState,
@@ -1753,6 +1756,7 @@ import {
   modeResolver,
   busyAgentHolds,
   runningAgentIds,
+  runningSubagents,
   staleAgents,
 } from "../cli/agent-ops.js";
 import { handleServerAgentRoutes } from "./server-agent-routes.js";
@@ -1848,6 +1852,19 @@ function readWebPortSafe(): number {
 }
 const github = new GitHubService();
 const editors = new EditorManager();
+const subagentGate = new SubagentGate({
+  maxSubagents: () => {
+    const a = readAgentsConfig();
+    return a.maxSubagents ?? 2 * a.maxConcurrent;
+  },
+  respectLoadHold: () => readAgentsConfig().subagentsRespectLoadHold !== false,
+  loadCeiling: () => {
+    const c = agentsResume().loadCeiling;
+    return c > 0 ? c : undefined;
+  },
+  load1: () => os.loadavg()[0] ?? 0,
+  running: () => [],
+});
 
 // ── Health check ─────────────────────────────────────────────────────────────
 // pingHttp / pingShell are imported from shared health module above.
@@ -6871,12 +6888,22 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         return null;
       }
     })(),
+    skill_packs: (() => {
+      try {
+        return skillPacksData(user, denForCaps());
+      } catch {
+        return null;
+      }
+    })(),
     // Issue 1373: the agents' cap in force (user.yml over den.yml).
     agents_limits: (() => {
       try {
+        const a = readAgentsConfig(undefined, user);
         return {
-          max_concurrent: readAgentsConfig(undefined, user).maxConcurrent,
-          max_per_project: readAgentsConfig(undefined, user).maxPerProject,
+          max_concurrent: a.maxConcurrent,
+          max_subagents: a.maxSubagents ?? 2 * a.maxConcurrent,
+          subagents_respect_load_hold: a.subagentsRespectLoadHold !== false,
+          max_per_project: a.maxPerProject,
         };
       } catch {
         return null;
@@ -7371,6 +7398,17 @@ async function handleRequest(
   // Issue 459: an agent reads its own app feeds (app_feed_read).
   if (guard.ok && isAppFeedPath(pathname)) {
     await handleAppFeedRoutes(req, res, pathname, url);
+    return;
+  }
+  if (guard.ok && pathname === SUBAGENT_START_PATH) {
+    await handleSubagentStart(req, res, {
+      agentOf: (r) => {
+        const a = agentPrincipalOf(r);
+        return a ? a.actor.slice("agent:".length) : null;
+      },
+      gate: async (id) =>
+        subagentGate.decide(id, await runningSubagents(agentWebDeps())),
+    });
     return;
   }
   // Issue 796: an agent asks for a read-only view of these pages.
@@ -10267,6 +10305,7 @@ async function handleRequest(
       // D64: how long the browser's Restart Den waits before it shows the
       // CLI line (ui.restart_wait_seconds in config/local/user.yml).
       restartWaitSeconds: restartWaitSeconds(),
+      edgeSettled: !EDGE_TRUST.starting,
     });
   }
 
@@ -11201,6 +11240,7 @@ async function handleRequest(
           agent_hooks?: unknown;
           sessions?: unknown;
           agents_limits?: unknown;
+          skill_packs?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
           git_reads?: unknown;
@@ -11282,6 +11322,14 @@ async function handleRequest(
             github: body.github,
           });
           if (!c.ok) return send400(res, c.error);
+        }
+        if (body.skill_packs !== undefined) {
+          const sp = patchSkillPacksBody(
+            user as Record<string, unknown>,
+            body.skill_packs,
+            denForCaps(),
+          );
+          if (!sp.ok) return send400(res, sp.error);
         }
         // Issue 144: the machine's gate slots (their own file, not user.yml).
         let gatePatch: GateSettingsPatch | undefined;
@@ -11619,11 +11667,18 @@ async function handleRequest(
               ),
             );
         }
-        if (modesChanged)
+        if (modesChanged || body.skill_packs !== undefined)
           void import("./agent-routes.js").then((m) => m.applyModesNow());
         return sendJson(res, {
           ok: true,
           ...cliRowSettings(user),
+          skill_packs: (() => {
+            try {
+              return skillPacksData(user, denForCaps());
+            } catch {
+              return null;
+            }
+          })(),
           // Issue 144: the gate slots, as GET shows them (issue 424).
           gate_slots: gates().settings(),
           agents_default_mode: user.agents?.default_mode ?? null,

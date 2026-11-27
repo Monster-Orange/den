@@ -733,6 +733,10 @@
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
     "busy.modeW": "{name} のモードを設定しています…",
+    "busy.packsW": "{name} のスキルパックを設定しています…",
+    "busy.packsS": "{name} のスキルパックを設定しました。",
+    "busy.packsF":
+      "{name} のスキルパックを設定できませんでした。何も変わっていません。",
     "busy.modeS": "{name} のモードを設定しました。",
     "busy.modeF":
       "{name} のモードを設定できませんでした。何も変わっていません。",
@@ -1387,6 +1391,27 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_subagents": "同時に動かせるサブエージェント数",
+    "set.agents.max_subagents.d":
+      "このマシンのエージェント全体で、同時に動かせるサブエージェントの数です。これを超える開始は拒否され、エージェントにはこの設定の名前が伝えられます。未設定なら「同時に動かせるエージェント数」の2倍です。__DEN_CLI__ config agents.max_subagents=8",
+    "set.agents.subagents_respect_load_hold":
+      "負荷が高いときは新しいサブエージェントを止める",
+    "set.agents.subagents_respect_load_hold.d":
+      "オンの場合、マシンの負荷がエージェントの負荷上限を超えている間は新しいサブエージェントが拒否され、エージェントにはこの設定の名前が伝えられます。オフの場合、負荷に関係なくサブエージェントが開始します。__DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "スキルパック",
+    "set.agents.skill_packs.d":
+      "Den がエージェントに与えるスキルパック。それぞれ固定したバージョンで Den に同梱され、ダウンロードはしません。__DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "コーディングエージェント向けのオープンソースのスキル。Den のエージェントに渡すものを選びます。__DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "オン",
+    "set.ui.skillPackLicence": "ライセンス",
+    "set.ui.skillPackPin": "固定コミット",
+    "set.ui.skillPackOnCount": "{n} 個のスキルがオン",
+    "set.ui.skillPackCost": "各エージェントの起動に約 {n} トークン追加",
+    "set.ui.skillPackSkills": "スキル",
+    "set.ui.skillPackAll": "すべて",
+    "set.ui.skillPackNone": "なし",
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
@@ -2664,6 +2689,13 @@
     "ag.mode.src.default": "Den の組み込みの既定",
     "ag.mode.item": "モード: {m}",
     "ag.mode.menu": "{id} のモード",
+    "ag.packs.item": "スキルパック: {v}",
+    "ag.packs.menu": "{id} のスキルパック",
+    "ag.packs.default": "インストールの既定",
+    "ag.packs.off": "オフ",
+    "ag.packs.on": "オン",
+    "ag.packs.set":
+      "{id} のスキルパックを設定しました。ターンの後、同じ会話のまま再起動します。",
     "ag.mode.pick": "{id} のモードを変更",
     "ag.mode.follow": "プロジェクトに従う",
     "ag.mode.setS":
@@ -2850,6 +2882,8 @@
     "pe.runtime": "既定のランタイム",
     "pe.model": "モデル",
     "pe.ver": "バージョン",
+    "pe.packs": "スキルパック",
+    "pe.packsList": "ファイルのリスト: {list}",
     "pe.rtDefault": "ランタイムの既定",
     "pe.perms": "権限モード",
     "pe.noneCmd": "なし",
@@ -3009,6 +3043,27 @@
     "bell.updates": "お知らせ({n})",
     "bell.rep": "同様の通知があと {n} 件",
     "bell.stop": "この種類を表示しない",
+    "bell.openInAgents": "エージェントで開く",
+    "peek.openInLayout": "レイアウトで開く",
+    "peek.close": "閉じる (Esc)",
+    "peek.back": "通知に戻る",
+    "peek.chipNeed": "対応が必要 · {why}",
+    "peek.chipNeedPlain": "対応が必要",
+    "peek.chipDone": "完了",
+    "peek.chipStopped": "停止済み",
+    "peek.chipRunning": "実行中",
+    "peek.connecting": "{name} に接続中…",
+    "peek.noConnect": "{name} のターミナルに接続できませんでした。",
+    "peek.retry": "再試行",
+    "peek.finished":
+      "{name} は見ている間に完了しました。今はあなたにとってアイドルです。",
+    "peek.stopped": "{name} は停止しました。答えることはありません。",
+    "peek.restart": "再起動",
+    "peek.next": "{name} ({project}) もあなたを必要としています: {why}",
+    "peek.whyWaiting": "あなたを待っています",
+    "peek.switch": "{name} に切り替える",
+    "peek.footType": "Esc で閉じる · 入力は {name} に送られます",
+    "peek.footEsc": "Esc で閉じる",
     "bell.askT": "「{kind}」を表示しませんか?",
     "bell.askB":
       "この種類だけです。アクティビティ記録には残ります。設定でいつでもオンに戻せます。",

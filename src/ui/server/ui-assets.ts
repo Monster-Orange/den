@@ -92,6 +92,8 @@ export const UI_MODULES: readonly string[] = [
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
+  "/peek.js",
+  "/peek.css",
   // Issue 448: which shell the rail's Terminal opens.
   "/shell-pick.js",
   // Issue 482: the Terminals list's rules.
