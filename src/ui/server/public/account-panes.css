@@ -1,5 +1,3 @@
-/* The Account pop-up's panes (account-panes.js): the rows' base size, as
-   on the Settings page, whatever page the pop-up opens over. */
 .acct-pane {
   font-size: var(--fs-s);
 }
