@@ -206,6 +206,8 @@ export const KIT_FILES: readonly string[] = [
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",
+  "pager.js",
+  "pager.css",
   // Issue 95 (UI kit slice 1): the global shell (top bar, rail, pins,
   // collapse, ☰ drawer), the version chip, What's new, the Report form
   // and the kit's words, and the client entry (window.DenUI).

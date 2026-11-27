@@ -4,6 +4,12 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.92] - unreleased
+
+### Added
+
+- UI kit 0.22.1: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", icon buttons for First, Previous, Next and Last (each word is the button's name and tooltip, and the icons mirror right to left), a page picker ("Page 3 of 17") and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's. More mode can hand its press to `onNavigate` (a list that redraws itself whole), and the 44px size follows a phone-width window or a touch screen, never the width of the box the pager sits in. The ⋯ menu and the short "3 / 17" picker appear only when the pager's box is 600px wide or less, in place of the full controls; above that the full row shows, in two lines when it must. A More list redrawn whole after its last chunk can keep its row with "All N shown" (`loaded: true`). A compact kind for a list inside a card (`compact: true`): ‹ [2] / 25 ›, with First and Last on a row wider than 600px. With `perDefault`, a list that fits one page keeps its row when the person chose another page size, so they can switch back.
+
 ## [0.4.91] - 2026-11-26
 
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)
