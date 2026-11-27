@@ -1,6 +1,4 @@
 /* eslint-env browser */
-// Live check for #793: every page and every pop-up uses the theme's sans font, never the browser's serif.
-// Read only: reads each page's body font and What's new's fonts; opens and closes What's new.
 export const readOnly = true;
 export const issue = 793;
 export const clauses = [
@@ -20,8 +18,10 @@ const PAGES = [
   "/terminals",
 ];
 const SERIF = /(^|,)\s*("?(times|times new roman|georgia|serif)"?)\s*(,|$)/i;
-const first = (ff) =>
-  (ff || "").split(",")[0].trim().replace(/"/g, "").toLowerCase();
+const first = (ff) => {
+  const [head = ""] = (ff || "").split(",");
+  return head.trim().replace(/"/g, "").toLowerCase();
+};
 
 export async function setup() {
   return {};
@@ -54,7 +54,8 @@ export async function run(ctx, s) {
       if (!d) return null;
       const font = (e) => getComputedStyle(e).fontFamily;
       const els = [...d.querySelectorAll("h2,h3,li,p,a,button")];
-      const foot = [...d.querySelectorAll(".dk-ft button, .dk-ft a")];
+      const footer = d.querySelector("#cl-got-it-btn")?.parentElement;
+      const foot = footer ? [...footer.querySelectorAll("button, a")] : [];
       return {
         body: font(document.body),
         n: els.length,
