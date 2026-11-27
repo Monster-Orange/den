@@ -15,10 +15,7 @@ import {
   expect,
   it,
 } from "@jest/globals";
-import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
-import * as path from "path";
 import type { AddressInfo } from "net";
 import {
   handleReportRoutes,
@@ -29,6 +26,9 @@ import { feedbackSettings } from "../../../src/shared/report-store.js";
 import { decideReport } from "../../../src/ui/server/report-routes.js";
 import { DeviceFlows } from "../../../src/ui/server/device-flows.js";
 import type { GithubDeviceClient } from "../../../src/shared/github-device.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 /** The fake GitHub behind the device flow: what each issue POST answers. */
 let apiStatus = 201;
@@ -189,7 +189,7 @@ beforeEach(() => {
   repoLabels = new Set(["bug", "enhancement", "question"]);
   labelLookups.length = 0;
   dupOpen = null;
-  state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-"));
+  state = tempDir("den-report-");
   signedIn = true;
   openIssues = [];
   mine = { data: { search: { nodes: [] } } };

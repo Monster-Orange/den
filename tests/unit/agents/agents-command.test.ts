@@ -133,6 +133,7 @@ describe("agents start", () => {
         "grants",
         // Issue 1223: the Den it started on, so its tools can be judged old.
         "denVersion",
+        "envHold",
         // 0.4.8: launched on resumeToken, so a resume continues it.
         "launched",
         // AG-12: its model's version ("latest": the alias); AG-10.9: what

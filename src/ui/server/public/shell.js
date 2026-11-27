@@ -3478,6 +3478,20 @@
     "ap.det.agent_mode.running":
       "It is running: Den restarts it after its turn, on the same conversation, in {mode}.",
     "ap.det.agent_mode.stopped": "It is stopped: its next start is in {mode}.",
+    "ap.do.den_env_hold_on":
+      "Hold secret-looking variables back from {count} agents started before (each at its next start): {names}",
+    "ap.do.den_env_allow_keep":
+      "Keep {names} for every agent, and hold the rest back from {count} agents started before",
+    "ap.det.den_env_hold_on.sets":
+      "Sets agents.env_hold_existing: true in config/local/user.yml.",
+    "ap.det.den_env_hold_on.next":
+      "Each agent loses them at its next start; one that runs now keeps them until then.",
+    "ap.det.den_env_hold_on.allow":
+      "Names it keeps from agents.env_allow stay.",
+    "ap.det.den_env_allow_keep.adds":
+      "Adds {names} to agents.env_allow in config/local/user.yml: every agent here gets them.",
+    "ap.det.den_env_allow_keep.on":
+      "Sets agents.env_hold_existing: true: other secret-looking variables are held back from each agent at its next start.",
     "ap.det.agent_sandbox_set.self":
       "{agent} is asking for this itself: it wants its own sandbox {value}.",
     "ap.det.agent_sandbox_set.on":
