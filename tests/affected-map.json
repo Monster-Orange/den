@@ -2667,6 +2667,7 @@
         "tests/unit/test-infra/gate-631-runner.test.ts",
         "tests/unit/test-infra/gate-701-629-send-to.test.ts",
         "tests/unit/test-infra/gate-701-659-runner.test.ts",
+        "tests/unit/test-infra/gate-746-ask-inside.test.ts",
         "tests/unit/test-infra/gate-746-teardown-1293.test.ts",
         "tests/unit/test-infra/gate-750-clauses.test.ts",
         "tests/unit/test-infra/gate-828.test.ts",
@@ -3152,7 +3153,10 @@
     },
     {
       "when": ["gate/746.mjs"],
-      "run": ["tests/unit/test-infra/gate-746-teardown-1293.test.ts"],
+      "run": [
+        "tests/unit/test-infra/gate-746-ask-inside.test.ts",
+        "tests/unit/test-infra/gate-746-teardown-1293.test.ts"
+      ],
       "why": "tests that load gate/746.mjs"
     },
     {

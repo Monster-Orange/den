@@ -56,6 +56,7 @@ import {
   healthCacheTtlMs,
   healthPollSeconds,
 } from "../../shared/health-poll.js";
+import { menuLoadTimeoutMs } from "../../shared/menu-load.js";
 import { line, reviewLines } from "../../shared/review-lines.js";
 import { workspaceUrl as workspaceUrlIn } from "./workspace-url.js";
 import {
@@ -6956,6 +6957,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
         unknown_keep_seconds: (a.unknownKeepMs ?? 300_000) / 1000,
       };
     })(),
+    menu_load: { timeout_ms: menuLoadTimeoutMs(() => user) },
     // Issue 707: the server's warning lines on disk, capped (server_log.*).
     server_log: {
       max_mb: serverLogMaxBytes(user) / (1024 * 1024),
@@ -11176,6 +11178,7 @@ async function handleRequest(
           skill_packs?: unknown;
           held_writes?: unknown;
           health_poll?: unknown;
+          menu_load?: unknown;
           git_reads?: unknown;
           github?: unknown;
           embed?: unknown;
@@ -11251,6 +11254,7 @@ async function handleRequest(
             agents_limits: body.agents_limits,
             held_writes: body.held_writes,
             health_poll: body.health_poll,
+            menu_load: body.menu_load,
             git_reads: body.git_reads,
             github: body.github,
           });
