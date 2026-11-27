@@ -77,7 +77,11 @@ describe("issue 1417: config reads every agent limit", () => {
   it("every agent limit reads back", async () => {
     for (const k of cfg.AGENTS_USER_LIMIT_KEYS) {
       const r = await read(`agents.${k}`);
-      expect(r.out.at(-1)).toMatch(/^\d+(\.\d+)?$/);
+      expect(r.out.at(-1)).toMatch(
+        k === "subagents_respect_load_hold"
+          ? /^(true|false)$/
+          : /^\d+(\.\d+)?$/,
+      );
     }
   });
 

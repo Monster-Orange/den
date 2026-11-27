@@ -162,6 +162,14 @@ import {
   WS_CLOSE,
 } from "./websocket.js";
 
+function skillPacksOf(v: unknown): { skillPacks?: "off" | "on" | string[] } {
+  if (v === "off" || v === false) return { skillPacks: "off" };
+  if (v === "on" || v === true) return { skillPacks: "on" };
+  if (Array.isArray(v) && v.every((x) => typeof x === "string"))
+    return { skillPacks: [...(v as string[])] };
+  return {};
+}
+
 export interface SessionRouteDeps {
   stateDir?: () => string;
   /** The distribution's name: the `<dist>` of a session name. */
@@ -498,6 +506,7 @@ export interface ListedSession {
   modeRunning?: string;
   /** Issue 199: its mode is its own, not its project's. */
   modeOwn?: boolean;
+  skillPacks?: "off" | "on" | string[];
   /** Issue 199: with its own: the project's mode it doesn't follow. */
   modeFollowed?: string;
   /** Extra allowed commands it was started with (AG-13.3). */
@@ -737,6 +746,13 @@ export function listedSessions(
     const set = repoSets.get(ws);
     return set ? !set.has(repo) : false;
   };
+  const ownPacks = (() => {
+    try {
+      return readAgentsConfig().agents;
+    } catch {
+      return {};
+    }
+  })();
   for (const r of agentRows(
     mine,
     records,
@@ -798,6 +814,7 @@ export function listedSessions(
             }
           : {};
       })(),
+      ...skillPacksOf(ownPacks[rec.id]?.skillPacks),
       ...(rec.allow?.length ? { allow: [...rec.allow] } : {}),
       ...(rec.overrides?.length ? { overrides: [...rec.overrides] } : {}),
       // D59: its own Resume after a restart, and the setting all told.

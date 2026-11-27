@@ -335,7 +335,9 @@ describe("issue 1318: a relaunch says the time in the install's zone", () => {
       const p = r.made[r.made.length - 1];
       const first = p.args[p.args.length - 1];
       expect(first).toMatch(
-        new RegExp(`It is now .+ \\(${OTHER_ZONE.replace("/", "\\/")}\\)\\.`),
+        new RegExp(
+          `It is now .+ \\(UTC[+-]\\d\\d:\\d\\d, ${OTHER_ZONE.replace("/", "\\/")}\\)\\.`,
+        ),
       );
     } finally {
       mockZone.value = null;

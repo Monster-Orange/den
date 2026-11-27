@@ -22,3 +22,7 @@ packages/den-ui/src/themes/sketch.css
 
 # Issue 1010: built by scripts/build-pw-guard.mjs; a test checks it matches its source byte for byte.
 lib/pw-guard/
+
+# Issue 1631: the vendored skill pack is upstream's text, pinned by hash in
+# skill-packs/packs.json. A rewrite would break the pin.
+/skill-packs/pstack/
