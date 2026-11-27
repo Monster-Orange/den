@@ -57,7 +57,7 @@ function runGate(opts: { max: number; others: number }) {
         stop: async () => { running.delete(name); return { code: 0 }; },
         remove: async () => { running.delete(name); return { code: 0 }; },
         sessionStart: async () => {},
-        print: async () => {},
+        print: async (t) => { if (/[\\r\\n]/.test(t)) throw new Error("stub control: one line only, this one has a line break: /print " + t.slice(0, 20)); },
         idlePrompt: async () => {},
         permissionRequest: async () => { said.set(name, "needs"); },
         askHuman: async () => { said.set(name, "needs"); },
