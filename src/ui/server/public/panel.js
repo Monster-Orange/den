@@ -17,7 +17,8 @@
  */
 import { linkOpen } from "/term-input.js";
 import { timeHtml } from "/kit/time.js";
-import { listPagerHtml, pageQuery, watchPagers } from "/list-pager.js";
+import { listMoreHtml } from "/list-pager.js";
+import { hydratePager } from "/kit/pager.js";
 import { healthReason } from "./value-words.js";
 import {
   commandTier,
@@ -709,7 +710,7 @@ export function entity(sel) {
 // Live sections (log tail, activity fetch) register a disposer here; a
 // re-render or close disposes them, so one panel holds at most one stream.
 let disposers = [];
-const ACTIVITY_PER = 50;
+const ACTIVITY_STEP = 20;
 export function disposePanel() {
   for (const d of disposers) d();
   disposers = [];
@@ -883,38 +884,50 @@ function activityList(x) {
     ? `repo=${encodeURIComponent(x.repo)}`
     : `address=${encodeURIComponent(x.repo + "/" + x.name)}`;
   let live = true;
-  let per = ACTIVITY_PER;
-  let page = null;
-  const show = (ask) =>
-    fetch(`/api/activity?${q}&${ask}`)
+  let shown = 0;
+  let next = null;
+  const rowHtml = (a) =>
+    `<li>${timeHtml(a.ts, { style: "time" })}<span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? (a.agent ? "[" + a.agent + "]" : `[${gw("gr.who.agent", "agent")}]`) + (a.client ? " " + a.client : "") : a.claimed && a.claimed.client ? gw("gr.who.youVia", "you · {client} (unverified)", { client: a.claimed.client }) : gw("gr.who.you", "you"))}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">${esc(gw("gr.refused", "refused: {reason}", { reason: a.reason || "" }))}</em>` : ""}</span></li>`;
+  const ask = (more) =>
+    fetch(`/api/activity?${q}&${more}`)
       .then((r) => (r.ok ? r.json() : { entries: [] }))
-      .catch(() => ({ entries: [] }))
-      .then((r) => {
-        if (!live) return;
-        const { entries = [] } = r;
-        page = r;
-        el.innerHTML = entries.length
-          ? `<ol class="act">${entries.map((a) => `<li>${timeHtml(a.ts, { style: "time" })}<span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? (a.agent ? "[" + a.agent + "]" : `[${gw("gr.who.agent", "agent")}]`) + (a.client ? " " + a.client : "") : a.claimed && a.claimed.client ? gw("gr.who.youVia", "you · {client} (unverified)", { client: a.claimed.client }) : gw("gr.who.you", "you"))}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">${esc(gw("gr.refused", "refused: {reason}", { reason: a.reason || "" }))}</em>` : ""}</span></li>`).join("")}</ol>` +
-            listPagerHtml("activity", r, entries.length, per, { url: false })
-          : none(
-              N(
-                "noActivity",
-                "No actions yet. Starts, restarts and syncs, yours and agents', show here.",
-              ),
-            );
-      });
-  const stop = watchPagers(
-    el,
-    (_name, ask) => {
-      if (ask.kind === "per") per = ask.target.per;
-      void show(pageQuery(page, ask.target, per).toString());
-    },
-    { url: false },
-  );
+      .catch(() => ({ entries: [] }));
+  const more = async () => {
+    const r = await ask(
+      new URLSearchParams({
+        limit: String(ACTIVITY_STEP),
+        cursor: next ?? "",
+      }).toString(),
+    );
+    const entries = r.entries ?? [];
+    shown += entries.length;
+    next = r.next ?? null;
+    return {
+      html: entries.map(rowHtml).join(""),
+      to: shown,
+      hasNext: !!next,
+    };
+  };
+  void ask(`limit=${ACTIVITY_STEP}`).then((r) => {
+    if (!live) return;
+    const { entries = [] } = r;
+    shown = entries.length;
+    next = r.next ?? null;
+    el.innerHTML = entries.length
+      ? `<ol class="act">${entries.map(rowHtml).join("")}</ol>` +
+        listMoreHtml("activity", r, shown, ACTIVITY_STEP)
+      : none(
+          N(
+            "noActivity",
+            "No actions yet. Starts, restarts and syncs, yours and agents', show here.",
+          ),
+        );
+    const list = el.querySelector("ol.act");
+    const pager = el.querySelector("[data-den-pager]");
+    if (list && pager) hydratePager(pager, { list, load: more });
+  });
   disposers.push(() => {
     live = false;
-    stop();
   });
-  void show(`limit=${per}`);
   return el;
 }
