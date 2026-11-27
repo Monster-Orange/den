@@ -130,6 +130,7 @@ function pagerOf(p) {
     mode: "more",
     from: 1,
     to: p.items.length,
+    loaded: p.items.length > PAGE_PER,
     total: typeof p.total === "number" ? p.total : null,
     hasNext: !!p.next,
     step: PAGE_PER,
