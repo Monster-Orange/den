@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/kit/fonts.css" />
     <link rel="stylesheet" href="/kit/tokens.css" />
     <link rel="stylesheet" href="/kit/base.css" />
+    <link rel="stylesheet" href="/combobox.css" />
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <title>__DEN_TITLE__ · Releases</title>
     <style>
@@ -687,6 +688,7 @@
         import { formatTime, timeHtml } from "/kit/time.js";
         import { statusVars } from "/value-words.js";
         import { dialogHtml, mountDialog } from "/dialog-den.js";
+        import { comboHtml, pageLoad, wireCombo } from "/combobox.js";
         // The page's words (issue 171): shell.js's catalog, "rel.*". A deploy's
         // own log lines (the server's) are output, not translated.
         const t = (k, v) => window.denShell?.t?.(k, v) ?? k;
@@ -1211,8 +1213,9 @@
           const isProd = state.env === "prod";
           openModal(
             t("rel.dep.title", { repo, env: state.env }),
-            `<label>${esc(t("rel.dep.ref"))}</label>
-         <select id="dep-branch"><option value="main" translate="no">main</option></select>
+            `<label for="dep-branch">${esc(t("rel.dep.ref"))}</label>
+         ${comboHtml({ id: "dep-branch", label: t("rel.dep.ref"), bare: true })}
+         <div id="dep-branch-msg" class="err-text" aria-live="polite"></div>
          <div id="dep-hotfix"></div>
          <div id="dep-confirm-wrap"></div>
          <div id="dep-err" class="err-text"></div>`,
@@ -1220,29 +1223,44 @@
          <button class="den-btn primary" id="dep-go" disabled>${esc(t("rel.dep.go"))}</button>`,
           );
 
-          const branchSel = $("dep-branch");
-          // Load branches lazily
-          fetch(
-            `/api/release/branches?repo=${encodeURIComponent(repo)}&limit=100`,
-          )
-            .then((r) => r.json())
-            .then((page) => {
-              const branches = Array.isArray(page) ? page : (page?.items ?? []);
-              if (Array.isArray(branches) && branches.length) {
-                branchSel.innerHTML = branches
-                  .map((b) => `<option value="${esc(b)}">${esc(b)}</option>`)
-                  .join("");
-                branchSel.value = branches.includes("main")
-                  ? "main"
-                  : branches[0];
-                updateDeployModal(repo, isProd);
-              }
-            })
-            .catch(() => {});
-
-          branchSel.addEventListener("change", () =>
-            updateDeployModal(repo, isProd),
-          );
+          const base = `/api/release/branches?repo=${encodeURIComponent(repo)}`;
+          let checkSeq = 0;
+          let checkTimer = 0;
+          state.depBranchOk = false;
+          const check = (name) => {
+            clearTimeout(checkTimer);
+            const n = ++checkSeq;
+            const msg = $("dep-branch-msg");
+            state.depBranchOk = false;
+            $("dep-go").disabled = true;
+            msg.textContent = name ? t("rel.dep.checking") : "";
+            if (!name) return;
+            checkTimer = setTimeout(() => {
+              fetch(`${base}&name=${encodeURIComponent(name)}`)
+                .then((r) => r.json())
+                .catch(() => ({}))
+                .then((r) => {
+                  if (n !== checkSeq) return;
+                  state.depBranchOk = r?.exists === true;
+                  msg.textContent = state.depBranchOk
+                    ? ""
+                    : t("rel.dep.noBranch", { branch: name });
+                  updateDeployModal(repo, isProd);
+                });
+            }, 300);
+          };
+          const load = pageLoad(base);
+          const combo = wireCombo($("modal-body"), "dep-branch", {
+            free: true,
+            load,
+            onType: check,
+            words: { more: t("combo.narrow"), none: t("combo.none") },
+          });
+          void load("").then((r) => {
+            const first = r.items[0]?.id ?? "main";
+            combo?.set(first);
+            check(first);
+          });
           $("dep-cancel").addEventListener("click", closeModal);
           updateDeployModal(repo, isProd);
         }
@@ -1291,7 +1309,7 @@
             }
             // Only THIS repo being mid-deploy blocks it; other systems deploying
             // concurrently are irrelevant.
-            go.disabled = !ok || isRepoBusy(repo);
+            go.disabled = !ok || !state.depBranchOk || isRepoBusy(repo);
           };
           $("dep-confirm")?.addEventListener("input", validate);
           $("dep-confirm-branch")?.addEventListener("input", validate);

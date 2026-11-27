@@ -15,7 +15,9 @@
  *   openAddService({ ws, filter, onAdded })  shows it; onAdded({ text,
  *                                            kind }) after an add
  */
+import { comboHtml, pageLoad, wireCombo } from "/combobox.js";
 import { dialogHtml, mountDialog } from "/dialog-den.js";
+import { hydratePager, pagerHtml } from "/kit/pager.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 
@@ -41,6 +43,7 @@ const st = {
   tab: "local",
   onAdded: null,
   frame: null,
+  branchCombo: null,
 };
 
 /** The repos the page fetched for the project it shows. */
@@ -61,6 +64,28 @@ const pageItems = (r) =>
 const ghQ = (v, re) => (re.test(v) ? v : "");
 let ghSeq = 0;
 let ghTimer = 0;
+const pg = { per: 50, froms: [1], next: null, prev: null, ctl: null };
+const PAGER_WORDS = [
+  "range",
+  "rangeOpen",
+  "label",
+  "first",
+  "firstSr",
+  "prev",
+  "prevSr",
+  "next",
+  "nextSr",
+  "last",
+  "lastSr",
+  "pageOf",
+  "pageShort",
+  "pageSr",
+  "go",
+  "perPage",
+  "more",
+];
+const pagerWords = () =>
+  Object.fromEntries(PAGER_WORDS.map((k) => [k, t(`pager.${k}`)]));
 
 const dlg = () => st.frame?.dialog ?? null;
 const $ = (sel) => dlg()?.querySelector(sel) ?? null;
@@ -145,11 +170,13 @@ function renderLocal() {
   list.innerHTML = html || empty(t("addSvc.noResults"));
 }
 
-function loadGh(refresh, q = "") {
-  if (!q) st.gh = null;
+function loadGh(refresh, q = "", cursor = "") {
+  if (!q && !cursor) st.gh = null;
+  if (!cursor) pg.froms = [1];
   const seq = ++ghSeq;
-  const p = new URLSearchParams({ limit: "100" });
+  const p = new URLSearchParams({ limit: String(pg.per) });
   if (q) p.set("q", q);
+  if (cursor) p.set("cursor", cursor);
   if (refresh) p.set("refresh", "1");
   fetch(`/api/github/repos?${p}`)
     .then((r) => r.json())
@@ -157,28 +184,68 @@ function loadGh(refresh, q = "") {
     .then((repos) => {
       if (seq !== ghSeq) return;
       st.gh = pageItems(repos);
+      pg.next = repos?.next ?? null;
+      pg.prev = repos?.prev ?? null;
       renderGh();
     });
 }
 
-let branchSeq = 0;
-function loadBranches(gh, q = "") {
-  const dl = $("#add-svc-branch-list");
-  const seq = ++branchSeq;
-  const p = new URLSearchParams({ gh, limit: "100" });
-  if (q) p.set("q", q);
-  fetch(`/api/github/branches?${p}`)
-    .then((r) => r.json())
-    .catch(() => [])
-    .then((r) => {
-      if (seq !== branchSeq || !dl) return;
-      dl.innerHTML = pageItems(r)
-        .map((b) => `<option value="${esc(b)}">`)
-        .join("");
+function ghHref(target) {
+  if (typeof target === "object") return target.per ? `?per=${target.per}` : "";
+  const on = { first: pg.froms.length > 1, prev: !!pg.prev, next: !!pg.next };
+  return on[target] ? `?gh=${target}` : "";
+}
+
+function ghNavigate(ask) {
+  if (ask.kind === "per") {
+    pg.per = Number(ask.target?.per) || pg.per;
+    return loadGh(false, st.ghQ);
+  }
+  const from = pg.froms[pg.froms.length - 1];
+  if (ask.target === "next" && pg.next) {
+    pg.froms.push(from + (st.gh?.length ?? 0));
+    loadGh(false, st.ghQ, pg.next);
+  } else if (ask.target === "prev" && pg.prev) {
+    const back = pg.froms.slice(0, -1);
+    loadGh(false, st.ghQ, pg.prev);
+    pg.froms = back.length ? back : [1];
+  } else if (ask.target === "first") loadGh(false, st.ghQ);
+}
+
+function renderGhPager() {
+  const foot = $("#add-svc-gh-pager");
+  pg.ctl?.destroy();
+  pg.ctl = null;
+  if (!foot) return;
+  const n = st.gh?.length ?? 0;
+  const from = pg.froms[pg.froms.length - 1];
+  foot.innerHTML = n
+    ? pagerHtml({
+        from,
+        to: from + n - 1,
+        page: pg.froms.length,
+        hasNext: !!pg.next,
+        per: pg.per,
+        perOptions: [25, 50, 100],
+        href: ghHref,
+        lang: document.documentElement.lang || "en",
+        words: pagerWords(),
+      })
+    : "";
+  const nav = foot.querySelector(".den-pager");
+  if (nav)
+    pg.ctl = hydratePager(nav, {
+      list: "add-svc-gh-list",
+      onNavigate: ghNavigate,
     });
 }
 
 function renderGh() {
+  drawGhList();
+  renderGhPager();
+}
+
+function drawGhList() {
   const list = $("#add-svc-gh-list");
   if (!list) return;
   if (!st.gh) {
@@ -262,11 +329,9 @@ function pickGh(repo) {
   const branch = $("#add-svc-branch");
   branch.value = first;
   branch.placeholder = first;
-  const dl = $("#add-svc-branch-list");
-  dl.innerHTML = `<option value="${esc(first)}">`;
+  st.branchCombo?.set(first);
   $("#add-svc-newbranch").value = "";
   sync();
-  if (repo.nameWithOwner) loadBranches(repo.nameWithOwner);
 }
 
 /** What the add sends, from what is chosen and filled. */
@@ -369,7 +434,7 @@ function bodyHtml() {
     `<div id="add-svc-local-list">${empty(t("addSvc.loading"))}</div></div>` +
     `<div class="add-svc-body" id="add-svc-panel-gh" role="tabpanel" hidden>` +
     `<div class="add-svc-tools"><button type="button" class="add-svc-refresh-btn" data-as="refresh" title="${esc(t("addSvc.refreshTip"))}">↻ ${esc(t("addSvc.refresh"))}</button></div>` +
-    `<div id="add-svc-gh-list"></div></div>`
+    `<div id="add-svc-gh-list"></div><div id="add-svc-gh-pager"></div></div>`
   );
 }
 
@@ -386,8 +451,12 @@ function footHtml() {
     `</span></div>` +
     `<div class="add-svc-config-row">` +
     `<label class="add-svc-config-l" for="add-svc-branch">${esc(t("addSvc.branch"))}</label>` +
-    `<input class="add-svc-inp" id="add-svc-branch" list="add-svc-branch-list" autocomplete="off">` +
-    `<datalist id="add-svc-branch-list"></datalist>` +
+    comboHtml({
+      id: "add-svc-branch",
+      label: t("addSvc.branch"),
+      bare: true,
+      cls: "add-svc-inp",
+    }) +
     `<label class="add-svc-config-l" for="add-svc-newbranch">${esc(t("addSvc.newBranch"))}</label>` +
     `<input class="add-svc-inp" id="add-svc-newbranch" autocomplete="off" placeholder="${esc(t("addSvc.optional"))}">` +
     `</div></div>` +
@@ -422,20 +491,19 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
     { opener, focus: "#add-svc-global-search", show: false },
   );
   const d = st.frame.dialog;
+  st.branchCombo = wireCombo(d, "add-svc-branch", {
+    free: true,
+    load: pageLoad(() =>
+      st.selGh?.nameWithOwner
+        ? `/api/github/branches?gh=${encodeURIComponent(st.selGh.nameWithOwner)}`
+        : "",
+    ),
+    words: { more: t("combo.narrow"), none: t("combo.none") },
+  });
   d.addEventListener("input", (e) => {
-    const id = e.target.id;
-    if (id !== "add-svc-global-search" && id !== "add-svc-branch") return;
+    if (e.target.id !== "add-svc-global-search") return;
     clearTimeout(ghTimer);
     const v = e.target.value.trim();
-    if (id === "add-svc-branch") {
-      const gh = st.selGh?.nameWithOwner;
-      if (gh)
-        ghTimer = setTimeout(
-          () => loadBranches(gh, ghQ(v, /^[A-Za-z0-9._/-]{1,100}$/)),
-          250,
-        );
-      return;
-    }
     renderLocal();
     renderGh();
     const q = ghQ(v, /^[A-Za-z0-9._-]{1,100}$/);

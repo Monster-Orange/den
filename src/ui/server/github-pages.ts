@@ -138,7 +138,7 @@ const VARS = "$first: Int, $last: Int, $after: String, $before: String";
 const SPAN = "first: $first, last: $last, after: $after, before: $before";
 const OWNER_QUERY = `query($login: String!, ${VARS}) {
   repositoryOwner(login: $login) {
-    repositories(${SPAN}, orderBy: { field: NAME, direction: ASC }) {
+    repositories(${SPAN}, isArchived: false, orderBy: { field: NAME, direction: ASC }) {
       nodes { ${NODE} } ${INFO} } } }`;
 const SEARCH_QUERY = `query($q: String!, ${VARS}) {
   search(query: $q, type: REPOSITORY, ${SPAN}) {
@@ -230,7 +230,9 @@ export async function repoPage(
         q
           ? gql(
               SEARCH_QUERY,
-              { q: `${q} in:name ${owners.map((o) => `user:${o}`).join(" ")}` },
+              {
+                q: `${q} in:name archived:false ${owners.map((o) => `user:${o}`).join(" ")}`,
+              },
               n,
               span,
               ".data.search",

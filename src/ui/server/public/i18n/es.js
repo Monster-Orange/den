@@ -1900,7 +1900,8 @@
     "set.workspace.hub_delivery_loop.o.install": "Como en todas partes",
     "set.workspace.hub_delivery_loop.o.on": "Activado",
     "set.workspace.hub_delivery_loop.o.off": "Desactivado",
-    "set.workspace.agents_max_per_project": "Agentes por proyecto: este proyecto",
+    "set.workspace.agents_max_per_project":
+      "Agentes por proyecto: este proyecto",
     "set.workspace.agents_max_per_project.d":
       "Cuántos agentes de este proyecto pueden funcionar a la vez. Vacío o 0 usa Agentes por proyecto. Solo puede ser más bajo que eso. Un inicio por encima de esto se rechaza, y dice qué límite lo frena.",
     "set.workspace.hub_delivery_loop_extra":
@@ -2375,7 +2376,8 @@
     "ap.det.den_sandbox_on.off":
       "Un agente puesto en off en user.yml sigue en off.",
     "ap.do.repo_clone": "Clonar {source} en {path}",
-    "ap.do.project_agent_cap": "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
     "ap.det.project_agent_cap.now": "Ahora: {v}",
     "ap.det.project_agent_cap.then": "Después: {v}",
     "ap.do.project_mode":
@@ -4272,6 +4274,27 @@
     "addSvc.added": "añadido",
     "addSvc.group.dev": "Gestionados por desarrollo",
     "addSvc.group.managed": "Gestionados por __DEN_TITLE__",
+    "pager.range": "{from}–{to} de {total}",
+    "pager.rangeOpen": "{from}–{to}",
+    "pager.label": "Páginas",
+    "pager.first": "Primera",
+    "pager.firstSr": "Primera página",
+    "pager.prev": "Anterior",
+    "pager.prevSr": "Página anterior",
+    "pager.next": "Siguiente",
+    "pager.nextSr": "Página siguiente",
+    "pager.last": "Última",
+    "pager.lastSr": "Última página",
+    "pager.pageOf": "Página {select} de {n}",
+    "pager.pageShort": "{p} / {n}",
+    "pager.pageSr": "Página {p} de {n}",
+    "pager.go": "Ir",
+    "pager.perPage": "{select} por página",
+    "pager.more": "Más",
+    "combo.narrow": "Hay más: escribe para acotar",
+    "combo.none": "Sin coincidencias",
+    "rel.dep.checking": "Comprobando la rama…",
+    "rel.dep.noBranch": "No hay ninguna rama llamada {branch}.",
     "addSvc.ghLoading": "Cargando repositorios de GitHub…",
     "addSvc.ghNoMatch": "Ningún repositorio coincide con «{q}»",
     "addSvc.ghNone": "No hay repositorios de GitHub",

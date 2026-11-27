@@ -1,0 +1,59 @@
+.den-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 200px;
+  flex-wrap: wrap;
+}
+.den-combo-box {
+  position: relative;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.den-combo-box input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.den-combo-list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 2px);
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+.den-combo-list[hidden] {
+  display: none;
+}
+.den-combo-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.den-combo-list li[aria-selected="true"] {
+  background: var(--sunken);
+}
+.den-combo-list li[aria-disabled="true"] {
+  color: var(--muted);
+  cursor: default;
+}
+.den-combo-s {
+  color: var(--muted);
+  font-size: 12px;
+}
+.den-combo-list li.den-combo-more {
+  font-size: 12px;
+}

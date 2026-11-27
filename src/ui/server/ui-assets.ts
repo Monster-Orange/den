@@ -88,6 +88,7 @@ export const UI_MODULES: readonly string[] = [
   "/svc-panel.js",
   // D30: the shared searchable picker (Settings › Agents › Rotation).
   "/combobox.js",
+  "/combobox.css",
   // 0.4.18: where a service's live log comes from (Logs page and panel).
   "/log-source.js",
   // D50: how every pop-over closes (a press outside, Esc).
@@ -193,6 +194,8 @@ export const KIT_FILES: readonly string[] = [
   "filter-bar.css",
   "bulk-bar.js",
   "bulk-bar.css",
+  "pager.js",
+  "pager.css",
   // den-ui: the general button (issue 556; Den's own .den-btn moved into
   // the kit) and the settings on/off row (issue 554).
   "button.js",
