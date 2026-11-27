@@ -255,6 +255,7 @@ const st = {
    * until its tools are current.
    */
   restarts: new Map(),
+  restartRun: null,
   /** Issue 96: the row being dragged (the list isn't redrawn meanwhile). */
   drag: null,
   /** Issue 96: a drag just ended, so the click it makes is swallowed. */
@@ -2600,12 +2601,15 @@ function toolsBarHtml(rows) {
     return why && why !== "restarting";
   });
   if (stale.length < 2) return "";
+  const run = st.restartRun;
   const asked = stale
     .map((r) => st.restarts.get(restartKey(r.workspace, r.agent)))
     .filter(Boolean);
   return (
     `<div class="agnote" data-note="tools-stale" role="status">${esc(t("rs.bar", { n: stale.length }))} ` +
-    `<button type="button" class="den-btn sm" data-act="tools-restart-all">${esc(t("rs.barBtn", { n: stale.length }))}</button>` +
+    (run
+      ? `<button type="button" class="den-btn sm" data-act="tools-restart-all" disabled aria-busy="true">${esc(t("rs.barBusy", { done: run.done, total: run.total }))}</button>`
+      : `<button type="button" class="den-btn sm" data-act="tools-restart-all">${esc(t("rs.barBtn", { n: stale.length }))}</button>`) +
     restartAllHtml(asked, t) +
     `</div>`
   );
@@ -2668,11 +2672,14 @@ let restartFollow = null;
  * stale bar drops an agent the moment it is back.
  */
 function followAgentRestarts() {
-  if (restartFollow || !st.restarts.size) return;
+  if (restartFollow || (!st.restarts.size && !st.restartRun)) return;
   restartFollow = followRestarts({
     api,
-    onRows: (rows) => {
-      if (!st.root?.isConnected || !st.restarts.size) {
+    onRows: (rows, run) => {
+      const before = JSON.stringify(st.restartRun);
+      st.restartRun = run ?? null;
+      if (JSON.stringify(st.restartRun) !== before) void refresh();
+      if (!st.root?.isConnected || (!st.restarts.size && !st.restartRun)) {
         restartFollow?.stop();
         restartFollow = null;
         return;
@@ -2688,7 +2695,7 @@ function followAgentRestarts() {
           changed = true;
         }
       }
-      if (!st.restarts.size) {
+      if (!st.restarts.size && !st.restartRun) {
         restartFollow?.stop();
         restartFollow = null;
       }
@@ -2709,8 +2716,19 @@ async function restartAllForTools(button) {
   );
   for (const a of Array.isArray(out?.agents) ? out.agents : [])
     st.restarts.set(restartKey(a.workspace, a.id), a);
+  st.restartRun = out?.run ?? null;
   await refresh();
   followAgentRestarts();
+}
+
+async function resumeRestartRun() {
+  try {
+    const r = await api("GET", "/api/agents/restart-status");
+    st.restartRun = r?.run ?? null;
+  } catch {
+    st.restartRun = null;
+  }
+  if (st.restartRun) followAgentRestarts();
 }
 
 /** Issue 1407: Restart now (ends a job), one agent's or all that wait. */
@@ -5996,6 +6014,75 @@ function modeItems(r, opener) {
   ];
 }
 
+function skillPackItems(r, opener) {
+  if (r?.kind !== "agent" || r.server) return [];
+  const own = r.skillPacks ?? null;
+  const now =
+    own === "off"
+      ? t("ag.packs.off")
+      : own === null
+        ? t("ag.packs.default")
+        : t("ag.packs.on");
+  return [
+    {
+      label: t("ag.packs.item", { v: now }),
+      onSelect: () => openSkillPackMenu(opener, r, own),
+    },
+  ];
+}
+
+function openSkillPackMenu(anchor, r, own) {
+  const sh = window.denShell;
+  const id = r.displayName || r.agent;
+  const pick = (value) => {
+    if (value === own) return;
+    void sh
+      .busyAction(
+        "agent-skill-packs",
+        (headers) =>
+          sh.api(
+            "POST",
+            "/api/settings",
+            {
+              skill_packs: {
+                key: `agents.${r.agent}.skill_packs`,
+                value,
+              },
+            },
+            { headers },
+          ),
+        {
+          button: anchor,
+          vars: { name: id },
+          success: () => t("ag.packs.set", { id }),
+        },
+      )
+      .then((x) => {
+        if (x !== undefined && x !== null) void refresh();
+      });
+  };
+  sh.openMenu(anchor, {
+    label: t("ag.packs.menu", { id }),
+    items: [
+      {
+        label: t("ag.packs.default"),
+        checked: own === null,
+        onSelect: () => pick(null),
+      },
+      {
+        label: t("ag.packs.off"),
+        checked: own === "off",
+        onSelect: () => pick("off"),
+      },
+      {
+        label: t("ag.packs.on"),
+        checked: own === "on",
+        onSelect: () => pick("on"),
+      },
+    ],
+  });
+}
+
 /** D37: a stopped agent's ⋯: Start fresh (when Resume is its button), Remove. */
 function stoppedMenuItems(r, opener) {
   return [
@@ -6574,6 +6661,7 @@ export async function mountAgentsPage(root) {
             : [
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
                 ...modeItems(r, b),
+                ...skillPackItems(r, b),
                 restartResumeItem(r),
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
                 ...orderItems(r, false),
@@ -6691,6 +6779,7 @@ export async function mountAgentsPage(root) {
   const [, saved] = await Promise.all([loadScope(), savedLayout()]);
   // A link's &layout= wins for this page; else the person's.
   st.layout = linked ?? saved;
+  await resumeRestartRun();
   await refresh();
   paintLayout();
   // An id the list no longer has (removed, another distribution's) is

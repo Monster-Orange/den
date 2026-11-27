@@ -151,6 +151,7 @@ export function createDenMcpServer(opts: DenMcpOptions): McpServer {
     cfg: opts.cfg,
     cli: opts.cli,
     ...(toolScope ? { scope: toolScope } : {}),
+    ...(opts.scope ? { actor: opts.scope.actor } : {}),
   };
 
   // A pinned tool with no workspace parameter (no grants) still takes a
@@ -359,6 +360,7 @@ export async function runOneShot(
     cfg: opts.cfg,
     cli: opts.cli,
     ...(toolScope ? { scope: toolScope } : {}),
+    ...(opts.scope ? { actor: opts.scope.actor } : {}),
   };
   // The stdio server validates arguments against each tool's schema (the
   // SDK does it); a one-shot must too, and strictly: it is typed by hand, so

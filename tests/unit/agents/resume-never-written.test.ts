@@ -248,7 +248,9 @@ describe("issue 1318: a fresh start from a handoff says the time in the install'
       expect(code).toBe(0);
       expect(lastArg(r)).toContain("Den started you fresh");
       expect(lastArg(r)).toMatch(
-        new RegExp(`It is now .+ \\(${OTHER_ZONE.replace("/", "\\/")}\\)\\.`),
+        new RegExp(
+          `It is now .+ \\(UTC[+-]\\d\\d:\\d\\d, ${OTHER_ZONE.replace("/", "\\/")}\\)\\.`,
+        ),
       );
     } finally {
       mockZone.value = null;
