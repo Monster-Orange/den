@@ -41,6 +41,13 @@
  * an agent token's own session only. The attach and the detach are audited
  * with the actor from the credential.
  */
+import {
+  isPageError,
+  pageOf,
+  readPageAsk,
+  sendPageError,
+  type Page,
+} from "./paging.js";
 import { denToolsOld } from "../../shared/agents/den-tools-version.js";
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import { SizeLead } from "./term-size-lead.js";
@@ -976,6 +983,7 @@ async function listWithHelpers(
   d: Resolved,
   also?: string,
   hubUrl?: string | null,
+  only?: ReadonlySet<string>,
 ): Promise<ListedSession[]> {
   const rows = d.helperRows;
   if (!rows) return listedSessions(sessions, d, also, hubUrl);
@@ -1014,6 +1022,7 @@ async function listWithHelpers(
           liveSince,
         ),
     };
+    if (only && !only.has(rec.id)) return rows.peek(ask);
     asks.push(ask);
     return rows.peek(ask);
   };
@@ -1098,23 +1107,58 @@ export async function handleSessionList(
         }
       : null;
   const keep = agentRowFilter(req);
-  const listed = await listWithHelpers(
-    sessions,
-    d,
-    wanted?.known ? wanted.workspace : undefined,
-    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-  );
+  const params = new URL(req.url ?? "/", "http://localhost").searchParams;
+  const ask =
+    params.get("all") === "1" ? null : readPageAsk(params, SESSIONS_LIST);
+  if (ask && isPageError(ask)) {
+    sendPageError(res, ask);
+    return true;
+  }
+  const also = wanted?.known ? wanted.workspace : undefined;
+  const hubUrl = sessions.length
+    ? await d.hubNow().catch(() => undefined)
+    : undefined;
   let states: AgentStateDeps | undefined;
   try {
     states = deps.agentStates?.();
   } catch {
     states = undefined;
   }
-  const rows = states
-    ? withAgentStates(listed, personKey(req), states)
-    : listed;
+  const withStates = (xs: ListedSession[]) =>
+    states ? withAgentStates(xs, personKey(req), states) : xs;
+  let page: Page<ListedSession> | null = null;
+  let rows: ListedSession[];
+  if (!ask) {
+    rows = withStates(await listWithHelpers(sessions, d, also, hubUrl));
+    if (keep) rows = rows.filter((r) => keep(r.workspace));
+  } else {
+    const first = withStates(
+      await listWithHelpers(sessions, d, also, hubUrl, new Set()),
+    );
+    page = pageOf(first, ask, {
+      key: (r) => [r.workspace, r.name],
+      id: (r) => r.id,
+      ...(keep ? { filter: (r: ListedSession) => keep(r.workspace) } : {}),
+      total: true,
+    });
+    const ids = new Set(
+      page.items.flatMap((r) =>
+        r.kind === "agent" && r.agent ? [r.agent] : [],
+      ),
+    );
+    if (ids.size) {
+      const byId = new Map(
+        withStates(await listWithHelpers(sessions, d, also, hubUrl, ids)).map(
+          (r) => [r.id, r],
+        ),
+      );
+      page = { ...page, items: page.items.map((r) => byId.get(r.id) ?? r) };
+    }
+    rows = page.items;
+  }
   sendJson(res, {
-    sessions: keep ? rows.filter((r) => keep(r.workspace)) : rows,
+    ...(page ?? {}),
+    sessions: rows,
     workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
@@ -1131,6 +1175,8 @@ export async function handleSessionList(
   });
   return true;
 }
+
+export const SESSIONS_LIST = "sessions";
 
 /** Whether `pathname` is a session's io route. */
 export function isSessionIoPath(pathname: string): boolean {

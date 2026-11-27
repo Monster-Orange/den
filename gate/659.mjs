@@ -104,7 +104,7 @@ function answer(ctx, id, yes) {
 /** The agent's row, and its bell items' words. */
 async function seen(ctx, id, ws) {
   const d = await ctx
-    .api(`/api/sessions?ws=${encodeURIComponent(ws)}`)
+    .api(`/api/sessions?all=1&ws=${encodeURIComponent(ws)}`)
     .catch(() => null);
   const r = (d?.sessions ?? []).find(
     (s) => s?.kind === "agent" && s?.agent === id,

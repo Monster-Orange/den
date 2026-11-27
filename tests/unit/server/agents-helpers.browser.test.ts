@@ -1056,7 +1056,7 @@ describe("issue 1861: helpers not counted yet", () => {
     const { p, errors } = await open();
     let pending = 3;
     const at: number[] = [];
-    await p.route("**/api/sessions", async (r) => {
+    await p.route("**/api/sessions?all=1", async (r) => {
       const res = await r.fetch();
       const j = (await res.json()) as {
         helpersPending?: boolean;

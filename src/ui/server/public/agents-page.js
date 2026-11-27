@@ -1025,7 +1025,9 @@ async function refreshOnce() {
     let r;
     try {
       r = await fetch(
-        ws ? `/api/sessions?ws=${encodeURIComponent(ws)}` : "/api/sessions",
+        ws
+          ? `/api/sessions?all=1&ws=${encodeURIComponent(ws)}`
+          : "/api/sessions?all=1",
         { headers: { accept: "json" }, signal: ac.signal },
       );
     } catch (e) {

@@ -97,7 +97,7 @@ async function typedOf(a, since) {
 /** The agent's row as the Agents page gets it. */
 async function rowOf(ctx, id) {
   const d = await ctx
-    .api(`/api/sessions?ws=${encodeURIComponent(WS)}`)
+    .api(`/api/sessions?all=1&ws=${encodeURIComponent(WS)}`)
     .catch(() => null);
   const r = (d?.sessions ?? []).find(
     (s) => s?.kind === "agent" && s?.agent === id,
