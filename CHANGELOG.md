@@ -69,6 +69,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Settings opens as a pop-up over the page you are on, from the rail's Settings item or any link to Settings: panes grouped on the left (Look and feel, Projects and agents, Access and safety, This install), a search over pane names and setting labels (never values), the open pane in the address as `?settings=<pane>`, and Back closes it. Your notifications, devices and sign-out are in Account; Settings links there. A browser that isn't signed in sees the panes read-only. (issue 1926)
 
+- In the Settings pop-up, the Agents and Project setup panes group their rows under subheadings. Agents has Approvals and permissions, How many agents, Runtimes, skills and personas, Resume and reconnect, Context and compaction, Issues and GitHub, Waits and hooks, and The Agents page. Project setup has This project, Hub, Agents in this project, and Tools and feeds. The rows and their saves are unchanged. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed
