@@ -25,6 +25,12 @@
 .setd .setd-link .l {
   color: var(--muted);
 }
+@media (max-width: 560px) {
+  .setd.dn .set-row {
+    grid-template-areas: "l" "d" "t" "c" "s";
+    grid-template-rows: none;
+  }
+}
 .setd .setd-sub + .setd-sub {
   margin-top: var(--space-5);
 }
@@ -35,10 +41,4 @@
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--muted);
-}
-@media (max-width: 560px) {
-  .setd.dn .set-row {
-    grid-template-areas: "l" "d" "t" "c" "s";
-    grid-template-rows: none;
-  }
 }
