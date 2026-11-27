@@ -992,13 +992,13 @@ export async function handleWorkspaceRoutes(
   // ── API: GitHub branches ──────────────────────────────────────────────────
   if (pathname === "/api/github/branches" && req.method === "GET") {
     const gh = url.searchParams.get("gh") ?? "";
-    return sendJson(res, github.listBranches(gh));
+    return sendJson(res, await github.listBranches(gh));
   }
 
   // ── API: GitHub repos ─────────────────────────────────────────────────────
   if (pathname === "/api/github/repos" && req.method === "GET") {
     const forceRefresh = url.searchParams.get("refresh") === "1";
-    return sendJson(res, github.listOrgRepos(forceRefresh));
+    return sendJson(res, await github.listOrgRepos(forceRefresh));
   }
 
   // ── API: available repos (for adding to workspace) ────────────────────────
