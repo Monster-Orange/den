@@ -1,3 +1,4 @@
+import { oneAtATime } from "/agents-actions.js";
 import { paintBar } from "/agents-bar.js";
 import { MAX_PANES, api, rowOf, st, t } from "/agents-core.js";
 import { knowAgent, refresh } from "/agents-data.js";
@@ -346,4 +347,35 @@ async function bringShell(id) {
   focusTerm(id);
 }
 
-export { attachable, bringShell, closePane, closeShell, dropOpts, newShell, openPane, openTerminal };
+
+function stopAgent(p, button) {
+  const r = rowOf(p.id);
+  if (!r?.agent) return;
+  return oneAtATime(r, "stop", () => stopAgentNow(r, button));
+}
+
+async function stopAgentNow(r, button) {
+  const release = window.denShell?.holdDots
+    ? window.denShell.holdDots(button)
+    : () => {};
+  try {
+    const out = await api(
+      "POST",
+      `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/stop`,
+    );
+    window.denShell?.toast?.(
+      t(out?.stillStopping ? "ag.stillStopping" : "ag.stopped", {
+        id: r.agent,
+      }),
+    );
+  } catch (err) {
+    window.denShell?.errorToast?.(err);
+  }
+  try {
+    await refresh();
+  } finally {
+    void release();
+  }
+}
+
+export { attachable, bringShell, closePane, closeShell, dropOpts, newShell, openPane, openTerminal, stopAgent, stopAgentNow };

@@ -604,4 +604,48 @@ function pathAnchor(p, e) {
   return a;
 }
 
-export { EDITOR_NAMES, MAX_ASK, MIN_COLS, MIN_ROWS, PANE_WORDS, PERSON_INPUT_MS, SOFT_NEWLINE_DEFAULT, VIEWS_KEY, claimSize, connect, copyPath, downloadPath, follow, followPty, keepInTab, linkHint, markSize, newViewId, openPath, openWeb, outOfStep, paintFollow, paneShown, paneText, paneView, pathAnchor, pathLinks, pendingWeb, personTyped, providePathLinks, reconnectHtml, refit, remeasure, send, sendSize, softNewlineOf, takePendingWeb };
+
+const VIEWS_LIVE = "den-views-live";
+
+function loadViews() {
+  let live = false;
+  try {
+    st.views = JSON.parse(sessionStorage.getItem(VIEWS_KEY) ?? "{}") ?? {};
+    live = sessionStorage.getItem(VIEWS_LIVE) === "1";
+    sessionStorage.setItem(VIEWS_LIVE, "1");
+  } catch {
+    st.views = {};
+  }
+  const mark = (on) => {
+    keepInTab(VIEWS_LIVE, on ? "1" : "0");
+  };
+  addEventListener("pagehide", () => mark(false));
+  addEventListener("pageshow", () => mark(true));
+  const chan =
+    typeof BroadcastChannel === "function"
+      ? new BroadcastChannel(VIEWS_KEY)
+      : null;
+  chan?.addEventListener("message", (e) => {
+    const ask = e.data?.ask;
+    if (typeof ask === "string" && Object.values(st.views).includes(ask))
+      chan.postMessage({ mine: ask });
+  });
+  if (!live || !chan) return Promise.resolve();
+  const twins = new Set();
+  const hear = (e) => {
+    if (typeof e.data?.mine === "string") twins.add(e.data.mine);
+  };
+  chan.addEventListener("message", hear);
+  for (const v of Object.values(st.views)) chan.postMessage({ ask: v });
+  return new Promise((r) => setTimeout(r, 150)).then(() => {
+    chan.removeEventListener("message", hear);
+    for (const [k, v] of Object.entries(st.views))
+      if (twins.has(v)) delete st.views[k];
+  });
+}
+
+function remeasureAll() {
+  for (const p of st.panes.values()) remeasure(p);
+}
+
+export { EDITOR_NAMES, MAX_ASK, MIN_COLS, MIN_ROWS, PANE_WORDS, PERSON_INPUT_MS, SOFT_NEWLINE_DEFAULT, VIEWS_KEY, VIEWS_LIVE, claimSize, connect, copyPath, downloadPath, follow, followPty, keepInTab, linkHint, loadViews, markSize, newViewId, openPath, openWeb, outOfStep, paintFollow, paneShown, paneText, paneView, pathAnchor, pathLinks, pendingWeb, personTyped, providePathLinks, reconnectHtml, refit, remeasure, remeasureAll, send, sendSize, softNewlineOf, takePendingWeb };

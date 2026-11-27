@@ -1,7 +1,10 @@
-import { SERVER_WS, esc, rowOf, st, t } from "/agents-core.js";
-import { paneName, pcAttr, projName, sessionExtra, stateTone, waitingText } from "/agents-rows.js";
+import { closePane, openPane } from "/agents-panes.js";
+import { paintList } from "/agents-list.js";
+import { refresh } from "/agents-data.js";
+import { LAYOUTS, MAX_NAME, SERVER_WS, agentPath, api, esc, rowOf, st, t } from "/agents-core.js";
+import { isStopped, markOpened, paneName, pcAttr, projName, sessionExtra, stateTone, waitingText } from "/agents-rows.js";
 import { refit } from "/agents-term.js";
-import { PAGE, shownLayout, viewWorkspaces, visibleIds } from "/agents-url.js";
+import { PAGE, shownLayout, viewWorkspaces, visibleIds, writeUrl } from "/agents-url.js";
 
 async function loadXterm() {
   // Issue 128: the browser keeps a module that failed to load as failed,
@@ -267,4 +270,131 @@ function inField() {
   );
 }
 
-export { csrf, cssVar, focusTerm, inField, keyboardIdle, loadXterm, paintLayout, paintSwitch, paintTabs, tabWords, termTheme };
+
+/**
+ * Switch the layout (the header's switch, ⌘1-3): drawn at once, the URL
+ * follows, and it is saved for the person. Focus shows the pane in front.
+ */
+function setLayout(layout) {
+  if (!LAYOUTS.includes(layout)) return;
+  const was = st.layout;
+  st.layout = layout;
+  st.side.clear();
+  paintLayout();
+  paintList();
+  writeUrl();
+  if (layout === was) return;
+  // busy-ok: the layout is drawn at once; the save follows in the background
+  api("POST", "/api/settings", { agents_layout: layout }).catch((err) =>
+    window.denShell?.errorToast?.(err),
+  );
+}
+
+/**
+ * Open (or bring forward) the session of a row the person clicked, as the
+ * layout says: Focus replaces the pane (`add`: Shift- or ⌘-click, one
+ * alongside), Tabs opens a tab, Tile adds a tile. D40: a pick (not an add)
+ * puts the keyboard in its terminal; an add keeps it where it was, when
+ * that pane is still in sight.
+ */
+async function pick(id, add) {
+  st.picked = true;
+  const layout = shownLayout();
+  if (layout === "focus" && !add) {
+    st.side.clear();
+    for (const other of [...st.open])
+      if (other !== id) closePane(other, { quiet: true });
+  } else if (layout === "focus" && add && st.cur && st.cur !== id)
+    st.side.add(id);
+  if (!(layout === "focus" && add)) st.cur = id;
+  // An add: the keyboard goes back to the terminal that had it (the click
+  // on the row took it).
+  const back = add && st.keyPane !== id ? st.keyPane : null;
+  // A stopped agent's pane (its last output) never takes the keyboard.
+  const live = !isStopped(rowOf(id) ?? {});
+  if (!add) {
+    st.focusOnOpen = live ? id : null;
+    st.claimOnOpen = live;
+    st.deliberate =
+      live && !st.panes.has(id) && (navigator.userActivation?.isActive ?? true)
+        ? { id, at: Date.now() }
+        : null;
+  } else if (st.focusOnOpen === id) st.focusOnOpen = null;
+  if (st.panes.has(id)) {
+    markOpened(id);
+    paintLayout();
+    paintList();
+    if (!add) {
+      if (live) focusTerm(id);
+    } else addFocus(back, id);
+    return;
+  }
+  await openPane(id, { front: !(layout === "focus" && add) });
+  if (add) addFocus(back, id);
+}
+
+/**
+ * After an add, the keyboard goes back to the pane that had it, if that
+ * pane is still in sight. Where only one pane shows (tabs, a phone) the
+ * added one is in front, so the keyboard goes there.
+ */
+function addFocus(back, id) {
+  const shown = visibleIds();
+  if (back && shown.includes(back)) focusTerm(back);
+  else if (shown.includes(id)) focusTerm(id);
+}
+
+function renameTab(tab) {
+  const id = tab.dataset.id;
+  const r = rowOf(id);
+  if (r?.kind !== "agent" || tab.querySelector("input")) return;
+  // D58: the clicks of this double-click picked the tab: their terminal
+  // focus, still to come, is for this field now.
+  if (st.focusOnOpen === id) st.focusOnOpen = null;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "agtab-in";
+  input.maxLength = MAX_NAME;
+  input.value = r.displayName || r.agent;
+  input.setAttribute("aria-label", t("ag.renameName", { id: r.agent }));
+  // Beside the tab, not in it (a button holds no input): the tab hides.
+  tab.hidden = true;
+  tab.before(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = async (save) => {
+    if (done) return;
+    done = true;
+    const name = input.value.trim();
+    input.remove();
+    tab.hidden = false;
+    if (save && name !== (r.displayName || r.agent)) {
+      try {
+        // busy-ok: the tab's own field saves on Enter or blur; no button waits
+        await api("POST", agentPath(r, "name"), {
+          name: name && name !== r.agent ? name : null,
+        });
+      } catch (err) {
+        window.denShell?.errorToast?.(err);
+      }
+      await refresh();
+    }
+    paintLayout();
+  };
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void finish(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      void finish(false);
+    }
+  });
+  input.addEventListener("blur", () => void finish(true));
+  // A click in the input is the input's, not the tab's.
+  input.addEventListener("click", (e) => e.stopPropagation());
+}
+
+export { addFocus, csrf, cssVar, focusTerm, inField, keyboardIdle, loadXterm, paintLayout, paintSwitch, paintTabs, pick, renameTab, setLayout, tabWords, termTheme };

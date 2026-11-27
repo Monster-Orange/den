@@ -1,10 +1,11 @@
+import { refresh } from "/agents-data.js";
 import { toolsStale } from "/agent-groups.js";
 import { helperBarButtonHtml } from "/agent-helpers.js";
-import { SERVER_WS, esc, restartKey, rowOf, st, t } from "/agents-core.js";
-import { compactingHtml, compactingTag, cwdText, hubBoundTag, instructionsTag, isStopped, linkTag, mcpStaleTag, modeTagHtml, paneName, projName, rotActionsHtml, rotMessage, rotationOf, rotationWhy, sessionExtra, signInTag, stateTone, stopReason, stoppedTip, subagentTag, tileHtml, whereTag, wsLinkHtml } from "/agents-rows.js";
+import { SERVER_WS, agentPath, api, esc, restartKey, rowOf, st, t } from "/agents-core.js";
+import { compactingHtml, compactingTag, cwdText, hubBoundTag, instructionsTag, isStopped, linkTag, mcpStaleTag, modeName, modeTagHtml, paneName, projName, rotActionsHtml, rotMessage, rotationOf, rotationWhy, sessionExtra, signInTag, stateTone, stopReason, stoppedTip, subagentTag, tileHtml, whereTag, wsLinkHtml } from "/agents-rows.js";
 import { reconnectHtml } from "/agents-term.js";
 import { shownLayout } from "/agents-url.js";
-import { restartAllHtml } from "/restart-result.js";
+import { followRestarts, restartAllHtml, restartNow, waitsOnPerson } from "/restart-result.js";
 import { projectColour } from "/workspace-picker.js";
 
 /**
@@ -195,4 +196,159 @@ function paintBar(p) {
   if (x) x.hidden = shownLayout() === "tabs";
 }
 
-export { apiOnlyTag, barFind, barKey, draftWaitingTag, paintBar, toolsBarHtml };
+
+/**
+ * MODE-3: restart it now, on the same conversation; it starts in its mode
+ * (the server reads it again at every start). Only a person's page can
+ * (the restart route refuses an agent).
+ */
+async function applyMode(r, button) {
+  await window.denShell.busyAction(
+    "restart-agent",
+    (headers) =>
+      api("POST", agentPath(r, "restart"), { when: "now" }, { headers }),
+    {
+      button,
+      vars: { name: r.agent },
+      success: () => t("ag.mode.applied", { id: r.agent, m: modeName(r.mode) }),
+    },
+  );
+  await refresh();
+}
+
+/**
+ * D44: Restart at its next idle. Issue 1407: the answer is its own, under
+ * its row: restarting now, after its turn, a background job (what, how
+ * long) or can't tell, those two with Restart now (which ends the job).
+ */
+async function restartForTools(r, button) {
+  const base = { id: r.agent, workspace: r.workspace };
+  let answer = null;
+  await window.denShell.busyAction(
+    "restart-agent",
+    (headers) =>
+      api(
+        "POST",
+        agentPath(r, "restart"),
+        { when: "after-turn" },
+        { headers },
+      ).then(
+        (x) => (answer = { ...base, state: x?.state ?? "turn" }),
+        (e) => {
+          if (e?.code === "job_running")
+            answer = {
+              ...base,
+              state: "job",
+              job: {
+                command: String(e.data?.job?.command ?? ""),
+                minutes: Number(e.data?.job?.minutes) || 0,
+              },
+            };
+          else if (e?.code === "turn_unknown")
+            answer = { ...base, state: "unknown" };
+          else throw e;
+          return answer;
+        },
+      ),
+    {
+      button,
+      vars: { name: r.agent },
+      success: (out) =>
+        waitsOnPerson(out)
+          ? t("ag.job.held", { id: r.agent })
+          : t("ag.mcp.restarting", { id: r.agent }),
+    },
+  );
+  if (answer) st.restarts.set(restartKey(r.workspace, r.agent), answer);
+  await refresh();
+  followAgentRestarts();
+}
+
+let restartFollow = null;
+
+/**
+ * The asked restarts, followed live: each row takes the
+ * server's state (restarted, a wait that ran out, failed); one the server
+ * doesn't list has cleared. The list refreshes on each change, so the
+ * stale bar drops an agent the moment it is back.
+ */
+function followAgentRestarts() {
+  if (restartFollow || (!st.restarts.size && !st.restartRun)) return;
+  restartFollow = followRestarts({
+    api,
+    onRows: (rows, run) => {
+      const before = JSON.stringify(st.restartRun);
+      st.restartRun = run ?? null;
+      if (JSON.stringify(st.restartRun) !== before) void refresh();
+      if (!st.root?.isConnected || (!st.restarts.size && !st.restartRun)) {
+        restartFollow?.stop();
+        restartFollow = null;
+        return;
+      }
+      let changed = false;
+      for (const [k, a] of [...st.restarts]) {
+        const live = rows.find((b) => restartKey(b.workspace, b.id) === k);
+        if (!live) {
+          st.restarts.delete(k);
+          changed = true;
+        } else if (live.state !== a.state) {
+          st.restarts.set(k, live);
+          changed = true;
+        }
+      }
+      if (!st.restarts.size && !st.restartRun) {
+        restartFollow?.stop();
+        restartFollow = null;
+      }
+      if (changed) void refresh();
+    },
+    onEnd: () => {
+      restartFollow = null;
+    },
+  });
+}
+
+/** Issue 1407: Restart all the stale agents at their next idle (restart-stale). */
+async function restartAllForTools(button) {
+  const out = await window.denShell.busyAction(
+    "restart-agent",
+    (headers) => api("POST", "/api/agents/restart-stale", {}, { headers }),
+    { button, vars: { name: t("rs.allName") } },
+  );
+  for (const a of Array.isArray(out?.agents) ? out.agents : [])
+    st.restarts.set(restartKey(a.workspace, a.id), a);
+  st.restartRun = out?.run ?? null;
+  await refresh();
+  followAgentRestarts();
+}
+
+async function resumeRestartRun() {
+  try {
+    const r = await api("GET", "/api/agents/restart-status");
+    st.restartRun = r?.run ?? null;
+  } catch {
+    st.restartRun = null;
+  }
+  if (st.restartRun) followAgentRestarts();
+}
+
+/** Issue 1407: Restart now (ends a job), one agent's or all that wait. */
+async function restartNowFor(buttons) {
+  const o = {
+    api,
+    busyAction: window.denShell.busyAction?.bind(window.denShell),
+  };
+  for (const b of buttons) {
+    const ok = await restartNow(b, o);
+    const k = restartKey(b.dataset.rsWs, b.dataset.rsNow);
+    const a = st.restarts.get(k) ?? {
+      id: b.dataset.rsNow,
+      workspace: b.dataset.rsWs,
+    };
+    st.restarts.set(k, { ...a, state: ok ? "done" : "failed" });
+  }
+  await refresh();
+  followAgentRestarts();
+}
+
+export { apiOnlyTag, applyMode, barFind, barKey, draftWaitingTag, followAgentRestarts, paintBar, restartAllForTools, restartFollow, restartForTools, restartNowFor, resumeRestartRun, toolsBarHtml };
