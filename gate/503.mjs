@@ -10,6 +10,7 @@
 // installed @lydell/node-pty against the lockfile. It closes every
 // terminal it opened (teardown too) and never touches one the bed had.
 import { readJson, doctorChecks } from "./lib/read-json.mjs";
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 503;
 export const clauses = [
   "opening terminals up to sessions.max_concurrent (at most 20) and closing them leaves the terminal host's PTY count where it started (±1); the machine's count is logged, not judged, since other programs share the machine",
@@ -94,7 +95,7 @@ async function closeAll(ctx) {
 }
 
 export async function setup(ctx) {
-  const list = parse((await ctx.fetch("/api/sessions?all=1")).body);
+  const list = await allSessions(async (u) => parse((await ctx.fetch(u)).body));
   const ws = (list?.workspaces ?? []).filter(Boolean)[0] ?? null;
   return { ws, before: ptyRow(ctx), cap: capOf(ctx) };
 }

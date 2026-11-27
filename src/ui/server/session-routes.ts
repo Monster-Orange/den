@@ -1125,11 +1125,17 @@ export async function handleSessionList(
     );
     return true;
   }
-  const ask =
-    params.get("all") === "1"
-      ? null
-      : readPageAsk(params, viewKind ? VIEW_LIST : SESSIONS_LIST);
-  if (ask && isPageError(ask)) {
+  if (params.has("all")) {
+    sendPageError(res, {
+      status: 400,
+      code: "bad_page",
+      error:
+        "all=1 is retired: the list pages. Follow next with cursor, or ask page=N (limit up to the install's page size)",
+    });
+    return true;
+  }
+  const ask = readPageAsk(params, viewKind ? VIEW_LIST : SESSIONS_LIST);
+  if (isPageError(ask)) {
     sendPageError(res, ask);
     return true;
   }
@@ -1156,7 +1162,7 @@ export async function handleSessionList(
     states ? withAgentStates(xs, personKey(req), states) : xs;
   let page: Page<ListedSession> | ViewPage | null = null;
   let rows: ListedSession[];
-  if (viewKind && ask) {
+  if (viewKind) {
     const picked = asked && WS_NAME.test(asked) ? asked : null;
     const scope = picked ? [picked] : d.activeWorkspaces();
     const first = withStates(
@@ -1209,10 +1215,6 @@ export async function handleSessionList(
       items: view.items.map(full),
     };
     rows = want.map(full);
-  } else if (!ask) {
-    rows = withStates(await listWithHelpers(sessions, d, also, hubUrl));
-    if (keep) rows = rows.filter((r) => keep(r.workspace));
-    if (only) rows = rows.filter(only);
   } else {
     const first = withStates(
       await listWithHelpers(sessions, d, also, hubUrl, new Set()),

@@ -12,6 +12,7 @@ import { createRequire } from "module";
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
+import { allSessions } from "./lib/sessions.mjs";
 
 export const issue = 459;
 export const clauses = [
@@ -121,7 +122,7 @@ function heldOf(ctx) {
 
 async function sessionRow(ctx) {
   try {
-    const d = await ctx.api("/api/sessions?all=1");
+    const d = await allSessions((u) => ctx.api(u));
     const s = (d?.sessions ?? []).find((x) => x.agent === ID);
     return s
       ? { state: s.state ?? null, attention: s.attention ?? null, id: s.id }
@@ -169,7 +170,7 @@ async function restartDen(ctx) {
 
 /** The stub's project, from the sessions list. */
 async function whereIs(ctx) {
-  const d = await ctx.api("/api/sessions?all=1");
+  const d = await allSessions((u) => ctx.api(u));
   const s = (d?.sessions ?? []).find(
     (x) => x.kind === "agent" && x.agent === ID && !x.exited,
   );

@@ -6,6 +6,7 @@
 // Every control is found by its role and its words from the page's own catalog (denShell.t), never by
 // English text, a styling class or its place; modes are read from data attributes.
 import * as fs from "fs";
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 252;
 export const clauses = [
   "a Mode item in the agent's ⋯ menu, with the choices and Follow project; the button shows busy while it applies and the result is said",
@@ -36,7 +37,7 @@ export async function setup(ctx) {
 
 /** The stub's project and live session, from the sessions list. */
 async function whereIs(ctx) {
-  const d = await ctx.api("/api/sessions?all=1");
+  const d = await allSessions((u) => ctx.api(u));
   const s = (d?.sessions ?? []).find(
     (x) => x.kind === "agent" && x.agent === ID && !x.exited,
   );
