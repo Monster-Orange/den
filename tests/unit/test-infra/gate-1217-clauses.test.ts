@@ -21,6 +21,7 @@ interface Row {
   clause: string;
   ok: boolean | null;
   skip?: string;
+  detail?: string;
 }
 
 const BEFORE = [{ item: "shop", project: "north" }];
