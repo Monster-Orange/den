@@ -14,7 +14,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { getEngineRoot } from "../../shared/paths.js";
-import { serveFile, stampServed } from "./http-helpers.js";
+import { serveFile, servedVersion, stampServed } from "./http-helpers.js";
 
 /** The graph's modules in public/, each served at /<name>. */
 export const UI_MODULES: readonly string[] = [
@@ -546,14 +546,23 @@ export const SITE_FILES: readonly string[] = [
   "/site.webmanifest",
 ];
 
+const withVersion = (url: string): string => {
+  const v = servedVersion();
+  return v ? `${url}?v=${encodeURIComponent(v)}` : url;
+};
+
 let headSnippet: string | null = null;
-/** The kit's head snippet, read once. Empty when the kit lacks it. */
+/** The kit's head snippet, read once, each URL in it stamped with Den's version. Empty when the kit lacks it. */
 export function kitHeadSnippet(): string {
   if (headSnippet === null) {
     try {
       headSnippet = fs
         .readFileSync(path.join(kitSiteDir(), "head.html"), "utf-8")
-        .trim();
+        .trim()
+        .replace(
+          /href="([^"?#]+)"/g,
+          (_m, h: string) => `href="${withVersion(h)}"`,
+        );
     } catch {
       headSnippet = "";
     }
@@ -610,6 +619,11 @@ export function serveSiteFile(
     res.end(
       JSON.stringify({
         ...m,
+        icons: Array.isArray(m.icons)
+          ? (m.icons as { src?: unknown }[]).map((i) =>
+              typeof i.src === "string" ? { ...i, src: withVersion(i.src) } : i,
+            )
+          : m.icons,
         name: productTitle,
         short_name: productTitle,
         start_url: "/agents",
