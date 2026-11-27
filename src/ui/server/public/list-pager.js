@@ -133,6 +133,7 @@ export function listMoreHtml(name, p, shown, step) {
     mode: "more",
     from: 1,
     to: shown,
+    loaded: shown > step,
     total: typeof p.total === "number" ? p.total : null,
     hasNext: !!p.next,
     step,

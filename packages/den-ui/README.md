@@ -719,11 +719,18 @@ nextCursor)`, which keeps the cursors already visited in the URL
   one kept, and « First still goes to the start. The first row's offset
   rides in the URL too (`o`, a plain number the cap doesn't touch):
   `cursorStart(url)` gives it, so `from` is `cursorStart(url) + 1`.
-- Widths are the row's own (a container query), not the window's. Under
-  900px the per-page choice folds into ⋯, a native pop-over; under 760px
-  the range goes below the controls. At 600px or less: « ‹ [3 / 17 ▾] › »
-  ⋯, 44px icon buttons, and ⋯ opens a bottom sheet with the range and the
-  per-page choice. With no total the middle is the range ("‹ 1–50 ›").
+- The layout follows the row's own width (a container query). Above
+  600px the full row shows, never a ⋯; under 760px the range and the
+  per-page choice go below the controls. At 600px or less it is the
+  folded form only: « ‹ [3 / 17 ▾] › » ⋯, where ⋯ opens a pop-over (a
+  bottom sheet on a narrow row) with the range and the per-page choice.
+  With no total the middle is the range ("‹ 1–50 ›"). The two forms never
+  show together. Buttons are 36px, and 44px only in a window 600px wide
+  or less or with a coarse pointer.
+- More mode with `loaded: true` keeps its row once every row is shown
+  ("All 70 shown", no button), for a list redrawn whole after its last
+  chunk. A press calls `load()`, or `onNavigate({ kind: "more" })` when
+  there is no `load`, holding the button with dots until it settles.
 - With no script every control is a link, and each select sits in a GET
   form with Go (its action and other values come from two of `href`'s
   own links). `hydratePager(el, { list, onNavigate?, shortcuts? })` hides
