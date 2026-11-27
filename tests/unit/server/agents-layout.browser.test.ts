@@ -327,6 +327,8 @@ const shot = async (p: Page, name: string) => {
   await p.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 };
 
+const SLOW_SAVE_MS = 1_000;
+
 describe("the Agents tab's layouts (AG-4b)", () => {
   it.each([900, 1300])(
     "fills the window at 1440x%i: the list and the panes end 14px above the runs dock, in every layout, the dock shut or open",
@@ -336,6 +338,14 @@ describe("the Agents tab's layouts (AG-4b)", () => {
       for (const layout of ["focus", "tabs", "tile"]) {
         const p = await page(`/agents?open=${all()}&layout=${layout}`, {
           height,
+        });
+        await p.route("**/api/settings", async (r) => {
+          const shutting =
+            r.request().method() === "POST" &&
+            (r.request().postDataJSON() as { shell?: { dock?: unknown } })
+              ?.shell?.dock === false;
+          if (shutting) await new Promise((ok) => setTimeout(ok, SLOW_SAVE_MS));
+          await r.continue();
         });
         await termsUp(p, layout === "tile" ? 4 : 1);
         for (const dock of ["shut", "open"]) {
@@ -373,7 +383,15 @@ describe("the Agents tab's layouts (AG-4b)", () => {
           await shot(p, `fill-1440x${height}-${layout}-dock-${dock}`);
         }
         // Shut it again for the next layout (the dock is a saved pref).
+        const shutSaved = p.waitForResponse(
+          (r) =>
+            r.request().method() === "POST" &&
+            new URL(r.url()).pathname === "/api/settings" &&
+            (r.request().postDataJSON() as { shell?: { dock?: unknown } })
+              ?.shell?.dock === false,
+        );
         await p.click('.den-dock [data-act="dock"]');
+        await shutSaved;
         // The window resized: the panes follow, and each terminal fits.
         await p.setViewportSize({ width: 1180, height: height - 120 });
         await eventually(async () => {
@@ -571,9 +589,10 @@ describe("the Agents tab's layouts (AG-4b)", () => {
     await termsUp(p, 2);
     expect(await shown(p)).toEqual([sid.reviewer, sid.builder]);
     await expectFits(p);
-    // The list's row says it waits with its dot as well as its badge.
     expect(
-      await p.locator(`.agr[data-id="${sid.builder}"] .den-dot.warn`).count(),
+      await p
+        .locator(`button[data-id="${sid.builder}"] [data-mark=needs]`)
+        .count(),
     ).toBe(1);
 
     await p.keyboard.press("Control+Shift+Digit2");

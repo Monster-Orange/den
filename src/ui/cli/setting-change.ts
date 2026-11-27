@@ -36,6 +36,7 @@ import {
   limitInForce,
   readMcpConfig,
   USER_ONLY_WIDENING,
+  AGENTS_RESERVED_KEYS,
   type DenConfig,
   type InstallMode,
   type UserConfig,
@@ -154,6 +155,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "reports.screenshot_max_mb",
   "reports.hub_timeout_seconds",
   "server_log.max_mb",
+  "server_log.slow_request_ms",
+  "server_log.event_loop_lag_ms",
   "agent_context.compaction_loop_count",
   "agent_context.compaction_loop_minutes",
   "agent_context.pause_after_loop",
@@ -169,6 +172,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agent_hooks.backoff_seconds",
   "sessions.max_concurrent",
   "sessions.close_grace_seconds",
+  "sessions.size_claim_grace_seconds",
+  "sessions.size_leave_grace_seconds",
   "sessions.pty_close_seconds",
   "sessions.pty_warn_above",
   "sessions.pty_machine_warn_percent",
@@ -237,6 +242,7 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "agents.issue_writes_per_hour",
   // Issue 1127: a longer wait keeps a repo made public treated as private.
   "agents.issue_writes_visibility_minutes",
+  "agents.issue_writes_public",
   "agents.keep_running_after_logout",
   "services.restore_on_boot",
   "held_writes.wait_minutes",
@@ -283,6 +289,7 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "held_writes.**",
       "agents.issue_writes",
       "agents.issue_writes_per_hour",
+      "agents.issue_writes_public",
       "agents.keep_running_after_logout",
       "services.restore_on_boot",
       "local_dev",
@@ -387,6 +394,11 @@ const WIDENS_AT: readonly [
   widens: (v: unknown, before?: unknown) => boolean,
   modes: readonly InstallMode[],
 ][] = [
+  [
+    "agents.issue_writes_public",
+    (v) => onOff(v) !== false,
+    ["personal", "strict"],
+  ],
   // Issue 1395 (Vision; Reviewer C): judged by old and new together, any
   // lowering of the container requirement widens on strict; with no old
   // value known, off (0) does.
@@ -414,9 +426,19 @@ const WIDENS_AT: readonly [
     },
     ["personal", "strict"],
   ],
-  // Issue 1264 (Reviewer A): a program in effect now and missing after
+  // A program in effect now and missing after
   // runs outside the gate: widens. Adding one, or reordering, doesn't.
   // With no old value known, judged against the default list.
+  [
+    "gate.throwaway_sweep",
+    (v, before) => {
+      const to = level(v);
+      const from = level(before);
+      if (to === null) return true;
+      return from === null ? to === 0 : to < from;
+    },
+    ["personal", "strict"],
+  ],
   [
     "gate.route_commands",
     (v, before) => {
@@ -921,6 +943,12 @@ function patchKey(
   const field = FIELD_KEYS.find((f) => matchesSetting(f.key, key));
   if (field) return field.patch(user, value);
   if (configKeyNames().includes(key)) return patchConfigKey(user, key, value);
+  const agentKey = /^agents\.([^.]+)\./.exec(key)?.[1];
+  if (agentKey && AGENTS_RESERVED_KEYS.includes(agentKey))
+    return {
+      ok: false,
+      error: `${key}: agents.${agentKey} is one of Den's own settings, not an agent's id`,
+    };
   const entry = SETTING_KEYS.find((e) => matchesSetting(e.key, key));
   if (!entry)
     return { ok: false, unknown: true, error: `unknown setting ${key}` };

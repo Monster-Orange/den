@@ -28,9 +28,21 @@ const needs = (j: Job | undefined): string[] =>
 type R = "success" | "failure" | "skipped" | "cancelled";
 function run(
   r: Partial<
-    Record<"fast" | "pr" | "den-ui-nav" | "pr-shards" | "pr-node22", R>
+    Record<
+      | "fast"
+      | "pr"
+      | "den-ui-nav"
+      | "pr-shards"
+      | "pr-node22"
+      | "os-user-linux",
+      R
+    >
   >,
-  out: { nav?: string; shards?: string } = { nav: "true", shards: "[1,2]" },
+  out: { nav?: string; shards?: string; osuser?: string } = {
+    nav: "true",
+    shards: "[1,2]",
+    osuser: "true",
+  },
 ) {
   const all = {
     fast: "success",
@@ -38,6 +50,7 @@ function run(
     "den-ui-nav": "success",
     "pr-shards": "success",
     "pr-node22": "success",
+    "os-user-linux": "success",
     ...r,
   };
   const NEEDS = JSON.stringify(
@@ -69,6 +82,7 @@ describe("issue 843: ci-ok, the merge queue's one required check", () => {
     ["pr was skipped", { pr: "skipped" }],
     ["Node 22 failed", { "pr-node22": "failure" }],
     ["Node 22 was skipped", { "pr-node22": "skipped" }],
+    ["the Linux OS-user test failed", { "os-user-linux": "failure" }],
   ] as [string, Record<string, R>][])("fails when %s", (_k, r) => {
     const p = run(r);
     expect(p.status).toBe(1);
@@ -91,6 +105,17 @@ describe("issue 843: ci-ok, the merge queue's one required check", () => {
   it("den-ui-nav skipped because no nav changed: passes", () => {
     expect(
       run({ "den-ui-nav": "skipped" }, { nav: "false", shards: "[1]" }).status,
+    ).toBe(0);
+  });
+  it("os-user-linux skipped while pr said the OS-user code changed: fails", () => {
+    expect(run({ "os-user-linux": "skipped" }).status).toBe(1);
+  });
+  it("os-user-linux skipped because the OS-user code didn't change: passes", () => {
+    expect(
+      run(
+        { "os-user-linux": "skipped" },
+        { nav: "true", shards: "[1]", osuser: "false" },
+      ).status,
     ).toBe(0);
   });
   it("no NEEDS (run by hand, or a broken job): fails", () => {

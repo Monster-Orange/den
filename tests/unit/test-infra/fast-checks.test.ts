@@ -5,7 +5,7 @@
  * wait for `fast`, so a planted version mismatch fails the run in about a
  * minute instead of after a ten-minute shard.
  */
-import { afterAll, describe, expect, it } from "@jest/globals";
+import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -211,16 +211,19 @@ describe("issue 843: the fast static checks", () => {
   describe("the hook, run", () => {
     // A stand-in root: a fast-checks script that fails, and no org names
     // (so the hook's org-name part passes quietly).
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-fast-hook-"));
-    fs.mkdirSync(path.join(dir, "scripts"));
-    fs.writeFileSync(
-      path.join(dir, "scripts", "fast-checks.mjs"),
-      'console.error("planted fast failure"); process.exit(1);\n',
-    );
-    fs.writeFileSync(
-      path.join(dir, "scripts", "org-names.js"),
-      "export const orgPatterns = () => [];\n",
-    );
+    let dir = "";
+    beforeAll(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-fast-hook-"));
+      fs.mkdirSync(path.join(dir, "scripts"));
+      fs.writeFileSync(
+        path.join(dir, "scripts", "fast-checks.mjs"),
+        'console.error("planted fast failure"); process.exit(1);\n',
+      );
+      fs.writeFileSync(
+        path.join(dir, "scripts", "org-names.js"),
+        "export const orgPatterns = () => [];\n",
+      );
+    });
     afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 
     const push = (env: Record<string, string>) =>

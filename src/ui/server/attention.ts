@@ -31,6 +31,7 @@
  * page to say in its own language.
  * Agent state and output come from `deps` (tests use fakes).
  */
+import { agentPagePath } from "../../shared/agent-links.js";
 import type {
   NoteMsg,
   Notification,
@@ -64,6 +65,20 @@ export function rowWhy(n: Notification): "permission" | "asked" | null {
   if (/ needs your permission(:|$)/.test(n.text)) return "permission";
   if (/ asked: /.test(n.text)) return "asked";
   return null;
+}
+
+const KEPT_WHAT: Record<string, string> = {
+  "bell.m.permissionWhat": "what",
+  "bell.m.asked": "text",
+};
+
+export function keptWhat(n: Notification): string {
+  if (n.msg?.key) {
+    const v = n.msg.vars[KEPT_WHAT[n.msg.key] ?? ""];
+    return typeof v === "string" ? trimWhat(v) : "";
+  }
+  const m = / needs your permission: (.+)$| asked: (.+)$/s.exec(n.text);
+  return trimWhat(m?.[1] ?? m?.[2] ?? "");
 }
 
 /**
@@ -103,6 +118,7 @@ export function deliveryHeld(
 
 export interface AttentionDeps {
   store: NotificationStore;
+  turnEnded?: (agent: string, at: number) => void;
   /**
    * Issue 1129: the agent is working (a tool ran, a prompt came) or idle
    * (its turn ended, it waits for its person), kept so a resume after a
@@ -263,6 +279,7 @@ export class Attention {
   private readonly settledAsks = new Map<string, SettledAsk>();
   /** NT-2: agent → until when a page shows it, visible and focused. */
   private readonly looking = new Map<string, number>();
+  private readonly working = new Map<string, number>();
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
   private readonly bellSeen = new Map<string, string>();
@@ -286,6 +303,19 @@ export class Attention {
   /** An agent's display name (issue 101: the lead a question went to). */
   nameOf(agent: string): string {
     return this.d.nameOf(agent);
+  }
+
+  workingNow(): Map<string, number> {
+    return new Map(this.working);
+  }
+
+  private turnEnd(agent: string): void {
+    this.working.delete(agent);
+    try {
+      this.d.turnEnded?.(agent, this.now());
+    } catch {
+      /* the seen mark is best effort */
+    }
   }
 
   /** The agents waiting now, and why (the sessions list, the bell). */
@@ -366,7 +396,7 @@ export class Attention {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
-    const link = `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
+    const link = agentPagePath(workspace, agent);
     const seq = ++this.seq;
     try {
       if (ev.event !== "resumed") this.d.activity?.(agent, false);
@@ -384,6 +414,8 @@ export class Attention {
           ? { seq, at: arrived, what: ev.what, input: ev.input }
           : undefined;
       if (run) this.lastRun.set(agent, run);
+      if (ev.from !== "session" && !this.working.has(agent))
+        this.working.set(agent, arrived);
       // Issue 1008: the person's prompt after a withdraw: a late answer.
       if (ev.from === "prompt") await this.lateAnswer(agent);
       const w = this.waiting.get(agent);
@@ -410,6 +442,7 @@ export class Attention {
       return;
     }
     if (ev.event === "finished") {
+      this.working.delete(agent);
       // Asked (ask_human), then ended its turn to wait for the answer:
       // still waiting. A question its last turn ended on is the turn's
       // own: this turn's end says again whether it asks (a hand-back with
@@ -439,6 +472,7 @@ export class Attention {
           hooked: true,
           turn: true,
         });
+      this.turnEnd(agent);
       // Issue 142: kept even while a page shows the agent. That page's
       // next "looking" takes it out (opening an agent clears its updates);
       // a page that closed meanwhile (NT-2 keeps it 10 s) never does, and
@@ -467,6 +501,10 @@ export class Attention {
       (!ev.input || /AskUserQuestion/.test(`${ev.what ?? ""} ${ev.text ?? ""}`))
     )
       return;
+    this.working.delete(agent);
+    const hookless =
+      ev.hooked !== true && prev?.byHook !== true && !this.d.hooked?.(agent);
+    if (ev.why === "input" && hookless && !prev) this.turnEnd(agent);
     // Issue 327: Claude Code's idle notice means no dialog is open: a
     // permission wait from before it is over.
     if (
@@ -807,7 +845,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : agentPagePath(workspace, agent),
     });
   }
 
@@ -835,7 +873,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : agentPagePath(workspace, agent),
     });
   }
 
@@ -979,11 +1017,10 @@ export class Attention {
           }
         }
         const at = Date.parse(n.at);
-        const what = n.msg?.vars.what;
         this.waiting.set(agent, {
           why,
           text: n.text,
-          what: typeof what === "string" ? what : "",
+          what: keptWhat(n),
           at: Number.isFinite(at) ? at : this.now(),
           mark: await this.d.outputMark(agent),
           workspace: n.scope.startsWith("workspace/")
@@ -1003,6 +1040,7 @@ export class Attention {
   /** The agent stopped or was removed: nothing waits on it. */
   gone(agent: string): void {
     this.lastRun.delete(agent);
+    this.working.delete(agent);
     this.status.delete(agent);
     this.statusAt.delete(agent);
     this.clear(agent);

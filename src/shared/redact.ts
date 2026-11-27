@@ -105,3 +105,15 @@ export function redactSecrets(text: string): string {
   }
   return out;
 }
+
+export function safeLine(text: string): string {
+  let out = "";
+  for (const c of redactSecrets(text)) {
+    const n = c.charCodeAt(0);
+    out +=
+      n < 32 || (n >= 127 && n <= 159) || n === 0x2028 || n === 0x2029
+        ? " "
+        : c;
+  }
+  return out;
+}

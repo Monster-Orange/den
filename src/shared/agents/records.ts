@@ -16,6 +16,7 @@
  * the ones older than the undo window. The runtime's own conversation
  * history is never touched.
  */
+import { agentSeenSubject, seenMarks } from "../seen-mark.js";
 import { randomBytes } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -117,6 +118,7 @@ export interface AgentRecord {
    * a token. Unset: none was picked (desktop sign-in, or no token).
    */
   signIn?: { id: string; label: string };
+  envHold?: { applied: boolean; legacy?: true };
   /**
    * Issue 936: whether its session started in the OS sandbox (Den's state
    * read-only to it): the tool, or why not.
@@ -470,7 +472,6 @@ export function restoreRecord(stateDir: string, id: string): boolean {
   return true;
 }
 
-/** Forget removed records older than `keepMs` for good. */
 export function purgeRemoved(
   stateDir: string,
   keepMs = UNDO_KEEP_MS,
@@ -486,7 +487,14 @@ export function purgeRemoved(
     if (!n.endsWith(".json") || !AGENT_ID_RE.test(n.slice(0, -5))) continue;
     const f = path.join(removedDir(stateDir), n);
     try {
-      if (now - fs.statSync(f).mtimeMs > keepMs) fs.unlinkSync(f);
+      if (now - fs.statSync(f).mtimeMs > keepMs) {
+        fs.unlinkSync(f);
+        try {
+          seenMarks(stateDir).forget(agentSeenSubject(n.slice(0, -5)));
+        } catch {
+          /* best effort: the marks are small */
+        }
+      }
     } catch {
       /* gone already */
     }

@@ -10,6 +10,8 @@ type Bell = {
   waiting: { agent?: string }[];
   groups: { scope: string }[];
   mutes: { target: string }[];
+  done: { workspace: string }[];
+  seenDone: { workspace: string }[];
 };
 
 let tmp = "";
@@ -30,6 +32,15 @@ async function bell(asAgent: boolean): Promise<Bell> {
   });
   return (await r.json()) as Bell;
 }
+
+const doneRow = (ws: string) => ({
+  agent: `${ws}-b`,
+  name: `${ws}-b`,
+  workspace: ws,
+  project: ws,
+  at: "2026-11-26T00:00:00.000Z",
+  link: `/agents?project=${ws}&agent=${ws}-b`,
+});
 
 beforeAll(async () => {
   tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-ntsc-")));
@@ -77,6 +88,8 @@ beforeAll(async () => {
     void handleNotificationRoutes(req, res, "/api/notifications", {
       store,
       attention,
+      doneAgents: () => [doneRow("north"), doneRow("south")],
+      seenDone: () => [doneRow("south")],
       agentProjects: () =>
         new Map([
           ["den-north:north-a", "north"],
@@ -102,6 +115,15 @@ describe("the bell an agent's token reads", () => {
     expect(b.groups.map((g) => g.scope)).toEqual(["workspace/north"]);
     expect(b.waiting.map((w) => w.agent)).toEqual(["den-north:north-a"]);
     expect(b.unread).toBe(1);
+  });
+
+  it("on a strict install: Done lists only its own project's agents", async () => {
+    setMode("strict");
+    const b = await bell(true);
+    expect(b.done.map((d) => d.workspace)).toEqual(["north"]);
+    expect(b.seenDone).toEqual([]);
+    setMode("personal");
+    expect((await bell(true)).done).toHaveLength(2);
   });
 
   it("on a personal install, and for the person: the whole bell", async () => {

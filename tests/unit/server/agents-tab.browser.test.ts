@@ -187,7 +187,7 @@ const openIds = (p: Page) =>
   (new URL(p.url()).searchParams.get("open") ?? "").split(",").filter(Boolean);
 
 describe("the Agents tab", () => {
-  it("matches the prototype's layout at 1440x900: a 300px list, 14px gap, the row down to 14px above the runs dock", async () => {
+  it("matches the prototype's layout at 1440x900: a 380px list (issue 773, mock v3), 14px gap, the row down to 14px above the runs dock", async () => {
     if (skip()) return;
     const p = await page("/agents");
     const [agx, agl, agr, dock] = await Promise.all([
@@ -196,7 +196,7 @@ describe("the Agents tab", () => {
       box(p, "#agr"),
       box(p, "#den-dock"),
     ]);
-    expect(Math.abs(agl.width - 300)).toBeLessThanOrEqual(1);
+    expect(Math.abs(agl.width - 380)).toBeLessThanOrEqual(1);
     expect(Math.abs(agx.y + agx.height - (dock.y - 14))).toBeLessThanOrEqual(
       0.5,
     );
@@ -205,9 +205,7 @@ describe("the Agents tab", () => {
     expect(
       Math.abs(agr.x + agr.width - (agx.x + agx.width)),
     ).toBeLessThanOrEqual(1);
-    // The prototype's panes are 845 wide beside its rail (a tolerance for
-    // the rail and the scrollbar: it is the remainder, not a constant).
-    expect(Math.abs(agr.width - 845)).toBeLessThanOrEqual(24);
+    expect(Math.abs(agr.width - 765)).toBeLessThanOrEqual(24);
     // The rail: Agents under Develop, after Graph, current here.
     expect(
       await p.$$eval(".den-rail [data-nav]", (as) =>
@@ -231,9 +229,9 @@ describe("the Agents tab", () => {
     if (skip()) return;
     const p = await page("/agents");
     expect(
-      await p.$$eval(".wsg", (gs) =>
-        gs.map((g) => (g as HTMLElement).dataset.ws),
-      ),
+      await p.$$eval("#agl div[data-band] button[data-id][data-ws]", (bs) => [
+        ...new Set(bs.map((b) => (b as HTMLElement).dataset.ws)),
+      ]),
     ).toEqual(["north"]);
     expect(await p.locator(`.agr[data-kind="session"]`).count()).toBe(0);
     expect(await p.textContent('#agl [data-note="moved"]')).toContain(
@@ -248,7 +246,7 @@ describe("the Agents tab", () => {
       "token revoked",
     );
     expect(await p.textContent("#ag-count")).toBe(
-      "1 agent · 0 waiting · all projects",
+      "1 agent · 1 idle · all projects",
     );
     // Dismiss: the note goes, and stays gone in this browser.
     await p.click('#agl [data-act="dismiss-moved"]');
@@ -650,17 +648,13 @@ describe("the Agents tab", () => {
     await p.context().close();
   }, 60_000);
 
-  it("0.4.17: an agent links back to its workspace: the pane header, the list's group, and ⌘K Go to workspace", async () => {
+  it("0.4.17: an agent links back to its workspace: the pane header and ⌘K Go to workspace", async () => {
     if (skip()) return;
     const p = await page(`/agents?open=${id("scout")}`);
     const head = `.pane[data-id="${id("scout")}"] .bar2 .where a.wslink`;
     await p.waitForSelector(head);
     expect(await p.getAttribute(head, "href")).toBe("/local-dev?project=north");
     expect(await p.textContent(head)).toBe("north");
-    const group = '#agl .wsg[data-ws="north"] .wsh a.wslink';
-    expect(await p.getAttribute(group, "href")).toBe(
-      "/local-dev?project=north",
-    );
     // ⌘K: an agent's name finds its workspace.
     await p.click("#den-search");
     await p.fill("#den-pal-q", "scout");

@@ -43,6 +43,15 @@ describe("issue 1632 part 2: the sync reply's moved projects", () => {
     expect(readSyncReply({ moved: "yes" }).moved).toEqual([]);
   });
 
+  it("drops a project name that isn't a project name here", () => {
+    for (const workspace of ["../web", "web name", "-web", "x".repeat(65)])
+      expect(
+        readSyncReply({
+          moved: [{ workspace, hub_project: "p_1", movedTo: MOVED_TO }],
+        }).moved,
+      ).toEqual([]);
+  });
+
   it("keeps Hub's words to printable characters, at most 200", () => {
     const r = readSyncReply({
       moved: [
@@ -116,7 +125,15 @@ describe("issue 1632 part 2: the sync says which projects moved", () => {
   const sync = (reply: Record<string, unknown>) => {
     const told: unknown[] = [];
     const s = new ProjectSync({
-      list: () => [],
+      list: () => [
+        {
+          workspace: "web",
+          name: "web",
+          repos: [],
+          hub_project: "p_1",
+          agents: [],
+        },
+      ],
       send: async () => reply,
       moved: (m) => void told.push(m),
       setTimer: () => 0,
@@ -134,6 +151,19 @@ describe("issue 1632 part 2: the sync says which projects moved", () => {
       [{ workspace: "web", hubProject: "p_1", movedTo: MOVED_TO }],
     ]);
     expect(r.s.last()?.moved).toHaveLength(1);
+  });
+
+  it("a project this Den didn't send is never told: Hub can't add a bell row for any name", async () => {
+    const r = sync({
+      moved: [
+        { workspace: "web", hub_project: "p_1", movedTo: MOVED_TO },
+        { workspace: "elsewhere", hub_project: "p_2", movedTo: MOVED_TO },
+      ],
+    });
+    await r.s.run();
+    expect(r.told).toEqual([
+      [{ workspace: "web", hubProject: "p_1", movedTo: MOVED_TO }],
+    ]);
   });
 
   it("a reply with none tells nothing", async () => {

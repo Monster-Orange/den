@@ -485,6 +485,7 @@ export class SessionHost {
   }
 
   private persist(s: Session): void {
+    if (this.closed && !fs.existsSync(this.paths.dir)) return;
     const rec = {
       id: s.info.ref.id,
       name: s.info.name,
@@ -931,6 +932,10 @@ export class SessionHost {
       if (c) c.send({ ev: "size", aid, ...s.size });
       else s.sizeAids.delete(aid);
     }
+  }
+
+  attachmentCount(id: string): number {
+    return this.sessions.get(id)?.attachments.size ?? 0;
   }
 
   /** Stop serving: running sessions get SIGHUP, scrollback is flushed. */
