@@ -70,7 +70,9 @@ proves the bed ran, not who ran it: any agent with that login can sign a
 dev tag and set the status. It still catches a candidate with no PASS or
 a failed one. The gates that hold today are the signed dev tag, a release
 from `main` only, and the tested-tree check (the release's tree is the
-dev tag's, and a green CI run tested it). A login only the bed holds (a
+dev tag's, and a green CI run tested it with the whole suite, on its first
+attempt). A green from a re-run never counts: a red is fixed in a fresh
+head, never re-run to green. A login only the bed holds (a
 GitHub App, issue 1181) will make a PASS name its tester too.
 
 ## 3. Promote it
