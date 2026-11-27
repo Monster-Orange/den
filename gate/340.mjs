@@ -12,7 +12,7 @@ export const clauses = [
 export const timeoutMs = 90000;
 const EMAIL = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
 
-// Read only (issue 845): reads `agents list --json` and doctor.
+// Read only: reads each project's `agents list -w <project> --json` and doctor.
 export const readOnly = true;
 
 export async function setup() {
@@ -20,9 +20,17 @@ export async function setup() {
 }
 
 export async function run(ctx) {
-  const l = ctx.cli(["agents", "list", "--json"]);
-  const rows = readJson(l, "agents list");
-  const labels = (Array.isArray(rows) ? rows : [])
+  const data = await ctx.api("/api/workspaces");
+  const projects = Object.keys(data?.workspaces ?? {});
+  const rows = [];
+  let code = 0;
+  for (const p of projects) {
+    const l = ctx.cli(["agents", "list", "-w", p, "--json"]);
+    const got = readJson(l, `agents list -w ${p}`);
+    if (Array.isArray(got)) rows.push(...got);
+    code = code || l.code;
+  }
+  const labels = rows
     .filter((a) => a && "signIn" in a)
     .map((a) => ({ agent: a.agent ?? a.id, signIn: a.signIn }));
   const d = ctx.cli(["doctor", "--json"]);
@@ -31,8 +39,9 @@ export async function run(ctx) {
     .filter((c) => /agents accounts set-token/.test(String(c?.detail ?? "")))
     .map((c) => `${c.id}: ${c.detail}`);
   return {
-    code: l.code,
-    agents: Array.isArray(rows) ? rows.length : null,
+    code,
+    projects: projects.length,
+    agents: rows.length,
     labels,
     why,
   };

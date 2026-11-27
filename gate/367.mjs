@@ -65,6 +65,10 @@ export function expect(cells) {
     /push alerts may not reach phones: with no https address, push services are given mailto:\S+ as the contact/.test(
       push,
     );
+  const noPhone =
+    /^no phone has push alerts on yet\. When one does, it needs an https address: Settings › Den's address/.test(
+      push,
+    );
   return [
     {
       clause: clauses[0],
@@ -88,17 +92,26 @@ export function expect(cells) {
         ({ cell }) => `push-rows-${cell.browser}-${cell.width}.png`,
       ),
     },
-    {
-      clause: clauses[1],
-      ok: https || fallback,
-      detail: push || "doctor has no push line",
-    },
-    fallback
+    noPhone
+      ? {
+          clause: clauses[1],
+          ok: null,
+          skip: "needs-push-subscription",
+          detail: `no contact is given until a phone has push on: ${push}`,
+        }
+      : {
+          clause: clauses[1],
+          ok: https || fallback,
+          detail: push || "doctor has no push line",
+        },
+    fallback || noPhone
       ? {
           clause: clauses[2],
-          ok: /Set one in Settings › Den's address .*web url https:\/\//.test(
-            push,
-          ),
+          ok:
+            noPhone ||
+            /Set one in Settings › Den's address .*web url https:\/\//.test(
+              push,
+            ),
           detail: push,
         }
       : {
