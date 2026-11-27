@@ -8,6 +8,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
+- UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", « First, ‹ Previous, a page picker ("Page 3 of 17"), Next ›, Last » and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's.
+
+### Changed
+
+- A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
+- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) answer one page, `{ items, next, prev }`, with `?limit`, `?cursor`, `?q`, `?page` and `?at`. The cursor carries GitHub's own page state, and branch page 1 starts with the repo's default branch. `q` runs on GitHub before the cut: branch names that start with it, repo names that contain it. The Add service picker sends `q` as you type, for repos and branches. (issue 1926)
+
 - UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps. Every word is the host's. A row that doesn't fit scrolls sideways, with « and » at its ends shown only while tabs are hidden on that side (a red dot when a hidden tab has an alert), and keeps the chosen and focused tab in view; only when even one tab can't fit between the arrows does it fold into one select with the same choices and a visible label.
 - UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", « First, ‹ Previous, a page picker ("Page 3 of 17"), Next ›, Last » and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's. More mode can hand its press to `onNavigate` (a list that redraws itself whole), and the 44px size follows a phone-width window or a touch screen, never the width of the box the pager sits in. The ⋯ menu and the short "3 / 17" picker appear only when the pager's box is 600px wide or less, in place of the full controls; above that the full row shows, in two lines when it must. A More list redrawn whole after its last chunk can keep its row with "All N shown" (`loaded: true`).
 ### Fixed
@@ -28,6 +35,7 @@ config and manifest changes a distribution must make to move to it under
 
 - The sessions list pages. `GET /api/sessions` returns the helper's page, 50 rows by default, ordered by project then name: `items`, `next`, `prev`, `total`, `page` and `pages`, with `?page=N`, `?at=first|last`, `limit` and `cursor`. `sessions` holds the same page, so callers that read it keep working. The page and its total come from one listing, and each agent's helpers are worked out only for the rows on the page. `?all=1` keeps the old full list; the Agents page, Peek, Settings, the services panel and the top bar ask for it until they use the pager. **Outside callers now get 50 rows by default:** a script or check that needs every session passes `?all=1`, or follows `next` (or `?page=N`). Den's own gate checks that read the list pass `?all=1`.
 - `GET /api/activity` (a service's or repo's activity list) answers one page, newest first: `?limit`, and one of `?cursor`, `?page` or `?at`, with `next`, `prev`, `total`, `offset`, `page` and `pages` beside `entries`.
+- The bell pages each of its sections (Needs you, waiting, Done, Updates and Older) with the kit's pager under it: "1–50 of 63", First, Previous, the page picker, Next, Last and a per-page choice, in English, Spanish and Japanese. A section with one page shows no pager. Closing the bell goes back to the first pages.
 
 ## [0.4.92] - unreleased
 
