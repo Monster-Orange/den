@@ -24,6 +24,10 @@ const WORDS = [
   "go",
   "perPage",
   "more",
+  "moreN",
+  "lastN",
+  "all",
+  "moreErr",
 ];
 const attr = (s) =>
   String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -123,6 +127,23 @@ export function listPagerHtml(name, p, shown, per, { url = true } = {}) {
   return html ? `<div data-list-pager="${attr(name)}">${html}</div>` : "";
 }
 
+export function listMoreHtml(name, p, shown, step) {
+  if (!p || !shown) return "";
+  const html = pagerHtml({
+    mode: "more",
+    from: 1,
+    to: shown,
+    total: typeof p.total === "number" ? p.total : null,
+    hasNext: !!p.next,
+    step,
+    per: step,
+    moreHref: p.next ? `#${name}` : null,
+    lang: globalThis.denShell?.lang?.() ?? "en",
+    words: pagerWords(),
+  });
+  return html ? `<div data-list-pager="${attr(name)}">${html}</div>` : "";
+}
+
 export function pageQuery(p, target, per) {
   const q = new URLSearchParams({ limit: String(per) });
   if (target === "first") q.set("at", "first");
@@ -136,7 +157,7 @@ export function pageQuery(p, target, per) {
   return q;
 }
 
-export function watchPagers(root, onNav, { url = true } = {}) {
+export function watchPagers(root, onNav, { url = true, more = null } = {}) {
   const win = root.ownerDocument.defaultView;
   const seen = new WeakSet();
   const hydrate = () => {
@@ -148,6 +169,14 @@ export function watchPagers(root, onNav, { url = true } = {}) {
         continue;
       }
       seen.add(el);
+      const name = el.closest("[data-list-pager]").dataset.listPager;
+      if (el.dataset.denPager === "more") {
+        hydratePager(el, {
+          list: root.ownerDocument.createElement("div"),
+          load: async () => ({ html: "", ...(await more(name)) }),
+        });
+        continue;
+      }
       hydratePager(el, {
         shortcuts: false,
         onNavigate: (ask) => {
