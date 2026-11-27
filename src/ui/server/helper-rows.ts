@@ -8,6 +8,11 @@ export interface HelperAsk {
   compute: () => Row;
 }
 
+export interface HelperPace {
+  waitMs: number;
+  restMs: number;
+}
+
 export class HelperRows {
   private readonly rows = new Map<
     string,
@@ -19,11 +24,15 @@ export class HelperRows {
   private askedAt = 0;
   private readonly queue = new Map<string, HelperAsk>();
   private running: Promise<void> | null = null;
+  private restMs = 0;
+  private computed = 0;
 
   constructor(
     private readonly now: () => number = Date.now,
-    private readonly pause: () => Promise<void> = () =>
-      new Promise((r) => setImmediate(r)),
+    private readonly pause: (restMs: number) => Promise<void> = (restMs) =>
+      new Promise((r) =>
+        restMs > 0 ? setTimeout(r, restMs) : setImmediate(r),
+      ),
   ) {}
 
   peek(ask: HelperAsk): Row {
@@ -31,10 +40,15 @@ export class HelperRows {
     return r && r.key === ask.key ? r.row : undefined;
   }
 
+  known(ask: HelperAsk): boolean {
+    return this.rows.get(ask.id)?.key === ask.key;
+  }
+
   async ensure(
     asks: HelperAsk[],
     maxAgeMs: number,
     budgetBytes = Infinity,
+    pace: HelperPace = { waitMs: Infinity, restMs: 0 },
   ): Promise<boolean> {
     let wait = false;
     for (const a of asks) {
@@ -53,13 +67,24 @@ export class HelperRows {
       this.rows.set(a.id, r);
     }
     this.budget = budgetBytes;
+    this.restMs = pace.restMs;
     this.idleMs = Math.max(60_000, 12 * maxAgeMs);
     this.askedAt = now;
     this.trim();
     if (!this.queue.size) return false;
+    const before = this.computed;
     const run = this.start();
-    if (wait) await run;
-    return wait;
+    if (!wait) return false;
+    if (pace.waitMs === Infinity) await run;
+    else if (pace.waitMs > 0) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        run,
+        new Promise<void>((r) => (timer = setTimeout(r, pace.waitMs))),
+      ]);
+      clearTimeout(timer);
+    }
+    return this.computed > before;
   }
 
   async idle(): Promise<void> {
@@ -87,7 +112,7 @@ export class HelperRows {
     this.running ??= (async () => {
       try {
         for (;;) {
-          await this.pause();
+          await this.pause(this.restMs);
           const next = this.queue.values().next();
           if (next.done) break;
           const a = next.value;
@@ -98,6 +123,7 @@ export class HelperRows {
           } catch {
             row = undefined;
           }
+          this.computed++;
           this.drop(a.id);
           const bytes = 128 + 2 * (JSON.stringify(row)?.length ?? 0);
           const at = this.now();

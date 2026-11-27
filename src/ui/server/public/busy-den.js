@@ -263,6 +263,15 @@ export const DEN_ACTIONS = {
       failure: "busy.modeF",
     },
   },
+  "agent-skill-packs": {
+    who: "Den",
+    autoClose: true,
+    keys: {
+      working: "busy.packsW",
+      success: "busy.packsS",
+      failure: "busy.packsF",
+    },
+  },
   "fresh-start": {
     who: "Den",
     autoClose: true,

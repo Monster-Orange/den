@@ -7,7 +7,8 @@
  *
  * A category: { id, label, order, description?, from? }.
  * A row: { id, category, label, description, keywords, scope, control,
- *   read(ctx), write?(value, ctx), keys? }
+ *   read(ctx), write?(value, ctx), keys?, shown?(ctx) }
+ *   shown    false hides the row in this browser (it has no use here)
  *   scope    "user" (config/local/user.yml), "workspace" (the workspace's
  *            entry in config/local/workspaces.yml) or "distribution" (the
  *            distribution's tracked config: read-only, so no write).
@@ -52,6 +53,7 @@ import { dialogHtml, mountDialog } from "./dialog-den.js";
 import { chosenColour, pickProjectColour } from "./project-colour-picker.js";
 import { projectColour, projectLabel } from "./workspace-picker.js";
 import { pushOff, pushOn, pushSubscription, pushSupported } from "./alerts.js";
+import { playAlertSound } from "./alert-sounds.js";
 
 export const DEN_SETTING_CATEGORIES = [
   {
@@ -386,12 +388,12 @@ function alertRows() {
           if (!N)
             return L(
               "set.notifications.desktop.none",
-              "This browser can't show notifications.",
+              "This browser can't show notifications here. On iPhone, add __DEN_TITLE__ to your Home Screen first, then open it from there. The bell and the tab count still work.",
             );
           return N.permission === "denied"
             ? L(
-                "set.notifications.desktop.denied",
-                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
+                "set.notifications.desktop.blocked",
+                "This browser blocks notifications from this page. Allow them in its site settings, then turn this on. The bell and the tab count still work.",
               )
             : "";
         },
@@ -406,6 +408,46 @@ function alertRows() {
           await N.requestPermission();
         return ctx.post({ alerts: { desktop: v === true } });
       },
+    },
+    {
+      id: "notifications.alert_finished",
+      category: "notifications",
+      label: "Also tell me when an agent finishes",
+      description:
+        "A notification when an agent finishes a turn and you are not looking at it. Off by default. An agent you muted never alerts.",
+      keywords: ["notifications", "alerts", "finished", "done", "turn"],
+      scope: "user",
+      shown: () => !!notifyApi(),
+      control: { type: "toggle" },
+      keys: ["alerts.finished"],
+      read: (ctx) => ctx.data.alerts?.finished === true,
+      write: (v, ctx) => ctx.post({ alerts: { finished: v === true } }),
+    },
+    {
+      id: "notifications.alert_sound",
+      category: "notifications",
+      label: "Sounds",
+      description:
+        "A short sound with each desktop alert, one for \u201cneeds you\u201d and a softer one for \u201cfinished\u201d. Plays only while a __DEN_TITLE__ tab is open; a closed tab or a phone uses its own alert sound.",
+      keywords: ["notifications", "alerts", "sound", "chime", "audio"],
+      scope: "user",
+      control: { type: "custom", render: drawSounds },
+      keys: ["alerts.sound"],
+      read: (ctx) => ctx.data.alerts?.sound === true,
+      write: (v, ctx) => ctx.post({ alerts: { sound: v === true } }),
+    },
+    {
+      id: "notifications.tab_count",
+      category: "notifications",
+      label: "Count in the tab",
+      description:
+        "Show the number of agents that need you in the tab title and on the tab icon (not the bell's count). Zero shows nothing.",
+      keywords: ["notifications", "tab", "title", "icon", "count", "badge"],
+      scope: "user",
+      control: { type: "toggle" },
+      keys: ["alerts.tab_count"],
+      read: (ctx) => ctx.data.alerts?.tab_count !== false,
+      write: (v, ctx) => ctx.post({ alerts: { tab_count: v === true } }),
     },
     {
       // S2: push, to this device (a phone, or a computer with no tab open).
@@ -423,6 +465,7 @@ function alertRows() {
         "iphone",
       ],
       scope: "user",
+      shown: () => !!notifyApi(),
       control: { type: "custom", render: drawPush },
       keys: ["alerts.phone"],
       read: (ctx) => ctx.data.alerts?.phone !== false,
@@ -517,7 +560,48 @@ function alertRows() {
       read: (ctx) => ctx.data.alerts?.push_ttl_seconds ?? 86400,
       write: (v, ctx) => ctx.post({ alerts: { push_ttl_seconds: v } }),
     },
+    {
+      id: "notifications.tab_first",
+      category: "notifications",
+      label: "Open tab first",
+      description:
+        "When a __DEN_TITLE__ tab is open and in front on a device that also gets push, the tab shows the alert and the push to that device is skipped. If the tab hasn't shown it within this many seconds, the push goes. __DEN_CLI__ config alerts.tab_first_seconds=3",
+      keywords: ["notifications", "alerts", "push", "tab", "double", "wait"],
+      scope: "user",
+      keys: ["alerts.tab_first_seconds"],
+      control: { type: "number", min: 1, max: 10, step: 1, unit: "s" },
+      read: (ctx) => ctx.data.alerts?.tab_first_seconds ?? 3,
+      write: (v, ctx) => ctx.post({ alerts: { tab_first_seconds: v } }),
+    },
+    {
+      id: "notifications.max_streams",
+      category: "notifications",
+      label: "Open tabs that get alerts",
+      description:
+        "How many open __DEN_TITLE__ tabs of yours get alerts at once. Past this, the oldest stops getting them until it is reloaded. __DEN_CLI__ config alerts.max_streams=20",
+      keywords: ["notifications", "alerts", "tabs", "limit", "streams"],
+      scope: "user",
+      keys: ["alerts.max_streams"],
+      control: { type: "number", min: 1, max: 200, step: 1 },
+      read: (ctx) => ctx.data.alerts?.max_streams ?? 20,
+      write: (v, ctx) => ctx.post({ alerts: { max_streams: v } }),
+    },
   ];
+}
+
+function drawSounds(host, ctx, io) {
+  const on = ctx.data.alerts?.sound === true;
+  host.innerHTML =
+    `<input type="checkbox" class="set-check" id="set-alert-sound" aria-labelledby="l-notifications-alert_sound"${on ? " checked" : ""}>` +
+    `<span class="set-sound-try">` +
+    `<button type="button" class="den-btn sm" data-sound="needs">${escHtml(L("set.notifications.alert_sound.needs", "\u25b6 Needs you"))}</button> ` +
+    `<button type="button" class="den-btn sm" data-sound="finished">${escHtml(L("set.notifications.alert_sound.finished", "\u25b6 Finished"))}</button>` +
+    `</span>`;
+  host
+    .querySelector("input")
+    .addEventListener("change", (e) => void io.save(e.target.checked));
+  for (const b of host.querySelectorAll("button[data-sound]"))
+    b.addEventListener("click", () => playAlertSound(window, b.dataset.sound));
 }
 
 /**
@@ -1350,6 +1434,92 @@ function drawEdgeUp(host, ctx) {
  * Issue 103: the web apps that may frame the embedded agent pane: one
  * origin a line, saved as a list (the server checks each, exactly).
  */
+export function skillPackEdits(pack, checked) {
+  const on = new Set(checked);
+  const dflt = pack.skills.filter((s) => s.byDefault).map((s) => s.name);
+  const k = `skill_packs.${pack.name}`;
+  if ([...on].every((s) => dflt.includes(s))) {
+    const exclude = dflt.filter((s) => !on.has(s));
+    return [
+      { key: `${k}.skills`, value: null },
+      { key: `${k}.exclude`, value: exclude.length ? exclude : null },
+    ];
+  }
+  return [
+    { key: `${k}.skills`, value: [...on].sort() },
+    { key: `${k}.exclude`, value: null },
+  ];
+}
+
+function drawSkillPack(host, ctx, api, name) {
+  const p = ctx.data?.skill_packs?.packs?.find((x) => x.name === name);
+  if (!p) {
+    host.innerHTML = "";
+    return;
+  }
+  const id = `set-sp-${name}`;
+  const tree = `${p.source}/tree/${p.commit}/${p.path}`;
+  const licence = `${p.source}/blob/${p.commit}/${p.path}/LICENSE`;
+  const skills = p.skills
+    .map(
+      (s) =>
+        `<li><label><input type="checkbox" data-skill="${escHtml(s.name)}"${s.on ? " checked" : ""}> <code>${escHtml(s.name)}</code></label>` +
+        (s.description
+          ? ` <span class="set-note" translate="no">${escHtml(s.description)}</span>`
+          : "") +
+        `</li>`,
+    )
+    .join("");
+  host.innerHTML =
+    `<div style="flex-basis:100%">` +
+    `<label><input type="checkbox" id="${id}-on"${p.on ? " checked" : ""}> ${escHtml(L("set.ui.skillPackOn", "On"))}</label>` +
+    `<div class="set-note"><span translate="no">${escHtml(p.license)}, ${escHtml(p.copyright)}</span> · <a href="${escHtml(licence)}" target="_blank" rel="noopener">${escHtml(L("set.ui.skillPackLicence", "Licence"))}</a> · ` +
+    `${escHtml(L("set.ui.skillPackPin", "pinned at"))} <a href="${escHtml(tree)}" target="_blank" rel="noopener"><code>${escHtml(p.commit.slice(0, 7))}</code></a> · ` +
+    `${escHtml(L("set.ui.skillPackOnCount", "{n} skills on", { n: p.skillsOn }))}</div>` +
+    `<div class="set-note">${escHtml(L("set.ui.skillPackCost", "Adds about {n} tokens to each agent's start", { n: p.tokens }))}</div>` +
+    `<details id="${id}-skills"><summary>${escHtml(L("set.ui.skillPackSkills", "Skills"))}</summary>` +
+    `<button type="button" class="den-btn sm" id="${id}-all">${escHtml(L("set.ui.skillPackAll", "All"))}</button> ` +
+    `<button type="button" class="den-btn sm" id="${id}-none">${escHtml(L("set.ui.skillPackNone", "None"))}</button>` +
+    `<ul style="list-style:none;padding-left:0">${skills}</ul></details></div>`;
+  const boxes = () => [...host.querySelectorAll("input[data-skill]")];
+  const saveChecked = () =>
+    void api.save(
+      skillPackEdits(
+        p,
+        boxes()
+          .filter((b) => b.checked)
+          .map((b) => b.dataset.skill),
+      ),
+    );
+  host.querySelector(`#${id}-on`).addEventListener("change", (e) => {
+    void api.save({
+      key: `skill_packs.${name}.on`,
+      value: e.target.checked ? null : false,
+    });
+  });
+  for (const b of boxes()) b.addEventListener("change", saveChecked);
+  host.querySelector(`#${id}-all`).addEventListener("click", () => {
+    const dflt = new Set(
+      p.skills.filter((s) => s.byDefault).map((s) => s.name),
+    );
+    for (const b of boxes()) b.checked = dflt.has(b.dataset.skill);
+    void api.save([
+      { key: `skill_packs.${name}.skills`, value: null },
+      { key: `skill_packs.${name}.exclude`, value: null },
+    ]);
+  });
+  host.querySelector(`#${id}-none`).addEventListener("click", () => {
+    for (const b of boxes()) b.checked = false;
+    void api.save([
+      { key: `skill_packs.${name}.skills`, value: null },
+      {
+        key: `skill_packs.${name}.exclude`,
+        value: p.skills.filter((s) => s.byDefault).map((s) => s.name),
+      },
+    ]);
+  });
+}
+
 function drawOrigins(host, ctx, api) {
   const list = Array.isArray(ctx.data?.embed?.origins)
     ? ctx.data.embed.origins
@@ -4284,6 +4454,46 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
   },
   {
+    id: "server.sessions_size_claim_grace",
+    category: "server",
+    label: "Terminal size hold",
+    description:
+      "How long the window that last set a terminal's size keeps it after its connection drops, so a brief drop or a reload does not hand the size to another window. 0 hands it on at once. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    keywords: [
+      "terminal",
+      "size",
+      "resize",
+      "window",
+      "ipad",
+      "size_claim_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_claim_grace_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_claim_grace_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ sessions: { size_claim_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_size_leave_grace",
+    category: "server",
+    label: "Terminal size hold after a page closes",
+    description:
+      "How long the window that last set a terminal's size keeps it after its page closes or reloads, so a reload keeps the size while a closed page hands it to another window. Within the terminal size hold, that window takes the size back when it returns, unless someone typed or took over in another window meanwhile. 0 hands it on at once. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
+    keywords: [
+      "terminal",
+      "size",
+      "reload",
+      "close",
+      "window",
+      "size_leave_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_leave_grace_seconds"],
+    control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_leave_grace_seconds ?? 3,
+    write: (v, ctx) => ctx.post({ sessions: { size_leave_grace_seconds: v } }),
+  },
+  {
     id: "server.sessions_pty_close",
     category: "server",
     label: "Terminal close after exit",
@@ -5490,6 +5700,83 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ agents_limits: { max_per_project: v } }),
   },
   {
+    id: "agents.max_subagents",
+    category: "agents",
+    label: "Subagents at once",
+    description:
+      "How many subagents the agents on this machine may run at once, all together. A start past this is refused, and the agent is told this setting's name. Unset, twice Agents at once. __DEN_CLI__ config agents.max_subagents=8",
+    keywords: [
+      "agents",
+      "subagents",
+      "swarm",
+      "limit",
+      "max_subagents",
+      "at once",
+    ],
+    scope: "user",
+    keys: ["agents_limits.max_subagents"],
+    control: { type: "number", min: 1, max: 2000, step: 1 },
+    read: (ctx) =>
+      ctx.data.agents_limits?.max_subagents ??
+      2 * (ctx.data.agents_limits?.max_concurrent ?? 4),
+    write: (v, ctx) => ctx.post({ agents_limits: { max_subagents: v } }),
+  },
+  {
+    id: "agents.subagents_respect_load_hold",
+    category: "agents",
+    label: "No new subagents under load",
+    description:
+      "On, while the machine's load is over the agents' load ceiling, a new subagent is refused, and the agent is told this setting's name. Off, subagents start whatever the load. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    keywords: [
+      "agents",
+      "subagents",
+      "load",
+      "hold",
+      "swarm",
+      "subagents_respect_load_hold",
+    ],
+    scope: "user",
+    keys: ["agents_limits.subagents_respect_load_hold"],
+    control: { type: "toggle" },
+    read: (ctx) =>
+      ctx.data.agents_limits?.subagents_respect_load_hold !== false,
+    write: (v, ctx) =>
+      ctx.post({ agents_limits: { subagents_respect_load_hold: !!v } }),
+  },
+  {
+    id: "agents.skill_packs",
+    category: "agents",
+    label: "Skill packs",
+    description:
+      "Skill packs Den gives its agents. Each is vendored in Den at a pinned version and never fetched. __DEN_CLI__ config skill_packs.on=false",
+    keywords: ["agents", "skills", "skill packs", "plugin", "skill_packs"],
+    scope: "user",
+    keys: ["skill_packs"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.skill_packs?.on !== false,
+    write: (v, ctx) =>
+      ctx.post({
+        skill_packs: { key: "skill_packs.on", value: v ? null : false },
+      }),
+  },
+  {
+    id: "agents.skill_packs.pstack",
+    category: "agents",
+    label: "pstack",
+    description:
+      "Open-source skills for coding agents. Choose which of them Den's agents get. __DEN_CLI__ config skill_packs",
+    keywords: ["agents", "skills", "skill packs", "pstack", "licence", "MIT"],
+    scope: "user",
+    keys: ["skill_packs"],
+    control: {
+      type: "custom",
+      render: (host, ctx, api) => drawSkillPack(host, ctx, api, "pstack"),
+    },
+    read: (ctx) =>
+      ctx.data.skill_packs?.packs?.find((p) => p.name === "pstack") ?? null,
+    write: (v, ctx) => ctx.post({ skill_packs: v }),
+  },
+  {
     // den#156: the Agents list's waits (user.yml agents_list.*).
     id: "agents.list_host_wait",
     category: "agents",
@@ -5804,7 +6091,7 @@ export const DEN_SETTINGS = [
     category: "hub",
     label: "Groups from Hub",
     description:
-      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+      "Whether the Agents page shows your Hub's groups (Group, beside Project in the list's switch). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
     keywords: ["hub", "groups", "group", "lead", "agents", "by group"],
     scope: "user",
     keys: ["hub_groups.mode"],

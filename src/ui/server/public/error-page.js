@@ -1278,6 +1278,20 @@ export function mountErrorPage(root) {
     return;
   }
 
+  if (d.status === 503 && d.code === "edge_starting") {
+    const title = t("err.starting.title");
+    document.title = document.title.replace(/Error$/, title);
+    root.innerHTML =
+      header(title, `<span class="mono">${esc(d.code)}</span>`) +
+      `<div class="empty"><p class="lead">${esc(t("err.starting.lead"))}</p>` +
+      `<div class="acts"><button type="button" class="den-btn primary" id="den-err-retry">${esc(t("err.retry"))}</button></div></div>`;
+    root
+      .querySelector("#den-err-retry")
+      ?.addEventListener("click", () => location.reload());
+    setTimeout(() => location.reload(), 2000);
+    return;
+  }
+
   if (
     d.status === 421 ||
     d.status === 403 ||

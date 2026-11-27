@@ -10,6 +10,7 @@
  * relayed message (relayMessage) is held and typed by the same loop, after
  * the agent's turn, never mid-turn. Hub's own deliveries need Hub.
  */
+import { agentPagePath } from "../../shared/agent-links.js";
 import path from "node:path";
 import type * as AgentOps from "../cli/agent-ops.js";
 import type { AgentsResolved } from "../cli/agent-ops.js";
@@ -45,6 +46,7 @@ import {
 import { getStateDir } from "../../shared/paths.js";
 import { readUserConfig } from "../../shared/den-config.js";
 import { embedSettings } from "./embed-settings.js";
+import { fixtureTestInstall } from "./fixture-projects.js";
 
 const PUMP_MS = 2000;
 /** Issue 702: how often the bell checks hub.delivery_alert_minutes. */
@@ -442,7 +444,7 @@ export function heldBell(
           why === "not_at_prompt" ? "bell.m.notAtPrompt" : `bell.m.held.${why}`,
         vars: { name, n, m },
       },
-      link: `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`,
+      link: agentPagePath(rec.workspace, rec.id),
     });
   };
   if (o.store) {
@@ -509,6 +511,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       },
     },
     // Issue 701: the person's comment answers the agent's question.
+    testInstall: fixtureTestInstall,
     answered: (agent) => {
       void import("./notification-service.js")
         .then(({ notificationDeps }) =>

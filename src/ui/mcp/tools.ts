@@ -93,9 +93,10 @@ export interface ToolContext {
   cli: string;
   /**
    * A scoped server's workspace and actor (AG-2a-core); absent, every tool
-   * behaves as it always has.
+   * behaves as it always has. `actor` is also the server agent's (1807).
    */
   scope?: McpScope;
+  actor?: string;
   /**
    * How a write waits for the person's answer (ON-3, approvals): poll
    * every `intervalMs` for up to `waitMs`. Tests pass a short one.
@@ -352,7 +353,7 @@ const HELD_WAIT = "[held_writes.wait_minutes]";
 
 /** The shared GitHub watcher tells an agent: a scoped (agent's) server only. */
 function githubWatchAgent(tool: string, ctx: ToolContext): void {
-  if (!ctx.scope?.actor.startsWith("agent:"))
+  if (!(ctx.scope?.actor ?? ctx.actor)?.startsWith("agent:"))
     throw new Refusal(
       `${tool}: a GitHub watch is an agent's (Den tells the agent itself when it finishes); this MCP server isn't an agent's.`,
     );

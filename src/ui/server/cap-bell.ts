@@ -1,4 +1,5 @@
-import { readRecord } from "../../shared/agents/records.js";
+import { agentPagePath } from "../../shared/agent-links.js";
+import { readRecord, writeRecord } from "../../shared/agents/records.js";
 import type { NotificationStore } from "../../shared/notifications.js";
 
 export type CapHeld = {
@@ -37,7 +38,7 @@ export function noteCapHeld(
       key: "bell.m.capHeld",
       vars: { name: who.name, n: cap.n, limit: cap.limit, key: cap.key },
     },
-    link: `/agents?project=${encodeURIComponent(who.project)}&agent=${encodeURIComponent(who.agent)}`,
+    link: agentPagePath(who.project, who.agent),
   });
   return true;
 }
@@ -53,6 +54,11 @@ export async function noteCapsHeld(
     if (!capHeldOf(x.why)) continue;
     const rec = readRecord(stateDir, x.agent);
     if (!rec) continue;
+    const { stoppedAt: _s, ...rest } = rec;
+    writeRecord(stateDir, {
+      ...rest,
+      restartFailed: { at: new Date().toISOString(), why: x.why },
+    });
     bell ??= (await import("./notification-service.js")).notificationDeps()
       .store;
     if (

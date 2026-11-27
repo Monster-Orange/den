@@ -10,7 +10,6 @@
 import { beforeEach, describe, expect, it } from "@jest/globals";
 import { createHmac } from "crypto";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import {
   announceTestInstall,
@@ -23,6 +22,9 @@ import {
   unannounceTestInstall,
 } from "../../../src/shared/test-install-grant.js";
 import { identityKey } from "../../../src/shared/den-identity.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 let tmp = "";
 let dir = "";
@@ -32,7 +34,7 @@ const otherSecret = Buffer.alloc(32, 9);
 const NOW = 1_800_000_000_000;
 
 beforeEach(() => {
-  tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "den-816-")));
+  tmp = fs.realpathSync(tempDir("den-816-"));
   dir = path.join(tmp, "test-installs");
   stateDir = path.join(tmp, "state");
   fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });

@@ -69,6 +69,9 @@ describe("issue 1634: a project's own agent cap, in Project setup", () => {
     expect((await setOwn(2)).status).toBe(200);
     expect(southAgents()?.max_per_project).toBe(2);
     expect((await settings()).agents_max_per_project).toBe(2);
+    expect((await setOwn(0)).status).toBe(200);
+    expect(southAgents()?.max_per_project).toBeUndefined();
+    expect((await setOwn(2)).status).toBe(200);
     expect((await setOwn(null)).status).toBe(200);
     expect(southAgents()?.max_per_project).toBeUndefined();
     expect((await settings()).agents_max_per_project).toBeNull();

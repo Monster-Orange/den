@@ -9,6 +9,7 @@
  */
 
 import { checkCoachConfig, type CoachSettings } from "./coach/settings.js";
+import { checkEnvHoldConfig, type EnvHoldSettings } from "./agents/env-hold.js";
 import { HELPER_DEFAULTS, type HelperSettings } from "./agents/helpers.js";
 import { uploadsBlock, type UploadSettings } from "./agents/uploads.js";
 import { filesBlock, type FileSettings } from "./agents/file-deny.js";
@@ -202,6 +203,7 @@ export interface ReleaseConfig {
 }
 
 export interface DenConfig {
+  skill_packs?: unknown;
   /**
    * Issue 1391: the distribution's default install mode (its den.yml):
    * strict here can't be loosened by a person (see resolveInstallMode).
@@ -348,6 +350,7 @@ export interface WorkspaceBlueprint {
  * Only affects settings that should differ between engineers on the same team.
  */
 export interface UserConfig {
+  skill_packs?: unknown;
   /**
    * Review M4 (0.4.46): `server_agent.self_update: ask | auto`, the
    * person's: whether the server agent's own restarts and updates run
@@ -723,6 +726,11 @@ export interface UserConfig {
      * (shared/issue-write.ts).
      */
     issue_writes?: unknown;
+    env_hold?: unknown;
+    env_allow?: unknown;
+    env_allow_agents?: unknown;
+    env_guard?: unknown;
+    env_hold_existing?: unknown;
     issue_writes_per_hour?: unknown;
     /** Issue 1127: how old a repo's visibility may be for the words check. */
     issue_writes_visibility_minutes?: unknown;
@@ -1199,6 +1207,30 @@ export function setUserRuntimeBin(id: string, bin: string | null): void {
   writeUserConfig(next);
 }
 
+export function setUserEnvHoldExisting(): void {
+  const cfg = readUserConfig();
+  writeUserConfig({
+    ...cfg,
+    agents: { ...(cfg.agents ?? {}), env_hold_existing: true },
+  });
+}
+
+export function addUserEnvAllow(names: readonly string[]): void {
+  const cfg = readUserConfig();
+  const was = Array.isArray(cfg.agents?.env_allow)
+    ? (cfg.agents!.env_allow as unknown[]).filter(
+        (n): n is string => typeof n === "string",
+      )
+    : [];
+  writeUserConfig({
+    ...cfg,
+    agents: {
+      ...(cfg.agents ?? {}),
+      env_allow: [...new Set([...was, ...names])].sort(),
+    },
+  });
+}
+
 /**
  * Issue 936, the rollout's Turn on: `agents.sandbox: on` in user.yml,
  * keeping everything else there (an agent's own `off` stays).
@@ -1560,6 +1592,7 @@ export function readDenConfig(): DenConfig {
       test_accounts: parsed?.test_accounts,
       defaults: parsed?.defaults,
       secrets: parsed?.secrets,
+      skill_packs: parsed?.skill_packs,
       // 0.4.45: the Hub editions under Connect (shared/hub/hub-editions.ts):
       // the distribution's den.yml (as the docs say), else this file.
       hub_editions: denYmlKey("hub_editions") ?? parsed?.hub_editions,
@@ -2136,6 +2169,9 @@ export interface AgentsConfig {
    * `{ clis: [...], dirs: [...] }` (agents/api-only.ts).
    */
   api_only_engines?: { clis?: unknown; dirs?: unknown };
+  env_hold?: unknown;
+  env_allow?: unknown;
+  env_guard?: unknown;
   /**
    * Any other key is an agent id: `agents.<id>.grants` widens that agent's
    * MCP scope to other workspaces (AG spec §5b). Config only: an agent
@@ -2202,11 +2238,15 @@ export function agentsDraftHoldMaxMinutes(
   );
 }
 
+export const SUBAGENTS_PER_AGENT_SLOT = 2;
+
 /** Issue 242: agents.token_peer_wait_ms when unset (the lookups' own limits fit). */
 export const TOKEN_PEER_WAIT_MS_DEFAULT = 30_000;
 
 export const AGENTS_RESERVED_KEYS = [
   "max_concurrent",
+  "max_subagents",
+  "subagents_respect_load_hold",
   "max_per_project",
   // #70: an agent's token only from its own processes.
   "token_binding",
@@ -2250,6 +2290,11 @@ export const AGENTS_RESERVED_KEYS = [
   "issue_writes_per_hour",
   "issue_writes_visibility_minutes",
   "issue_writes_public",
+  "env_hold",
+  "env_allow",
+  "env_allow_agents",
+  "env_guard",
+  "env_hold_existing",
   // Issue 1129: the restart queue (agents.resume.*), never an agent id.
   "resume",
   // Issue 936: Den's state read-only to agents' sessions (on|off|required).
@@ -2277,6 +2322,7 @@ export interface AgentGrantsConfig {
   sandbox?: boolean;
   /** Issue 936: required: it doesn't start where no sandbox applies. */
   sandboxRequired?: boolean;
+  skillPacks?: unknown;
 }
 
 const SANDBOX_IN_USER_YML = (key: string) =>
@@ -2352,6 +2398,9 @@ export function readInstallMode(
 /** `agents:` with its defaults applied. */
 export interface ResolvedAgentsConfig {
   maxConcurrent: number;
+  maxSubagents?: number;
+  subagentsRespectLoadHold?: boolean;
+  skillPacks?: { den: unknown; user: unknown };
   maxPerProject: number;
   /** Issue 1391: the install's mode (resolveInstallMode). */
   mode?: InstallMode;
@@ -2456,6 +2505,7 @@ export interface ResolvedAgentsConfig {
   roles?: RolesConfig;
   /** den#3: agents.subagents and agents.claude_ai_connectors, defaults applied. */
   subagents?: SubagentSettings;
+  envHold?: EnvHoldSettings;
 }
 
 /** `agents.helpers` (D32) checked; a bad key or value throws naming it. */
@@ -2464,7 +2514,7 @@ export function helpersBlock(v: unknown): HelperSettings {
   if (v === undefined || v === null) return out;
   if (!isMapping(v))
     throw new Error(
-      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds (got ${JSON.stringify(v)})`,
+      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds, list_wait_seconds, reader_rest_ms (got ${JSON.stringify(v)})`,
     );
   for (const [k, x] of Object.entries(v)) {
     if (k === "row_max") {
@@ -2481,6 +2531,22 @@ export function helpersBlock(v: unknown): HelperSettings {
           `agents.helpers.refresh_seconds: must be a number of seconds, from 0 to 3600 (got ${JSON.stringify(x)})`,
         );
       out.refreshSeconds = x;
+      continue;
+    }
+    if (k === "list_wait_seconds") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x < 0 || x > 60)
+        throw new Error(
+          `agents.helpers.list_wait_seconds: must be a number of seconds, from 0 to 60 (got ${JSON.stringify(x)})`,
+        );
+      out.listWaitSeconds = x;
+      continue;
+    }
+    if (k === "reader_rest_ms") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x < 0 || x > 1000)
+        throw new Error(
+          `agents.helpers.reader_rest_ms: must be a number of milliseconds, from 0 to 1000 (got ${JSON.stringify(x)})`,
+        );
+      out.readerRestMs = x;
       continue;
     }
     if (k === "facts_cache_mb") {
@@ -2508,7 +2574,7 @@ export function helpersBlock(v: unknown): HelperSettings {
           : null;
     if (!key)
       throw new Error(
-        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds)`,
+        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds, list_wait_seconds, reader_rest_ms)`,
       );
     if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 100_000)
       throw new Error(
@@ -2628,6 +2694,9 @@ export function readAgentsConfig(
     ...out.coach,
     judge: { ...out.coach.judge, enabled: judgeOn === true },
   };
+  out.skillPacks = { den: c.skill_packs, user: u.skill_packs };
+  out.maxSubagents ??= SUBAGENTS_PER_AGENT_SLOT * out.maxConcurrent;
+  out.subagentsRespectLoadHold ??= true;
   // Issue 936: the sandbox is per machine, from user.yml only.
   asConfigError(
     () => {
@@ -2641,6 +2710,12 @@ export function readAgentsConfig(
     },
     path.relative(ROOT, USER_CONFIG_PATH),
   );
+  out.envHold = asConfigError(
+    () => checkEnvHoldConfig((u.agents ?? {}) as Record<string, unknown>),
+    path.relative(ROOT, USER_CONFIG_PATH),
+  );
+  if (out.envHold && out.mode === "personal" && !out.envHold.holdSet)
+    out.envHold.hold = [];
   // A signing key is per machine: user.yml's agents.git wins.
   const myGit = u.agents?.git;
   // An agent called git (grants or sandbox only) is no signing key.
@@ -2680,6 +2755,8 @@ function userJudgeEnabled(u: UserConfig): boolean {
  */
 export const AGENTS_USER_LIMIT_KEYS = [
   "max_concurrent",
+  "max_subagents",
+  "subagents_respect_load_hold",
   "max_per_project",
   "token_peer_wait_ms",
   "turn_read_max_mb",
@@ -2733,9 +2810,11 @@ export function agentsLimitValueError(
  * from the constants the code that applies it uses.
  */
 const AGENT_LIMIT_DEFAULTS: Readonly<
-  Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number>
+  Record<(typeof AGENTS_USER_LIMIT_KEYS)[number], number | boolean>
 > = {
   max_concurrent: DEFAULT_AGENTS_MAX_CONCURRENT,
+  max_subagents: SUBAGENTS_PER_AGENT_SLOT * DEFAULT_AGENTS_MAX_CONCURRENT,
+  subagents_respect_load_hold: true,
   max_per_project: DEFAULT_AGENTS_MAX_PER_PROJECT,
   token_peer_wait_ms: TOKEN_PEER_WAIT_MS_DEFAULT,
   turn_read_max_mb: TURN_READ_MAX_BYTES / (1024 * 1024),
@@ -2768,6 +2847,11 @@ export function agentLimitInForce(
   if (mine !== undefined) return { value: mine, from: "user.yml" };
   const theirs = pick((den as { agents?: unknown }).agents);
   if (theirs !== undefined) return { value: theirs, from: "den.yml" };
+  if (key === "max_subagents") {
+    const slots = agentLimitInForce("max_concurrent", user, den)?.value;
+    if (typeof slots === "number")
+      return { value: SUBAGENTS_PER_AGENT_SLOT * slots, from: "default" };
+  }
   return {
     value: AGENT_LIMIT_DEFAULTS[key as keyof typeof AGENT_LIMIT_DEFAULTS],
     from: "default",
@@ -2881,7 +2965,12 @@ export function applyUserSandbox(
     // An agent's block holds grants and sandbox only; other mappings here
     // (runtimes, layout, …) are settings, never an agent.
     const keys = Object.keys(block);
-    if (!keys.length || !keys.every((k) => k === "grants" || k === "sandbox")) {
+    if (
+      !keys.length ||
+      !keys.every(
+        (k) => k === "grants" || k === "sandbox" || k === "skill_packs",
+      )
+    ) {
       // One that looks like an agent's (a misspelt or extra key) is named.
       if (keys.some((k) => /^(grant|sandbox)/i.test(k)))
         (out.notAgentBlocks ??= []).push({ id, keys });
@@ -2906,6 +2995,11 @@ export function applyUserSandbox(
         grants: [...new Set(grants as string[])],
       };
     }
+    if (block.skill_packs !== undefined && block.skill_packs !== null)
+      out.agents[id] = {
+        ...(out.agents[id] ?? { grants: [] }),
+        skillPacks: block.skill_packs,
+      };
     const one = sandboxValue(block.sandbox, `${where}.sandbox`);
     if (one === undefined) continue;
     out.agents[id] = {
@@ -3063,6 +3157,17 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
       );
     out.exitedShellMinutes = exitedMin;
   }
+  for (const k of [
+    "env_hold",
+    "env_allow",
+    "env_allow_agents",
+    "env_guard",
+    "env_hold_existing",
+  ])
+    if ((raw as Record<string, unknown>)[k] !== undefined)
+      throw new Error(
+        `agents.${k}: set it in config/local/user.yml, never in the distribution's config (an agent can edit a repo)`,
+      );
   out.coach = checkCoachConfig(raw.coach);
   out.categories = checkCategoriesConfig(raw.categories);
   out.roles = checkRolesConfig(raw.roles, [
@@ -3076,6 +3181,22 @@ function parseAgentsConfig(config: DenConfig): ResolvedAgentsConfig {
         `agents.max_concurrent: must be a whole number of at least 1 (got ${JSON.stringify(max)})`,
       );
     out.maxConcurrent = max;
+  }
+  const subMax = raw.max_subagents;
+  if (subMax !== undefined && subMax !== null) {
+    if (typeof subMax !== "number" || !Number.isInteger(subMax) || subMax < 1)
+      throw new Error(
+        `agents.max_subagents: must be a whole number of at least 1 (got ${JSON.stringify(subMax)})`,
+      );
+    out.maxSubagents = subMax;
+  }
+  const hold = raw.subagents_respect_load_hold;
+  if (hold !== undefined && hold !== null) {
+    if (typeof hold !== "boolean")
+      throw new Error(
+        `agents.subagents_respect_load_hold: true or false (got ${JSON.stringify(hold)})`,
+      );
+    out.subagentsRespectLoadHold = hold;
   }
   const per = raw.max_per_project;
   if (per !== undefined) {
@@ -3173,9 +3294,13 @@ export interface SessionsConfig {
    * failed, and the bell says so) (default 30; 0: no look).
    */
   host_restart_check_seconds?: number;
+  size_claim_grace_seconds?: number;
+  size_leave_grace_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
+export const DEFAULT_SIZE_CLAIM_GRACE_SECONDS = 30;
+export const DEFAULT_SIZE_LEAVE_GRACE_SECONDS = 3;
 export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
 export const DEFAULT_HOST_RESTART_CHECK_SECONDS = 30;
 export const DEFAULT_PTY_WARN_ABOVE = 400;
@@ -3191,6 +3316,8 @@ export interface ResolvedSessionsConfig {
   hostRestartWaitSeconds: number;
   hostRestartNote: boolean;
   hostRestartCheckSeconds: number;
+  sizeClaimGraceSeconds: number;
+  sizeLeaveGraceSeconds: number;
 }
 
 const SESSIONS_KEYS = [
@@ -3202,6 +3329,8 @@ const SESSIONS_KEYS = [
   "host_restart_wait_seconds",
   "host_restart_note",
   "host_restart_check_seconds",
+  "size_claim_grace_seconds",
+  "size_leave_grace_seconds",
 ];
 
 /**
@@ -3239,6 +3368,8 @@ export const SESSIONS_SETTINGS_KEYS = [
   "pty_close_seconds",
   "pty_warn_above",
   "pty_machine_warn_percent",
+  "size_claim_grace_seconds",
+  "size_leave_grace_seconds",
 ] as const;
 
 /** What is wrong with one sessions.<key> value, in den-config's words; null: fine. */
@@ -3269,6 +3400,8 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
     hostRestartWaitSeconds: DEFAULT_HOST_RESTART_WAIT_SECONDS,
     hostRestartNote: true,
     hostRestartCheckSeconds: DEFAULT_HOST_RESTART_CHECK_SECONDS,
+    sizeClaimGraceSeconds: DEFAULT_SIZE_CLAIM_GRACE_SECONDS,
+    sizeLeaveGraceSeconds: DEFAULT_SIZE_LEAVE_GRACE_SECONDS,
   };
   const check = raw.host_restart_check_seconds;
   if (check !== undefined) {
@@ -3350,6 +3483,32 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
         `sessions.close_grace_seconds: must be a number of seconds, 0 to 300 (got ${JSON.stringify(grace)})`,
       );
     out.closeGraceSeconds = grace;
+  }
+  const claim = raw.size_claim_grace_seconds;
+  if (claim !== undefined) {
+    if (
+      typeof claim !== "number" ||
+      !Number.isFinite(claim) ||
+      claim < 0 ||
+      claim > 3600
+    )
+      throw new Error(
+        `sessions.size_claim_grace_seconds: must be a number of seconds, 0 to 3600 (got ${JSON.stringify(claim)})`,
+      );
+    out.sizeClaimGraceSeconds = claim;
+  }
+  const leave = raw.size_leave_grace_seconds;
+  if (leave !== undefined) {
+    if (
+      typeof leave !== "number" ||
+      !Number.isFinite(leave) ||
+      leave < 0 ||
+      leave > 300
+    )
+      throw new Error(
+        `sessions.size_leave_grace_seconds: must be a number of seconds, 0 to 300 (got ${JSON.stringify(leave)})`,
+      );
+    out.sizeLeaveGraceSeconds = leave;
   }
   const max = raw.max_concurrent;
   if (max !== undefined) {
