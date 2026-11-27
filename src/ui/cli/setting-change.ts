@@ -127,6 +127,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "web.start_wait_seconds",
   "web.tools_probe_seconds",
   "web.sessions_lock_wait_ms",
+  "web.menu_load_timeout_ms",
   "web.address_check_timeout_seconds",
   "web.address_check_retries",
   "web.address_check_cache_seconds",

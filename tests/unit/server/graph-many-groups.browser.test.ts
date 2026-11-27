@@ -581,7 +581,8 @@ describe("the Workspace picker on /graph replaces ?ws= (0.3.0-dev.34)", () => {
         p.click('.den-pop .den-mi:has-text("w1")'),
       ]);
       await settled(p, ...shape(W1));
-      expect(new URL(p.url()).searchParams.get("ws")).toBe("w1");
+      expect(new URL(p.url()).searchParams.get("project")).toBe("w1");
+      expect(new URL(p.url()).searchParams.get("ws")).toBeNull();
       expect(await pill(p)).toBe("w1");
       expect(await sub(p)).toMatch(/(^|\/ )w1 \/ local$/);
       expect(await repos(p)).toEqual([...W1].sort());

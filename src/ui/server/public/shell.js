@@ -2396,6 +2396,9 @@
     "set.server.lookup_retry": "Process lookup retry wait",
     "set.server.lookup_retry.d":
       "How long the second try waits when the first ran out of time. A busy machine can be slow to answer. __DEN_CLI__ config process_lookup.retry_seconds=20",
+    "set.server.menu_load_timeout": "Project menu load wait",
+    "set.server.menu_load_timeout.d":
+      "How long each page's top bar waits for its project menu to load before it counts as failed and tries again. A slow or stalled connection then never hides the menu until a reload. __DEN_CLI__ config web.menu_load_timeout_ms=8000",
     "set.server.address_check_timeout": "Address check wait",
     "set.server.address_check_timeout.d":
       "How long __DEN_TITLE__ waits for an address to answer when it checks that the address reaches this __DEN_TITLE__, before it prints or opens it. __DEN_CLI__ config web.address_check_timeout_seconds=5",

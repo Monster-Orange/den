@@ -95,6 +95,8 @@ function _readHealthPoll() {
       const hp = s?.health_poll;
       if (Number.isFinite(hp?.visible)) _healthPoll.visible = hp.visible;
       if (Number.isFinite(hp?.hidden)) _healthPoll.hidden = hp.hidden;
+      const ml = s?.menu_load?.timeout_ms;
+      if (Number.isFinite(ml) && ml > 0) _scopeLoadMs = ml;
     })
     .catch(() => {});
   return _healthPollRead;
@@ -411,6 +413,18 @@ export async function refreshWorkspacePill() {
 // had stays meanwhile; with none yet, the part stays hidden.
 const SCOPE_RETRY_FIRST_MS = 1_000;
 const SCOPE_RETRY_MAX_MS = 30_000;
+let _scopeLoadMs = 8_000;
+
+function fetchWithin(url, ms, parse) {
+  const ctl =
+    typeof AbortController === "function" ? new AbortController() : null;
+  const timer = ctl ? setTimeout(() => ctl.abort(), ms) : null;
+  return fetch(url, ctl ? { signal: ctl.signal } : undefined)
+    .then(parse)
+    .finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+}
 let _scopeShown = false;
 let _scopeRetryMs = 0;
 let _scopeRetry = null;
@@ -447,10 +461,10 @@ async function _renderScopeMenu() {
   if (!sh?.setWorkspaces || configInvalid()) return;
   try {
     const [data, scope] = await Promise.all([
-      fetch("/api/workspaces").then((r) => r.json()),
-      fetch("/api/scope")
-        .then((r) => (r.ok ? r.json() : null))
-        .catch(() => null),
+      fetchWithin("/api/workspaces", _scopeLoadMs, (r) => r.json()),
+      fetchWithin("/api/scope", _scopeLoadMs, (r) =>
+        r.ok ? r.json() : null,
+      ).catch(() => null),
     ]);
     sh.setWorkspaces({
       // The page's language sorts the projects (ja its own way).

@@ -1877,7 +1877,8 @@
               named ??
               scoped ??
               (GRAPH_PAGE && inView.length === 1 ? inView[0] : focusName());
-            if (target) selectWorkspace(target);
+            if (target)
+              selectWorkspace(target, { updateUrl: target !== named });
           }
         }
 
