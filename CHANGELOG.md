@@ -6,6 +6,9 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.92] - unreleased
 
+### Changed
+
+- The edge runs with Traefik's API and dashboard off. `edge.args` now takes only the options Den lists: any other entry is refused, with a line naming it. `edge.include` files that sort before Den's own file or reuse its names, and `edge.mounts` into the dynamic folder, are refused too. Den makes a new edge proof at its first start after the update. See docs/distributions.md.
 - Restart all agents with out-of-date tools now restarts them through Den's restart queue, a batch at a time (`agents.resume.batch`, every `agents.resume.gap_seconds`, held back while the machine is busy), instead of every idle agent at once. Pressing it again while a wave runs adds nothing. The button shows "Restarting N of M…" and stays disabled until the wave is done, after a page reload too.
 
 ## [0.4.91] - 2026-11-26

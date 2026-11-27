@@ -149,7 +149,7 @@ import {
 } from "../../shared/test-resolve.js";
 import * as path from "path";
 import semver from "semver";
-import { edgeProofChecker } from "../../shared/edge/proof.js";
+import { edgeProofChecker, holdEdgeTrust } from "../../shared/edge/proof.js";
 import { edgeKeyDirs } from "../../shared/edge/key-dirs.js";
 import { registerInstall, registryDir } from "../../shared/install-registry.js";
 import {
@@ -165,6 +165,7 @@ import {
   type StateFolderOwnDeps,
 } from "./state-folder-held.js";
 import {
+  markEdgeProofRotated,
   rotateEdgeProofAtStart,
   syncEdgeProof,
 } from "../../shared/edge/runtime.js";
@@ -456,7 +457,6 @@ import {
   operatorActOf,
   bindRefusal,
   checkRequest,
-  isEdgePeer,
   isDockerBridgeAddress,
   isLoopbackAddress,
   isLoopbackBind,
@@ -1787,8 +1787,17 @@ import {
   EDGE_SIGNIN_NOTE,
   edgeExposedMessage,
   edgeExposure,
+  edgeContainer,
   edgeNetworkSubnets,
+  runningEdgeServesApi,
+  stopEdgeContainer,
 } from "../../shared/edge/exposure.js";
+import { edgeStartRetrying, unsureHold } from "../../shared/edge/start.js";
+import {
+  watchEdgeContainer,
+  writeEdgeWatchState,
+} from "../../shared/edge/watch.js";
+import { edgePeerCache } from "./edge-peer-cache.js";
 import { initLoginPath } from "../../shared/agents/runtime-search.js";
 import {
   linksFor,
@@ -2491,7 +2500,20 @@ function adoptOwner(
 function httpsOf(req: http.IncomingMessage, via: Via | null): boolean {
   return requestIsHttps(req, via, EDGE_PROVED(req));
 }
-const EDGE_PROVED = edgeProofChecker(() => {
+const EDGE_TRUST: { starting: boolean; held: string | null } = {
+  starting: true,
+  held: null,
+};
+const EDGE_UNSURE = unsureHold(EDGE_TRUST);
+const EDGE_RECHECK: {
+  stopped: boolean;
+  timer: ReturnType<typeof setTimeout> | null;
+} = { stopped: false, timer: null };
+function EDGE_PROVED(req: http.IncomingMessage): boolean {
+  const ok = EDGE_PROOF_CHECK(req);
+  return ok && !EDGE_TRUST.starting && !EDGE_TRUST.held;
+}
+const EDGE_PROOF_CHECK = edgeProofChecker(() => {
   if (Date.now() - EDGE_DIR.at > 10_000) {
     let dir: string | null = null;
     try {
@@ -2517,8 +2539,40 @@ function currentLocalNet(): ReturnType<typeof localNet> {
   }
   return LOCAL_NET.net;
 }
+const EDGE_PEERS = edgePeerCache({
+  read: async () => {
+    const cfg = readEdgeConfig();
+    let root = cfg.stateDir;
+    try {
+      root = fs.realpathSync(root);
+    } catch {
+      /* not made yet: as configured */
+    }
+    const c = await edgeContainer({ root, org: cfg.org });
+    return c ?? { id: null, addresses: [] };
+  },
+  watch: (id, on, sinceMs) => watchEdgeContainer(id, on, undefined, sinceMs),
+  onWatchState: (st) => {
+    try {
+      writeEdgeWatchState(readEdgeConfig().stateDir, st);
+    } catch {
+      /* no edge config or state dir: doctor shows no watch row */
+    }
+  },
+  ttlMs: () => {
+    try {
+      return (readEdgeConfig().addressRecheckSeconds ?? 60) * 1000;
+    } catch {
+      return 60_000;
+    }
+  },
+});
+function peerIsEdge(req: http.IncomingMessage): boolean {
+  return EDGE_PEERS.isEdge(req.socket?.remoteAddress);
+}
 /** Read the edge's Docker networks' subnets in the background (no edge: none). */
 function readEdgeNetworks(): void {
+  EDGE_PEERS.start();
   let names: string[];
   try {
     const cfg = readEdgeConfig();
@@ -2660,8 +2714,7 @@ const GUARD: GuardContext = {
   // Once Den's own named https address works, the session lives there.
   loopbackSessions: () => !NAMED.works(),
   peerIsLoopback: (req) => isLoopbackAddress(req.socket?.remoteAddress),
-  // The edge hostname only from the edge's own peers (loopback, Docker).
-  peerIsEdge: (req) => isEdgePeer(req.socket?.remoteAddress),
+  peerIsEdge,
   // This machine's addresses and bridges, for edgeClient (SEC-2a).
   localNet: currentLocalNet,
   // A deliberate exposure (DEN_BIND_HOST beyond loopback, other than the
@@ -7645,9 +7698,14 @@ async function handleRequest(
   if (
     handleEdgeUpRoute(req, res, pathname, {
       isAgent: (r) => !!(agentPrincipalOf(r) || auditActorOf(r)),
-      run: async () =>
-        (await runEdgeUp({ log: (l) => serverLog(`  ${l}`, "lifecycle") }))
-          .outcome,
+      run: async () => {
+        const up = await runEdgeUp({
+          log: (l) => serverLog(`  ${l}`, "lifecycle"),
+        });
+        EDGE_TRUST.held = null;
+        void EDGE_PEERS.refresh(true);
+        return up.outcome;
+      },
       log: (l) => serverLog(`  ${l}`, "lifecycle"),
       sendJson: (r, body, status) => sendJson(r, body, status),
     })
@@ -12413,6 +12471,92 @@ try {
     "lifecycle",
   );
 }
+function syncEdgeProofAtStart(): void {
+  const ports = new Set([PORT, readWebPortSafe()]);
+  rotateEdgeProofAtStart({
+    readConfig: readEdgeConfig,
+    ports,
+    onRotated: () => {
+      const line =
+        "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
+      serverLog(`  Edge: ${line}`, "lifecycle");
+      recordAction(null, { verb: "edge-proof-rotated", detail: line });
+    },
+    warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
+  });
+  const r = syncEdgeProof(readEdgeConfig(), ports);
+  if (r === "written")
+    serverLog(
+      "  Edge: Den's route now carries the edge's proof (its dynamic file)",
+      "lifecycle",
+    );
+  else if (r === "rotated")
+    serverLog(
+      "  Edge: a new edge proof for this version; the edge's dynamic file carries it, the old one no longer works",
+      "lifecycle",
+    );
+}
+
+async function edgeAtStart(): Promise<void> {
+  let cfg: ReturnType<typeof readEdgeConfig>;
+  try {
+    cfg = readEdgeConfig();
+  } catch {
+    EDGE_TRUST.starting = false;
+    return;
+  }
+  const dir = cfg.stateDir;
+  const out = await edgeStartRetrying(
+    {
+      servesApi: () => runningEdgeServesApi(cfg),
+      stop: () => stopEdgeContainer(cfg),
+      recreate: async () => {
+        await runEdgeUp({
+          rotateProof: true,
+          log: (l) => serverLog(`  ${l}`, "lifecycle"),
+        });
+        markEdgeProofRotated(cfg);
+        void EDGE_PEERS.refresh(true);
+      },
+      sync: syncEdgeProofAtStart,
+      hold: (reason) => {
+        try {
+          holdEdgeTrust(dir, reason);
+        } catch {
+          EDGE_TRUST.held = reason;
+        }
+        serverLog(
+          `  ⚠ Edge: ${reason}; nothing through the edge is believed until edge up succeeds (doctor)`,
+          "warn",
+        );
+      },
+      unsure: (reason) => {
+        if (EDGE_UNSURE.unsure(reason))
+          serverLog(
+            `  ⚠ Edge: ${reason}; nothing through the edge is believed until it answers (asked again every edge.address_recheck_seconds)`,
+            "warn",
+          );
+      },
+      release: () => EDGE_UNSURE.release(),
+      log: (l) => serverLog(`  Edge: ${l}`, "lifecycle"),
+    },
+    {
+      everyMs: (cfg.addressRecheckSeconds ?? 60) * 1000,
+      later: (fn, ms) => {
+        EDGE_RECHECK.timer = setTimeout(fn, ms);
+        EDGE_RECHECK.timer.unref();
+      },
+      stopped: () => EDGE_RECHECK.stopped,
+    },
+  );
+  EDGE_TRUST.starting = false;
+  if (out === "recreated")
+    serverLog(
+      "  Edge: recreated without Traefik's API, with a new proof",
+      "lifecycle",
+    );
+}
+
 // Issue 163: back from a logout the server ran through: who ran meanwhile.
 void CRASH_GATE.then(() =>
   startLogoutWatch((line) => serverLog(line, "lifecycle")),
@@ -12424,7 +12568,7 @@ try {
 } catch (e) {
   serverLog(`gate store: ${(e as Error).message}`, "lifecycle");
 }
-void CRASH_GATE.then(() =>
+void CRASH_GATE.then(() => {
   server.listen(PORT, BIND_HOST, () => {
     startLagWatch();
     void printBanner(ADDRESS ?? readWebUrl());
@@ -12465,33 +12609,10 @@ void CRASH_GATE.then(() =>
     void startBridgeListener().catch((e: unknown) =>
       serverLog(`  ⚠ Docker bridge listener: ${(e as Error).message}`, "warn"),
     );
-    // Issue 728: once agents can't read the edge's state folder, its proof
-    // is rotated once (edge.yml rewritten; Traefik reloads it by itself).
-    rotateEdgeProofAtStart({
-      readConfig: readEdgeConfig,
-      ports: new Set([PORT, readWebPortSafe()]),
-      onRotated: () => {
-        const line =
-          "Den rotated the edge's proof once, since agents can no longer read the edge's state folder. People stay signed in";
-        serverLog(`  Edge: ${line}`, "lifecycle");
-        recordAction(null, { verb: "edge-proof-rotated", detail: line });
-      },
-      warn: (m) => serverLog(`  ⚠ Edge: ${m}`, "warn"),
+    void edgeAtStart().catch((e: unknown) => {
+      EDGE_TRUST.starting = false;
+      EDGE_TRUST.held = (e as Error).message;
     });
-    // H1: an edge set up here before 0.4.48 (or rotated) gets the proof.
-    try {
-      const r = syncEdgeProof(
-        readEdgeConfig(),
-        new Set([PORT, readWebPortSafe()]),
-      );
-      if (r === "written")
-        serverLog(
-          "  Edge: Den's route now carries the edge's proof (dynamic/edge.yml)",
-          "lifecycle",
-        );
-    } catch (e) {
-      serverLog(`  ⚠ edge proof not synced: ${(e as Error).message}`, "warn");
-    }
     // Issue 278: agents stuck compacting ring the bell (agent_context.*).
     startContextWatch({ log: (l) => serverLog(`  ${l}`, "warn") });
     // Issue 163 (a): an install from before it was on by default is
@@ -12702,8 +12823,8 @@ void CRASH_GATE.then(() =>
           (l) => serverLog(`  [hub] ${l}`, "warn"),
         ),
       );
-  }),
-);
+  });
+});
 
 /**
  * SRV-1a: the restart marker the last server left. An audit row says the
@@ -13392,6 +13513,9 @@ async function stopDaemons(): Promise<void> {
 
 async function handleShutdown(signal: string): Promise<void> {
   clearSudoShims();
+  EDGE_RECHECK.stopped = true;
+  EDGE_PEERS.stop();
+  if (EDGE_RECHECK.timer) clearTimeout(EDGE_RECHECK.timer);
   // The registry lives in the state dir, which is resolved from the
   // distribution root on every call: if that can no longer be found (den.yml
   // moved or removed while the server ran), still exit. Never product() here:
