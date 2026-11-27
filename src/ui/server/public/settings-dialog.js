@@ -11,7 +11,7 @@ import { drawRows, settingsCtx } from "/settings-rows.js";
 export const SETTINGS_GROUPS = [
   {
     id: "you",
-    panes: ["appearance", "editor", "navigation", "graph", "notifications"],
+    panes: ["appearance", "editor", "navigation", "graph"],
   },
   { id: "work", panes: ["workspace", "agents", "hub"] },
   { id: "access", panes: ["access", "embed", "secrets"] },
@@ -33,10 +33,39 @@ export const inAccount = (row) =>
   row.category === "notifications";
 
 export const ACCOUNT_LINKS = {
-  notifications: { pane: "notifications", text: "setd.toAccount.notifications" },
   access: { pane: "devices", text: "setd.toAccount.devices" },
   cli: { pane: "profile", text: "setd.toAccount.profile" },
 };
+
+export const SUBS = {};
+
+export function subsOf(pane, rows) {
+  const plan = SUBS[pane];
+  if (!plan) return null;
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const out = Object.entries(plan).map(([key, ids]) => ({
+    key,
+    rows: ids.map((id) => byId.get(`${pane}.${id}`)).filter(Boolean),
+  }));
+  const placed = new Set(out.flatMap((g) => g.rows));
+  out.push({ key: "more", rows: rows.filter((r) => !placed.has(r)) });
+  return out.filter((g) => g.rows.length);
+}
+
+export function drawSubs(host, pane, rows, ctx, shell) {
+  for (const g of subsOf(pane, rows)) {
+    const box = document.createElement("div");
+    box.className = "setd-sub";
+    box.innerHTML = `<h4 class="setd-subh">${esc(shell.t(g.key === "more" ? "setd.sub.more" : `setd.sub.${pane}.${g.key}`))}</h4><div class="setd-subrows"></div>`;
+    host.append(box);
+    const n = drawRows(box.lastElementChild, g.rows, ctx, {
+      idPrefix: `setd-${pane}-${g.key}-`,
+    });
+    if (!n) box.hidden = true;
+  }
+}
+
+export const PANE_DRAW = {};
 
 export function paneOf(hash, rows) {
   const h = decodeURIComponent(String(hash || "").replace(/^#/, ""));
@@ -44,8 +73,25 @@ export function paneOf(hash, rows) {
   if (PANES[h]) return { pane: h, at: null };
   const row = rows.find((r) => r.id === h);
   if (row && PANES[row.category]) return { pane: row.category, at: row.id };
+  if (h === "notifications" || h.startsWith("notifications."))
+    return { pane: null, at: null, account: "notifications" };
   const cat = h.split(".")[0];
   return PANES[cat] ? { pane: cat, at: null } : { pane: null, at: null };
+}
+
+export function settingsRedirect(loc, rows) {
+  const q = new URLSearchParams(loc.search || "");
+  const to = paneOf(loc.hash, rows);
+  const search = q.get("q");
+  q.delete("q");
+  if (to.account) {
+    q.set("account", to.account);
+    return `/?${q}`;
+  }
+  q.set("settings", to.pane ?? "");
+  if (to.at) q.set("at", to.at);
+  if (search) q.set("sq", search);
+  return `/?${q}`;
 }
 
 const esc = (s) =>
@@ -121,7 +167,6 @@ async function build(shell) {
       .map((id) => ({
         id,
         title: cats.get(id).label,
-        desc: cats.get(id).description,
         lazy: true,
         readOnly: PANES[id].check === PANE_CHECKS.person ? readOnly : undefined,
       })),
@@ -147,9 +192,14 @@ async function build(shell) {
     );
   }
   document.body.append(dialog);
+  const descOf = (pane) => {
+    const d = cats.get(pane)?.description;
+    return d ? `<p class="setd-desc">${esc(d)}</p>` : "";
+  };
   const load = (pane, body) => {
-    body.innerHTML = '<div class="setd-rows"></div>' + linkRow(shell, pane);
-    const host = body.firstElementChild;
+    body.innerHTML =
+      descOf(pane) + '<div class="setd-rows"></div>' + linkRow(shell, pane);
+    const host = body.querySelector(".setd-rows");
     const own = bySection.get(pane)?.rows ?? [];
     const mark = () => {
       for (const el of host.querySelectorAll(".set-row[data-setting]")) {
@@ -161,15 +211,24 @@ async function build(shell) {
         label.tabIndex = -1;
       }
     };
-    new MutationObserver(mark).observe(host, { childList: true });
-    drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
+    new MutationObserver(mark).observe(host, {
+      childList: true,
+      subtree: true,
+    });
+    if (PANE_DRAW[pane]) PANE_DRAW[pane](host, own, ctx, shell);
+    else if (SUBS[pane]) drawSubs(host, pane, own, ctx, shell);
+    else drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
     mark();
   };
   const nav = hydrateDialogNav(dialog, {
     lang,
     words: DIALOG_NAV_WORDS[lang],
     load,
-    onCross: (href) => location.assign(href),
+    onCross: (href) => {
+      const to = new URL(href, location.href).searchParams.get("account");
+      if (to === null || !shell.openAccount) location.assign(href);
+      else shell.openAccount(to || null);
+    },
     onClose: () => {
       dialog.remove();
       live = null;
@@ -184,8 +243,24 @@ export async function openSettings(
 ) {
   live ??= build(shell);
   const { nav, rows } = await live;
-  if (hash) ({ pane, at } = paneOf(hash, rows));
+  if (hash) {
+    const to = paneOf(hash, rows);
+    if (to.account)
+      return shell.openAccount
+        ? shell.openAccount(to.account)
+        : location.assign(`?account=${to.account}`);
+    ({ pane, at } = to);
+  }
   nav.open(pane, at);
+  const sq = new URLSearchParams(location.search).get("sq");
+  const box = sq && nav.element.querySelector("[data-dn-search]");
+  if (box) {
+    box.value = sq;
+    box.dispatchEvent(new Event("input"));
+  }
+  nav.element
+    .querySelector('a.dn-row[aria-current="true"]')
+    ?.scrollIntoView({ block: "nearest" });
 }
 
 function fromHref(a) {
