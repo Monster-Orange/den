@@ -12,6 +12,8 @@
 
 import {
   buildScopeMenuModel,
+  hubSlugOf,
+  projectForHubSlug,
   PROJECT_COLOURS_KEY,
 } from "./workspace-picker.js";
 import { initAppearance } from "./appearance.js";
@@ -466,21 +468,38 @@ async function _renderScopeMenu() {
         r.ok ? r.json() : null,
       ).catch(() => null),
     ]);
+    if (_arriveFromHub(data, scope)) return;
+    const model = buildScopeMenuModel(
+      pageScope(scope, data),
+      data,
+      t,
+      document.documentElement.lang || undefined,
+    );
     sh.setWorkspaces({
       // The page's language sorts the projects (ja its own way).
-      ...buildScopeMenuModel(
-        pageScope(scope, data),
-        data,
-        t,
-        document.documentElement.lang || undefined,
-      ),
+      ...model,
       onSelect: _switchScope,
+    });
+    sh.setState?.({
+      hubProject: model.pinProject ? hubSlugOf(data, model.pinProject) : "",
     });
     _scopeShown = true;
     _scopeRetryMs = 0;
   } catch {
     _scopeFailed(sh);
   }
+}
+
+function _arriveFromHub(data, scope) {
+  const u = new URL(location.href);
+  const p = u.searchParams.get("project");
+  if (!p || data?.workspaces?.[p]) return false;
+  u.searchParams.delete("project");
+  history.replaceState(history.state, "", u.pathname + u.search + u.hash);
+  const ws = projectForHubSlug(data, p);
+  if (!ws || (scope?.scope === ws && scope?.focus === ws)) return false;
+  void _switchScope(ws, scope?.focus ?? null, false);
+  return true;
 }
 
 /** The pages whose ?ws= wins over the stored view (Graph, Agents). */

@@ -3316,7 +3316,8 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
-    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Set project {project}'s agent cap: {from} → {to}",
     "ap.det.project_agent_cap.now": "Now: {v}",
     "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
@@ -5866,6 +5867,7 @@
     agentsNeedYou: 0,
     // The rail's Hub link: GET /api/hub?rail=1, or null (not connected).
     hub: null,
+    hubProject: "",
     pins: [],
     collapsed: false,
     hidden: [],
@@ -7392,6 +7394,11 @@
       h.state === "connected"
         ? hubTarget(h.teamUrl || "") || hubTarget(h.url || "")
         : "";
+    if (href && state.hubProject) {
+      var hu = new URL(href);
+      hu.searchParams.set("project", state.hubProject);
+      href = hu.href;
+    }
     if (href) return { href: href, team: h.team || "" };
     var key =
       {
