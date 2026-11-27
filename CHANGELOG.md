@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Added
+
+- UI kit 0.23.0: `data-mode="light"` or `"dark"` on any element sets the mode for its box, not only on `<html>`, so a page can show light and dark side by side or a light preview inside a dark page. Native controls inside follow it, and the box takes its own background and text colour.
+
 ## [0.4.92] - unreleased
 
 ### Changed

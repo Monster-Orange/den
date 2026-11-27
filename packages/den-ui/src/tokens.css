@@ -6,8 +6,8 @@
  * and fonts; never spacing, motion or layers. Every rule here has zero
  * specificity (:where), so any theme rule wins.
  *
- * Mode: <html data-mode="light|dark">. With none set, light, or dark when
- * the system asks for it.
+ * Mode: data-mode="light|dark" on <html>, or on any element for its box.
+ * With none set, light, or dark when the system asks for it.
  */
 
 /* Type, shape, space, depth, motion, layers, targets: one set, both modes. */
@@ -81,7 +81,8 @@
 
 /* Light: the default. */
 :where(:root),
-:where(:root[data-mode="light"]) {
+:where(:root[data-mode="light"]),
+:where([data-mode="light"]) {
   color-scheme: light;
   --bg: #f2eee8;
   --surface: #fbf9f6;
@@ -116,7 +117,8 @@
 }
 
 /* Dark: asked for, or the system's choice when no mode is set. */
-:where(:root[data-mode="dark"]) {
+:where(:root[data-mode="dark"]),
+:where([data-mode="dark"]) {
   color-scheme: dark;
   --bg: #1a1612;
   --surface: #221d18;
@@ -174,4 +176,9 @@
       inset 0 1px 0 color-mix(in srgb, var(--text) 14%, transparent);
     --bar: linear-gradient(90deg, #9bbb63 0%, #a07c55 100%);
   }
+}
+
+:where([data-mode]:not(:root)) {
+  --shadow-menu: var(--shadow);
+  --shadow-dialog: var(--shadow);
 }

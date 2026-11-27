@@ -103,3 +103,8 @@
 :where(.den-rb-foot) {
   justify-content: flex-start;
 }
+
+:where([data-mode]:not(:root)) {
+  background: var(--bg);
+  color: var(--text);
+}
