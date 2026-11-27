@@ -251,6 +251,7 @@ import {
   resolveHistorySource,
   ensureSnapshot,
   readPageBefore,
+  SEARCH_LIST,
   searchCursorHash,
   searchHistoryPage,
   searchOffsets,
@@ -9445,8 +9446,15 @@ async function handleRequest(
         );
     }
     const project = url.searchParams.get("workspace");
-    const ask = readPageAsk(url.searchParams);
+    const ask = readPageAsk(url.searchParams, SEARCH_LIST);
     if (isPageError(ask)) return sendPageError(res, ask);
+    if (ask.dir === "prev" || ask.at === "last" || (ask.page ?? 1) > 1)
+      return sendPageError(res, {
+        status: 400,
+        code: "bad_page",
+        error:
+          "log search pages forward only: follow next, or start again without a cursor",
+      });
     const offsets = searchOffsets(
       ask.after,
       searchCursorHash(q, env, project, targets),

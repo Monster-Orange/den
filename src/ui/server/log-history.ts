@@ -794,6 +794,8 @@ export interface SearchPage extends Page<SearchPageMatch> {
   systems: SearchPageSystem[];
 }
 
+export const SEARCH_LIST = "logs.search";
+
 type Target = { repo: string; service: string };
 
 const labelOf = (t: Target) => `${t.repo}/${t.service}`;
@@ -838,12 +840,12 @@ function searchCursor(
   targets: Target[],
   o: Record<string, number>,
 ): string {
-  return encodeCursor(
-    [hash],
-    labelsOf(targets)
+  return encodeCursor(SEARCH_LIST, {
+    key: [hash],
+    id: labelsOf(targets)
       .map((l) => String(o[l] ?? 0))
       .join(","),
-  );
+  });
 }
 
 const pageKey = (m: SearchPageMatch): [string, string, number] => [
@@ -928,6 +930,7 @@ export async function searchHistoryPage(
     q,
     items: matches,
     next: more ? searchCursor(hash, targets, o) : null,
+    prev: null,
     systems,
   };
 }
