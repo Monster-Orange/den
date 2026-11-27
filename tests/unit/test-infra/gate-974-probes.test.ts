@@ -180,7 +180,6 @@ describe("issue 974's live check against the stub's limits", () => {
   });
 });
 
-// den-bed#108: the bed's module config names gate-974-allow and GATE974_ALLOW_TOKEN in agents.env_allow_agents.
 const ALLOWED_YML = [
   "agents:",
   '  env_allow_agents: {"gate-974-allow": ["GATE974_ALLOW_TOKEN"]}',

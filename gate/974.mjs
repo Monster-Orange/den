@@ -14,8 +14,6 @@ export const clauses = [
 export const timeoutMs = 240000;
 
 const CANARY = "canary-974-not-a-real-secret";
-// den-bed#108: the bed's module config (lib/module-config.json) names one fixed agent and one fake name in
-// agents.env_allow_agents for this check; Den writes each agent's hold script from it at that agent's start.
 export const ALLOW_ID = "gate-974-allow";
 export const ALLOW_NAME = "GATE974_ALLOW_TOKEN";
 const ALLOW_VALUE = "allow-974-not-a-real-secret";
@@ -49,7 +47,6 @@ export async function setup(ctx) {
   return { id, startCode: start?.code ?? null, runMs, allow };
 }
 
-// The fake name in a profile, then the agent's own env file sourced: does the name survive it?
 async function keptAfterHold(a, name) {
   const env = await oneLine(a, "printenv CLAUDE_ENV_FILE", 15000);
   const file = env.status === 0 && !env.cut ? env.out.trim() : "";
