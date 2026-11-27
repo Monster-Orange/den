@@ -20,9 +20,14 @@ function fmt(lang, n) {
   }
 }
 
+const RUN = /\d[\d.,\u00a0\u202f]*(?:\s*[–/-]\s*\d[\d.,\u00a0\u202f]*)+/g;
+const ltr = (t) => t.replace(RUN, "\u2066$&\u2069");
+
 function fill(tpl, lang, vars) {
-  return String(tpl ?? "").replace(/\{(\w+)\}/g, (all, k) =>
-    k in vars ? fmt(lang, vars[k]) : all,
+  return ltr(
+    String(tpl ?? "").replace(/\{(\w+)\}/g, (all, k) =>
+      k in vars ? fmt(lang, vars[k]) : all,
+    ),
   );
 }
 
@@ -110,17 +115,21 @@ function moreText(m) {
     : fill(more, m.lang, { n: m.step });
 }
 
+const ARROW = {
+  first: "M7 6v12M17 6l-6 6 6 6",
+  prev: "M15 6l-6 6 6 6",
+  next: "M9 6l6 6-6 6",
+  last: "M17 6v12M7 6l6 6-6 6",
+};
+
 function pageLink(m, dir, on) {
   const w = m.words;
-  const glyph = { first: "«", prev: "‹", next: "›", last: "»" }[dir];
-  const before = dir === "first" || dir === "prev";
-  const a = `<span class="den-pager-arr" aria-hidden="true">${glyph}</span>`;
-  const t = `<span class="den-pager-word">${esc(String(w[dir] ?? ""))}</span>`;
-  const inner = before ? a + t : t + a;
+  const inner = `<svg class="den-pager-ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ARROW[dir]}"/></svg>`;
+  const word = String(w[dir] ?? "");
   const sr = w[`${dir}Sr`] ?? w[dir] ?? "";
   const attrs =
-    `class="den-pager-btn den-pager-${dir}" data-den-pager-go="${dir}"` +
-    ` aria-label="${esc(String(sr))}"`;
+    `class="den-pager-btn den-pager-end den-pager-${dir}" data-den-pager-go="${dir}"` +
+    ` aria-label="${esc(String(sr))}" title="${esc(word)}"`;
   const href = on ? m.href(dir) : "";
   if (!href) return `<a ${attrs} role="link" aria-disabled="true">${inner}</a>`;
   const rel = dir === "prev" || dir === "next" ? ` rel="${dir}"` : "";
@@ -235,6 +244,26 @@ function pagesHtml(m, open) {
   );
 }
 
+function compactHtml(m, open) {
+  const w = m.words;
+  const counted = m.total != null;
+  const past = m.page > 1 || m.from > 1;
+  const f = formFor(m.href({ page: 1 }), m.href({ page: 2 }), "page");
+  const sr = fill(w.pageSr ?? "", m.lang, { p: m.page, n: m.pages ?? m.page });
+  const of = counted
+    ? `<span class="den-pager-of" aria-hidden="true">\u2066/ ${esc(fmt(m.lang, m.pages))}\u2069</span>`
+    : "";
+  const field =
+    `<form class="den-pager-form den-pager-cform" method="get" novalidate action="${esc(f.action)}" data-den-pager-form="page">${hidden(f.keep)}` +
+    `<input class="den-pager-sel den-pager-num" type="number" inputmode="numeric" name="${esc(f.name)}"` +
+    ` min="1"${counted ? ` max="${m.pages}"` : ""} value="${m.page}" aria-label="${esc(sr)}">${of}</form>`;
+  const ctl = [];
+  if (counted) ctl.push(pageLink(m, "first", past));
+  ctl.push(pageLink(m, "prev", past), field, pageLink(m, "next", m.hasNext));
+  if (counted) ctl.push(pageLink(m, "last", m.hasNext));
+  return `${open} data-den-pager-size="compact"><div class="den-pager-ctl">${ctl.join("")}</div></nav>`;
+}
+
 export function pagerHtml(o = {}) {
   const m = modelOf(o);
   const onePage =
@@ -242,12 +271,19 @@ export function pagerHtml(o = {}) {
       ? m.from <= 1 && !(m.mode === "more" ? m.moreHref : m.hasNext)
       : m.from <= 1 && m.to >= m.total;
   const keepAll = m.mode === "more" && o.loaded === true && m.total != null;
-  if (m.total === 0 || (onePage && !keepAll)) return "";
+  const perDefault = num(o.perDefault);
+  const ownSize =
+    m.mode === "pages" &&
+    o.compact !== true &&
+    perDefault > 0 &&
+    m.per !== perDefault;
+  if (m.total === 0 || (onePage && !keepAll && !ownSize)) return "";
   const w = m.words;
   const open =
     `<nav class="den-pager" data-den-pager="${m.mode}"` +
     ` aria-label="${esc(String(w.label ?? ""))}"`;
-  if (m.mode === "pages") return pagesHtml(m, open);
+  if (m.mode === "pages")
+    return o.compact === true ? compactHtml(m, open) : pagesHtml(m, open);
   const { href, ...keep } = m;
   void href;
   return (
@@ -379,7 +415,9 @@ function hydratePages(root, opts) {
   const keysOn = () =>
     typeof opts.shortcuts === "function"
       ? !!opts.shortcuts()
-      : opts.shortcuts !== false;
+      : opts.shortcuts == null
+        ? root.dataset.denPagerSize !== "compact"
+        : opts.shortcuts !== false;
 
   function go(ask) {
     const ev = new win.CustomEvent("den-pager-nav", {

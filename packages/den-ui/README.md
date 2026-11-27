@@ -763,28 +763,37 @@ panel }`: `id` names it, `text` is its words, `href` its page, `count`
   `per`, `perOptions` (default 25, 50, 100, 200), `href(target)`, `lang`
   and `words`. `href` is the host's: it returns the URL, filters, sort and
   `#list` kept, for `"first"`, `"prev"`, `"next"`, `"last"`, `{ page }` or
-  `{ per }`. One page only, or none: nothing is drawn.
-- With a total: "1–50 of 809", then « First, ‹ Previous, "Page [3 ▾] of
-  17", Next ›, Last », then "[50 ▾] per page". The page picker is a select
+  `{ per }`. One page only, or none: nothing is drawn, unless the person
+  chose a page size other than `perDefault`; then the row stays, so the
+  per-page choice can go back.
+- With a total: "1–50 of 809", then |< ‹ "Page [3 ▾] of 17" › >|, then
+  "[50 ▾] per page". First, Previous, Next and Last are icons only
+  (mirrored right to left), square: 32px, 44px on touch or at 600px or
+  less. Each word is the button's `aria-label` (the `*Sr` word, else the
+  word) and its `title` tooltip. The page picker is a select
   of every page, or a number field with Go over 500 pages. An end with no
   link is shown but `aria-disabled`, so nothing moves.
-- With no total (a cursor list): "1–50", ‹ Previous and Next ›
-  (`hasNext`), « First from page 2 on, no Last and no picker. A server
+- With no total (a cursor list): "1–50", Previous and Next
+  (`hasNext`), First from page 2 on, no Last and no picker. A server
   that can only page forward: build `href` with `cursorHref(url, target,
 nextCursor)`, which keeps the cursors already visited in the URL
   (`back`), so Previous and the browser's Back step back through them.
   It keeps the last 20 (`keep`); past that, Previous is off at the oldest
-  one kept, and « First still goes to the start. The first row's offset
+  one kept, and First still goes to the start. The first row's offset
   rides in the URL too (`o`, a plain number the cap doesn't touch):
   `cursorStart(url)` gives it, so `from` is `cursorStart(url) + 1`.
 - The layout follows the row's own width (a container query). Above
   600px the full row shows, never a ⋯; under 760px the range and the
   per-page choice go below the controls. At 600px or less it is the
-  folded form only: « ‹ [3 / 17 ▾] › » ⋯, where ⋯ opens a pop-over (a
+  folded form only: |< ‹ [3 / 17 ▾] › >| ⋯, where ⋯ opens a pop-over (a
   bottom sheet on a narrow row) with the range and the per-page choice.
   With no total the middle is the range ("‹ 1–50 ›"). The two forms never
-  show together. Buttons are 36px, and 44px only in a window 600px wide
+  show together. Other buttons are 36px, and 44px only in a window 600px wide
   or less or with a coarse pointer.
+- `compact: true`, for a list inside a card: ‹ [1] / 25 › only, a small
+  page field between Previous and Next (Enter goes there), with |< and >|
+  added when the row is wider than 600px. No range, per-page or ⋯. ← and
+  → stay off unless `shortcuts` is passed, since a page may have several.
 - More mode with `loaded: true` keeps its row once every row is shown
   ("All 70 shown", no button), for a list redrawn whole after its last
   chunk. A press calls `load()`, or `onNavigate({ kind: "more" })` when

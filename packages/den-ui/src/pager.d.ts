@@ -41,6 +41,8 @@ export interface PagerModel {
   pages?: number;
   per?: number;
   perOptions?: number[];
+  perDefault?: number;
+  compact?: boolean;
   href?: (target: PagerTarget) => string | null | undefined;
   step?: number;
   firstHref?: string;
