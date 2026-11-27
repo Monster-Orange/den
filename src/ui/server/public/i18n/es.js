@@ -4645,6 +4645,8 @@
     "setc.server": "Servidor", // words-ok: the en string's own word, translated
     "setc.server.d":
       "El servidor web de Den con el que habla esta página. Un reinicio mantiene en marcha los agentes y los servicios.", // words-ok: the en string's own word, translated
+    "setd.sub.embed.apps": "Apps web y claves de app",
+    "setd.sub.embed.feeds": "Flujos de apps",
     "setd.sub.more": "Más",
     "setd.sub.server.restarts": "Instalación, reinicios y actualizaciones",
     "setd.sub.server.address": "Dirección y alcance",

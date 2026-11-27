@@ -38,6 +38,26 @@ export const ACCOUNT_LINKS = {
 };
 
 const SUBS = {
+  embed: {
+    apps: [
+      "app_keys",
+      "origins",
+      "context_max_kb",
+      "key_minutes",
+      "app_key_audit",
+      "paste_max_kb",
+      "url_max",
+    ],
+    feeds: [
+      "feed_max_streams",
+      "feed_event_max_kb",
+      "feed_events_per_minute",
+      "feed_keep_events",
+      "feed_read_max_kb",
+      "feed_list_timeout",
+      "feed_list_max_mb",
+    ],
+  },
   server: {
     restarts: [
       "crash_loop",
@@ -177,6 +197,8 @@ function drawSubs(host, pane, rows, ctx, shell) {
 }
 
 export const PANE_DRAW = {
+  embed: (host, rows, ctx, shell) =>
+    drawSubs(host, "embed", rows, ctx, shell),
   server: (host, rows, ctx, shell) =>
     drawSubs(host, "server", rows, ctx, shell),
 };
