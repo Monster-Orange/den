@@ -360,7 +360,7 @@ for (const name of ["chromium", "webkit"]) {
         PINS.filter((x) => x.item !== "common/web"),
       );
       expect(await star(m.p, "false")).toBe("false");
-      const undo = m.p.locator(".den-toast .den-tbtn");
+      const undo = m.p.locator("[data-den-toast] [data-toast-undo]");
       await undo.waitFor({ timeout: 5000 });
       await undo.click();
       expect(await saved(m, 2)).toEqual(PINS);

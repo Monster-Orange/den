@@ -5,8 +5,8 @@
  *   - Terminal | Coach tabs; ?tab=coach opens the Coach;
  *   - the table sorts on a header click (aria-sort), and a whole-row click
  *     opens the detail; Close puts focus back on the row;
- *   - Dismiss shows dots in its button, then the Undo toast; Undo sends
- *     the dismissal back;
+ *   - Dismiss shows dots in its button, then the kit's Undo toast; Undo
+ *     sends the dismissal back;
  *   - a phone shows cards, never the table, and full-width Dismiss.
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
@@ -184,30 +184,34 @@ describe("the Coach tab", () => {
     await expect(btn.getAttribute("aria-busy")).resolves.toBe("true");
     expect(await btn.isDisabled()).toBe(true);
     release();
-    const toast = p.locator('[data-toast="action"]');
+    const toast = p.locator("[data-toast-words]");
+    await p.clock.runFor(100);
     await toast.waitFor();
     // The finding's own title (co.f.polling.t), with its agent's name.
     await expect(
       toast.locator("[data-toast-msg]").textContent(),
     ).resolves.toContain("tester");
-    // About 8 s, held while the pointer is on it (Den Design, issue 52).
     await toast.hover();
     await p.clock.runFor(12_000);
     expect(await toast.isVisible()).toBe(true);
     expect(await p.locator('[data-note="coach-no-findings"]').count()).toBe(1);
     expect(posts[0]).toBe('dismiss {"id":"polling:tester"}');
-    await toast.locator("[data-toast-btn]").click();
+    await p.locator("[data-toast-undo]").click();
     await p.locator('[data-note="coach-findings-table"]').waitFor();
     expect(posts[1]).toBe('undismiss {"id":"polling:tester"}');
-    expect(await p.locator("[data-toast]").count()).toBe(0);
-    // Dismissed again and left alone, the toast goes after about 8 s.
+    // Undo runs once: the kit says Undone. and takes the button away.
+    expect(await p.locator("[data-toast-undo]").count()).toBe(0);
+    await expect(p.locator("[data-toast-msg]").textContent()).resolves.toBe(
+      "Undone.",
+    );
+    // Dismissed again and left alone, the toast goes after its 8 s.
     await p
       .locator('[data-note="coach-findings-table"] [data-act="coach-dismiss"]')
       .click();
-    await toast.waitFor();
+    await p.locator("[data-toast-undo]").waitFor();
     await p.mouse.move(0, 0);
     await p.clock.runFor(9_000);
-    expect(await p.locator("[data-toast]").count()).toBe(0);
+    expect(await p.locator("[data-toast-msg]").count()).toBe(0);
     await p.context().close();
   });
 

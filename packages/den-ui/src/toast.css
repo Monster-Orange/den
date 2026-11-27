@@ -1,0 +1,154 @@
+/* den-ui: the toast's look (toast.js, issue 559). Tokens only. Linked,
+   never injected: clean under style-src 'self'.
+   An inverted surface (the page's text colour behind, its background
+   colour on top), centred at the bottom 20 px up (plus a phone's safe
+   area), at most 560 px wide. A host with a bar along the bottom sets
+   --den-toast-bottom (Den: 70px) so the toast sits clear of it. The focus ring is the page's background
+   colour: the accent ring loses contrast on this surface in dark mode.
+   It slides up only when the reader allows motion. */
+.den-toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: calc(
+    var(--den-toast-bottom, 20px) + env(safe-area-inset-bottom, 0px)
+  );
+  transform: translateX(-50%);
+  z-index: 1000;
+  width: max-content;
+  /* A fixed box's % is the viewport less any classic scrollbar (100vw
+     would count it). */
+  max-width: min(560px, calc(100% - 32px));
+  pointer-events: none;
+}
+.den-toast-region:empty {
+  display: none;
+}
+.den-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius, 8px);
+  background: var(--text);
+  color: var(--bg);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 18px;
+  box-shadow: var(--shadow);
+  /* On this inverted surface the ring is the page's background colour,
+     whatever a theme sets it to elsewhere. */
+  --focus-ring: var(--bg);
+}
+.den-toast-ic {
+  flex: none;
+  /* The inverted surface's error colour (at least 3:1 on it). */
+  color: var(--bad-inverse, currentColor);
+}
+.den-toast-words {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.den-toast-detail {
+  font: 11px var(--mono);
+  opacity: 0.75;
+}
+.den-toast-acts {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+}
+.den-toast-form {
+  display: contents;
+}
+.den-toast-undo,
+.den-toast-act,
+.den-toast-close {
+  appearance: none;
+  margin: 0;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.den-toast-undo {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.den-toast-link {
+  color: inherit;
+  text-underline-offset: 2px;
+}
+.den-toast-close {
+  flex: none;
+  font-size: 16px;
+  line-height: 1;
+}
+.den-toast :focus-visible {
+  outline: 2px solid var(--focus-ring, var(--bg));
+  outline-offset: var(--focus-offset, 2px);
+}
+/* A phone: the first row is the icon, the words and Close (top right,
+   on the words' first line); the actions are one row under them, 6 px
+   down, left-aligned, each a full tap. A toast with actions is the full
+   width less 16 px each side; a one-line plain one stays its own size. */
+@media (max-width: 480px) {
+  .den-toast {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 6px;
+  }
+  .den-toast-region:has(.den-toast-acts) {
+    width: calc(100% - 32px);
+  }
+  .den-toast:has(.den-toast-acts) {
+    width: 100%;
+  }
+  .den-toast-words {
+    flex: 1 1 0;
+  }
+  .den-toast-close {
+    order: 2;
+    justify-content: center;
+    /* Its 44 px box centred on the words' first line (18 px). */
+    margin: -13px -10px -13px 0;
+  }
+  .den-toast-acts {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+  .den-toast-undo,
+  .den-toast-act,
+  .den-toast-link,
+  .den-toast-close {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap, 44px);
+    min-width: var(--tap, 44px);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .den-toast {
+    animation: den-toast-in var(--dur-fast, 150ms) ease-out;
+  }
+}
+@keyframes den-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

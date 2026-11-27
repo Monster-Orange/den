@@ -1,8 +1,8 @@
 /**
  * The kit's action toast (shell.js toastAction, e.g. Undo): it stays while
- * the pointer or focus is on it, and closes what was left of its time
- * after they leave, so an Undo is never pulled from under a hand (issue
- * 52; the Agents page's Undo uses it too).
+ * the pointer or focus is on it, so an Undo is never pulled from under a
+ * hand. When they leave, a full plain time (3 s) starts: the den-ui
+ * toast's rule (the Agents page's Undo uses it too).
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { Browser, Page } from "playwright";
@@ -57,10 +57,12 @@ async function page(): Promise<Page> {
       8000,
     ),
   );
+  await p.clock.runFor(100);
+  await p.locator("[data-toast-msg]").waitFor();
   return p;
 }
 
-const toasts = (p: Page) => p.locator('[data-toast="action"]').count();
+const toasts = (p: Page) => p.locator("[data-toast-msg]").count();
 
 describe("the kit's action toast", () => {
   it("closes after its time when nobody touches it", async () => {
@@ -73,28 +75,28 @@ describe("the kit's action toast", () => {
     await p.context().close();
   });
 
-  it("the pointer on it holds it; it closes about 8 s after the pointer leaves", async () => {
+  it("the pointer on it holds it; it closes 3 s after the pointer leaves", async () => {
     if (!browser) return;
     const p = await page();
-    await p.locator('[data-toast="action"]').hover();
+    await p.locator("[data-toast-words]").hover();
     await p.clock.runFor(15_000);
     expect(await toasts(p)).toBe(1);
     await p.mouse.move(0, 0);
-    await p.clock.runFor(7_000);
+    await p.clock.runFor(2_000);
     expect(await toasts(p)).toBe(1);
     await p.clock.runFor(1_500);
     expect(await toasts(p)).toBe(0);
     await p.context().close();
   });
 
-  it("focus on its button holds it; it closes about 8 s after focus leaves", async () => {
+  it("focus on its button holds it; it closes 3 s after focus leaves", async () => {
     if (!browser) return;
     const p = await page();
-    await p.locator('[data-toast="action"] [data-toast-btn]').focus();
+    await p.locator("[data-toast-undo]").focus();
     await p.clock.runFor(15_000);
     expect(await toasts(p)).toBe(1);
     await p.evaluate(() => (document.activeElement as HTMLElement)?.blur());
-    await p.clock.runFor(7_000);
+    await p.clock.runFor(2_000);
     expect(await toasts(p)).toBe(1);
     await p.clock.runFor(1_500);
     expect(await toasts(p)).toBe(0);

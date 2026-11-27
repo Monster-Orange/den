@@ -268,13 +268,15 @@ describe("bell v6: a quieter bell", () => {
     expect(await p.isHidden("#den-bell-pop")).toBe(false);
     await stop.click();
     await pop.locator('[data-bell="ask-yes"]').click();
-    const toast = p.locator(".den-toast-act");
+    const toast = p.locator(
+      "[data-den-toast] [data-kind]:has([data-toast-undo])",
+    );
     await toast.waitFor();
-    await expect(toast.locator("span.den-tmsg").textContent()).resolves.toBe(
+    await expect(toast.locator("[data-toast-msg]").textContent()).resolves.toBe(
       "No longer showing “Releases and checks”.",
     );
     await expect(
-      toast.locator("a.den-tlink").getAttribute("href"),
+      toast.locator("[data-toast-link]").getAttribute("href"),
     ).resolves.toBe("/settings#notifications");
     // Its rows go, and Updates with them; the badge still counts the question.
     await pop.locator('[data-bell="updates"]').waitFor({ state: "detached" });
@@ -293,7 +295,10 @@ describe("bell v6: a quieter bell", () => {
     );
     await toast.locator("button").click();
     await p.waitForFunction(
-      () => document.querySelector(".den-toast-act") === null,
+      () =>
+        document.querySelector(
+          "[data-den-toast] [data-kind]:has([data-toast-undo])",
+        ) === null,
     );
     await undone;
     expect(await s!.settingsGet()).toMatchObject({
@@ -369,7 +374,9 @@ describe("bell v6: a quieter bell", () => {
           .first()
           .click();
         await p.locator('#den-bell-pop [data-bell="ask-yes"]').click();
-        const toast = p.locator(".den-toast-act");
+        const toast = p.locator(
+          "[data-den-toast] [data-kind]:has([data-toast-undo])",
+        );
         await toast.waitFor();
         const box = await toast.evaluate((t) => {
           const r = (e: Element | null) => {
@@ -382,13 +389,19 @@ describe("bell v6: a quieter bell", () => {
               h: b.height,
             };
           };
-          const a = t.querySelector("a.den-tlink")!;
+          const a = t.querySelector<HTMLAnchorElement>("[data-toast-link]")!;
           return {
             toast: r(t),
-            msg: r(t.querySelector("span.den-tmsg")),
+            msg: r(t.querySelector("[data-toast-msg]")),
             btn: r(t.querySelector("button")),
             link: r(a),
-            lineH: parseFloat(getComputedStyle(a).lineHeight),
+            linkLines: (() => {
+              const g = document.createRange();
+              g.selectNodeContents(a);
+              return new Set(
+                [...g.getClientRects()].map((c) => Math.round(c.top)),
+              ).size;
+            })(),
           };
         });
         // The words on top; both actions under them.
@@ -396,7 +409,9 @@ describe("bell v6: a quieter bell", () => {
         expect(box.link.t).toBeGreaterThanOrEqual(box.msg.b - 0.5);
         // The actions side by side, apart; the link on one line.
         expect(box.link.l).toBeGreaterThanOrEqual(box.btn.r);
-        expect(box.link.h).toBeLessThan(box.lineH * 1.6);
+        expect(box.linkLines).toBe(1);
+        expect(box.link.h).toBeGreaterThanOrEqual(44);
+        expect(box.btn.h).toBeGreaterThanOrEqual(44);
         // Inside the screen, with its gutter.
         expect(box.toast.l).toBeGreaterThanOrEqual(15);
         expect(box.toast.r).toBeLessThanOrEqual(390 - 15);

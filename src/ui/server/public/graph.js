@@ -912,13 +912,7 @@ function fit(floor = FIT_MIN) {
 
 // ── events ───────────────────────────────────────────────────────────────
 function toast(msg) {
-  document.querySelector(".dg-toast")?.remove();
-  const t = document.createElement("div");
-  t.className = "dg-toast";
-  t.setAttribute("role", "status");
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 3200);
+  window.denShell?.toast?.(msg);
 }
 async function recheck(services) {
   const env = hooks.env?.() || "local";

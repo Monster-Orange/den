@@ -471,6 +471,22 @@ describe("den-ui-parity (bin)", () => {
       expect(r.stdout).toMatch(new RegExp(`${c}: .*1 copy`));
   });
 
+  it("fails on a product's own toast: its markup, its look or its builder", () => {
+    const root = tmp();
+    fs.mkdirSync(path.join(root, "src"));
+    fs.writeFileSync(
+      path.join(root, "src", "own.css"),
+      ".den-toast { position: fixed; bottom: 20px; }\n",
+    );
+    fs.writeFileSync(
+      path.join(root, "src", "own.js"),
+      'el.className = "den-toast";\nfunction showToast(m) { return m; }\n',
+    );
+    const r = run(root);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/toast: .*3 copies/);
+  });
+
   // Issue 673: a product's own button (.btn) is a copy of the kit's.
   it("fails on a product's own .btn button, its look or its markup", () => {
     const root = tmp();
@@ -530,7 +546,7 @@ describe("den-ui-parity (bin)", () => {
     expect(fs.existsSync(path.join(process.cwd(), "DIVERGE.md"))).toBe(false);
     expect([r.status, r.stdout.trim()]).toEqual([
       0,
-      "den-ui-parity: ok, no copies of the kit's 12 components in src",
+      "den-ui-parity: ok, no copies of the kit's 13 components in src",
     ]);
   });
 });

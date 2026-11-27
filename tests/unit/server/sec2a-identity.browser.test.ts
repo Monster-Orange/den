@@ -198,8 +198,8 @@ describe("the identity chip", () => {
         for (const m of ms)
           for (const n of m.addedNodes) {
             const el = n instanceof Element ? n : null;
-            // The toast's own role (shell.js toast()), not its class.
-            const t = el?.matches('[role="status"]')
+            // A node added into a status region, or one with its own role.
+            const t = el?.closest('[role="status"]')
               ? el
               : el?.querySelector('[role="status"]');
             const text = t?.textContent?.trim();

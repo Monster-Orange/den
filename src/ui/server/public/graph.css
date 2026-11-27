@@ -1091,21 +1091,6 @@ path.dg-flow.cross {
   border-radius: 5px;
   margin-right: 4px;
 }
-.dg-toast {
-  position: fixed;
-  left: 50%;
-  bottom: 22px;
-  transform: translateX(-50%);
-  background: var(--dg-raised);
-  border: 1px solid var(--dg-border-strong);
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-size: 13px;
-  z-index: 950;
-  max-width: calc(100vw - 32px);
-  color: var(--text);
-}
-
 @media (max-width: 760px) {
   .dg-stage {
     grid-template-columns: minmax(0, 1fr);

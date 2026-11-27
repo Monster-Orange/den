@@ -179,6 +179,8 @@ export const KIT_FILES: readonly string[] = [
   // The save-state line for autosaving editors, and its look.
   "savestate.js",
   "savestate.css",
+  "toast.js",
+  "toast.css",
   // Issues 548, 549, 551: the panel fold toggle and its edge strip, and the
   // switch, with their looks.
   "panel-fold.js",
@@ -275,6 +277,10 @@ const KIT_SHELL_PARTS = [
  */
 const KIT_SHELL_SCOPED: ReadonlyArray<{ file: string; names: string[] }> = [
   { file: "dialog.js", names: ["openerOf", "focusBack"] },
+  {
+    file: "toast.js",
+    names: ["showToast", "hydrateToast", "ensureToastRegions"],
+  },
 ];
 const KIT_SHELL_NAMES = [
   "shellHtml",
@@ -317,6 +323,9 @@ const KIT_SHELL_NAMES = [
   "attachMenuFilter",
   "hydrateAppearance",
   "setWaiting",
+  "showToast",
+  "hydrateToast",
+  "ensureToastRegions",
 ];
 
 /**
@@ -403,6 +412,7 @@ export const KIT_PAGE_CSS: readonly string[] = [
   "/kit/dialog.css",
   // Issue 750: the group header's look (the agents page's By group view).
   "/kit/group-header.css",
+  "/kit/toast.css",
 ];
 
 /**

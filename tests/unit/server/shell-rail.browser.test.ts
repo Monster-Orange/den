@@ -360,6 +360,12 @@ describe("the rail", () => {
       ).denShell.pin("shop"),
     );
     expect(await p.textContent(".den-toast")).toBe("Pinned shop");
+    const gap = await p.evaluate(() => {
+      const t = document.querySelector("[data-den-toast] > [data-kind]")!;
+      for (const a of t.getAnimations()) a.finish();
+      return window.innerHeight - t.getBoundingClientRect().bottom;
+    });
+    expect(gap).toBeGreaterThanOrEqual(69.5);
     await p.waitForSelector('[data-pin="shop"]');
     // 0.4.18: no hover ×; Delete on the row (or its panel's Unpin).
     await p.focus('[data-pin="shop"]');

@@ -259,13 +259,14 @@ async function act(ws, verb, id, button) {
   } catch (err) {
     // Issue 479: a quarantined runtime: one action, Settings at its row.
     const next = quarantineNext(err, t, ws);
-    if (next && window.denShell?.toastAction)
-      window.denShell.toastAction(
-        err.message,
-        next.label,
-        () => location.assign(next.href),
-        20_000,
-      );
+    if (next && window.denShell?.toastWith)
+      window.denShell.toastWith({
+        message: err.message,
+        actions: [
+          { label: next.label, onClick: () => location.assign(next.href) },
+        ],
+        ms: 20_000,
+      });
     else window.denShell?.errorToast?.(err);
   }
   try {

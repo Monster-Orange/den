@@ -1014,7 +1014,7 @@ export function initBell(doc = document) {
           await post("/api/settings", { bell_kinds: { [sw]: true } });
           await refresh();
         },
-        10000,
+        undefined,
         { href: SETTINGS, label: tr("bell.settings") },
       );
       btn.focus();

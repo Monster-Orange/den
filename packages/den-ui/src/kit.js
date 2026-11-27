@@ -129,6 +129,7 @@ import {
   watchForms,
 } from "./busy.js";
 import { createSaveState } from "./savestate.js";
+import { showToast } from "./toast.js";
 import { mountFilterBar } from "./filter-bar.js";
 import { mountBulkBar } from "./bulk-bar.js";
 import { buttonHtml } from "./button.js";
@@ -241,6 +242,10 @@ export const busy = {
 /** An autosaving editor's save-state line, in the kit's language. */
 export function saveState(el, opts = {}) {
   return createSaveState(el, { lang, ...opts });
+}
+
+export function toast(opts = {}) {
+  return showToast({ lang: lang(), ...opts });
 }
 
 /** A list's filter bar, in the kit's language. */
@@ -398,6 +403,7 @@ const DenUI = {
   report,
   busy,
   saveState,
+  toast,
   filterBar,
   bulkBar,
   buttonHtml,
