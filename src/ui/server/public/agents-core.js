@@ -118,16 +118,37 @@ function savedBy() {
   }
 }
 
+const rowOf = (id) => st.data?.sessions?.find((s) => s.id === id) ?? null;
+
+const restartKey = (ws, id) => `${ws}\0${id}`;
+
+const agentPath = (r, verb) =>
+  `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/${verb}`;
+
+/** The open details: the row, its opener, the pop-over and its scrim. */
+const agd = {
+  r: null,
+  opener: null,
+  el: null,
+  scrim: null,
+  det: null,
+  release: null,
+};
+
 export {
-  t,
-  esc,
-  api,
-  CLI,
-  TITLE,
-  SERVER_WS,
-  PHONE,
-  MAX_NAME,
-  REFRESH_MS,
   BY,
+  CLI,
+  MAX_NAME,
+  PHONE,
+  REFRESH_MS,
+  SERVER_WS,
+  TITLE,
+  agd,
+  agentPath,
+  api,
+  esc,
+  restartKey,
+  rowOf,
   st,
+  t,
 };
