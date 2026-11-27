@@ -10,16 +10,17 @@ const { loadQuarantine, quarantinedFiles, quarantineMode } = quarantineList;
 // CI's test shards set 2; `npm run preflight` asks for 8.
 const workers = testWorkersModule.testWorkers();
 
-// Issue 296: DEN_TEST_DOCKER=skip leaves out the files that start Docker
-// containers, =only runs just them (tests/docker-suites.mjs says why).
-// Unset or blank, every file.
-const docker = (process.env.DEN_TEST_DOCKER ?? "").trim();
-if (docker && docker !== "skip" && docker !== "only")
-  throw new Error(`DEN_TEST_DOCKER is skip or only (got "${docker}")`);
-const dockerIgnored = {
-  skip: [dockerSuiteRegex()],
-  only: [`^(?!.*${dockerSuiteRegex()})`],
-}[docker];
+// DEN_TEST_DOCKER (the files that start Docker containers, tests/docker-suites.mjs)
+// and DEN_TEST_BROWSER (the *.browser.test.ts files): skip leaves those
+// files out, only runs just them; unset or blank, every file.
+function split(name, regex) {
+  const v = (process.env[name] ?? "").trim();
+  if (v && v !== "skip" && v !== "only")
+    throw new Error(`${name} is skip or only (got "${v}")`);
+  return { skip: [regex], only: [`^(?!.*${regex})`] }[v];
+}
+const dockerIgnored = split("DEN_TEST_DOCKER", dockerSuiteRegex());
+const browserIgnored = split("DEN_TEST_BROWSER", "\\.browser\\.test\\.ts$");
 
 // Issue 397: DEN_TEST_QUARANTINE (tests/quarantine.cjs). Off unless set:
 // only CI's pull request runs set it. "exclude" skips the quarantined
@@ -38,8 +39,12 @@ const quarantineIgnored =
       })()
     : [];
 const ignored =
-  dockerIgnored || quarantineIgnored.length
-    ? [...(dockerIgnored ?? []), ...quarantineIgnored]
+  dockerIgnored || browserIgnored || quarantineIgnored.length
+    ? [
+        ...(dockerIgnored ?? []),
+        ...(browserIgnored ?? []),
+        ...quarantineIgnored,
+      ]
     : undefined;
 
 export default {
