@@ -48,6 +48,8 @@ config and manifest changes a distribution must make to move to it under
 
 - With `DEN_LOGIN_SHELL=off`, `den doctor` and the server no longer start the person's shell to list the names in its environment. Den's tests set it, so a test no longer runs the developer's shell profile. (issue 1857)
 
+- Top bar: a project menu load that stalls (no answer, or headers with no body) now counts as failed after a while and is tried again, so the menu no longer stays hidden until a reload. The wait is a Setting, Settings › Server › Project menu load wait (`web.menu_load_timeout_ms`, 8 s by default, 1 s to 10 min). (issues 1051, 1044)
+
 ## [0.4.91] - 2026-11-26
 
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)
