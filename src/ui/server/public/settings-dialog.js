@@ -6,7 +6,7 @@ import {
 import * as appearance from "/appearance.js";
 import { registerDenSettings } from "/settings-registry.js";
 import { localizeCategory, localizeRow, sections } from "/settings-page.js";
-import { drawRows, settingsCtx } from "/settings-rows.js";
+import { drawRows, helpHtml, settingsCtx } from "/settings-rows.js";
 
 export const SETTINGS_GROUPS = [
   {
@@ -326,7 +326,8 @@ async function build(shell) {
   document.body.append(dialog);
   const descOf = (pane) => {
     const d = cats.get(pane)?.description;
-    return d ? `<p class="setd-desc">${esc(d)}</p>` : "";
+    const html = d && helpHtml(d, `setd-${pane}-desc`, "", (k) => shell.t(k));
+    return d ? `<div class="setd-desc">${html}</div>` : "";
   };
   const load = (pane, body) => {
     body.innerHTML =
@@ -356,7 +357,11 @@ async function build(shell) {
     lang,
     words: DIALOG_NAV_WORDS[lang],
     load,
-    onCross: (href) => location.assign(href),
+    onCross: (href) => {
+      const to = new URL(href, location.href).searchParams.get("account");
+      if (to === null || !shell.openAccount) location.assign(href);
+      else shell.openAccount(to || null);
+    },
     onClose: () => {
       dialog.remove();
       live = null;
@@ -373,7 +378,10 @@ export async function openSettings(
   const { nav, rows } = await live;
   if (hash) {
     const to = paneOf(hash, rows);
-    if (to.account) return location.assign(`?account=${to.account}`);
+    if (to.account)
+      return shell.openAccount
+        ? shell.openAccount(to.account)
+        : location.assign(`?account=${to.account}`);
     ({ pane, at } = to);
   }
   nav.open(pane, at);

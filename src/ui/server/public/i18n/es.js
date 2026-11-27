@@ -1945,6 +1945,17 @@
     "ident.toast":
       "Este dispositivo tiene la sesión iniciada en {name} en {host}",
     "acct.roleOwner": "Propietario",
+    "acd.title": "Cuenta",
+    "acd.profile": "Perfil",
+    "acd.access": "Acceso",
+    "acd.devices": "Dispositivos",
+    "acd.notifications": "Notificaciones",
+    "acd.group": "Tú",
+    "acd.name": "Nombre",
+    "acd.login": "GitHub",
+    "acd.role": "Rol",
+    "acd.local": "Este equipo",
+    "acd.profileD": "Quién ha iniciado sesión en este Den, aquí.",
     "set.access.approveNeedsBrowser":
       "Para aprobar un dispositivo hace falta un navegador con la sesión iniciada. Vuelve a iniciar sesión en esta página y apruébalo.",
     "set.access.approveNotAgent":
@@ -4579,6 +4590,8 @@
     "set.ui.moveDown": "Bajar {name}",
     "set.ui.unpinX": "Quitar {name}",
     "set.ui.noPins": "Nada fijado",
+    "set.ui.more": "Más",
+    "set.ui.cmd": "Línea de comandos",
     "set.ui.setByIn": "Lo define la distribución en {file}.",
     "set.ui.setBy": "Lo define la distribución en su configuración.",
     "set.ui.showX": "Mostrar {name}",

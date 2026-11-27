@@ -1,5 +1,7 @@
 import { esc } from "./strings.js";
 import { askConfirm, openerOf, focusBack } from "./dialog.js";
+import { icon } from "./icons.js";
+import { holdDots } from "./busy.js";
 
 export const DIALOG_NAV_WORDS = {
   en: {
@@ -13,6 +15,8 @@ export const DIALOG_NAV_WORDS = {
     discard: "Discard your change to {field}?",
     discardYes: "Discard",
     discardNo: "Keep editing",
+    saved: "Saved",
+    notSaved: "Not saved. Try again.",
   },
   es: {
     close: "Cerrar",
@@ -25,6 +29,8 @@ export const DIALOG_NAV_WORDS = {
     discard: "¿Descartar tu cambio en {field}?",
     discardYes: "Descartar",
     discardNo: "Seguir editando",
+    saved: "Guardado",
+    notSaved: "No se guardó. Inténtalo de nuevo.",
   },
   ja: {
     close: "閉じる",
@@ -37,6 +43,8 @@ export const DIALOG_NAV_WORDS = {
     discard: "{field} の変更を破棄しますか？",
     discardYes: "破棄",
     discardNo: "編集を続ける",
+    saved: "保存しました",
+    notSaved: "保存されませんでした。もう一度お試しください。",
   },
 };
 const HITS = 6;
@@ -71,6 +79,7 @@ export function dialogNavHtml({
   open,
   href = "",
   cross,
+  foot = [],
   lang = "en",
   words,
   shown = true,
@@ -85,7 +94,11 @@ export function dialogNavHtml({
           (p) =>
             `<li><a class="dn-row" href="${esc(paneHref(href, param, p.id))}" data-dn-pane="${esc(p.id)}"` +
             (p.id === on ? ' aria-current="true"' : "") +
-            `><span class="dn-row-t">${esc(p.title)}</span><span class="dn-chev" aria-hidden="true">›</span></a></li>`,
+            `>` +
+            (p.icon
+              ? icon(p.icon).replace("<svg ", '<svg class="dn-ic" ')
+              : "") +
+            `<span class="dn-row-t">${esc(p.title)}</span><span class="dn-chev" aria-hidden="true">›</span></a></li>`,
         )
         .join("");
       return (
@@ -124,11 +137,22 @@ export function dialogNavHtml({
     `<header class="dn-head"><h2 id="${esc(tid)}" class="dn-title">${esc(title)}</h2>` +
     `<a class="den-btn ghost icon dn-x" href="${esc(closeHrefOf(href, param))}" data-dn-close aria-label="${esc(w.close)}"><span aria-hidden="true">✕</span></a></header>` +
     `<nav class="dn-rail" aria-label="${esc(title)}">` +
-    `<input class="dn-search" type="search" autocomplete="off" data-dn-search placeholder="${esc(ph)}" aria-label="${esc(ph)}">` +
+    `<input class="dn-search" type="search" autocomplete="off" data-dn-search placeholder="${esc(ph)}" aria-label="${esc(ph)}" aria-keyshortcuts="/">` +
     `<p class="dn-none" data-dn-none hidden></p>` +
     `<div class="dn-lists">${rail}</div>` +
-    (cross
-      ? `<a class="dn-cross" href="${esc(cross.href)}" data-dn-cross>${esc(cross.label ?? (kind === "account" ? w.toSettings : w.toAccount))}</a>`
+    (cross || foot.length
+      ? `<div class="dn-foot">` +
+        (cross
+          ? `<a class="dn-cross" href="${esc(cross.href)}" data-dn-cross>${esc(cross.label ?? (kind === "account" ? w.toSettings : w.toAccount))}</a>`
+          : "") +
+        foot
+          .filter((f) => f && f.href)
+          .map(
+            (f) =>
+              `<a class="dn-cross" href="${esc(f.href)}">${esc(f.label ?? "")}</a>`,
+          )
+          .join("") +
+        `</div>`
       : "") +
     `</nav><div class="dn-panes">${sections}</div></dialog>`
   );
@@ -342,6 +366,54 @@ export function hydrateDialogNav(dialog, opts = {}) {
     doc.documentElement.classList.remove("dn-locked");
     opts.onClose?.();
     focusBack(opener);
+  });
+
+  const say = (pane, text, bad) => {
+    let p = pane.querySelector(":scope > .dn-say");
+    if (!p) {
+      p = doc.createElement("p");
+      p.className = "dn-say";
+      pane.querySelector(".dn-pane-head")?.after(p);
+    }
+    p.setAttribute("role", bad ? "alert" : "status");
+    p.textContent = text;
+    p.hidden = !text;
+  };
+  dialog.addEventListener("submit", async (e) => {
+    const form = e.target;
+    const pane = form.closest?.("section[data-dn-pane]");
+    if (!pane || form.method === "dialog") return;
+    e.preventDefault();
+    const btn =
+      e.submitter ?? form.querySelector("button:not([type]), [type=submit]");
+    if (btn?.getAttribute("aria-busy") === "true") return;
+    if (btn) holdDots(btn, true);
+    say(pane, "");
+    let r;
+    try {
+      if (opts.onSave) r = await opts.onSave(form, pane.dataset.dnPane);
+      else {
+        const res = await win.fetch(form.action, {
+          method: (form.method || "post").toUpperCase(),
+          body: new win.FormData(form, e.submitter ?? undefined),
+          credentials: "same-origin",
+          headers: { accept: "text/html", "x-dn-pane": "1" },
+        });
+        if (res.ok && res.headers.get("x-dn-pane")) {
+          const body = pane.querySelector(".dn-body");
+          if (body) body.innerHTML = await res.text();
+          r = { ok: true };
+        } else r = { ok: false };
+      }
+    } catch {
+      r = { ok: false };
+    }
+    if (btn) holdDots(btn, false);
+    if (r && r.ok !== false) {
+      for (const el of form.elements)
+        if ("defaultValue" in el) el.defaultValue = el.value;
+      say(pane, r.message ?? w.saved);
+    } else say(pane, r?.error ?? w.notSaved, true);
   });
 
   dialog.addEventListener("cancel", (e) => {

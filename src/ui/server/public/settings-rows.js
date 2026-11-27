@@ -123,6 +123,59 @@ export async function settingsCtx(deps) {
   return ctx;
 }
 
+const CLI = "__DEN_CLI__";
+const CLI_RE = CLI.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const CMD = new RegExp(
+  `(^|[\\s(:])${CLI_RE} (config|gate|web|hub|edge|agents|apps)\\b`,
+);
+const SENTENCE = new RegExp(
+  `(?<=[.!?])\\s+(?=[^\\sa-z]|${CLI_RE} )|(?<=。)(?=\\S)`,
+);
+
+export function splitHelp(text) {
+  const parts = String(text ?? "")
+    .split(SENTENCE)
+    .filter((p) => p.trim());
+  const at = parts.findIndex((p, i) => i > 0 && CMD.test(p));
+  const prose = at < 0 ? parts : parts.slice(0, at);
+  const cmd = at < 0 ? [] : parts.slice(at);
+  let lead = prose[0] ?? "";
+  const m = lead.match(CMD);
+  if (m) {
+    const i = m.index + m[1].length;
+    cmd.unshift(lead.slice(i).replace(/\)?[.。]?$/, ""));
+    const end = lead.endsWith("。") ? "。" : ".";
+    lead = lead.slice(0, i).replace(/[\s(:]+$/, "");
+    if (!/[.!?。]$/.test(lead)) lead += end;
+  }
+  return { lead, more: prose.slice(1), cmd };
+}
+
+function cmdHtml(p) {
+  const m = p.match(CMD);
+  const i = m ? m.index + m[1].length : -1;
+  const rest = i < 0 ? "" : p.slice(i).replace(/\.$/, "");
+  const code =
+    (i === 0 && rest === p) ||
+    (i >= 0 &&
+      /^\S+ (config \S+|gate settings( \S+)+|gate (box|runner) .+)$/.test(rest));
+  return code
+    ? `<p>${esc(p.slice(0, i))}<code>${esc(rest)}</code></p>`
+    : `<p>${esc(p)}</p>`;
+}
+
+export function helpHtml(text, did, after, L) {
+  const { lead, more, cmd } = splitHelp(text);
+  const fold =
+    more.length || cmd.length
+      ? `<details class="set-more"><summary>${esc(L(more.length ? "set.ui.more" : "set.ui.cmd"))}</summary>` +
+        more.map((p) => `<p>${esc(p)}</p>`).join("") +
+        cmd.map(cmdHtml).join("") +
+        "</details>"
+      : "";
+  return `<div class="d"><span id="${did}">${esc(lead)}${after}</span>${fold}</div>`;
+}
+
 export function rowKit(
   ctx,
   { redraw, root = null, idPrefix = "", scopeTag = true },
@@ -320,7 +373,9 @@ export function rowKit(
       "</div>" +
       // helpInControl: the control shows its own help line (mock v6);
       // the description stays for screen readers.
-      `<div class="d${r.helpInControl ? " den-sr" : ""}" id="${did}">${esc(r.description)}${note}${tag(r.from)}</div>` +
+      (r.helpInControl
+        ? `<div class="d den-sr" id="${did}">${esc(r.description)}${note}${tag(r.from)}</div>`
+        : helpHtml(r.description, did, note + tag(r.from), L)) +
       `<span class="set-saved" role="status" id="s-${id}"></span>` +
       "</div>"
     );

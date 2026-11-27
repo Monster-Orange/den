@@ -8,11 +8,13 @@ config and manifest changes a distribution must make to move to it under
 
 ### Added
 
-- UI kit 0.23.0: the dialog with left nav and search (`dialog-nav.js`, `dialog-nav.css`, DS component #5) for Account and Settings pop-ups: a rail with search and the pane list, panes that stay mounted, search that jumps to a row, the open pane in the address (Back closes it), a question before a typed change is lost, read-only panes, and a list-then-pane layout on a phone. Words in en, es and ja.
+- UI kit 0.23.0: the dialog with left nav and search (`dialog-nav.js`, `dialog-nav.css`, DS component #5) for Account and Settings pop-ups: a rail with search and the pane list, panes that stay mounted, search that jumps to a row, the open pane in the address (Back closes it), a question before a typed change is lost, read-only panes, an icon per pane, extra foot links, forms in a pane that save in place ("Saved" or the error shown in the pane), and a list-then-pane layout on a phone. Words in en, es and ja.
+
+- Account opens as a pop-up over the page you're on: click your name at the foot of the rail, or open any page with `?account=<pane>`. Back or Esc closes it. Its first pane, Profile, shows who is signed in.
 
 ### Changed
 
-- Settings opens as a pop-up over the page you are on, from the rail's Settings item or any link to Settings: panes grouped on the left (Look and feel, Projects and agents, Access and safety, This install), a search over pane names and setting labels (never values), the open pane in the address as `?settings=<pane>`, and Back closes it. Your notifications, devices and sign-out are in Account; Settings links there, and a link to Settings › Notifications opens Account. A browser that isn't signed in sees the panes read-only. Old links keep working: `/settings` and `/settings#<section or row>` open the pop-up over Home at that pane or row, `?q=` fills its search, and `/local-dev?settings=1` opens Editor & terminal. (issue 1926)
+- Settings opens as a pop-up over the page you are on, from the rail's Settings item or any link to Settings: panes grouped on the left (Look and feel, Projects and agents, Access and safety, This install), a search over pane names and setting labels (never values), the open pane in the address as `?settings=<pane>`, and Back closes it. Your notifications, devices and sign-out are in Account; Settings links there, and a link to Settings › Notifications opens Account. A browser that isn't signed in sees the panes read-only. Old links keep working: `/settings` and `/settings#<section or row>` open the pop-up over Home at that pane or row, `?q=` fills its search, and `/local-dev?settings=1` opens Editor & terminal. Each setting's help is one sentence; the rest and its command line fold under "More" or "Command line". (issue 1926)
 
 - Settings › Access stops asking GitHub whether you've linked as owner once the Settings pop-up is closed, instead of every 1.5 seconds until the code runs out. Settings › Embedding no longer leaves a listener behind each time the pop-up closes. (issue 1926)
 
