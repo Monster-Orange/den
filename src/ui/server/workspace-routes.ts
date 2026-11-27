@@ -207,7 +207,13 @@ function gitOut(cwd: string, args: string[]): Promise<string | null> {
  * The repos Local Dev's "add" picker offers: local checkouts under
  * repos_root with a manifest, managed clones, and catalog-only entries.
  */
-type RepoPageAsk = { limit: number; after: [number, string] | null; q: string };
+type RepoPageAsk = {
+  limit: number;
+  after: [number, string, string] | null;
+  q: string;
+};
+
+export const REPOS_LIST = "workspaces.available-repos";
 
 const segmentsBefore = (a: string, b: string): number => {
   const x = a.split("/");
@@ -260,20 +266,27 @@ async function buildAvailableRepos(
     if (page) lookups.set(entry, run);
     else pending.push(run());
   };
-  const keys = new Map<object, [number, string]>();
+  const keys = new Map<object, [number, string, string]>();
   const needle = page?.q.toLowerCase() ?? "";
   const wanted = (...xs: (string | null | undefined)[]) =>
     !needle || xs.some((x) => !!x && x.toLowerCase().includes(needle));
   const full = () => !!page && entries.length > page.limit;
-  const afterCursor = (rank: number, key: string) =>
-    !page?.after ||
-    rank > page.after[0] ||
-    (rank === page.after[0] &&
-      (rank === 0
-        ? segmentsBefore(key, page.after[1]) > 0
-        : key > page.after[1]));
-  const keep = (entry: object, rank: number, key: string) => {
-    keys.set(entry, [rank, key]);
+  const afterCursor = (rank: number, key: string, sub = "") => {
+    if (!page?.after) return true;
+    const [r, k, b] = page.after;
+    if (rank !== r) return rank > r;
+    const c =
+      rank === 0 || rank === 2
+        ? segmentsBefore(key, k)
+        : key < k
+          ? -1
+          : key > k
+            ? 1
+            : 0;
+    return c > 0 || (c === 0 && sub > b);
+  };
+  const keep = (entry: object, rank: number, key: string, sub = "") => {
+    keys.set(entry, [rank, key, sub]);
   };
   const isAdded = (relPath: string, gh: string | null): boolean =>
     existingAddresses.has(relPath) ||
@@ -347,7 +360,11 @@ async function buildAvailableRepos(
     for (const { d, absPath, hasManifest, isCheckout } of checked) {
       if (full()) return;
       const relPath = relPrefix ? `${relPrefix}/${d.name}` : d.name;
-      if (hasManifest && afterCursor(0, relPath) && wanted(d.name, relPath)) {
+      if (
+        hasManifest &&
+        afterCursor(0, relPath) &&
+        wanted(d.name, relPath, catalog[relPath]?.gh)
+      ) {
         const known = catalog[relPath]?.gh ?? null;
         // Already added if the exact address is in the workspace, OR if
         // a repo with the same GitHub remote is already present.
@@ -412,7 +429,11 @@ async function buildAvailableRepos(
       const key = `${repoName}::${branchName}`; // unique per repo+branch
       seenRelPaths.add(repoName);
       if (seenRelPaths.has(key)) continue;
-      if (full() || !afterCursor(1, key) || !wanted(repoName, branchName))
+      if (
+        full() ||
+        !afterCursor(1, repoName, branchName) ||
+        !wanted(repoName, branchName, catalog[repoName]?.gh)
+      )
         continue;
       const known = catalog[repoName]?.gh ?? null;
       const entry: RepoEntry = {
@@ -426,7 +447,7 @@ async function buildAvailableRepos(
         currentBranch: branchName,
       };
       entries.push(entry);
-      keep(entry, 1, key);
+      keep(entry, 1, repoName, branchName);
       later(entry, () =>
         Promise.all([
           known ? known : getRemoteGh(absPath),
@@ -483,24 +504,33 @@ async function buildAvailableRepos(
     items,
     next:
       entries.length > page.limit && at
-        ? encodeCursor([at[0], at[1]], at[1])
+        ? encodeCursor(REPOS_LIST, { key: [...at], id: at[1] })
         : null,
+    prev: null,
   };
 }
 
 type AvailableRepos = Awaited<ReturnType<typeof buildAvailableRepos>>;
 const readRepoPage = (p: URLSearchParams): RepoPageAsk | PageError | null => {
   if (p.get("all") === "1") return null;
-  const ask = readPageAsk(p);
+  const ask = readPageAsk(p, REPOS_LIST);
   if (isPageError(ask)) return ask;
+  if (ask.dir === "prev" || ask.at === "last" || (ask.page ?? 1) > 1)
+    return {
+      status: 400,
+      code: "bad_page",
+      error:
+        "this list pages forward only: follow next, or start again without a cursor",
+    };
   const q = (p.get("q") ?? "").trim().slice(0, 200);
   if (!ask.after) return { limit: ask.limit, after: null, q };
   const k = ask.after.key;
   if (
     !Array.isArray(k) ||
-    k.length !== 2 ||
+    k.length !== 3 ||
     ![0, 1, 2].includes(k[0] as number) ||
     typeof k[1] !== "string" ||
+    typeof k[2] !== "string" ||
     k[1] !== ask.after.id
   )
     return {
@@ -508,10 +538,10 @@ const readRepoPage = (p: URLSearchParams): RepoPageAsk | PageError | null => {
       code: "bad_cursor",
       error: "cursor is not one this list gave: start again without it",
     };
-  return { limit: ask.limit, after: [k[0] as number, k[1]], q };
+  return { limit: ask.limit, after: [k[0] as number, k[1], k[2]], q };
 };
 /** Shared by concurrent requests, reused briefly; cleared by any mutation. */
-const availableReposCache = singleFlight<AvailableRepos>(2_000);
+const availableReposCache = singleFlight<AvailableRepos>(2_000, Date.now, 50);
 
 export const WORKSPACES_SHAPE = {
   maps: [

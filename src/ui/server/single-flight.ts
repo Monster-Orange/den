@@ -17,6 +17,7 @@ export interface SingleFlight<T> {
 export function singleFlight<T>(
   ttlMs: number,
   now: () => number = Date.now,
+  maxKeys = Infinity,
 ): SingleFlight<T> {
   const entries = new Map<
     string,
@@ -35,7 +36,12 @@ export function singleFlight<T>(
         promise: Promise.resolve().then(build),
         settledAt: null,
       };
+      entries.delete(key);
       entries.set(key, entry);
+      for (const [k, e] of entries) {
+        if (entries.size <= maxKeys) break;
+        if (k !== key && e.settledAt !== null) entries.delete(k);
+      }
       entry.promise.then(
         () => {
           entry.settledAt = now();
