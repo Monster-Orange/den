@@ -1049,7 +1049,7 @@ const READ_TOOLS: DenTool[] = [
   read(
     "logs_search",
     "Search logs",
-    "Search the full log history of services (repo/service targets) for text. Local sources only unless mcp.logs.remote is on. Secrets are redacted.",
+    "Search the full log history of services (repo/service targets) for text, oldest first, all targets merged by time. Local sources only unless mcp.logs.remote is on. Secrets are redacted. Returns { items, next }. When next is not null there are more: call again with cursor set to next. limit defaults to 50 and is capped by the install's list page size.",
     {
       q: z.string().min(2).describe("Text to find (2+ characters)"),
       targets: z
@@ -1059,6 +1059,18 @@ const READ_TOOLS: DenTool[] = [
         .describe("repo/service names"),
       env: envArg,
       workspace: workspaceArg,
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe("Matches per page (default 50)"),
+      cursor: z
+        .string()
+        .optional()
+        .describe(
+          "The next value of the previous page, to get the page after it",
+        ),
     },
     async (a, { api, cfg, scope }) => {
       const env = envOf(a);
@@ -1073,12 +1085,17 @@ const READ_TOOLS: DenTool[] = [
             return { repo: t.slice(0, slash), service: t.slice(slash + 1) };
           }),
         );
-      return api.get("/api/logs/search", {
+      const page = await api.get("/api/logs/search", {
         q: String(a.q),
         env,
         targets: (a.targets as string[]).join(","),
         workspace: logsProject(a, scope),
+        ...(a.limit !== undefined ? { limit: String(a.limit) } : {}),
+        ...(a.cursor ? { cursor: String(a.cursor) } : {}),
       });
+      if (!page || typeof page !== "object" || !("items" in page)) return page;
+      const { results: _results, ...rest } = page as Record<string, unknown>;
+      return rest;
     },
   ),
   read(
