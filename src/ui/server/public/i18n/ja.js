@@ -4446,6 +4446,8 @@
     "set.ui.moveDown": "{name} を下へ移動",
     "set.ui.unpinX": "{name} のピン留めを外す",
     "set.ui.noPins": "ピン留めはありません",
+    "set.ui.more": "詳しく",
+    "set.ui.cmd": "コマンドライン",
     "set.ui.setByIn": "ディストリビューションが {file} で設定しています。",
     "set.ui.setBy": "ディストリビューションが設定で指定しています。",
     "set.ui.showX": "{name} を表示",
