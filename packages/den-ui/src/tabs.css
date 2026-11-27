@@ -114,17 +114,24 @@
 }
 /* Folded: one select with the host's label before it, the field look. */
 .den-tabs-fold {
+  position: static;
   display: inline-flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
   max-width: 100%;
   font-size: var(--fs-s);
   color: var(--text);
 }
 .den-tabs-fold-l {
-  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .den-tabs-select {
+  flex: 1 0 8em;
   min-width: 0;
   max-width: 100%;
   height: var(--den-tab-h);
