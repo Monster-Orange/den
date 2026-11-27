@@ -21,9 +21,20 @@ import {
   linkedModulesEntry,
   writeGuardRoots,
 } from "./write-guard";
+import tmpLeaks from "./tmp-leaks.cjs";
 
 // No real credentials reach a test, or its failure output (scrub-env.ts).
 scrubSecretEnv();
+
+tmpLeaks.armTmpLeaks();
+tmpLeaks.setTestFile(
+  path.relative(process.cwd(), expect.getState().testPath ?? "") || "unknown",
+);
+tmpLeaks.record(
+  tmpLeaks.listFile(),
+  path.join(os.tmpdir(), `den-test-${process.pid}`),
+  "setup",
+);
 
 // Issue 1048: the gate reads this machine's load to hold new cpu slots. A
 // test that wants a load passes its own; every other test reads 0, so a busy

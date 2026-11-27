@@ -1,3 +1,4 @@
+import { agentPagePath } from "../../shared/agent-links.js";
 import { isServerScope } from "../../shared/agents/server-agent.js";
 import type * as http from "http";
 import { agentSeenSubject, type SeenMarks } from "../../shared/seen-mark.js";
@@ -122,7 +123,7 @@ function finished(
         project: projectName(r.workspace),
         ...(isServerScope(r.workspace) ? { server: true as const } : {}),
         at: latest.at,
-        link: `/agents?project=${encodeURIComponent(r.workspace)}&agent=${encodeURIComponent(r.id)}`,
+        link: agentPagePath(r.workspace, r.id),
       },
     });
   }

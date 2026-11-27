@@ -79,7 +79,7 @@ async function startLikeWebUp(name: string, silent: boolean): Promise<Den> {
           NO_COLOR: "1",
         },
       },
-      { timeoutMs: 40_000 },
+      { timeoutMs: 40_000, logFile: log },
     );
     return {
       stateDir,

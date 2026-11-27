@@ -12,7 +12,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
@@ -23,6 +22,9 @@ import {
 } from "../../../src/ui/server/report-routes.js";
 import { feedbackSettings } from "../../../src/shared/report-store.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://den-vis.test";
@@ -55,7 +57,7 @@ function den(
   clock: () => number = Date.now,
 ): ReportRouteDeps {
   const said = Array.isArray(answer) ? [...answer] : [answer];
-  const state = fs.mkdtempSync(path.join(os.tmpdir(), "den-vis-b-"));
+  const state = tempDir("den-vis-b-");
   return {
     settings: () =>
       feedbackSettings(
