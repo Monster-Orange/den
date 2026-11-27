@@ -194,8 +194,6 @@ export const KIT_FILES: readonly string[] = [
   "filter-bar.css",
   "bulk-bar.js",
   "bulk-bar.css",
-  "pager.js",
-  "pager.css",
   // den-ui: the general button (issue 556; Den's own .den-btn moved into
   // the kit) and the settings on/off row (issue 554).
   "button.js",
