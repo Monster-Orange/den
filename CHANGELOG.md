@@ -6,6 +6,9 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.92] - unreleased
 
+### Changed
+
+- The edge runs with Traefik's API and dashboard off. `edge.args` now takes only the options Den lists: any other entry is refused, with a line naming it. `edge.include` files that sort before Den's own file or reuse its names, and `edge.mounts` into the dynamic folder, are refused too. Den makes a new edge proof at its first start after the update. See docs/distributions.md.
 - The Agents list's switch now says Need, Project and Group, without "By" (es: Urgencia, Proyecto, Grupo; ja: プロジェクト, グループ), so it takes less room.
 
 ## [0.4.91] - 2026-11-26
