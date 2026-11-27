@@ -82,7 +82,22 @@ import type { SeenMarks } from "../../shared/seen-mark.js";
 import { agentSubject, personKey, type DoneAgent } from "./agent-state.js";
 import { listRecords } from "../../shared/agents/records.js";
 import { getStateDir } from "../../shared/paths.js";
-import { isPageError, pageOf, readPageAsk, sendPageError } from "./paging.js";
+import {
+  isPageError,
+  pageOf,
+  readPageAsk,
+  sendPageError,
+  type PageOpts,
+} from "./paging.js";
+
+const BELL_SECTIONS = [
+  "recent",
+  "updates",
+  "older",
+  "waiting",
+  "done",
+  "seenDone",
+];
 
 /** Issue 1008: a withdraw's reason, one line. */
 export const WITHDRAW_REASON_MAX = 200;
@@ -509,9 +524,14 @@ export async function handleNotificationRoutes(
       return (refuse(res, 405, "method", "GET only."), true);
     const q = new URL(req.url ?? "/", "http://localhost").searchParams;
     const section = q.get("section") ?? "recent";
-    if (!["recent", "updates", "older"].includes(section))
+    if (!BELL_SECTIONS.includes(section))
       return (
-        refuse(res, 400, "bad_section", "section is recent, updates or older."),
+        refuse(
+          res,
+          400,
+          "bad_section",
+          `section is one of ${BELL_SECTIONS.join(", ")}.`,
+        ),
         true
       );
     const ask = readPageAsk(q, `notifications.${section}`);
@@ -544,9 +564,13 @@ export async function handleNotificationRoutes(
     const recentAll = seen(all.recent);
     const updatesAll = seen(once(all.updates));
     const olderAll = seen(once(all.older));
-    const page = (name: string, ns: Notification[]) => {
+    const pageList = <T>(
+      name: string,
+      rows: readonly T[],
+      o: Pick<PageOpts<T>, "key" | "id" | "order">,
+    ) => {
       const p = pageOf(
-        ns,
+        rows,
         name === section
           ? ask
           : {
@@ -557,37 +581,57 @@ export async function handleNotificationRoutes(
               page: null,
               at: null,
             },
-        { key: (n) => n.at, id: (n) => n.id, order: "desc", total: true },
+        { ...o, total: true },
       );
       const { items, ...at } = p;
       return { items, at };
     };
+    const page = (name: string, ns: Notification[]) =>
+      pageList(name, ns, { key: (n) => n.at, id: (n) => n.id, order: "desc" });
     const recentP = page("recent", recentAll);
     const updatesP = page("updates", updatesAll);
     const olderP = page("older", olderAll);
     const unreadOf = (ns: Notification[]) => ns.filter((n) => !n.read).length;
-    const mine = (ds: DoneAgent[]) =>
-      (keep ? ds.filter((d) => keep(d.workspace)) : ds).slice(0, ask.limit);
+    const mine = (name: string, ds: DoneAgent[]) =>
+      pageList(name, keep ? ds.filter((d) => keep(d.workspace)) : ds, {
+        key: (d) => d.at,
+        id: (d) => d.agent,
+        order: "desc",
+      });
+    const doneP = mine("done", done);
+    const seenDoneP = mine("seenDone", seenDone);
+    const waitingAll = [
+      ...heldWaiting(heldNow(deps)).map((w) => ({ w, rank: 0, id: w.id })),
+      ...gateOverrunsNow(deps).map((w) => ({ w, rank: 1, id: w.id })),
+      ...[...deps.attention.waitingNow()].map(([a, why]) => {
+        const d = deps.attention.waitingDetail(a);
+        return {
+          w: {
+            agent: a,
+            why,
+            ...(d?.what ? { what: d.what } : {}),
+            ...(d ? { since: d.since } : {}),
+          } as { agent?: string; since?: string },
+          rank: 2,
+          id: a,
+        };
+      }),
+    ].filter((r) => (reach ? reach(r.w.agent) : true));
+    const waitingP = pageList("waiting", waitingAll, {
+      key: (r) => [r.rank, r.w.since ?? ""],
+      id: (r) => r.id,
+    });
     const bell = {
       ok: true,
       unread: unreadOf(recentAll),
-      done: mine(done),
-      seenDone: mine(seenDone),
+      done: doneP.items,
+      donePage: doneP.at,
+      seenDone: seenDoneP.items,
+      seenDonePage: seenDoneP.at,
       // Issue 746: a held write waiting for the person's Allow first,
       // then (issue 327) each agent waiting, what on, since when.
-      waiting: [
-        ...heldWaiting(heldNow(deps)),
-        ...gateOverrunsNow(deps),
-        ...[...deps.attention.waitingNow()].map(([a, why]) => {
-          const w = deps.attention.waitingDetail(a);
-          return {
-            agent: a,
-            why,
-            ...(w?.what ? { what: w.what } : {}),
-            ...(w ? { since: w.since } : {}),
-          };
-        }),
-      ],
+      waiting: waitingP.items.map((r) => r.w),
+      waitingPage: waitingP.at,
       groups: groupNotifications(recentP.items),
       ...recentP.at,
       // ATTN-5 (den#142): updates, collapsed; never in the badge.
@@ -610,7 +654,7 @@ export async function handleNotificationRoutes(
     sendJson(res, {
       ...out,
       unread: bell.unread,
-      waiting: out.waiting.slice(0, ask.limit),
+      waiting: bell.waiting,
       updates: bell.updates,
       older: bell.older,
     });

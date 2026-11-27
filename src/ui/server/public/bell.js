@@ -311,7 +311,12 @@ function allowRowHtml(w, open) {
 }
 
 export function bellCountOf(b) {
-  return (b?.unread ?? 0) + (Array.isArray(b?.done) ? b.done.length : 0);
+  const done = Number.isInteger(b?.donePage?.total)
+    ? b.donePage.total
+    : Array.isArray(b?.done)
+      ? b.done.length
+      : 0;
+  return (b?.unread ?? 0) + done;
 }
 
 /**

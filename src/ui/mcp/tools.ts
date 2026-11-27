@@ -580,13 +580,15 @@ const READ_TOOLS: DenTool[] = [
   read(
     "notifications_list",
     "Your person's bell",
-    "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. One page each of the recent, `updates` and `older` sections: when a section's `next` is not null there are more, so call again with `section` and `cursor` set to it (`prev` goes back; `page` and `at: first|last` jump, and `total`, `page` and `pages` say where you are). `limit` defaults to 50 and is capped by the install's list page size. Reads only: an agent can't mark or clear these.",
+    "NT: what is in your person's bell now: `unread`, `waiting` (the agents waiting for them, and why), `groups` (by project, then agent, newest first: text, link, at, read) and `mutes`. One page each of the recent, `updates` and `older` sections, and of `waiting`, `done` and `seenDone` (their page is in `waitingPage`, `donePage` and `seenDonePage`): when a section's `next` is not null there are more, so call again with `section` and `cursor` set to it (`prev` goes back; `page` and `at: first|last` jump, and `total`, `page` and `pages` say where you are). `limit` defaults to 50 and is capped by the install's list page size. Reads only: an agent can't mark or clear these.",
     {
       limit: z.number().int().positive().optional(),
       cursor: z.string().max(2048).optional(),
       page: z.number().int().positive().optional(),
       at: z.enum(["first", "last"]).optional(),
-      section: z.enum(["recent", "updates", "older"]).optional(),
+      section: z
+        .enum(["recent", "updates", "older", "waiting", "done", "seenDone"])
+        .optional(),
     },
     async (a, { api }) => {
       const q = new URLSearchParams();
