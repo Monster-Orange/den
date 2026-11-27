@@ -26,6 +26,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { isTimeZone } from "../time-zone.js";
 import { checkHandoff } from "./handoff.js";
 import { agentFilesDir, writePrivate, type AgentRecord } from "./records.js";
 
@@ -744,14 +745,21 @@ function leftRunningLines(
 }
 
 function zoneOr(timeZone: string | undefined): string {
-  const own = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (!timeZone) return own;
-  try {
-    new Intl.DateTimeFormat("en", { timeZone });
-    return timeZone;
-  } catch {
-    return own;
-  }
+  return isTimeZone(timeZone)
+    ? timeZone
+    : Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function utcOffset(now: Date, zone: string): string {
+  const name =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: zone,
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(now)
+      .find((p) => p.type === "timeZoneName")?.value ?? "GMT";
+  const m = /^GMT([+-])(\d{2}):(\d{2})$/.exec(name);
+  return m ? `UTC${m[1]}${m[2]}:${m[3]}` : "UTC+00:00";
 }
 
 export function clockLine(now: Date, timeZone?: string): string {
@@ -771,7 +779,10 @@ export function clockLine(now: Date, timeZone?: string): string {
       .formatToParts(now)
       .map((p) => [p.type, p.value]),
   );
-  return `It is now ${parts.weekday} ${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} ${parts.timeZoneName} (${zone}).`;
+  const short = /^GMT/.test(parts.timeZoneName ?? "")
+    ? ""
+    : `${parts.timeZoneName} `;
+  return `It is now ${parts.weekday} ${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute} ${short}(${utcOffset(now, zone)}, ${zone}).`;
 }
 
 const CLOCK_HINT =
