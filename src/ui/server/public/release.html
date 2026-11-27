@@ -592,9 +592,17 @@
       #modal-body .den-combo {
         display: flex;
       }
+      .dep-lbl {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 2px 8px;
+        margin-bottom: 4px;
+      }
+      #modal-body .dep-lbl label {
+        margin: 0;
+      }
       .dep-msg {
-        min-height: 16px;
-        margin-top: 4px;
         font-size: 11px;
         color: var(--muted);
       }
@@ -1225,14 +1233,13 @@
           const isProd = state.env === "prod";
           openModal(
             t("rel.dep.title", { repo, env: state.env }),
-            `<label for="dep-branch">${esc(t("rel.dep.ref"))}</label>
+            `<div class="dep-lbl"><label for="dep-branch">${esc(t("rel.dep.ref"))}</label><span id="dep-branch-msg" class="dep-msg" aria-live="polite"></span></div>
          ${comboHtml({ id: "dep-branch", label: t("rel.dep.ref"), bare: true })}
-         <div id="dep-branch-msg" class="dep-msg" aria-live="polite"></div>
          <div id="dep-hotfix"></div>
          <div id="dep-confirm-wrap"></div>
          <div id="dep-err" class="err-text"></div>`,
             `<button class="den-btn" id="dep-cancel">${esc(t("rel.cancel"))}</button>
-         <button class="den-btn primary" id="dep-go" disabled>${esc(t("rel.dep.go"))}</button>`,
+         <button class="den-btn primary" id="dep-go" aria-describedby="dep-branch-msg" disabled>${esc(t("rel.dep.go"))}</button>`,
           );
 
           const base = `/api/release/branches?repo=${encodeURIComponent(repo)}`;
