@@ -42,6 +42,12 @@
  * with the actor from the credential.
  */
 import {
+  parseSeen,
+  VIEW_LIST,
+  viewPage,
+  type ViewPage,
+} from "./agents-view.js";
+import {
   isPageError,
   pageOf,
   readPageAsk,
@@ -1108,10 +1114,29 @@ export async function handleSessionList(
       : null;
   const keep = agentRowFilter(req);
   const params = new URL(req.url ?? "/", "http://localhost").searchParams;
+  const viewKind = params.get("view");
+  if (viewKind !== null && viewKind !== "agents" && viewKind !== "terminals") {
+    sendJson(
+      res,
+      { ok: false, code: "bad_view", error: "view is agents or terminals" },
+      400,
+    );
+    return true;
+  }
   const ask =
-    params.get("all") === "1" ? null : readPageAsk(params, SESSIONS_LIST);
+    params.get("all") === "1"
+      ? null
+      : readPageAsk(params, viewKind ? VIEW_LIST : SESSIONS_LIST);
   if (ask && isPageError(ask)) {
     sendPageError(res, ask);
+    return true;
+  }
+  if (viewKind && ask?.after) {
+    sendPageError(res, {
+      status: 400,
+      code: "bad_cursor",
+      error: "this view pages by page number: ask page=N, not a cursor",
+    });
     return true;
   }
   const also = wanted?.known ? wanted.workspace : undefined;
@@ -1126,9 +1151,54 @@ export async function handleSessionList(
   }
   const withStates = (xs: ListedSession[]) =>
     states ? withAgentStates(xs, personKey(req), states) : xs;
-  let page: Page<ListedSession> | null = null;
+  let page: Page<ListedSession> | ViewPage | null = null;
   let rows: ListedSession[];
-  if (!ask) {
+  if (viewKind && ask) {
+    const picked = asked && WS_NAME.test(asked) ? asked : null;
+    const scope = picked ? [picked] : d.activeWorkspaces();
+    const first = withStates(
+      await listWithHelpers(sessions, d, also, hubUrl, new Set()),
+    ).filter(
+      (r) =>
+        (viewKind === "terminals") === (r.kind === "session") &&
+        (!keep || keep(r.workspace)) &&
+        (r.server ? !picked : r.orphan === true || scope.includes(r.workspace)),
+    );
+    const serverWs = first.find((r) => r.server)?.workspace;
+    const view = viewPage(
+      first,
+      {
+        by: params.get("by") === "project" ? "project" : "need",
+        limit: ask.limit,
+        page: ask.at === "last" ? "last" : (ask.page ?? 1),
+        seen: parseSeen(params.get("seen")),
+      },
+      [...(serverWs ? [serverWs] : []), ...scope],
+    );
+    const openIds = new Set(
+      (params.get("open") ?? "").split(",").filter(Boolean).slice(0, 20),
+    );
+    const shown = new Set([...view.pinned, ...view.items].map((r) => r.id));
+    const extra = first.filter((r) => openIds.has(r.id) && !shown.has(r.id));
+    const want = [...view.pinned, ...view.items, ...extra];
+    const ids = new Set(
+      want.flatMap((r) => (r.kind === "agent" && r.agent ? [r.agent] : [])),
+    );
+    const byId = ids.size
+      ? new Map(
+          withStates(await listWithHelpers(sessions, d, also, hubUrl, ids)).map(
+            (r) => [r.id, r],
+          ),
+        )
+      : new Map<string, ListedSession>();
+    const full = (r: ListedSession) => byId.get(r.id) ?? r;
+    page = {
+      ...view,
+      pinned: view.pinned.map(full),
+      items: view.items.map(full),
+    };
+    rows = want.map(full);
+  } else if (!ask) {
     rows = withStates(await listWithHelpers(sessions, d, also, hubUrl));
     if (keep) rows = rows.filter((r) => keep(r.workspace));
   } else {
