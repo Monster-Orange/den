@@ -780,8 +780,11 @@ Three pieces, data in, the kit's words out (en, es, ja).
     its own height. At 600px or less md is 44px; with a coarse pointer
     every button gets a 44px hit area without changing its look.
   - `href` draws an `<a>`, `as: "summary"` a `<summary>`; all look the
-    same. `icon` is a kit icon's name, drawn before the label. A label
-    over 32 characters truncates with an ellipsis and goes in `title`.
+    same. `icon` is a kit icon's name (`close` is ×), drawn before
+    the label; a host never passes its own drawing, so a missing icon is
+    added to the kit. A label over 32 characters goes in `title`;
+    `hydrateButtons(root)` sets `title` whenever a label is cut off on
+    screen and takes it off when it fits again.
   - `pressed` sets `aria-pressed`; `expanded` sets `aria-expanded` and
     adds a ▾ that turns while open. `disabled` is a native disabled;
     `disabledWhy` keeps the button focusable, puts the reason in `title`

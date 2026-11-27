@@ -19,7 +19,7 @@ export interface ButtonOptions {
   /** A link drawn as a button. */
   href?: string;
   type?: "button" | "submit" | "reset";
-  /** A kit icon's name (icons.js), drawn before the label. */
+  /** A kit icon's name (icons.js), drawn before the label; any other is dropped. */
   icon?: string;
   /** A disabled button; a link with no href and aria-disabled. */
   disabled?: boolean;
@@ -47,3 +47,5 @@ export declare function holdButton(
   el: HTMLElement | null,
   opts?: { instant?: boolean },
 ): () => void;
+/** Sets title on each button whose label is cut off, and takes it off when it fits again. */
+export declare function hydrateButtons(root?: ParentNode): void;

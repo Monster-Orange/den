@@ -20,7 +20,7 @@
  * tokens.css.
  */
 import { esc } from "./strings.js";
-import { icon as iconSvg } from "./icons.js";
+import { icon as iconSvg, ICONS } from "./icons.js";
 import { holdDots } from "./busy.js";
 
 const VARIANTS = {
@@ -59,7 +59,7 @@ export function buttonClass(variant, size, primary) {
 
 function inner(label, glyph, expanded) {
   if (!glyph && expanded == null && label.length <= LONG) return esc(label);
-  const svg = glyph ? iconSvg(glyph) : "";
+  const svg = glyph && Object.hasOwn(ICONS, glyph) ? iconSvg(glyph) : "";
   return (
     (svg ? `<span class="den-btn-ic" aria-hidden="true">${svg}</span>` : "") +
     (label ? `<span class="den-btn-lbl">${esc(label)}</span>` : "") +
@@ -168,3 +168,36 @@ globalThis.window?.addEventListener?.(
   },
   true,
 );
+
+let watch;
+function fits(b) {
+  const l = b.querySelector(":scope > .den-btn-lbl");
+  if (!l) return;
+  const own = !b.hasAttribute("aria-describedby");
+  if (!own) return;
+  if (l.scrollWidth > l.clientWidth) b.title = l.textContent;
+  else if (b.title === l.textContent) b.removeAttribute("title");
+}
+
+export function hydrateButtons(root = globalThis.document) {
+  if (!root?.querySelectorAll) return;
+  watch ??=
+    globalThis.ResizeObserver &&
+    new globalThis.ResizeObserver((es) => es.forEach((e) => fits(e.target)));
+  for (const b of root.querySelectorAll(".den-btn:not(.icon)")) {
+    const n = b.firstChild;
+    if (
+      b.childNodes.length === 1 &&
+      n.nodeType === 3 &&
+      n.data.trim() &&
+      b.getAttribute("aria-busy") !== "true"
+    ) {
+      const l = b.ownerDocument.createElement("span");
+      l.className = "den-btn-lbl";
+      b.replaceChild(l, n);
+      l.append(n);
+    }
+    fits(b);
+    watch?.observe(b);
+  }
+}
