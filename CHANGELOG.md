@@ -6,9 +6,15 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Added
+
+- UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", « First, ‹ Previous, a page picker ("Page 3 of 17"), Next ›, Last » and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's.
+
 ### Changed
 
 - A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
+
+- Log search pages. `GET /api/logs/search` and the `logs_search` tool return 50 matches by default, all targets merged oldest first by time, then target, then line, with `next` for the page after (`limit` and `cursor`, capped by the install's list page size). Each target's grep stops at the page size, where before it collected up to 200 matches per target, so up to 8000 at once. There's no total, since a log scan can't count cheaply. The route still returns `results` per target, holding this page's matches only. A cursor from another search, or one this route didn't give, is refused (400 `bad_cursor`). The Logs page shows the den-ui pager under the results ("1–50", Previous, Next), keeping the cursors it visited in the page's address, so Previous and the browser's Back step back through them. It pages forward only: `prev` is always null and `forwardOnly` is true, since the pager keeps the cursors it visited, and a prev cursor, `at=last` or a `page` past 1 is a 400 `bad_page`.
 
 ## [0.4.92] - unreleased
 

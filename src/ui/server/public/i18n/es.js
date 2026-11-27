@@ -5166,15 +5166,23 @@
     "lg.empty.click":
       "No hay registros abiertos. Haz clic en el nombre de un servicio de arriba para abrir uno.",
     "lg.search.pane": 'búsqueda: "{q}"',
-    "lg.search.matches": "{n} coincidencias (haz clic para abrir el registro)",
+    "lg.search.matches":
+      "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.matches.one":
-      "{n} coincidencia (haz clic para abrir el registro)",
-    "lg.search.matchesMore":
-      "{n}+ coincidencias (haz clic para abrir el registro)",
-    "lg.search.matchesMore.one":
-      "{n}+ coincidencia (haz clic para abrir el registro)",
+      "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.none":
       'no hay coincidencias para "{q}" en el historial de ningún servicio',
+    "lg.pager.rangeOpen": "{from}–{to}",
+    "lg.pager.label": "Páginas de resultados",
+    "lg.pager.first": "Primera",
+    "lg.pager.firstSr": "Primera página",
+    "lg.pager.prev": "Anterior",
+    "lg.pager.prevSr": "Página anterior",
+    "lg.pager.next": "Siguiente",
+    "lg.pager.nextSr": "Página siguiente",
+    "lg.pager.perPage": "{select} por página",
+    "lg.pager.go": "Ir",
+    "lg.pager.more": "Más",
     "lg.aws.expired": "El acceso a AWS ha caducado",
     "lg.aws.reauth": "Volver a autenticar",
     "lg.aws.retry": "Reintentar",
