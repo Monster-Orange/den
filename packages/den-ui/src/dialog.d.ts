@@ -77,6 +77,7 @@ export interface DialogSpec {
   report?: string;
   /** Shown with no script (the open attribute). */
   open?: boolean;
+  sheet?: boolean;
   /** Extra classes on the <dialog> (the product's hooks). */
   className?: string;
   /** Extra attributes on the <dialog>. */
@@ -133,6 +134,10 @@ export declare function answerOf(
   ok: boolean,
   text?: string | null,
 ): boolean | string | null | undefined;
+/** Issue 864: hear of each kit question just before it shows. */
+export declare function onAsk(
+  fn: (dialog: HTMLDialogElement) => void,
+): () => void;
 export declare function askConfirm(opts: DialogOptions): Promise<boolean>;
 export declare function askText(opts: DialogOptions): Promise<string | null>;
 export declare function tell(opts: DialogOptions): Promise<void>;
@@ -145,3 +150,6 @@ export declare function focusBack(el: Element | null | undefined): boolean;
  * pop-up closes (in place of what opened it). Issue 793.
  */
 export declare function focusWhenFree(el: HTMLElement | null | undefined): void;
+
+/** Issue 1054: a held action's failure line: its message, else the kit's words. */
+export declare function failedLine(err: unknown): string;

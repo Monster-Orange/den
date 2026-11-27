@@ -54,12 +54,37 @@ export async function workspaceViaServer(
  * the prompt (`willReset`: the blueprint's projects have entries). A seed
  * with nothing to reset is anyone's. Null when it may go on.
  */
-export type SeedVia = "init" | "workspace seed"; // words-ok: the CLI's command names
-
 export function seedResetRefusal(
-  o: { reset: boolean; willReset: boolean; via: SeedVia },
+  /** `via`: the command that was run, named in the refusal. */
+  o: { reset: boolean; willReset: boolean; via: string },
   env: Record<string, string | undefined> = process.env,
 ): string | null {
   if (!isAgentTokenEnv(env) || (!o.reset && !o.willReset)) return null;
   return `Only a person can reset projects (\`${o.via}\` with a reset); this is an agent, so nothing was changed`;
+}
+
+/**
+ * Issue 1182: a reset to the blueprint, sent to the running server (POST
+ * /api/workspaces/seed, a person's). What it seeded, its refusal, or
+ * unanswered when no server listens (the CLI resets as before).
+ */
+export async function seedResetViaServer(
+  server: PersonServer,
+): Promise<
+  | { kind: "done"; seeded: { name: string; repos: string[] }[] }
+  | { kind: "refused"; error: string }
+  | { kind: "unanswered" }
+> {
+  try {
+    const json = await throughServer(server, "POST", "/api/workspaces/seed", {
+      reset: true,
+    });
+    if (json === null) return { kind: "unanswered" };
+    const seeded = Array.isArray(json.seeded)
+      ? (json.seeded as { name: string; repos: string[] }[])
+      : [];
+    return { kind: "done", seeded };
+  } catch (e) {
+    return { kind: "refused", error: (e as Error).message };
+  }
 }

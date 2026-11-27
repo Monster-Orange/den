@@ -27,9 +27,10 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { PUSH_SUBSCRIPTIONS_FILE } from "../../shared/push-subscription-count.js";
 
 export const VAPID_FILE = "push-vapid.json";
-export const SUBSCRIPTIONS_FILE = "push-subscriptions.json";
+export const SUBSCRIPTIONS_FILE = PUSH_SUBSCRIPTIONS_FILE;
 /** The most devices kept; the oldest goes first. */
 export const MAX_SUBSCRIPTIONS = 20;
 
@@ -149,6 +150,7 @@ export interface PushSubscription {
   at: string;
   /** What the device is ("iPhone", "Mac"...), from its browser; "" unknown. */
   device?: string;
+  person?: string;
 }
 
 /**
@@ -255,6 +257,9 @@ export class PushSubscriptions {
             .map((x) => ({
               ...x,
               device: typeof x.device === "string" ? x.device.slice(0, 32) : "",
+              ...(typeof x.person === "string" && x.person
+                ? { person: x.person.slice(0, 200) }
+                : { person: undefined }),
             }))
         : [];
     } catch {
@@ -299,6 +304,7 @@ export interface PushOptions {
   timeoutMs: number;
   ttlSeconds: number;
   fetch?: typeof fetch;
+  only?: readonly string[];
 }
 
 /**
@@ -318,7 +324,8 @@ export async function pushEach(
   msg: PushMessage,
   o: PushOptions,
 ): Promise<{ endpoint: string; status: number }[]> {
-  const list = o.subs.list();
+  const only = o.only ? new Set(o.only) : null;
+  const list = o.subs.list().filter((s) => !only || only.has(s.endpoint));
   if (!list.length) return [];
   let keys: VapidKeys;
   try {

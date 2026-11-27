@@ -8,6 +8,7 @@ import type {
   pending,
   watchForms,
   holdDots,
+  holdRow,
 } from "./busy.js";
 import type {
   AccountHydrateOptions,
@@ -26,6 +27,7 @@ import type {
   hydrateAccount,
   attachMenuFilter,
   hydrateBell,
+  wireRowOpens,
   hydrateScope,
   hydrateSearch,
   PageMenuHydrateOptions,
@@ -59,6 +61,7 @@ import type {
   esc,
 } from "./shell-html.js";
 import type { buttonHtml } from "./button.js";
+import type { groupHeaderHtml } from "./group-header.js";
 import type {
   SettingRow,
   SettingRowHydrateOptions,
@@ -71,7 +74,11 @@ import type {
   SettingFieldOptions,
   settingFieldHtml,
 } from "./setting-field.js";
-import type { syncPinToggles } from "./shell-client.js";
+import type {
+  hydrateRailFolds,
+  railFoldStore,
+  syncPinToggles,
+} from "./shell-client.js";
 import type { UpdatePill } from "./update-pill.js";
 import type { SaveState, SaveStateOptions } from "./savestate.js";
 import type { FilterBar, FilterBarOptions } from "./filter-bar.js";
@@ -190,6 +197,7 @@ export declare const busy: {
   watchForms: typeof watchForms;
   /** Issue 698: the dots alone (no pop-up); (button, false) lets go. */
   holdDots: typeof holdDots;
+  holdRow: typeof holdRow;
   configure: typeof configureBusy;
 };
 /** An autosaving editor's save-state line, in the kit's language. */
@@ -268,9 +276,12 @@ export interface DenUIKit {
   hydrateScope: typeof hydrateScope;
   hydrateSearch: typeof hydrateSearch;
   hydrateBell: typeof hydrateBell;
+  wireRowOpens: typeof wireRowOpens;
   hydrateAccount: typeof hydrateAccount;
   attachMenuFilter: typeof attachMenuFilter;
   syncPinToggles: typeof syncPinToggles;
+  hydrateRailFolds: typeof hydrateRailFolds;
+  railFoldStore: typeof railFoldStore;
   icon: typeof icon;
   esc: typeof esc;
   t: typeof t;
@@ -285,6 +296,7 @@ export interface DenUIKit {
   bulkBar: typeof bulkBar;
   account: typeof account;
   buttonHtml: typeof buttonHtml;
+  groupHeaderHtml: typeof groupHeaderHtml;
   menuRowHtml: typeof menuRowHtml;
   pageMenuButtonHtml: typeof pageMenuButtonHtml;
   pageMenuHtml: typeof pageMenuHtml;

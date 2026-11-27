@@ -17,7 +17,37 @@ export interface HydrateOptions {
   inert?: () => (Element | null)[];
   /** True while a product menu is open (Escape is the menu's then). */
   menuOpen?: () => boolean;
+  /** Issue 1444: the rail's section folds' store; false: no folds. */
+  folds?: RailFoldStore | false;
 }
+/** Issue 1444: where the folded sections' ids are kept. */
+export interface RailFoldStore {
+  get(): string[];
+  set(ids: string[]): void;
+}
+export interface RailFolds {
+  /** Make new headings toggles and draw each section's state. */
+  apply(): void;
+  folded(): string[];
+  destroy(): void;
+}
+export declare const RAIL_FOLD_KEY: "den.rail.folded";
+export declare function railFoldStore(
+  storage?: Pick<Storage, "getItem" | "setItem"> | null,
+): RailFoldStore;
+export declare function toggleFolded(ids: string[], id: string): string[];
+export declare function foldCount(badges: { n: unknown; bad?: boolean }[]): {
+  n: number;
+  bad: boolean;
+};
+export declare function hydrateRailFolds(
+  root: ParentNode,
+  opts?: {
+    store?: RailFoldStore;
+    lang?: string | (() => string | undefined);
+    onChange?: (ids: string[]) => void;
+  },
+): RailFolds;
 export interface Shell {
   nav: HTMLElement | null;
   rove(): void;
@@ -28,6 +58,8 @@ export interface Shell {
   closeDrawer(refocus?: boolean): void;
   drawerOpen(): boolean;
   syncPinToggles(root: ParentNode, isPinned: (id: string) => boolean): void;
+  /** Issue 1444: the rail's section folds (null with folds: false). */
+  folds: RailFolds | null;
 }
 export declare function syncPinToggles(
   root: ParentNode,
@@ -96,6 +128,11 @@ export interface BellHandle {
  * data-id or id, and replaced whole only when it changed).
  */
 export declare function patchChildren(live: Element, next: Element): void;
+/** Issue 420: a click anywhere on a row clicks its link (not on its controls). */
+export declare function wireRowOpens(
+  root: Element,
+  rowSelector: string,
+): () => void;
 export declare function hydrateBell(
   button: HTMLElement,
   opts?: BellHydrateOptions,

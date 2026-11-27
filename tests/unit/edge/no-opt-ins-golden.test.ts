@@ -14,16 +14,19 @@ import {
 } from "../../../src/shared/edge/render.js";
 import type { EdgeConfig } from "../../../src/shared/edge/types.js";
 import {
+  withoutDashboard,
   withoutOwnerLabels,
   withoutUpstreamTransport,
 } from "./helpers/owner-labels.js";
 
-const golden = JSON.parse(
-  fs.readFileSync(
-    path.join(__dirname, "../../fixtures/edge/no-opt-ins.golden.json"),
-    "utf-8",
-  ),
-) as Record<string, unknown>;
+const golden = withoutDashboard(
+  JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "../../fixtures/edge/no-opt-ins.golden.json"),
+      "utf-8",
+    ),
+  ) as Record<string, unknown>,
+);
 
 // The opt-ins at their defaults (what readEdgeConfig gives when none is set).
 const defaults = {
@@ -71,12 +74,14 @@ describe("edge with no opt-ins", () => {
 
 // Dotted routes (`app.shop`) add their zone's wildcard; rendered by den
 // 50d9b0a's own code for this config.
-const dotted = JSON.parse(
-  fs.readFileSync(
-    path.join(__dirname, "../../fixtures/edge/dotted-routes.golden.json"),
-    "utf-8",
-  ),
-) as Record<string, unknown> & { config: object };
+const dotted = withoutDashboard(
+  JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "../../fixtures/edge/dotted-routes.golden.json"),
+      "utf-8",
+    ),
+  ) as Record<string, unknown> & { config: object },
+);
 
 describe("edge with no opt-ins and dotted routes", () => {
   it("renders byte-identical to den 50d9b0a", () => {

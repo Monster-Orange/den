@@ -377,8 +377,10 @@ describe("D24: the name peers see (Claude Code's session name)", () => {
       displayNameAt: "2026-11-07T09:30:00.000Z",
       peerName: "acme-north:Night watch",
     });
-    expect(agentSessionName(r, stateDir, env, () => Date.now())).toBe(
-      "Night watch",
-    );
+    expect(
+      agentSessionName(r, stateDir, env, () =>
+        Date.parse("2026-11-08T00:00:00.000Z"),
+      ),
+    ).toBe("Night watch");
   });
 });

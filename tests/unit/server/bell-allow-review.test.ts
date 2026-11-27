@@ -14,7 +14,7 @@ import type { Approval } from "../../../src/ui/server/approvals.js";
 import { heldWaiting } from "../../../src/ui/server/held-bell.js";
 import { GateStore } from "../../../src/shared/gates/store.js";
 import { gateBoxOps } from "../../../src/ui/server/gate-routes.js";
-import { UI_LANGUAGES } from "../../../src/ui/server/ui-language.js";
+import { UI_LANGUAGES } from "../../../src/shared/ui-language.js";
 
 type Table = Record<string, string>;
 type Lines = (a: unknown) => string[];

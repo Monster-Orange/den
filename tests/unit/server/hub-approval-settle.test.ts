@@ -6,7 +6,10 @@
  * Fakes only; invented names.
  */
 import { describe, expect, it } from "@jest/globals";
-import { LOCAL_PREFIX, type Delivery } from "../../../src/shared/hub-delivery";
+import {
+  LOCAL_PREFIX,
+  type Delivery,
+} from "../../../src/shared/hub/hub-delivery";
 import { settleApproval } from "../../../src/ui/server/hub-approval";
 
 const KEY = "https://hub.example.test/a/doc";

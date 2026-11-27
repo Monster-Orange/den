@@ -135,6 +135,16 @@ export interface InboxHookArgs {
   call?: HookCall;
 }
 
+/**
+ * Issue 1264: what the PreToolUse hook needs to send an agent's heavy runs
+ * through the gate: this install's own CLI (absolute path) and the gate's
+ * settings.json, read on each call (route_agents, route_commands).
+ */
+export interface GateRouteArgs {
+  cli: string;
+  settings: string;
+}
+
 /** `--hub-inbox <base>` and, given, issue 609's call flags. */
 const inboxFlags = (inbox: InboxHookArgs): string[] => [
   "--hub-inbox",
@@ -159,6 +169,8 @@ export function hookCommands(
   apiOnly?: ApiOnlyArgs,
   /** D41: Den's proxy to Hub, for the inbox check. */
   inbox?: InboxHookArgs,
+  /** Issue 1264: route heavy runs through the gate. */
+  gate?: GateRouteArgs,
 ): HookCommands {
   const more = (c: EngineCommand): EngineCommand =>
     rotation
@@ -181,6 +193,7 @@ export function hookCommands(
         ...(apiOnly
           ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
           : []),
+        ...(gate ? ["--gate", gate.cli, "--gate-settings", gate.settings] : []),
       ],
     }),
     stop: commandLine(
@@ -279,6 +292,30 @@ export function attentionHooks(
  * tool and after a failed one (guardrails/sandbox-refusal.ts). It says
  * nothing outside the sandbox.
  */
+export function subagentHooks(
+  base: string,
+  call: HookCall = HOOK_CALL_DEFAULT,
+): Record<string, unknown[]> {
+  const c = scriptEntrypoint("src/shared/agents/guardrails/subagent-hook.ts");
+  return {
+    PreToolUse: [
+      {
+        matcher: "Agent|Task",
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: c.command,
+              args: [...c.args, "--den", base, ...hookCallFlags(call)],
+            }),
+            timeout: Math.max(10, hookCallBudgetSeconds(call)),
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export function sandboxRefusalHooks(): Record<string, unknown[]> {
   const entry = {
     hooks: [
@@ -322,6 +359,56 @@ export function mergeHooks(
   for (const [k, v] of Object.entries(b))
     out[k] = [...((out[k] as unknown[] | undefined) ?? []), ...v];
   return out;
+}
+
+export function envGuardHooks(
+  dir: string = GUARDRAILS_DIR,
+  node: string = process.execPath,
+): Record<string, unknown[]> {
+  return {
+    PreToolUse: [
+      {
+        matcher: "Bash",
+        hooks: [
+          {
+            type: "command",
+            command: commandLine({
+              command: node,
+              args: [path.join(dir, "pretooluse.mjs"), "--no-guardrails"],
+            }),
+            timeout: 10,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export const NO_ENV_GUARD_FLAG = "--no-env-guard";
+
+export function withEnvMask(
+  hooks: Record<string, unknown>,
+  args: readonly string[],
+): void {
+  const q = (a: string) => `'${a.replace(/'/g, `'\\''`)}'`;
+  const tail = args.map(q).join(" ");
+  const pre = hooks.PreToolUse as
+    | { hooks?: { command?: string }[] }[]
+    | undefined;
+  for (const m of pre ?? [])
+    for (const h of m.hooks ?? [])
+      if (typeof h.command === "string" && h.command.includes("pretooluse.mjs"))
+        h.command = `${h.command} ${tail}`;
+}
+
+export function withoutEnvGuard(hooks: Record<string, unknown>): void {
+  const pre = hooks.PreToolUse as
+    | { hooks?: { command?: string }[] }[]
+    | undefined;
+  for (const m of pre ?? [])
+    for (const h of m.hooks ?? [])
+      if (typeof h.command === "string" && h.command.includes("pretooluse.mjs"))
+        h.command = `${h.command} ${NO_ENV_GUARD_FLAG}`;
 }
 
 /**

@@ -115,6 +115,7 @@ export interface Persona {
    * org's agents.subagents.model; "inherit": none of Den's.
    */
   subagentModel?: string;
+  skillPacks?: "off" | string[];
   /** Started with its workspace (planner, orchestrator). */
   standing: boolean;
   /**
@@ -240,6 +241,20 @@ export function parsePersona(
     subagentRaw === undefined || subagentRaw === null
       ? undefined
       : checkSubagentModel(subagentRaw, `${file}: subagent_model`);
+  const packsRaw = f.skill_packs;
+  let skillPacks: "off" | string[] | undefined;
+  if (packsRaw === "off" || packsRaw === false) skillPacks = "off";
+  else if (Array.isArray(packsRaw)) {
+    if (
+      packsRaw.length > 20 ||
+      !packsRaw.every((x) => typeof x === "string" && REGISTRY_ID_RE.test(x))
+    )
+      throw new Error(
+        `${file}: skill_packs must be off or a list of pack names`,
+      );
+    skillPacks = [...new Set(packsRaw as string[])];
+  } else if (packsRaw !== undefined && packsRaw !== null)
+    throw new Error(`${file}: skill_packs must be off or a list of pack names`);
   const displayName = optString(f, "display_name", file);
   if (
     displayName &&
@@ -329,6 +344,7 @@ export function parsePersona(
     ...(runtime ? { runtime } : {}),
     ...(model && model !== "inherit" ? { model } : {}),
     ...(subagentModel ? { subagentModel } : {}),
+    ...(skillPacks ? { skillPacks } : {}),
     standing,
     ...(resumeOnRestart ? { resumeOnRestart } : {}),
     tools: stringList(f, "tools", file),
@@ -480,6 +496,11 @@ export function rolePrompt(
   // NT-1: every runtime that speaks MCP has ask_human.
   lines.push(
     "When you need your person's decision, call ask_human with the question, then end your turn: their answer comes as your next input.",
+  );
+  // Issue 1371: config/local/user.yml is closed to an agent's sandbox; the
+  // held write setting_change is how a setting changes.
+  lines.push(
+    "When one of Den's settings needs changing, ask for it with setting_change (the MCP tool) and say why: the person allows it in Den. Never hand your person a YAML edit.",
   );
   // Issue 1016: the address people open; links on it, never loopback.
   lines.push(addressBriefLine(webUrl));

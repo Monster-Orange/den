@@ -22,6 +22,7 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { signIn } from "./helpers/signed-in.js";
 import { shortDots } from "./helpers/short-dots.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 jest.setTimeout(60_000);
 
@@ -57,13 +58,8 @@ async function open(
     reducedMotion: "reduce",
   });
   await signIn(ctx, s!.stateDir, s!.base);
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
       st.textContent = "#cl-overlay{display:none!important}";
@@ -82,7 +78,7 @@ async function open(
   );
   await p.route("**/api/edge/up", async (r) => {
     posts.push(Date.now());
-    // Slow enough that the working pop-up opens (the kit's OPEN_MS).
+    // Slow enough that the old working pop-up would have opened.
     await new Promise((ok) => setTimeout(ok, 1500));
     await r.fulfill({ json: { ok: true, outcome: edge.answers.shift() } });
   });
@@ -92,12 +88,14 @@ async function open(
 const dialog = (p: Page) => p.locator("dialog.bz-dlg[open]");
 
 async function press(p: Page): Promise<string> {
-  // Issue 699: the pop-up after a held button's dots, at 300 ms here.
+  // Issue 1054: the wait shows on the button (its dots, aria-busy), never
+  // a pop-up (busy-popup proves the long wait on the page's clock).
   await shortDots(p);
   await p.locator("#set-edge-up").click();
-  await dialog(p).waitFor({ timeout: 5000 });
-  expect(await dialog(p).locator("h2").textContent()).toContain(
-    "Starting the edge",
+  await p.locator('#set-edge-up[aria-busy="true"]').waitFor({ timeout: 5000 });
+  expect(await dialog(p).count()).toBe(0);
+  expect(await p.locator("#set-edge-up").getAttribute("aria-busy")).toBe(
+    "true",
   );
   const out = p.locator("#set-edge-up-out:not([hidden])");
   await out.waitFor({ timeout: 15_000 });

@@ -16,6 +16,7 @@ import { getDistRoot } from "../../paths.js";
 import type { DerivedEdge } from "./types.js";
 import { repoInputFiles } from "./scan.js";
 import { writeFileAtomic } from "../../atomic-write.js";
+import { statSettled } from "../../stat-settled.js";
 
 // Bump whenever derivation RULES change (signals, alias handling, edge
 // classification) — the fingerprint only tracks repo inputs, so without a
@@ -39,13 +40,21 @@ interface CacheFile {
   repos: Record<string, CacheEntry>;
 }
 
-/** Stable fingerprint of a repo's input files (`mtime+size`, no content read). */
+/**
+ * Stable fingerprint of a repo's input files (`mtime+size`, no content
+ * read). A file written within a clock tick of now (statSettled)
+ * may yet change with the same stamps, so the fingerprint then names this
+ * moment and matches no cache: the edges are derived again until it settles.
+ */
 export function repoFingerprint(repoPath: string): string {
   const hash = crypto.createHash("sha1");
+  const now = Date.now();
   for (const abs of repoInputFiles(repoPath)) {
     try {
       const s = fs.statSync(abs);
       hash.update(`${abs}:${s.mtimeMs}:${s.size}\n`);
+      if (!statSettled({ mtimeMs: s.mtimeMs }, now))
+        hash.update(`unsettled:${now}:${crypto.randomUUID()}\n`);
     } catch {
       /* file vanished between listing and stat — ignore */
     }

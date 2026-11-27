@@ -22,7 +22,6 @@
 import { beforeEach, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import { Writable } from "stream";
 import {
@@ -35,6 +34,9 @@ import {
   publicRepoVisibility,
   visibilityOf,
 } from "../../../src/ui/server/report-visibility.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 /** What GitHub says for each repo: its JSON, a failure, or a wait. */
 let answers: Record<string, GhResult | (() => Promise<GhResult>)> = {};
@@ -132,7 +134,7 @@ beforeEach(() => {
   lookups.length = 0;
   anon = {};
   anonLookups.length = 0;
-  state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-vis-"));
+  state = tempDir("den-report-vis-");
 });
 
 describe("GET /api/report: each destination's visibility (issue 415)", () => {

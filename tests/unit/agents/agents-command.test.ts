@@ -131,6 +131,9 @@ describe("agents start", () => {
         "resumeToken",
         // AG-14: the grants it started with, kept by a resume.
         "grants",
+        // Issue 1223: the Den it started on, so its tools can be judged old.
+        "denVersion",
+        "envHold",
         // 0.4.8: launched on resumeToken, so a resume continues it.
         "launched",
         // AG-12: its model's version ("latest": the alias); AG-10.9: what
@@ -150,8 +153,21 @@ describe("agents start", () => {
         "project",
         // Issue 936: whether it started in the agent sandbox.
         "sandbox",
+        "recordId",
+        "skillPackDirs",
       ].sort(),
     );
+    const packs = rec.skillPackDirs as unknown[];
+    expect(packs.length).toBeGreaterThan(0);
+    for (const dir of packs) {
+      expect(typeof dir).toBe("string");
+      expect(
+        (dir as string).startsWith(
+          path.join(r.stateDir, "skill-packs") + path.sep,
+        ),
+      ).toBe(true);
+      expect(dir).not.toMatch(/[=\s]|token|secret|key/i);
+    }
     expect(rec).toMatchObject({
       id: "planner",
       persona: "planner",
@@ -465,6 +481,24 @@ describe("agents start", () => {
     expect(
       fs.existsSync(path.join(r.stateDir, "agents", "reviewer.json")),
     ).toBe(false);
+  });
+
+  it("issue 1634: a project at agents.max_per_project is refused; another project starts", async () => {
+    const r = await rig();
+    r.config.maxPerProject = 1;
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "planner"),
+    ).toBe(0);
+    expect(
+      await agents(r, "start", "-w", "north", "--persona", "reviewer"),
+    ).toBe(1);
+    expect(r.err.join("\n")).toMatch(
+      /1 agent is running in project north and its cap is 1 \(agents\.max_per_project\)/,
+    );
+    expect(r.err.join("\n")).toMatch(/raise agents\.max_per_project/);
+    expect(
+      await agents(r, "start", "-w", "south", "--persona", "reviewer"),
+    ).toBe(0);
   });
 
   it("has no --grant: a grant only comes from config", async () => {

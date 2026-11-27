@@ -315,6 +315,41 @@ describe("issue 160: agent_import and approval_policy are held writes", () => {
     ).toMatchObject({ ok: false });
   });
 
+  it("issue 1328: agent_import needs the person when the agent it makes starts outside the sandbox", async () => {
+    const f = fakes();
+    f.deps.agentImport = async (a) => ({
+      ok: true,
+      id: "planner",
+      project: a.project,
+    });
+    f.deps.agentImportSandbox = (persona) =>
+      persona === "planner"
+        ? [
+            "planner starts outside the sandbox: agents.planner.sandbox is off in config/local/user.yml.",
+            { key: "ap.det.agent.sandboxOff", vars: { id: "planner" } },
+          ]
+        : null;
+    const a = heldActions(f.deps).agent_import;
+    const off = await a.check(
+      { session: "abc-123", persona: "planner" },
+      { agent: "lead", project: "repos" },
+    );
+    expect(off).toMatchObject({
+      ok: true,
+      personOnly: true,
+      args: { sandboxOff: true },
+    });
+    expect(off.ok && off.details).toContain(
+      "planner starts outside the sandbox: agents.planner.sandbox is off in config/local/user.yml.",
+    );
+    const on = await a.check(
+      { session: "abc-123", persona: "reviewer" },
+      { agent: "lead", project: "repos" },
+    );
+    expect(on.ok && on.personOnly).toBeFalsy();
+    expect(on.ok && on.args.sandboxOff).toBeUndefined();
+  });
+
   it("approval_policy: always the person's own Allow; writes the install's or a project's", async () => {
     const f = fakes();
     const written: unknown[] = [];
@@ -412,5 +447,27 @@ describe("issue 160: pr_close, closing a stale or superseded PR after a Hub note
         { project: "repos" },
       ),
     ).toMatchObject({ ok: false });
+  });
+});
+
+// A repo that folds into another path in a URL is refused
+// before gh is asked.
+describe("issue 1568: pr_close refuses a repo GitHub would refuse", () => {
+  it.each(["acme/..", "acme/.", "../api", "-acme/api"])("%s", async (repo) => {
+    const f = fakes();
+    let asked = 0;
+    f.deps.prClose = async (a) => {
+      asked++;
+      return { ok: true, repo: a.repo, pr: a.pr };
+    };
+    const c = await heldActions(f.deps).pr_close.check(
+      { repo, pr: 42, comment: "Superseded by 57 (Hub note)" },
+      { agent: "lead", project: "repos" },
+    );
+    expect(c).toMatchObject({
+      ok: false,
+      error: "repo: a GitHub repo, owner/name",
+    });
+    expect(asked).toBe(0);
   });
 });

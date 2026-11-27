@@ -37,8 +37,14 @@ import {
   readFixtureKey,
   setupFixturePerson,
 } from "../../../src/shared/fixture-person.js";
-import { personToken, readWebSecret } from "../../../src/shared/web-secret.js";
-import { clearWebOwner, writeWebOwner } from "../../../src/shared/web-owner.js";
+import {
+  personToken,
+  readWebSecret,
+} from "../../../src/shared/web/web-secret.js";
+import {
+  clearWebOwner,
+  writeWebOwner,
+} from "../../../src/shared/web/web-owner.js";
 
 const ENGINE = path.resolve(__dirname, "../../..");
 const TSX = path.join(ENGINE, "node_modules", ".bin", "tsx");
@@ -579,6 +585,196 @@ describe("the fixture person's invented name (issue 1210)", () => {
         await signOut(noflag, p.headers);
       }
     });
+  });
+});
+
+// Issue 1215: on a test install the fixture person makes, activates,
+// deactivates and deletes its own projects (live checks set one up), audited
+// as the fixture person; nothing else in the project family.
+const auditRows = (den: Den) =>
+  fs
+    .readFileSync(path.join(den.stateDir, "audit.jsonl"), "utf-8")
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => JSON.parse(l) as Record<string, unknown>);
+const projectRows = (den: Den, slug: string) =>
+  auditRows(den).filter(
+    (e) => e.verb === "project" && String(e.detail).includes(slug),
+  );
+
+describe("the fixture person's own projects (issue 1215)", () => {
+  it("creates, activates, deactivates and deletes one, each audited as the fixture person", async () => {
+    const f = await fixtureSignIn(test);
+    const c = await call(test, "POST", "/api/workspaces/create", f.headers, {
+      name: "fx 1215 long name",
+    });
+    expect([c.status, c.json.slug]).toEqual([200, "fx-1215-long-name"]);
+    const on = await call(test, "POST", "/api/workspaces", f.headers, {
+      name: "fx-1215-long-name",
+      action: "activate",
+    });
+    expect(on.status).toBe(200);
+    expect(on.json.active).toContain("fx-1215-long-name");
+    const off = await call(test, "POST", "/api/workspaces", f.headers, {
+      name: "fx-1215-long-name",
+      action: "deactivate",
+    });
+    expect(off.json.active).not.toContain("fx-1215-long-name");
+    const del = await call(test, "DELETE", "/api/workspaces", f.headers, {
+      name: "fx-1215-long-name",
+    });
+    expect(del.status).toBe(200);
+    const rows = projectRows(test, "fx-1215-long-name");
+    expect(rows.map((e) => String(e.detail).split(" ")[0])).toEqual([
+      "create",
+      "activate",
+      "deactivate",
+      "delete",
+    ]);
+    for (const e of rows) expect(e.principal).toBe("fixture:person");
+    // Gone, and no longer its own.
+    const again = await call(test, "POST", "/api/workspaces", f.headers, {
+      name: "fx-1215-long-name",
+      action: "activate",
+    });
+    expect(again.status).toBe(403);
+  });
+
+  it("can't touch a project it didn't make", async () => {
+    const p = await signedIn(test.stateDir, test.base);
+    try {
+      const made = await call(
+        test,
+        "POST",
+        "/api/workspaces/create",
+        p.headers,
+        {
+          name: "people-1215",
+        },
+      );
+      expect(made.status).toBe(200);
+    } finally {
+      await signOut(test, p.headers);
+    }
+    const f = await fixtureSignIn(test);
+    for (const [m, body] of [
+      ["POST", { name: "people-1215", action: "deactivate" }],
+      ["DELETE", { name: "people-1215" }],
+    ] as const) {
+      const r = await call(test, m, "/api/workspaces", f.headers, body);
+      expect([r.status, r.json.code]).toEqual([403, "fixture_not_its_project"]);
+    }
+  });
+
+  it("a name it once used, now a person's project, is never its own", async () => {
+    const f = await fixtureSignIn(test);
+    const c = await call(test, "POST", "/api/workspaces/create", f.headers, {
+      name: "fx-1215-reused",
+    });
+    expect(c.status).toBe(200);
+    // Removed without the server (by hand, or the CLI's own write).
+    const file = path.join(test.root, "config", "local", "workspaces.yml");
+    const doc = yaml.parse(fs.readFileSync(file, "utf-8")) as {
+      workspaces: Record<string, unknown>;
+      active?: string[];
+    };
+    delete doc.workspaces["fx-1215-reused"];
+    doc.active = (doc.active ?? []).filter((n) => n !== "fx-1215-reused");
+    fs.writeFileSync(file, yaml.stringify(doc));
+    // A person makes a project with the same name.
+    const p = await signedIn(test.stateDir, test.base);
+    try {
+      const made = await call(
+        test,
+        "POST",
+        "/api/workspaces/create",
+        p.headers,
+        {
+          name: "fx-1215-reused",
+        },
+      );
+      expect(made.status).toBe(200);
+    } finally {
+      await signOut(test, p.headers);
+    }
+    const f2 = await fixtureSignIn(test);
+    const d = await call(test, "DELETE", "/api/workspaces", f2.headers, {
+      name: "fx-1215-reused",
+    });
+    expect([d.status, d.json.code]).toEqual([403, "fixture_not_its_project"]);
+  });
+
+  it("a project added by hand under a name it once used is never its own", async () => {
+    const f = await fixtureSignIn(test);
+    const c = await call(test, "POST", "/api/workspaces/create", f.headers, {
+      name: "fx-1215-hand",
+    });
+    expect(c.status).toBe(200);
+    const file = path.join(test.root, "config", "local", "workspaces.yml");
+    const edit = (fn: (w: Record<string, unknown>) => void) => {
+      const doc = yaml.parse(fs.readFileSync(file, "utf-8")) as {
+        workspaces: Record<string, unknown>;
+        active?: string[];
+      };
+      fn(doc.workspaces);
+      doc.active = (doc.active ?? []).filter((n) => n in doc.workspaces);
+      fs.writeFileSync(file, yaml.stringify(doc));
+    };
+    // Removed by hand, then added back by hand: a person's project now.
+    edit((w) => delete w["fx-1215-hand"]);
+    edit((w) => (w["fx-1215-hand"] = { services: {} }));
+    const d = await call(test, "DELETE", "/api/workspaces", f.headers, {
+      name: "fx-1215-hand",
+    });
+    expect([d.status, d.json.code]).toEqual([403, "fixture_not_its_project"]);
+    edit((w) => delete w["fx-1215-hand"]);
+  });
+
+  it("can't rename, focus, or remove clones with its own project", async () => {
+    const f = await fixtureSignIn(test);
+    await call(test, "POST", "/api/workspaces/create", f.headers, {
+      name: "fx-1215-b",
+    });
+    try {
+      for (const body of [
+        { name: "fx-1215-b", action: "rename", to: "other" },
+        { name: "fx-1215-b", action: "focus" },
+      ]) {
+        const r = await call(test, "POST", "/api/workspaces", f.headers, body);
+        expect([r.status, r.json.code]).toEqual([403, "fixture_scope"]);
+      }
+      const r = await call(test, "POST", "/api/workspaces/rename", f.headers, {
+        name: "fx-1215-b",
+        to: "other",
+      });
+      expect(r.status).toBe(403);
+      const d = await call(test, "DELETE", "/api/workspaces", f.headers, {
+        name: "fx-1215-b",
+        cleanupDev: true,
+      });
+      expect([d.status, d.json.code]).toEqual([403, "fixture_scope"]);
+    } finally {
+      await call(test, "DELETE", "/api/workspaces", f.headers, {
+        name: "fx-1215-b",
+      });
+    }
+  });
+
+  it("an agent's claim on the fixture session is refused (audited), and nothing is made", async () => {
+    const f = await fixtureSignIn(test);
+    const r = await call(
+      test,
+      "POST",
+      "/api/workspaces/create",
+      { ...f.headers, ...AGENT_CLAIM },
+      { name: "fx-1215-claimed" },
+    );
+    expect([r.status, r.json.code]).toEqual([403, "fixture_scope"]);
+    // Audited as refused, and never made.
+    const rows = projectRows(test, "fx-1215-claimed");
+    expect(rows.map((e) => [e.detail, e.outcome, e.principal])).toEqual([
+      ["create fx-1215-claimed", "refused", "fixture:person"],
+    ]);
   });
 });
 

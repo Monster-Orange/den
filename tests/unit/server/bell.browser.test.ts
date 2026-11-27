@@ -113,7 +113,9 @@ describe("NT-3: the bell", () => {
     );
     await sec.waitFor();
     expect(await sec.locator(".den-bell-sc span").textContent()).toBe("north");
-    const row = sec.locator('.den-bell-row[data-kind="waiting"] a');
+    const row = sec.locator(
+      '[data-kind="waiting"] a[data-bell="open"]',
+    );
     expect(await row.textContent()).toMatch(/needs your permission$/);
     expect(await row.getAttribute("href")).toBe(
       "/agents?project=north&agent=planner",
@@ -247,7 +249,7 @@ describe("NT-3: the bell", () => {
     await p.context().close();
   }, 60_000);
 
-  it("NT-3b: the agent's row says why it waits", async () => {
+  it("NT-3b: the agent's row says why it waits (issue 773: its Needs you chip)", async () => {
     if (skip()) return;
     expect(
       (await say({ event: "waiting", why: "asked", text: "Ship it?" })).status,
@@ -255,8 +257,8 @@ describe("NT-3: the bell", () => {
     const p = await open("/agents?ws=north");
     await p.waitForFunction(
       () =>
-        [...document.querySelectorAll(".wbdg")].some(
-          (e) => e.textContent === "asked you",
+        [...document.querySelectorAll('span[data-attn="needs"]')].some(
+          (e) => (e as HTMLElement).innerText === "Needs you · question",
         ),
       null,
       { timeout: 15_000 },

@@ -11,6 +11,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vm from "vm";
+import { agentsSource } from "./helpers/agents-source.js";
 import {
   belongsOn,
   lastUsedProject,
@@ -72,7 +73,7 @@ describe("clause 1: each list holds its own kind", () => {
   });
 
   it("agents-page.js filters its rows by the page, and lights the rail by it", () => {
-    const src = read("agents-page.js");
+    const src = agentsSource();
     expect(src).toMatch(
       /import \{[^}]*belongsOn[^}]*\} from "\/terminals-list\.js"/,
     );
@@ -225,7 +226,7 @@ describe("clause 4: New terminal, one click (a picker under All projects)", () =
     expect(ld).toContain('wsT("ws.termHere", "New terminal")');
   });
   it("the page reads fresh=1 as a new one, never a reuse", () => {
-    expect(read("agents-page.js")).toMatch(/q0\.get\("fresh"\) === "1"/);
+    expect(agentsSource()).toMatch(/q0\.get\("fresh"\) === "1"/);
   });
 });
 
@@ -273,7 +274,7 @@ describe("clause 6: nothing lost when shells leave Agents", () => {
   });
 
   it("each page keeps its own open panes", () => {
-    const src = read("agents-page.js");
+    const src = agentsSource();
     expect(src).toMatch(
       /PAGE === "terminal" \? "den-terminals-open" : "den-agents-open"/,
     );
