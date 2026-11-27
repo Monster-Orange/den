@@ -7,7 +7,7 @@ export const clauses = [
 ];
 
 export const BED_LONG_NAME =
-  "Gate 898 a project whose name runs well past the row on any iPad";
+  "GATE 898 WWW MMM WWW MMM WWW MMM WWW MMM WWW MMM WWW MMM WWW MMM";
 
 const json = (method, body) => ({
   method,
