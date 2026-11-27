@@ -1,6 +1,7 @@
 /* eslint-env browser */
 // Live check for #793: every page and every pop-up uses the theme's sans font, never the browser's serif.
-// Read-only: opens pages and What's new, closes it again. No agents, no settings changed.
+// Read only: reads each page's body font and What's new's fonts; opens and closes What's new.
+export const readOnly = true;
 export const issue = 793;
 export const clauses = [
   "every page's <body> uses the theme's sans font, never serif",
@@ -44,24 +45,31 @@ export async function run(ctx, s) {
     await ctx.until(
       () =>
         ctx.page.evaluate(
-          () => !!document.querySelector("dialog[open], [role=dialog]"),
+          () => !!document.querySelector("dialog#cl-overlay[open]"),
         ),
       10000,
     );
     const r = await ctx.page.evaluate(() => {
-      const d =
-        document.querySelector("dialog[open]") ||
-        document.querySelector("[role=dialog]");
+      const d = document.querySelector("dialog#cl-overlay[open]");
       if (!d) return null;
-      const els = [...d.querySelectorAll("h2,h3,li,p,button")].slice(0, 40);
+      const font = (e) => getComputedStyle(e).fontFamily;
+      const els = [...d.querySelectorAll("h2,h3,li,p,a,button")];
+      const foot = [...d.querySelectorAll(".dk-ft button, .dk-ft a")];
       return {
-        body: getComputedStyle(document.body).fontFamily,
-        fonts: [...new Set(els.map((e) => getComputedStyle(e).fontFamily))],
+        body: font(document.body),
+        n: els.length,
+        fonts: [...new Set(els.map(font))],
+        footN: foot.length,
+        foot: [...new Set(foot.map(font))],
       };
     });
     await ctx.shot(`whatsnew-${p.slice(1)}-${ctx.browser}-${ctx.width}`);
     await ctx.page.keyboard.press("Escape").catch(() => {});
-    pops.push({ p, ...(r || { body: "", fonts: [] }), found: !!r });
+    pops.push({
+      p,
+      ...(r || { body: "", n: 0, fonts: [], footN: 0, foot: [] }),
+      found: !!r,
+    });
   }
   return { ...s, pages, pops };
 }
@@ -86,14 +94,17 @@ export function expect(cells) {
           (x) =>
             x.found &&
             x.fonts.length > 0 &&
-            x.fonts.every((f) => !SERIF.test(f) && first(f) === first(x.body)),
+            x.foot.length > 0 &&
+            [...x.fonts, ...x.foot].every(
+              (f) => !SERIF.test(f) && first(f) === first(x.body),
+            ),
         ),
       ),
       detail: d((r) =>
         r.pops
           .map(
             (x) =>
-              `${x.p}: ${x.found ? x.fonts.map(first).join("|") : "no dialog"} (body ${first(x.body)})`,
+              `${x.p}: ${x.found ? `${x.n} elements ${x.fonts.map(first).join("|")}, footer ${x.footN} ${x.foot.map(first).join("|")}` : "no What's new"} (body ${first(x.body)})`,
           )
           .join("; "),
       ),
