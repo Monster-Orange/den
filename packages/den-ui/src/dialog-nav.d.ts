@@ -5,6 +5,7 @@ export interface DialogNavPane {
   html?: string;
   lazy?: boolean;
   readOnly?: string;
+  icon?: string;
 }
 export interface DialogNavGroup {
   label?: string;
@@ -21,6 +22,8 @@ export interface DialogNavWords {
   discard: string;
   discardYes: string;
   discardNo: string;
+  saved: string;
+  notSaved: string;
 }
 export interface DialogNavSpec {
   id?: string;
@@ -31,6 +34,7 @@ export interface DialogNavSpec {
   open?: string;
   href?: string;
   cross?: { href: string; label?: string };
+  foot?: { href: string; label: string }[];
   lang?: string;
   words?: Partial<DialogNavWords>;
   shown?: boolean;
@@ -42,6 +46,13 @@ export interface DialogNavOptions {
   load?: (pane: string, body: HTMLElement) => unknown;
   onCross?: (href: string) => void;
   onClose?: () => void;
+  onSave?: (
+    form: HTMLFormElement,
+    pane: string,
+  ) =>
+    | Promise<{ ok?: boolean; message?: string; error?: string } | false>
+    | { ok?: boolean; message?: string; error?: string }
+    | false;
 }
 export interface DialogNav {
   open(
