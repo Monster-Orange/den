@@ -74,6 +74,10 @@
  *   project_mcp_remove issue 352: take one away, or change its url or
  *   project_mcp_update bearer reference (agent-ops.ts checkProjectMcpRemove,
  *                     checkProjectMcpUpdate); always the person's own Allow
+ *   project_event_feed_add    issue 1480: add or remove one of a
+ *   project_event_feed_remove project's app event feeds (agent-ops.ts
+ *                     checkEventFeedAdd, checkEventFeedRemove); routine on
+ *                     a personal install with Undo, Allow on a strict one
  *   verify_run        issue 208: a Verify run on a shared environment
  *                     (verify-routes.ts checkVerifyRun, runVerify); the
  *                     Review is the plan, each module with its mark. It
@@ -113,6 +117,11 @@
  *                     address (web-url-held.ts); it must answer as this
  *                     Den at the ask and at the Allow, and saves as
  *                     Settings does. The person's own Allow
+ *   gate_runner_entry_set
+ *                     issue 642: let a repo's CI jobs run on a test box
+ *                     (gate-routes.ts gateRunnerEntryOp): a runner entry,
+ *                     set or changed. It widens what runs on a box: always
+ *                     the person's own Allow
  */
 import {
   line,
@@ -120,6 +129,7 @@ import {
   type ReviewLine,
 } from "../../shared/review-lines.js";
 import { stableNotOlder, UPDATE_SPEC_RE } from "./den-update.js";
+import { projectCapValueError } from "../../shared/agents/project-cap.js";
 import { isPersonal } from "../../shared/agents/sandbox-rollout.js";
 import {
   cloneTarget,
@@ -155,6 +165,7 @@ import type {
   HeldOpCheck,
   PersonaHeldCheck,
 } from "../cli/agent-ops.js";
+import { isRepoName } from "../../shared/repo-name.js";
 
 export interface TryResult {
   ok: boolean;
@@ -232,6 +243,8 @@ export interface HeldActionDeps {
    * its check asks the connected Hub, so it is async.
    */
   hubLink?: HeldAction;
+  hubOrigin?: () => string | null;
+  stateFolderOwn?: HeldAction;
   /** SRV-P4: agent_folder's check and move (agent-ops.ts). */
   agentFolder?: HeldOp;
   /** Issue 335: project_mcp_add's check and save (agent-ops.ts). */
@@ -240,6 +253,10 @@ export interface HeldActionDeps {
   projectMcpRemove?: HeldOp;
   /** Issue 352: project_mcp_update's check and save (agent-ops.ts). */
   projectMcpUpdate?: HeldOp;
+  /** Issue 1480: project_event_feed_add's check and save (agent-ops.ts). */
+  eventFeedAdd?: HeldOp;
+  /** Issue 1480: project_event_feed_remove's check and save (agent-ops.ts). */
+  eventFeedRemove?: HeldOp;
   /** Issue 199: agent_mode's check and clear (agent-ops.ts). */
   agentMode?: HeldOp;
   /** Issue 1328: agent_sandbox_set's check and write (agents/sandbox-set.ts). */
@@ -262,6 +279,8 @@ export interface HeldActionDeps {
   terminalHostRestart?: HeldOp;
   /** Issue 869: web_url_set (web-url-held.ts webUrlSetAction). */
   webUrlSet?: HeldAction;
+  /** Issue 642: gate_runner_entry_set (gate-routes.ts gateRunnerEntryOp). */
+  gateRunnerEntry?: HeldOp;
   /** Issue 160: agent_import's bring-in (agent-ops.ts runAgentImport). */
   agentImport?: (args: {
     project: string;
@@ -280,6 +299,10 @@ export interface HeldActionDeps {
    * Issue 160: the approval policy as set (`approvals:`), the install's or
    * a project's, and its write. read throws on a project Den doesn't have.
    */
+  projectCap?: {
+    read: (project: string) => { own: number | null; install: number };
+    write: (project: string, max: number | null) => void;
+  };
   approvalPolicy?: {
     read: (project?: string) => Record<string, unknown> | undefined;
     write: (
@@ -302,6 +325,8 @@ export interface HeldActionDeps {
   testPersonSetup?: HeldAction;
   /** #176: den_pin_commit's check and run (pin-commit.ts). */
   pinCommit?: HeldOp;
+  envHoldOn?: HeldOp;
+  envAllowKeep?: HeldOp;
   /** Issue 936: den_sandbox_on (agents/sandbox-rollout.ts). */
   sandboxOn?: HeldOp;
   /** SRV-P3: the folder repo_clone clones into (repos_root). */
@@ -339,8 +364,12 @@ export const CRITICAL_HELD_ACTIONS: ReadonlySet<string> = new Set([
   "gate_box_set",
   "gate_box_remove",
   "host_restart",
+  "den_env_hold_on",
+  "den_env_allow_keep",
   "test_person_setup",
   "web_url_set",
+  "gate_runner_entry_set",
+  "state_folder_own",
 ]);
 
 /** SRV-P4: a held write agent-ops checks and runs. */
@@ -370,7 +399,6 @@ function shown(p: string, home: string): string {
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** A GitHub repo, owner/name. */
-const GH_REPO_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,38}\/[A-Za-z0-9._-]{1,100}$/;
 /** A runtime's conversation id (Claude Code: a uuid). */
 const SESSION_RE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
@@ -387,6 +415,15 @@ function draftError(r: RepoAddResult): string {
 
 const CARRY_ON =
   "Agents and terminals carry on where they were; open pages reconnect.";
+
+function originOf(url: string | null): string {
+  if (!url) return "";
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+}
 
 export function heldActions(d: HeldActionDeps): HeldActions {
   /**
@@ -771,6 +808,28 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         : { ok: false, error: "this Den can't link projects to Hub here" },
     run: (a, asked) => d.hubLink!.run(a, asked),
   };
+  const hubBound = (h: HeldAction): HeldAction => {
+    const current = d.hubOrigin;
+    if (!current) return h;
+    const without = (a: Record<string, unknown>) => {
+      const rest = { ...a };
+      delete rest.hubOrigin;
+      return rest;
+    };
+    return {
+      async check(a, who, o) {
+        const at = originOf(current());
+        if (o?.again && typeof a.hubOrigin === "string" && a.hubOrigin !== at)
+          return {
+            ok: false,
+            error: `asked while this install was on another Hub (${a.hubOrigin || "none"}); it is on ${at || "no Hub"} now, so nothing was done: ask again`,
+          };
+        const c = await h.check(without(a), who, o);
+        return c.ok ? { ...c, args: { ...c.args, hubOrigin: at } } : c;
+      },
+      run: (a, asked) => h.run(without(a), asked),
+    };
+  };
   const agentFolder = op(d.agentFolder, "this Den can't move agents here");
   const agentMode = op(
     d.agentMode,
@@ -783,6 +842,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   const settingChange = op(
     d.settingChange,
     "this Den can't change its settings here",
+  );
+  const eventFeedAdd = op(
+    d.eventFeedAdd,
+    "this Den can't add a project's event feeds here",
+  );
+  const eventFeedRemove = op(
+    d.eventFeedRemove,
+    "this Den can't remove a project's event feeds here",
   );
   const gateSettings = op(
     d.gateSettings,
@@ -798,6 +865,14 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     "this Den can't revoke app keys here",
   );
   const pinCommit = op(d.pinCommit, "this Den can't commit its pin here");
+  const envHoldOn = op(
+    d.envHoldOn,
+    "this Den can't hold variables back from agents here",
+  );
+  const envAllowKeep = op(
+    d.envAllowKeep,
+    "this Den can't change which variables agents keep here",
+  );
   const sandboxOn = op(
     d.sandboxOn,
     "this Den can't turn the agent sandbox on here",
@@ -810,6 +885,10 @@ export function heldActions(d: HeldActionDeps): HeldActions {
   const gateBoxRemove = op(
     d.gateBoxRemove,
     "this Den can't remove test boxes here",
+  );
+  const gateRunnerEntry = op(
+    d.gateRunnerEntry,
+    "this Den can't set CI runner entries here",
   );
   const terminalHostRestart = op(
     d.terminalHostRestart,
@@ -974,6 +1053,66 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     },
   };
 
+  const projectAgentCap: HeldAction = {
+    check(a, who): HeldCheck {
+      if (!d.projectCap)
+        return {
+          ok: false,
+          error: "this Den can't set a project's agent cap here",
+        };
+      const project = wsArg(a.project);
+      if (!project || !NAME_RE.test(project) || !d.workspaceExists(project))
+        return { ok: false, error: `there is no project "${project ?? ""}"` };
+      if (
+        who?.project &&
+        !isServerScope(who.project) &&
+        project !== who.project
+      )
+        return {
+          ok: false,
+          error: `a project's agent asks about its own project (${who.project}), not ${project}`,
+        };
+      const max = a.max === 0 ? null : a.max;
+      const { own, install } = d.projectCap.read(project);
+      const bad = projectCapValueError(project, max, install);
+      if (bad) return { ok: false, error: bad };
+      if ((max ?? null) === own)
+        return {
+          ok: false,
+          error: `project ${project}'s agent cap is already ${own ?? "the install's"}`,
+        };
+      const shown = (v: number | null) =>
+        v !== null
+          ? String(v)
+          : install > 0
+            ? `${install} (the install's)`
+            : "no limit";
+      const from = shown(own);
+      const to = shown((max as number | null) ?? null);
+      const room = (v: number | null) =>
+        v ?? (install > 0 ? install : Infinity);
+      const raises = room((max as number | null) ?? null) > room(own);
+      return {
+        ok: true,
+        args: { project, max: max ?? null },
+        summary: `set project ${project}'s agent cap: ${from} → ${to}`,
+        params: { project, from, to },
+        ...reviewLines([
+          line(`Project: ${project}`, "ap.pm.project", { project }),
+          line(`Now: ${from}`, "ap.det.project_agent_cap.now", { v: from }),
+          line(`Then: ${to}`, "ap.det.project_agent_cap.then", { v: to }),
+        ]),
+        ...(raises ? { personOnly: true } : {}),
+      };
+    },
+    async run(a) {
+      const project = str(a.project)!;
+      const max = typeof a.max === "number" ? a.max : null;
+      d.projectCap!.write(project, max);
+      return { ok: true, project, max };
+    },
+  };
+
   const approvalPolicy: HeldAction = {
     check(a, who): HeldCheck {
       if (!d.approvalPolicy)
@@ -1089,7 +1228,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           };
       }
       const repo = str(a.repo);
-      if (!repo || !GH_REPO_RE.test(repo))
+      if (!isRepoName(repo))
         return { ok: false, error: "repo: a GitHub repo, owner/name" };
       const pr =
         typeof a.pr === "number"
@@ -1156,9 +1295,11 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     project_mcp_add: projectMcp,
     project_mcp_remove: projectMcpRemove,
     project_mcp_update: projectMcpUpdate,
+    project_event_feed_add: eventFeedAdd,
+    project_event_feed_remove: eventFeedRemove,
     hub_connect: hubConnect,
-    hub_project_create: hubCreate,
-    hub_link: hubLink,
+    hub_project_create: hubBound(hubCreate),
+    hub_link: hubBound(hubLink),
     agent_folder: agentFolder,
     agent_mode: agentMode,
     agent_sandbox_set: agentSandbox,
@@ -1166,6 +1307,7 @@ export function heldActions(d: HeldActionDeps): HeldActions {
     verify_run: verifyRun,
     agent_import: agentImport,
     approval_policy: approvalPolicy,
+    project_agent_cap: projectAgentCap,
     pr_close: prClose,
     report: d.report ?? {
       check: () => ({ ok: false, error: "this Den can't file reports here" }),
@@ -1175,6 +1317,8 @@ export function heldActions(d: HeldActionDeps): HeldActions {
       }),
     },
     den_pin_commit: pinCommit,
+    den_env_hold_on: envHoldOn,
+    den_env_allow_keep: envAllowKeep,
     den_sandbox_on: sandboxOn,
     embed_key_create: appKeyCreate,
     embed_key_revoke: appKeyRevoke,
@@ -1193,6 +1337,13 @@ export function heldActions(d: HeldActionDeps): HeldActions {
         error: "this Den can't set up test installs here",
       }),
     },
+    state_folder_own: d.stateFolderOwn ?? {
+      check: () => ({
+        ok: false,
+        error: "this Den can't give itself its own state folder here",
+      }),
+      run: async () => ({ ok: false }),
+    },
     web_url_set: d.webUrlSet ?? {
       check: () => ({
         ok: false,
@@ -1204,5 +1355,6 @@ export function heldActions(d: HeldActionDeps): HeldActions {
           error: "this Den can't set its address here",
         }),
     },
+    gate_runner_entry_set: gateRunnerEntry,
   };
 }

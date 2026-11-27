@@ -28,7 +28,7 @@
  */
 import { randomBytes, randomInt, timingSafeEqual } from "crypto";
 import { PAIR_ALPHABET } from "../../shared/confirm-code.js";
-import { deviceName } from "../../shared/web-session.js";
+import { deviceName } from "../../shared/web/web-session.js";
 
 /** How long a request waits for its approval. */
 export const PAIR_TTL_MS = 10 * 60_000;

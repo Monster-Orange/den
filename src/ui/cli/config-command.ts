@@ -18,6 +18,19 @@ import {
 } from "../../shared/den-config.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
 import { personSetCaps } from "./setting-change.js";
+import {
+  isSkillPackKey,
+  patchSkillPackKey,
+  skillPackKeyNames,
+  skillPacksSummary,
+  skillPackValue,
+} from "./config-skill-packs.js";
+
+function setSkillPackKey(name: string, value: unknown): void {
+  const user = structuredClone(readUserConfig()) as Record<string, unknown>;
+  patchSkillPackKey(user, name, value, readDenConfigOrEmpty());
+  writeUserConfig(user as UserConfig);
+}
 
 function readDenConfigOrEmpty(): DenConfig {
   try {
@@ -36,8 +49,8 @@ const TEST_INSTALL_KEYS = new Set(["web.test_install", "test_install"]);
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 type ConfigKey = keyof UserConfig;
 
 const KEY_ALIASES: Record<string, ConfigKey> = {
@@ -84,9 +97,13 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "github.watch_max_interval_seconds": ["github", "watch_max_interval_seconds"],
   "github.api_budget_floor": ["github", "api_budget_floor"],
   "github.watches_max": ["github", "watches_max"],
+  "github.watch_stale_minutes": ["github", "watch_stale_minutes"],
+  "github.watch_max_open_hours": ["github", "watch_max_open_hours"],
+  "github.rerun_look_minutes": ["github", "rerun_look_minutes"],
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
+  "web.tools_probe_seconds": ["web_ready", "tools_probe_seconds"],
   // Issue 819: new-device requests and wrong codes.
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
@@ -110,6 +127,12 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // install's writes an hour.
   "agents.issue_writes": ["agent_issue_writes", "roles"],
   "agents.issue_writes_per_hour": ["agent_issue_writes", "per_hour"],
+  // Issue 1127: how old a repo's visibility may be for the words check.
+  "agents.issue_writes_visibility_minutes": [
+    "agent_issue_writes",
+    "visibility_minutes",
+  ],
+  "agents.issue_writes_public": ["agent_issue_writes", "public"],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",
@@ -120,6 +143,8 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "reports.hub_screenshot_max_mb": ["reports", "hub_screenshot_max_mb"],
   // Issue 707: the server's warning lines on disk, capped.
   "server_log.max_mb": ["server_log", "max_mb"],
+  "server_log.slow_request_ms": ["server_log", "slow_request_ms"],
+  "server_log.event_loop_lag_ms": ["server_log", "event_loop_lag_ms"],
   "reports.hub_timeout_seconds": ["reports", "hub_timeout_seconds"],
   // Issue 278: when an agent counts as stuck compacting; instruction size.
   "agent_context.compaction_loop_count": [
@@ -138,6 +163,8 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "agent_context.pause_after_loop": ["agent_context", "pause_after_loop"],
   // Issue 367: how long one push may take, and how long a push service keeps it.
   "alerts.push_timeout_seconds": ["alerts", "push_timeout_seconds"],
+  "alerts.tab_first_seconds": ["alerts", "tab_first_seconds"],
+  "alerts.max_streams": ["alerts", "max_streams"],
   "alerts.push_ttl_seconds": ["alerts", "push_ttl_seconds"],
   // Issue 415: how long Report keeps, and waits for, a repo's visibility.
   "feedback.visibility_cache_hours": ["feedback", "visibility_cache_hours"],
@@ -175,6 +202,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // Issue 1022: how often the page polls health, visible and hidden.
   "health_poll.visible_seconds": ["health_poll", "visible_seconds"],
   "health_poll.hidden_seconds": ["health_poll", "hidden_seconds"],
+  "git_reads.at_once": ["git_reads", "at_once"],
 };
 
 /** Issue 532: a terminal limit's effective value (user.yml over den.yml). */
@@ -225,6 +253,7 @@ export function configKeyNames(): string[] {
     ...Object.keys(DOTTED),
     ...Object.keys(DOTTED_SWITCH),
     ...Object.keys(HUB_GROUPS),
+    ...skillPackKeyNames(),
   ];
 }
 
@@ -271,6 +300,13 @@ export function patchConfigKey(
     return { ok: false, error: testInstallByHandRefusal(product().configFile) };
   if (HUB_GROUPS[name])
     return patchHubGroups(user, { [HUB_GROUPS[name]]: value });
+  if (isSkillPackKey(name))
+    try {
+      patchSkillPackKey(user, name, value, readDenConfigOrEmpty());
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
   if (DOTTED_SWITCH[name])
     return patchCliRows(user, { [DOTTED_SWITCH[name]]: value }, { cli: true });
   if (DOTTED[name]) {
@@ -401,6 +437,11 @@ export async function cmdConfig(args: string[]): Promise<void> {
     if (!keyArg) throw new Error(`Usage: ${product().cli} config rm <key>`);
     if (TEST_INSTALL_KEYS.has(keyArg))
       throw new Error(testInstallByHandRefusal(product().configFile));
+    if (isSkillPackKey(keyArg)) {
+      setSkillPackKey(keyArg, null);
+      console.log(chalk.green(`  ✓ Removed ${keyArg}`));
+      return;
+    }
     if (DOTTED_SWITCH[keyArg]) {
       setDotted(keyArg, null);
       console.log(chalk.green(`  ✓ Removed ${keyArg}`));
@@ -424,6 +465,27 @@ export async function cmdConfig(args: string[]): Promise<void> {
 
   const assignment = args[0];
   const eq = assignment.indexOf("=");
+  if (assignment === "skill_packs") {
+    for (const l of skillPacksSummary(readUserConfig(), readDenConfigOrEmpty()))
+      console.log(l);
+    return;
+  }
+  if (eq < 0 && isSkillPackKey(assignment)) {
+    const v = skillPackValue(
+      assignment,
+      readUserConfig(),
+      readDenConfigOrEmpty(),
+    );
+    console.error(chalk.dim(`  (${SOURCE_WORDS[v.from]})`));
+    console.log(v.value);
+    return;
+  }
+  if (eq > 0 && isSkillPackKey(assignment.slice(0, eq))) {
+    const name = assignment.slice(0, eq);
+    setSkillPackKey(name, parseValue(assignment.slice(eq + 1)));
+    console.log(chalk.green(`  ✓ Set ${name}`));
+    return;
+  }
   // Issue 1417: an agent or terminal limit prints its value in force as
   // stdout's last line (scripts read it), and where it came from on
   // stderr; every agent limit, not only the ones `config` sets.

@@ -82,6 +82,11 @@ export interface HelperSettings {
    * notification or result is further back reads from its own files.
    */
   readMaxMb: number;
+  /** D76: the facts kept from agents' transcripts, in MB (least recently used out). */
+  factsCacheMb: number;
+  refreshSeconds: number;
+  listWaitSeconds: number;
+  readerRestMs: number;
 }
 
 export const HELPER_DEFAULTS: HelperSettings = {
@@ -89,6 +94,10 @@ export const HELPER_DEFAULTS: HelperSettings = {
   collapseDoneMinutes: 30,
   rowMax: 4,
   readMaxMb: 64,
+  factsCacheMb: 256,
+  refreshSeconds: 5,
+  listWaitSeconds: 0.25,
+  readerRestMs: 2,
 };
 
 /** What a runtime's helpers hooks are given. */

@@ -10,6 +10,7 @@
  * relayed message (relayMessage) is held and typed by the same loop, after
  * the agent's turn, never mid-turn. Hub's own deliveries need Hub.
  */
+import { agentPagePath } from "../../shared/agent-links.js";
 import path from "node:path";
 import type * as AgentOps from "../cli/agent-ops.js";
 import type { AgentsResolved } from "../cli/agent-ops.js";
@@ -21,15 +22,15 @@ import {
   writeDeliveryHealth,
   type Delivery,
   type DeliveryOwner,
-} from "../../shared/hub-delivery.js";
-import { appendJournal } from "../../shared/hub-delivery-journal.js";
+} from "../../shared/hub/hub-delivery.js";
+import { appendJournal } from "../../shared/hub/hub-delivery-journal.js";
 import { hubCommentsBell } from "./hub-comments-bell.js";
 import {
   DeliveryLoop,
   HELD_WORDS,
   type AgentHubWork,
   type HeldCode,
-} from "../../shared/hub-delivery-loop.js";
+} from "../../shared/hub/hub-delivery-loop.js";
 import {
   listRecords,
   readRecord,
@@ -41,10 +42,11 @@ import {
   feedKinds,
   InboxWatcher,
   type InboxSettings,
-} from "../../shared/hub-inbox-watch.js";
+} from "../../shared/hub/hub-inbox-watch.js";
 import { getStateDir } from "../../shared/paths.js";
 import { readUserConfig } from "../../shared/den-config.js";
 import { embedSettings } from "./embed-settings.js";
+import { fixtureTestInstall } from "./fixture-projects.js";
 
 const PUMP_MS = 2000;
 /** Issue 702: how often the bell checks hub.delivery_alert_minutes. */
@@ -162,6 +164,20 @@ async function hubAndToken(): Promise<{ url: string; token: string } | null> {
   if (!cfg) return null;
   const token = await hub.readHubToken(cfg);
   return token ? { url: cfg.url, token } : null;
+}
+
+async function syncAgentGrant(url: string): Promise<void> {
+  try {
+    const g = await import("../../shared/hub-agent-grant.js");
+    const { getStateDir } = await import("../../shared/paths.js");
+    const { notificationDeps } = await import("./notification-service.js");
+    g.syncAgentGrantNote(notificationDeps().store, {
+      connected: true,
+      notCovered: g.agentsNotCovered(getStateDir(), url),
+    });
+  } catch {
+    return;
+  }
 }
 
 /** The body of a fetch Response as text chunks. */
@@ -298,7 +314,8 @@ function startHubNotes(log: (line: string) => void): void {
       const at = await hubAndToken().catch(() => null);
       if (!at) return;
       const hub = await import("../../shared/hub.js");
-      const { syncHubNotes } = await import("../../shared/hub-notes-sync.js");
+      const { syncHubNotes } =
+        await import("../../shared/hub/hub-notes-sync.js");
       const { notificationDeps } = await import("./notification-service.js");
       await syncHubNotes({
         store: notificationDeps().store,
@@ -331,6 +348,50 @@ type HeldStore = Pick<
   import("../../shared/notifications.js").NotificationStore,
   "add" | "withdraw"
 >;
+
+export function badDeliveryFile(
+  aside: string,
+  o: {
+    held?: number | null;
+    code?: string;
+    store?: HeldStore;
+    log?: (line: string) => void;
+  } = {},
+): void {
+  const file = path.basename(aside).replace(/\.bad-\d+$/, "");
+  const moved = path.basename(aside);
+  const n = o.held ?? null;
+  const kept = moved !== file;
+  const key = !kept
+    ? "bell.m.deliveryFileBadKept"
+    : n === null
+      ? "bell.m.deliveryFileBadUncounted"
+      : "bell.m.deliveryFileBad";
+  const text = !kept
+    ? `Den couldn't read ${file} and couldn't move it aside; delivery goes on without what it held.`
+    : n === null
+      ? `Den couldn't read ${file} or count its held deliveries; kept the file as ${moved}.`
+      : `Den couldn't read ${n} held deliver${n === 1 ? "y" : "ies"}; kept the file as ${moved}.`;
+  const go = (s: HeldStore) =>
+    s.add({
+      kind: "service",
+      subject: `record:delivery-file-bad:${moved}`,
+      scope: "den",
+      text,
+      msg: { key, vars: n === null ? { file, moved } : { file, moved, n } },
+      link: "/settings",
+    });
+  if (o.store) go(o.store);
+  else
+    void import("./notification-service.js")
+      .then(({ notificationDeps }) => go(notificationDeps().store))
+      .catch(() => undefined);
+  try {
+    o.log?.(`hub delivery: ${text}${o.code ? ` (${o.code})` : ""}`);
+  } catch {
+    return;
+  }
+}
 
 /**
  * Issue 664: the bell's item for text held because `agent` isn't at its
@@ -383,7 +444,7 @@ export function heldBell(
           why === "not_at_prompt" ? "bell.m.notAtPrompt" : `bell.m.held.${why}`,
         vars: { name, n, m },
       },
-      link: `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`,
+      link: agentPagePath(rec.workspace, rec.id),
     });
   };
   if (o.store) {
@@ -450,6 +511,7 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       },
     },
     // Issue 701: the person's comment answers the agent's question.
+    testInstall: fixtureTestInstall,
     answered: (agent) => {
       void import("./notification-service.js")
         .then(({ notificationDeps }) =>
@@ -509,10 +571,20 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
     ackHeld: () => deliveryAckHeld(),
     seen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "deliveries-seen.json"),
+      5000,
+      {
+        onBad: (aside, held, code) =>
+          badDeliveryFile(aside, { held, code, log: o.log }),
+      },
     ),
     // Issue 459: app feed pointers keep their own seen ids.
     feedSeen: new SeenDeliveries(
       path.join(getStateDir(), "hub", "feed-pointers-seen.json"),
+      5000,
+      {
+        onBad: (aside, held, code) =>
+          badDeliveryFile(aside, { held, code, log: o.log }),
+      },
     ),
     // Issue 459: one paste holds at most embed.paste_max_kb.
     pasteMaxChars: () => {
@@ -530,8 +602,21 @@ async function ensureLoop(o: StartOpts): Promise<DeliveryLoop> {
       appendJournal(path.join(getStateDir(), "hub", "deliveries.jsonl"), e),
     // Issue 702: doctor reads the path's health from a file.
     onHealth: (h) => writeDeliveryHealth(healthFile(), h, streamUrl),
-    health0: {
-      lastDeliveryAt: readDeliveryHealth(healthFile())?.lastDeliveryAt ?? null,
+    health0: (() => {
+      const h0 = readDeliveryHealth(healthFile());
+      return {
+        lastDeliveryAt: h0?.lastDeliveryAt ?? null,
+        // A restart keeps how long the cursor has been still.
+        cursorAt: h0?.cursorAt ?? null,
+      };
+    })(),
+    // hub.delivery_stale_hours, read at each check.
+    staleMs: () => {
+      try {
+        return (hub.readHubConfig()?.deliveryStaleHours ?? 6) * 3_600_000;
+      } catch {
+        return 6 * 3_600_000;
+      }
     },
     // Issue 703: hub.delivery_stream_silence_seconds, read at each open.
     silenceMs: () => {
@@ -613,6 +698,8 @@ export async function startDeliveries(o: StartOpts): Promise<void> {
         ...(w.login ? { ownerLogin: w.login } : {}),
         ...(w.company?.name ? { company: w.company.name } : {}),
       };
+      feedCarries = feedKinds(w.features);
+      void syncAgentGrant(a.url);
       noteWhoami(w);
     } catch {
       /* Hub unreachable now: deliveries wait until it answers */

@@ -6,7 +6,7 @@
  *   Move them   to another workspace: a stopped one now, a running one
  *               once its turn ends, the same conversation (D72)
  *
- *   askWorkspaceAgents({ ws, agents, others })  resolves
+ *   askWorkspaceAgents({ ws, agents, others, onGo? })  resolves
  *     { agents: "stop" } | { agents: "move", agentsTo } | null (Cancel)
  *
  * `agents` as GET /api/workspaces/cleanup-preview lists them
@@ -25,7 +25,7 @@ const esc = (s) =>
   );
 
 /** Issue 669: the kit's confirm frame (/dialog-den.js), no dialog of its own. */
-export function askWorkspaceAgents({ ws, agents, others = [] }) {
+export function askWorkspaceAgents({ ws, agents, others = [], onGo }) {
   const running = agents.filter((a) => a.running).length;
   const canMove = others.length > 0;
   const body =
@@ -64,17 +64,23 @@ export function askWorkspaceAgents({ ws, agents, others = [] }) {
     ],
   });
   let answer = null;
+  const pick = (d) => {
+    const how = d.querySelector('input[name="wsd"]:checked')?.value;
+    return how === "move"
+      ? { agents: "move", agentsTo: d.querySelector("#wsd-to").value }
+      : how === "stop"
+        ? { agents: "stop" }
+        : null;
+  };
   const h = mountDialog(html, {
     focus: '[data-wsd="go"]',
+    // Issue 1054: onGo(answer) → Promise sends from here; Go holds until
+    // the answer, then the dialog closes.
+    onAction: (value, d) =>
+      value === "go" && typeof onGo === "function" ? onGo(pick(d)) : undefined,
     onClose: (value, d) => {
       if (value !== "go") return;
-      const how = d.querySelector('input[name="wsd"]:checked')?.value;
-      answer =
-        how === "move"
-          ? { agents: "move", agentsTo: d.querySelector("#wsd-to").value }
-          : how === "stop"
-            ? { agents: "stop" }
-            : null;
+      answer = pick(d);
     },
   });
   return h.closed.then(() => answer);

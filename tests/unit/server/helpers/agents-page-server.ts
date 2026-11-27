@@ -36,7 +36,7 @@ import {
   type ScriptedPty,
 } from "../../sessions/helpers/fake-pty.js";
 import { denAuth } from "./den-auth.js";
-import { ensureWebSecret } from "../../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../../src/shared/web/web-secret.js";
 import { setupFixturePerson } from "../../../../src/shared/fixture-person.js";
 import { writeCreationRecord } from "../../../../src/shared/test-operator.js";
 import { writeTestEdgeProof } from "./edge-proof.js";
@@ -77,6 +77,7 @@ export interface AgentsPageServer {
   hostClosed(): boolean;
   /** The web server's process group (issue 242: a test pauses it, as a busy Den). */
   serverPid(): number | undefined;
+  attached(sessionId: string): number;
   stop(): Promise<void>;
 }
 
@@ -98,6 +99,11 @@ export async function startAgentsPageServer(
     elevatedUp?: boolean;
     /** config/local/user.yml's content (agents.runtimes.<id>.bin). */
     userYml?: string;
+    /**
+     * YAML appended to the distribution's config/acme.yml, for settings
+     * only the distribution sets (agents.coach.enabled, issue 52).
+     */
+    distYml?: string;
     /**
      * agents.restore_on_boot (0.4.46, on in a real install): off here
      * unless a test turns it on, so a recorded running agent shows as
@@ -231,7 +237,11 @@ export async function startAgentsPageServer(
   }
   const bin = path.join(tmp, "bin");
   const ran = path.join(tmp, "claude-ran");
-  write(path.join(bin, "docker"), "#!/bin/sh\nexit 1\n", 0o755);
+  write(
+    path.join(bin, "docker"),
+    '#!/bin/sh\necho "Error: No such object: $*" >&2\nexit 1\n',
+    0o755,
+  );
   // The server asks launchd which login it runs in (D20, launchctl
   // managername): a desktop login here, never this machine's launchctl
   // (/bin, the real-CLI sentinel, tests/sentinel.ts). Anything else fails.
@@ -296,6 +306,13 @@ export async function startAgentsPageServer(
     ? path.join(tmp, "state")
     : path.join(home, ".acme");
   fs.mkdirSync(stateDir, { recursive: true });
+  if (opts.distYml) {
+    const cfg = path.join(root, "config", "acme.yml");
+    fs.writeFileSync(
+      cfg,
+      `${fs.readFileSync(cfg, "utf-8")}\n${opts.distYml}\n`,
+    );
+  }
   if (opts.testInstall) {
     const cfg = path.join(root, "config", "acme.yml");
     fs.writeFileSync(
@@ -379,6 +396,7 @@ export async function startAgentsPageServer(
   const { port } = started;
   const base = `http://localhost:${port}`;
   return {
+    attached: (sessionId) => host.attachmentCount(sessionId),
     port,
     base,
     tmp,

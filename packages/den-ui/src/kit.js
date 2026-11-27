@@ -45,6 +45,7 @@
  *   DenUI.busy.pending(button, run)     a fetch-driven button: dots (issue 699)
  *   DenUI.busy.watchForms()             plain POST forms: dots (issue 699)
  *   DenUI.busy.holdDots(button, on?)    the dots alone, no pop-up (698)
+ *   DenUI.busy.holdRow(row, on?)        a row's dots at its end (1054)
  *   DenUI.saveState(el, { save, copyText, watch })  an autosaving
  *                               editor's save-state line (savestate.js),
  *                               in the kit's language
@@ -103,7 +104,9 @@ import {
   hydratePageMenu,
   hydrateScope,
   hydrateSearch,
+  hydrateRailFolds,
   hydrateShell,
+  railFoldStore,
   setWaiting,
   syncPinToggles,
 } from "./shell-client.js";
@@ -121,6 +124,7 @@ import {
   busyAction,
   configureBusy,
   holdDots,
+  holdRow,
   pending,
   watchForms,
 } from "./busy.js";
@@ -230,6 +234,7 @@ export const busy = {
   pending: (button, run, opts) => pending(button, run, opts),
   watchForms: (root) => watchForms(root),
   holdDots: (button, on) => holdDots(button, on),
+  holdRow: (row, on) => holdRow(row, on),
   configure: configureBusy,
 };
 
@@ -381,6 +386,8 @@ const DenUI = {
   hydrateAccount,
   attachMenuFilter,
   syncPinToggles,
+  hydrateRailFolds,
+  railFoldStore,
   icon,
   esc,
   t,

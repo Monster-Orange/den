@@ -138,6 +138,9 @@ export interface LaunchInput {
    * as stateDir is (a cooperating agent only).
    */
   otherStateDirs?: string[];
+  /** Repos of the agent's project and its grants, and the cached sign-ins folder. */
+  repoDirs?: string[];
+  playwrightAuthDir?: string;
   /**
    * Issue 1391: a personal install's agent may read its own activity
    * trail (never edit it); unset, as on a strict install, it may not.
@@ -194,6 +197,14 @@ export interface LaunchInput {
    * API, and the audit file; absent: none is declared.
    */
   apiOnly?: { rules: string; audit: string };
+  envHold?: {
+    on: boolean;
+    hold: string[];
+    allow: string[];
+    own: string[];
+    guard: boolean;
+    mask?: string[];
+  };
   /**
    * Session rotation (den#4): the compactions after which this agent's
    * session rotates (0: never). Den's hooks count them. Default 3.
@@ -233,6 +244,7 @@ export interface LaunchInput {
    * `--name`) does, at launch and at resume.
    */
   sessionLabel?: string;
+  skillPacks?: { name: string; dir: string }[];
 }
 
 export interface LaunchOutput {
@@ -445,6 +457,7 @@ export interface Runtime {
    * running first. Read-only. None: the runtime can't tell. Never throws.
    */
   helpers?(rec: AgentRecord, opts?: HelperReadOptions): Helper[];
+  helpersStamp?(rec: AgentRecord, env?: NodeJS.ProcessEnv): string;
   /** D32: one helper's transcript, tool calls summarized; null if none. Never throws. */
   helperTranscript?(
     rec: AgentRecord,

@@ -15,7 +15,25 @@ import { redactSecrets } from "./redact.js";
 /** server_log.max_mb: a Setting with a permissive default. */
 export const SERVER_LOG_LIMITS = {
   max_mb: { def: 20, min: 1, max: 1024 },
+  slow_request_ms: { def: 3000, min: 100, max: 600_000 },
+  event_loop_lag_ms: { def: 1000, min: 50, max: 600_000 },
 } as const;
+
+export function serverLogSetting(
+  user: unknown,
+  key: "slow_request_ms" | "event_loop_lag_ms",
+): number {
+  const b =
+    user && typeof user === "object"
+      ? (user as { server_log?: unknown }).server_log
+      : undefined;
+  const v =
+    b && typeof b === "object" ? (b as Record<string, unknown>)[key] : null;
+  const { def, min, max } = SERVER_LOG_LIMITS[key];
+  return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max
+    ? v
+    : def;
+}
 
 /** The levels written to the file; the rest stay in the ring. */
 const LEVELS = new Set(["warn", "error"]);

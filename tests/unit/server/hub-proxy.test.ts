@@ -9,7 +9,7 @@
  * front of a real agent (a scripted PTY), with its real actor token.
  * Invented names only.
  */
-import type { HubProjectLink } from "../../../src/shared/hub-project-link.js";
+import type { HubProjectLink } from "../../../src/shared/hub/hub-project-link.js";
 import { afterEach, describe, expect, it } from "@jest/globals";
 import { createHash } from "crypto";
 import * as fs from "fs";
@@ -264,7 +264,11 @@ describe("D52: who reaches Hub through Den", () => {
       session: a.sessionId,
     });
     const proj = async (workspace: string) =>
-      (await hubUpstream(d, who(workspace)))!.headers["X-Den-Project"];
+      (
+        (await hubUpstream(d, who(workspace))) as {
+          headers: Record<string, string>;
+        }
+      ).headers["X-Den-Project"];
     // Linked to its session's project only: that one.
     expect(await proj("north")).toBe("proj_north");
     // Linked (the pane's Change, agents link) to another: that one.

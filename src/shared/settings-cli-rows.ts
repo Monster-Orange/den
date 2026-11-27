@@ -17,9 +17,9 @@
  *   web_github: { owner_name_timeout_seconds? }
  *                                     user.yml web.owner_name_timeout_seconds
  *                                     (issue 406)
- *   web_ready: { probe_seconds?, start_seconds? }
+ *   web_ready: { probe_seconds?, start_seconds?, tools_probe_seconds? }
  *                                     user.yml web.ready_probe_seconds,
- *                                     web.start_wait_seconds (den#143)
+ *                                     web.start_wait_seconds, web.tools_probe_seconds
  *   web_pairing: { requests_per_minute?, approve_attempts?,
  *     approve_window_seconds? }      user.yml web.pair_requests_per_minute,
  *                                     web.approve_attempts,
@@ -40,16 +40,18 @@
  *   agents_draft: { hold_max_minutes? }
  *                                     user.yml agents.draft_hold_max_minutes
  *                                     (issue 1311)
- *   agent_issue_writes: { roles?: [role, …] | null, per_hour? }
- *                                     user.yml agents.issue_writes and
- *                                     agents.issue_writes_per_hour (issue_write)
+ *   agent_issue_writes: { roles?: [role, …] | null, per_hour?,
+ *     visibility_minutes?, public? }  user.yml agents.issue_writes,
+ *                                     agents.issue_writes_per_hour and
+ *                                     agents.issue_writes_visibility_minutes
+ *                                     (issue_write; issue 1127)
  *   agent_context: { compaction_loop_count?, compaction_loop_minutes?,
  *     pause_after_loop?, instruction_share_percent?, context_tokens? }
  *                                     user.yml agent_context.* (issue 278)
  *   reports: { screenshot_keep_days?, screenshot_max_mb?,
  *              hub_screenshot_max_mb?, hub_timeout_seconds? }
  *                                     user.yml reports.* (issue 403)
- *   server_log: { max_mb? }          user.yml server_log.* (issue 707)
+ *   server_log: { max_mb?, slow_request_ms?, event_loop_lag_ms? }
  *   address_check: { timeout_seconds?, retries?, cache_seconds?, drop_after?,
  *     unknown_keep_seconds? }   (the last: web.address_unknown_keep_seconds)
  *                                     user.yml web.address_check_* (issue 455)
@@ -71,8 +73,10 @@
  *   held_writes: { wait_minutes? }   user.yml held_writes.* (issue 742)
  *   health_poll: { visible_seconds?, hidden_seconds? }   user.yml health_poll.* (issue 1022)
  *   menu_load: { timeout_ms? }                         user.yml web.menu_load_timeout_ms (issue 1051)
+ *   git_reads: { at_once? }   user.yml git_reads.*
  *   github: { watch_interval_seconds?, watch_max_interval_seconds?,
- *     api_budget_floor?, watches_max? }
+ *     api_budget_floor?, watches_max?, watch_stale_minutes?,
+ *     watch_max_open_hours?, rerun_look_minutes? }
  *                                     user.yml github.* (the shared GitHub
  *                                     watcher, github-watch/settings.ts)
  *   keep_running_after_logout: boolean | null
@@ -93,7 +97,7 @@ import {
   SESSIONS_LOCK_WAIT_RANGE,
   PAIR_LIMITS,
   WEB_WAIT_RANGE,
-} from "./web-session.js";
+} from "./web/web-session.js";
 import { VISIBILITY_LIMITS } from "./report-store.js";
 import {
   AGENTS_RESUME_LIMITS,
@@ -107,9 +111,13 @@ import {
 } from "./den-config.js";
 import { HEALTH_POLL } from "./health-poll.js";
 import { MENU_LOAD } from "./menu-load.js";
-import { ISSUE_WRITES_PER_HOUR } from "./issue-write.js";
+import { GIT_READS } from "./git-reads.js";
+import {
+  ISSUE_WRITES_PER_HOUR,
+  ISSUE_WRITES_VISIBILITY_MINUTES,
+} from "./issue-write.js";
 import { ADDRESS_CHECK_LIMITS } from "./edge/address-check.js";
-import { LOOKUP_LIMITS } from "../ui/cli/proc-lookup.js";
+import { LOOKUP_LIMITS } from "./proc-lookup.js";
 import { HOOK_CALL_LIMITS } from "./agents/guardrails/hook-call.js";
 import { GITHUB_WATCH_LIMITS } from "./github-watch/settings.js";
 import { SERVER_LOG_LIMITS } from "./server-log-file.js";
@@ -117,6 +125,7 @@ import { SERVER_LOG_LIMITS } from "./server-log-file.js";
 /** The settings a person changes and an agent never does. */
 export const PERSON_ONLY_SETTINGS = [
   "agents_default_mode",
+  "skill_packs",
   "local_dev",
   "cli_tabs",
   "log_window_lines",
@@ -210,6 +219,7 @@ export const PERSON_ONLY_SETTINGS = [
   "health_poll",
   // Issue 1051: how long the top bar waits for its project menu's load.
   "menu_load",
+  "git_reads",
 ] as const;
 
 /**
@@ -238,6 +248,7 @@ export const SETTINGS_ANYONE: Readonly<Record<string, string>> = {
   time_zone: "the time zone pages show date-times in",
   agents_layout: "how the Agents page lays out its cards",
   agents_helpers_shown: "whether helper agents show on the Agents page",
+  coach_counts: "whether the Coach tab shows counts as totals or per day",
   bell_kinds: "which kinds of notice the bell shows",
   bell_fold_days: "how many days before the bell folds old notices",
 };
@@ -332,6 +343,18 @@ const SERVER_LOG: Record<string, Limit> = {
     max: SERVER_LOG_LIMITS.max_mb.max,
     int: false,
   },
+  slow_request_ms: {
+    key: "slow_request_ms",
+    min: SERVER_LOG_LIMITS.slow_request_ms.min,
+    max: SERVER_LOG_LIMITS.slow_request_ms.max,
+    int: true,
+  },
+  event_loop_lag_ms: {
+    key: "event_loop_lag_ms",
+    min: SERVER_LOG_LIMITS.event_loop_lag_ms.min,
+    max: SERVER_LOG_LIMITS.event_loop_lag_ms.max,
+    int: true,
+  },
 };
 
 /** Issue 406: the start's wait for the owner's public GitHub profile. */
@@ -353,6 +376,11 @@ const WEB_READY: Record<string, Limit> = {
   },
   start_seconds: {
     key: "start_wait_seconds",
+    ...WEB_WAIT_RANGE,
+    int: false,
+  },
+  tools_probe_seconds: {
+    key: "tools_probe_seconds",
     ...WEB_WAIT_RANGE,
     int: false,
   },
@@ -434,6 +462,13 @@ const AGENT_ISSUE_WRITES: Record<string, Limit> = {
     key: "issue_writes_per_hour",
     min: ISSUE_WRITES_PER_HOUR.min,
     max: ISSUE_WRITES_PER_HOUR.max,
+    int: true,
+  },
+  // Issue 1127: how old a repo's visibility may be for the words check.
+  visibility_minutes: {
+    key: "issue_writes_visibility_minutes",
+    min: ISSUE_WRITES_VISIBILITY_MINUTES.min,
+    max: ISSUE_WRITES_VISIBILITY_MINUTES.max,
     int: true,
   },
 };
@@ -520,6 +555,10 @@ const MENU_LOAD_LIMITS: Record<string, Limit> = {
     max: MENU_LOAD.timeout_ms.max,
     int: true,
   },
+};
+
+const GIT_READS_LIMITS: Record<string, Limit> = {
+  at_once: { key: "at_once", ...GIT_READS, int: true },
 };
 
 /** The Log pane's lines: at least 1,000, at most 1,000,000. */
@@ -813,9 +852,23 @@ export function patchCliRows(
     if (!isObj(iw))
       return {
         ok: false,
-        error: "agent_issue_writes is an object: roles, per_hour",
+        error:
+          "agent_issue_writes is an object: roles, per_hour, visibility_minutes, public",
       };
-    const { roles, ...rest } = iw;
+    const { roles, public: pub, ...rest } = iw;
+    if (pub !== undefined && pub !== null && typeof pub !== "boolean")
+      return {
+        ok: false,
+        error: "agent_issue_writes.public is true, false or null",
+      };
+    if (pub !== undefined)
+      apply.push(() => {
+        const a = isObj(user.agents) ? { ...user.agents } : {};
+        if (pub === null) delete a.issue_writes_public;
+        else a.issue_writes_public = pub;
+        if (Object.keys(a).length) user.agents = a;
+        else delete user.agents;
+      });
     if (
       roles !== undefined &&
       roles !== null &&
@@ -984,6 +1037,14 @@ export function patchCliRows(
       "web",
       MENU_LOAD_LIMITS,
       body.menu_load,
+      apply,
+    ) ??
+    patchBlock(
+      user,
+      "git_reads",
+      "git_reads",
+      GIT_READS_LIMITS,
+      body.git_reads,
       apply,
     ) ??
     patchBlock(user, "github", "github", GITHUB_WATCH, body.github, apply);
