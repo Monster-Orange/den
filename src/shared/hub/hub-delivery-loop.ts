@@ -41,6 +41,7 @@ import {
   type Delivery,
   type DeliveryHealth,
   type DeliveryOwner,
+  type ReadOpts,
   type DeliveryTrouble,
   type SeenDeliveries,
 } from "./hub-delivery.js";
@@ -210,6 +211,7 @@ export interface DeliveryLoopDeps {
    * a question it asked that person is answered.
    */
   answered?: (agent: string) => void;
+  testInstall?: () => boolean;
   /**
    * P0-D2: the owner's approval (isApproval) arrived, once per delivery,
    * typed or not yet: Den clears the questions that name it.
@@ -281,8 +283,8 @@ const NO_START_MS = 2 * 60_000;
 const heldWhy = new WeakMap<Delivery, string>();
 
 /** What Den's held file brings back: a delivery, and Den's own text for an inbox item. */
-function parseHeld(r: unknown): Delivery | null {
-  const dv = parseDelivery(r);
+function parseHeld(r: unknown, opts: ReadOpts): Delivery | null {
+  const dv = parseDelivery(r, opts);
   if (!dv) return null;
   const why = (r as { held_reason?: unknown }).held_reason;
   if (typeof why === "string") heldWhy.set(dv, why.slice(0, 300));
@@ -404,6 +406,14 @@ export class DeliveryLoop {
   private staleCheckedAt = Number.NEGATIVE_INFINITY;
   /** The gap to the next stale check (0: the poll interval). */
   private staleGap = 0;
+
+  private readOpts(): ReadOpts {
+    try {
+      return { testInstall: this.d.testInstall?.() === true };
+    } catch {
+      return { testInstall: false };
+    }
+  }
 
   constructor(private readonly d: DeliveryLoopDeps) {
     this.hb = d.heartbeatMs ?? 15_000;
@@ -535,7 +545,9 @@ export class DeliveryLoop {
     }
     const n = r.list.length;
     const lastId =
-      (n ? parseDelivery(r.list[n - 1])?.id : null) ?? this.d.seen.last ?? null;
+      (n ? parseDelivery(r.list[n - 1], this.readOpts())?.id : null) ??
+      this.d.seen.last ??
+      null;
     this.h.lastPoll = { at, ok: true, count: n, lastId };
     const key = n ? `${n}:${lastId}` : "none";
     if (key !== this.pollSaid) {
@@ -613,7 +625,7 @@ export class DeliveryLoop {
     for (const [agent, list] of Object.entries(h.queue ?? {})) {
       if (!Array.isArray(list)) continue;
       const q = list
-        .map((r) => parseHeld(r))
+        .map((r) => parseHeld(r, this.readOpts()))
         .filter((x): x is Delivery => !!x && x.agent === agent);
       for (const dv of q) {
         const why = heldWhy.get(dv);
@@ -760,7 +772,7 @@ export class DeliveryLoop {
 
   /** One delivery from Hub (the stream or the list). */
   async take(raw: unknown): Promise<void> {
-    const dv = parseDelivery(raw);
+    const dv = parseDelivery(raw, this.readOpts());
     if (!dv) return;
     if (this.d.seen.has(dv.id) || this.states.has(dv.id)) {
       this.note(dv.id, "repeat", dv);
@@ -1330,7 +1342,7 @@ export class DeliveryLoop {
               continue;
             }
             await this.take(v);
-            const id = ev.id ?? parseDelivery(v)?.id;
+            const id = ev.id ?? parseDelivery(v, this.readOpts())?.id;
             if (id) this.cursorTo(id);
           }
           if (signal.aborted || silent) break;
@@ -1396,7 +1408,7 @@ export class DeliveryLoop {
     this.readOk("list");
     for (const v of list) {
       await this.take(v);
-      const id = parseDelivery(v)?.id;
+      const id = parseDelivery(v, this.readOpts())?.id;
       if (id) this.cursorTo(id);
     }
     this.notePoll({ list });
