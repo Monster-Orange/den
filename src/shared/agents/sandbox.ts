@@ -40,6 +40,7 @@
  * session. Slot writes move to the server with issue 621; slice 2 (agents
  * as a second OS user, issue 988) closes the rest.
  */
+import { REPO_SECRETS_FILE } from "../credential-paths.js";
 import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -117,6 +118,14 @@ export const SESSION_LIST_DIRS: readonly string[] = ["agent-files"];
  */
 export const SESSION_WRITE_DIRS: readonly string[] = ["audit"];
 
+/**
+ * Any repo's stack secrets file and the copies a write leaves beside it, by
+ * name, in either case (a case-insensitive volume opens it by any case).
+ */
+const REPO_SECRETS_REGEX = `#"/${REPO_SECRETS_FILE.replace(/[A-Za-z.]/g, (c) =>
+  c === "." ? "\\." : `[${c.toLowerCase()}${c.toUpperCase()}]`,
+)}[^/]*$"`;
+
 /** Never readable inside a session, whatever SESSION_READS says. */
 export const HIDDEN_FILES = [
   "web.secret",
@@ -125,6 +134,24 @@ export const HIDDEN_FILES = [
   path.join("gate", "runner-tokens.json"),
   path.join("embed", "server-keys.json"),
 ] as const;
+
+export const HIDDEN_DIRS = [
+  path.join("hub", "agents"),
+  path.join("hub", "unrevoked"),
+] as const;
+
+const HUB_TOKEN_SLOT = /^token-[0-9a-f]{10}$/;
+
+function hubTokenSlots(state: string): string[] {
+  try {
+    return fs
+      .readdirSync(path.join(state, "hub"))
+      .filter((n) => HUB_TOKEN_SLOT.test(n))
+      .map((n) => path.join(state, "hub", n));
+  } catch {
+    return [];
+  }
+}
 
 const SAFE_ID = /^[A-Za-z0-9._-]{1,64}$/;
 
@@ -137,6 +164,8 @@ export interface AgentSandboxInput {
   agentId: string;
   /** More folders no session reads (a machine-wide secret's folder). */
   deniedDirs?: string[];
+  /** Repos' stack secrets files, hidden where a name rule can't be written (Linux). */
+  repoSecretFiles?: string[];
   /** More unix-socket folders a session may connect to (user.yml). */
   socketsAllowed?: string[];
   /** The env the session starts from (its SSH agent, its runtime dir). */
@@ -272,6 +301,8 @@ export interface SandboxPolicy {
   listable: string[];
   /** Belt and braces: never readable, even if `readable` names them. */
   hidden: string[];
+  hiddenDirs: string[];
+  macHiddenRegex: string[];
   ownTokenDir: string;
   sockets: string[];
   /**
@@ -398,7 +429,13 @@ export function agentSandboxPolicy(i: AgentSandboxInput): SandboxPolicy {
         .map(realPath),
     ],
     listable: SESSION_LIST_DIRS.map((f) => path.join(state, f)),
-    hidden: HIDDEN_FILES.map((f) => path.join(state, f)),
+    hidden: [
+      ...HIDDEN_FILES.map((f) => path.join(state, f)),
+      ...hubTokenSlots(state),
+      ...(i.repoSecretFiles ?? []).map(realPath),
+    ],
+    hiddenDirs: HIDDEN_DIRS.map((d) => path.join(state, d)),
+    macHiddenRegex: hubSlotRegex(path.join(state, "hub")),
     ownTokenDir: path.join(tokensDir, i.agentId),
     sockets: [path.join(state, "sessions.sock")],
     socketsAllowed: [
@@ -480,6 +517,12 @@ function sessionTmpRegex(base: string): string {
   return `#"^${esc}/den-${"[A-Za-z0-9]".repeat(6)}(/|$)"`;
 }
 
+function hubSlotRegex(dir: string): string[] {
+  if (/["\0\n\r]/.test(dir)) return [];
+  const esc = dir.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  return [`#"^${esc}/token-${"[0-9a-f]".repeat(10)}$"`];
+}
+
 function underRegex(dir: string): string {
   if (/["\0\n\r]/.test(dir))
     throw new Error(`sandbox: a socket folder can't hold a quote: ${dir}`);
@@ -534,7 +577,12 @@ export function macProfile(p: SandboxPolicy): string {
     // Stat'd only: never listed or read (listing needs file-read-data).
     `(allow file-read-metadata ${p.unreadable.map(sub).join(" ")})`,
     `(allow file-read* ${[...p.readable.map(sub), ...p.readableFiles.map(lit), ...p.listable.map(lit)].join(" ")})`,
-    `(deny file-read* ${p.hidden.map(lit).join(" ")})`,
+    `(deny file-read* ${[...p.hidden.map(lit), ...p.hiddenDirs.map(sub), ...p.macHiddenRegex.map((r) => `(regex ${r})`)].join(" ")})`,
+    `(deny file-read* (regex ${REPO_SECRETS_REGEX}))`,
+    `(allow file-read-metadata (regex ${REPO_SECRETS_REGEX}))`,
+    // A rename, a hard link or an overwrite would read it by another name.
+    `(deny file-write* (regex ${REPO_SECRETS_REGEX}))`,
+    `(deny file-link (regex ${REPO_SECRETS_REGEX}))`,
     // Issue 1325: no hard link to a socket. A writable folder whose
     // sockets connect (the session's temp folder) would otherwise take a
     // link to one the sandbox refuses (an SSH or GPG agent's, the host's).
@@ -643,8 +691,15 @@ export function bwrapArgs(
       a.push("--ro-bind", r, r);
   for (const w of p.writable) if (exists(w)) a.push("--bind", w, w);
   for (const l of p.locked) if (exists(l)) a.push("--ro-bind", l, l);
+  const readBack = (x: string) =>
+    [...p.readable, ...p.readableFiles].some(
+      (r) => x === r || x.startsWith(r + path.sep),
+    );
+  for (const d of p.hiddenDirs)
+    if (exists(d) && (!inside(d) || readBack(d))) a.push("--tmpfs", d);
   for (const h of [...p.hidden, ...p.sockets])
-    if (exists(h) && !inside(h)) a.push("--ro-bind", "/dev/null", h);
+    if (exists(h) && (!inside(h) || readBack(h)))
+      a.push("--ro-bind", "/dev/null", h);
   // A container engine's socket runs anything as root on this machine.
   // Once each, at its real path: bwrap can't bind at a path through a
   // link (/var/run is a link to /run on most Linux systems).

@@ -11,7 +11,8 @@
 // through the bed's scoped MCP server (`mcp --actor agent:<id> --call
 // agent_mode`, with the agent's own token file) to clear their own mode.
 // Setup first gives each its own strictest mode (ask), so the clear is a real
-// held write. Harmless on a stub; removed in teardown. The fixture's click is
+// held write. Harmless on a stub; teardown withdraws the two requests with
+// each stub's own token (`approvals withdraw`), then removes it. The fixture's click is
 // refused by design (issue 810): the check proves it reaches Den, comes back
 // as that refusal, and leaves the request pending.
 import * as os from "os";
@@ -136,31 +137,34 @@ function tokenFile(ctx, id) {
   return path.join(home, "actor-token", id, "token");
 }
 
-/** One agent asks to clear its own mode, with its own token; the call returns at its timeout. */
-function ask(ctx, id) {
+/** One agent asks to clear its own mode from its own shell (Den takes its token only from its processes), bounded at 15 s. */
+export async function ask(ctx, id) {
   const project = projectOf(ctx, id);
   if (!project) return { project, code: null, err: "no project in its record" };
   const file = tokenFile(ctx, id);
   if (!file)
-    return { project, code: null, err: "the stub has no token file of its own" };
-  const r = ctx.cli(
-    [
-      "mcp",
-      "--workspace",
+    return {
       project,
-      "--actor",
-      `agent:${id}`,
-      "--call",
-      "agent_mode",
-      JSON.stringify({ agent: id, ask: true, note: NOTE }),
-    ],
-    { timeout: 15000, env: { DEN_ACTOR_TOKEN_FILE: file } },
-  );
+      code: null,
+      err: "the stub has no token file of its own",
+    };
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const bed = ctx.o?.bed || process.cwd();
+  const cmd = [
+    `cd ${q(bed)} &&`,
+    `DEN_ACTOR_TOKEN_FILE=${q(file)}`,
+    `perl -e 'alarm 15; exec @ARGV'`,
+    q(path.join(bed, "bin", "den-gate")),
+    `mcp --workspace ${q(project)}`,
+    `--actor ${q(`agent:${id}`)} --call agent_mode`,
+    q(JSON.stringify({ agent: id, ask: true, note: NOTE })),
+  ].join(" ");
+  const r = await ctx.agent(id).sh(cmd, 30000);
   return {
     project,
-    code: r.code,
-    err: (r.err || "").slice(-300),
-    out: (r.out || "").slice(-300),
+    code: r?.status ?? null,
+    err: (r?.err || "").slice(-300),
+    out: (r?.out || "").slice(-300),
   };
 }
 
@@ -173,8 +177,8 @@ export async function run(ctx, s) {
   // nobody else is there to) name the same agents: pick this run's by id.
   const before = heldIds(ctx);
   const asked = {
-    allow: ask(ctx, IDS.allow),
-    deny: ask(ctx, IDS.deny),
+    allow: await ask(ctx, IDS.allow),
+    deny: await ask(ctx, IDS.deny),
   };
   const after = heldIds(ctx);
   const mine = {};
@@ -283,7 +287,36 @@ export function expect(cells) {
   return [row(r, "allow", clauses[0]), row(r, "deny", clauses[1])];
 }
 
+/**
+ * This run's own held writes, withdrawn by their asker with
+ * `approvals withdraw <id>` and the stub's own token file, so none waits out
+ * held_writes.wait_minutes. Each stub asked with its own token, so it alone
+ * may withdraw them, and it does so before it is removed (removal revokes
+ * its token). Only requests on file whose agent is one of this run's ids.
+ * Exit 0 means withdrawn or already ended. Best effort: a teardown never
+ * fails the check. Each withdraw, or its refusal, is printed to the log.
+ */
+function withdrawOwn(ctx) {
+  const mine = new Set(Object.values(IDS));
+  for (const [rid, h] of heldIds(ctx)) {
+    if (!mine.has(h.agent) || h.state !== "pending") continue;
+    const file = tokenFile(ctx, h.agent);
+    if (!file) continue;
+    const r = ctx.cli(["approvals", "withdraw", rid], {
+      timeout: 15000,
+      env: { DEN_ACTOR_TOKEN_FILE: file },
+    });
+    // Both outcomes go to the run's log, so a live run shows each withdraw.
+    process.stderr.write(
+      r.code === 0
+        ? `746 teardown: ${h.agent} withdrew ${rid}: ${(r.out || "").trim().slice(-200)}\n`
+        : `746 teardown: ${h.agent} couldn't withdraw ${rid}: ${(r.err || r.out || "").trim().slice(-200)}\n`,
+    );
+  }
+}
+
 export async function teardown(ctx) {
+  withdrawOwn(ctx);
   for (const id of Object.values(IDS))
     if (ctx.agent(id).state()) ctx.agent(id).remove();
 }

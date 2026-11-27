@@ -46,11 +46,11 @@ import {
   checkLoginCode,
   mintLoginCode,
   WEB_SESSIONS_FILE,
-} from "../../../src/shared/web-session.js";
+} from "../../../src/shared/web/web-session.js";
 import {
   cliAuthHeaders,
   readWebSecret,
-} from "../../../src/shared/web-secret.js";
+} from "../../../src/shared/web/web-secret.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 

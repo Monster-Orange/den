@@ -41,7 +41,12 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { jestLists, loadMap, selectTests } from "./affected-tests.mjs";
+import {
+  jestLists,
+  loadMap,
+  selectTests,
+  testsNamingPaths,
+} from "./affected-tests.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -213,11 +218,16 @@ export const isReal = (r) => r.verdict === "real" || r.verdict === "real?";
  */
 export function recheck(cases, map, prNodes = null) {
   return cases.map((c) => {
+    const src = path.join(ROOT, c.file);
+    const named = testsNamingPaths(c.changed, {
+      [c.file]: fs.existsSync(src) ? fs.readFileSync(src, "utf-8") : "",
+    });
     const sel = selectTests({
       changed: c.changed,
       allTests: [c.file],
       related: c.related ? [c.file] : [],
       map,
+      named,
     });
     const selected = sel.all || sel.files.has(c.file);
     // Per Node: caught only if a pull request runs it on a Node it failed
@@ -235,6 +245,7 @@ export function recheck(cases, map, prNodes = null) {
       allTests: [c.file],
       related: c.related ? [c.file] : [],
       map: { ...map, everything: [] },
+      named,
     });
     return {
       ...c,

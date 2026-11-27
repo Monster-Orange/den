@@ -332,3 +332,53 @@ describe("reapDeadDaemons", () => {
     });
   });
 });
+
+describe("the container listing runs only when there is a daemon to check", () => {
+  it("no daemons: docker is never asked", async () => {
+    let asked = 0;
+    const { deps } = makeDeps(["ok"], {
+      listDaemons: () => [],
+      staleReason: () => null,
+      runningContainers: async () => {
+        asked++;
+        return new Set<string>();
+      },
+    });
+    await reapDeadDaemons(deps);
+    expect(asked).toBe(0);
+  });
+
+  it("only another root's daemons: docker is never asked", async () => {
+    let asked = 0;
+    const { deps } = makeDeps(["ok"], {
+      rootOf: () => "other",
+      staleReason: () => null,
+      runningContainers: async () => {
+        asked++;
+        return new Set<string>();
+      },
+    });
+    const r = await reapDeadDaemons(deps);
+    expect(asked).toBe(0);
+    expect(r.kept).toEqual([ADDRESS]);
+  });
+
+  it("a daemon of this root: asked once, and its answer reaches the stale check", async () => {
+    let asked = 0;
+    const seen: (Set<string> | null)[] = [];
+    const { deps } = makeDeps(["ok"], {
+      rootOf: () => "here",
+      staleReason: (_d, running) => {
+        seen.push(running);
+        return null;
+      },
+      runningContainers: async () => {
+        asked++;
+        return new Set(["web"]);
+      },
+    });
+    await reapDeadDaemons(deps);
+    expect(asked).toBe(1);
+    expect(seen).toEqual([new Set(["web"])]);
+  });
+});

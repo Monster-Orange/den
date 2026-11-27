@@ -56,7 +56,65 @@ each file the change touched at its merge base and at HEAD, and fails only
 when a count goes up; files the change didn't touch are never judged, and
 there is no baseline file to update. Run it before a push with
 `node scripts/brittle-ratchet.mjs --base origin/main`; `--report` prints the
-totals per kind and never fails.
+totals per kind and never fails. `--report --since <ref>` prints each kind
+then and now, and the files that went down or up; the `brittle-weekly`
+workflow posts it each Monday against the week before, in its run summary
+(issue 841).
+
+Test health, each week: `scripts/test-health.mjs` reports PR CI time (p50
+and p90), time to first red, the flake rate (a job that failed, then passed
+on a re-run), the live-check bed's wall time and the brittle totals, over
+the last 7 days. The `test-health` workflow posts it each Monday in its run
+summary. The bed's runs are only on the bed machine, so there it runs with
+`--bed`:
+
+```bash
+GITHUB_TOKEN=… node scripts/test-health.mjs --repo <owner/name> [--days 7] [--bed <runs folder>] [--json]
+```
+
+### Adding a Settings row
+
+A new key on the Settings page has three touch points beyond the page:
+
+1. The server must accept it: `tests/unit/server/settings-inventory.test.ts`
+   keeps its own list of the keys `POST /api/settings` accepts. Add the key.
+   A key inside a block (such as `agents_limits.max_per_project`) goes under
+   that block in its `BLOCKS` map, not in the top list.
+2. The rows, their categories, the category order and the module's exports
+   are pinned in `tests/fixtures/settings-registry-order.json`. Write it with
+   `node scripts/settings-pin.mjs --write` in the same PR, never by hand.
+3. Run `node scripts/fast-checks.mjs` before the push.
+
+Two PRs that each pass alone can still fail together, when one adds a row
+and the other changes the pin, so the PR that adds the row writes the pin.
+
+The shared helpers in `tests/unit/helpers/find.ts` (issue 841) make the
+right way the short way, in Chromium and WebKit alike:
+
+```ts
+import { byLabel, byRole, settled, waitFor } from "../helpers/find.js";
+
+await byLabel(page, "Project name").fill("billing");
+await settled(
+  page,
+  "/api/projects",
+  () => byRole(page, "button", "Add project").click(),
+  { method: "POST" },
+);
+await waitFor(page, { row: "billing" });
+await waitFor(page, { dialog: "Delete project" }); // or { dialogClosed }
+```
+
+`byRole` and `byLabel` match the name exactly. `waitFor` ends as soon as the
+state holds, and one that runs out says which state and how long it waited.
+`{ row }` is ARIA role=row (a table row, or an element with `role="row"`);
+many of Den's list rows are buttons, so `byRole(page, "button", name)` finds
+those. `settled` arms the wait before the action, so a fast response is
+never missed. A string is the exact path (`/api/agents` never matches
+`/api/agents/stale`; the query is ignored), and `method` keeps a background
+poll to the same path from settling it; a RegExp matches the whole URL, for
+anything looser. Timeouts default to the suite's wait
+(`DEN_BROWSER_WAIT_MS`).
 
 ### What runs first
 
@@ -160,7 +218,10 @@ node scripts/affected-tests.mjs origin/main HEAD
   guard, `package.json`, jest or test setup, CI) runs them all.
 
 `node scripts/affected-map.mjs` rewrites the map's page rules from the code
-(CI also adds them fresh, so a new spec is never left out).
+(CI also adds them fresh, so a new spec is never left out). It writes the
+file in prettier's form, so there is no formatting step after it, and the pr
+job runs `node scripts/affected-map.mjs --check`, which fails on a stale map
+or one in another form.
 `scripts/ci-replay.mjs` replays the last 30 days of red CI runs and fails if
 the subset would have missed a real failure;
 `tests/fixtures/ci-replay-cases.json` keeps those failures, and
@@ -184,6 +245,26 @@ browsers (`~/.cache/ms-playwright`) and apt's downloaded packages
 (`~/.cache/den-apt`). Once one job has them, later runs skip the Ubuntu mirror.
 The limits are settings: `CI_PW_DEPS_SECONDS` (default 240) and
 `CI_PW_INSTALL_SECONDS` (default 90).
+
+### Waiting in browser tests
+
+Wait for what the page does, never for a fixed time:
+
+- After a change the page saves, wait for the save's answer and then for the
+  page's own last step (its announcement, or the row back in the list). A list
+  shows a move before the server has it; a test that stops there leaves the
+  save in flight, and on a busy runner it lands in the next test.
+- A held button shows dots until its answer comes. For one request, that is
+  all: no pop-up (issue 1054). An action that names its steps, or one in
+  reconnect mode, opens the working pop-up after `DOTS_MS` (3 s, or
+  `configureBusy({ dotsMs })`), with the dots behind it. A button marked
+  `data-instant` shows no dots, and opens the pop-up after `OPEN_MS`
+  (300 ms) for any request. The pop-up stays at least `MIN_MS` (600 ms) and
+  takes the keyboard. These live in `packages/den-ui/src/busy.js`. A key
+  pressed before it closes goes to the pop-up, not the row. Waiting for the
+  page's last step covers this too.
+- Each test leaves nothing running: every request it started has answered
+  before it ends.
 
 ## Merging
 
@@ -235,6 +316,18 @@ export function expect(cells) {
 
 - `issue` matches the file name. `clauses` names each clause the check
   proves, as the issue words it, and `expect` answers each one once.
+- A check reads Den's CLI through its `--json` form and the fields it
+  names, never by splitting or matching the text a person reads. It hands
+  the whole result to `readJson(r, what)` or `doctorChecks(r)` from
+  `gate/lib/read-json.mjs`, never reads `.out` itself: those throw on
+  output that isn't JSON (or a doctor with no rows), so a clause that
+  proves an absence can't pass on nothing. A throw makes every clause of
+  the check an error, never a pass.
+  A command a check needs without `--json` gets one first. When the words
+  themselves are under test (a refusal an agent is told, what a person
+  reads), the check reads the text whole, with a contains or a regex over
+  all of it, never a line or word by position.
+  `tests/unit/test-infra/gate-cli-json-840.test.ts` enforces all of it.
 - The harness reads a row's `detail:` (what was seen), never `note:`.
 - `ok` is `true`, `false`, or `null` for "not run". `null` always comes
   with `skip`: `"person"` for a person's own act (an Allow, an answer, an
@@ -244,6 +337,29 @@ export function expect(cells) {
   what it needs under its own names and removes them; it never changes
   the bed's settings for good, and never touches a live install.
 - Names stay neutral (the one rule above applies here too).
+
+### Evidence for a new or changed check
+
+A pull request that adds or changes a `gate/<issue>.mjs` runs that check
+once against a built install of the current dev tag before it merges.
+
+1. Ask the release bed for an evidence run: a queue request named for the
+   dev tag, with `why:`, `gates: <issue> ...` and `from: <sha>` (your
+   pull request's signed head). It never sets the bed's release state.
+2. Turn its `verdict.json` into the block and paste it into the pull
+   request:
+
+   ```sh
+   node scripts/gate-evidence.mjs verdict.json --base origin/next/queue
+   ```
+
+It prints the dev tag, the commit the checks came from, and each clause
+(failing ones first) with its time, note and evidence file names. It
+exits 1 unless the run's overall is PASS and every clause is PASS or
+NOT_RUN (NOT_RUN rows are listed with their reason). It refuses (exit 2) a
+verdict that misses a check the pull request adds or changes, has no PASS
+clause for one, or ran checks from a commit whose `gate/` differs from
+your head: after a new push to `gate/`, ask for a new run.
 
 ### Read-only checks
 
@@ -482,6 +598,11 @@ trusted publishing (no token anywhere):
   already has its version, bump the kit's version (its `package.json` and
   its entry in `package-lock.json`) in the candidate before the dev tag.
   The dry run fails and says so otherwise.
+- A release that publishes the kit carries next/queue's kit files at that
+  version. When next/queue has the same kit version with other kit files
+  (a kit change merged after the candidate's branch was cut), the dry run
+  and the promote step fail: bump next/queue's den-ui first, then cut the
+  candidate again.
 - The release commit changes only Den's version and the changelog entry's
   date: everything else was in the candidate the dry run checked.
 - Bump the version in `package.json`, `package-lock.json` and

@@ -28,11 +28,10 @@
  *   - a text frame `{"type":"session",…}` first (what is attached), and
  *     `{"type":"exit","exitCode":n}` when the session ends;
  *   - `{"type":"size","cols":c,"rows":r}`: the PTY's size, on attach and
- *     each time any viewer (another browser, a CLI attach) resizes it. The
- *     size is last-writer-wins; a pane that learns it is out of step says
- *     its own again when it is used (focused, typed in, shown);
+ *     each time any viewer resizes it. The last active browser view sets it
+ *     (term-size-lead.ts); another's resize is answered with `"lead":false`;
  *   - in: binary frames are input; a text frame is JSON control:
- *     `{"type":"resize","cols":c,"rows":r}` (or `{"type":"input","data":s}`).
+ *     `{"type":"resize","cols":c,"rows":r[,"claim":true]}` or `{"type":"input","data":s}`.
  * Closing the socket detaches. Nothing here ever signals a session: leaving
  * the tab never kills it.
  *
@@ -44,6 +43,7 @@
  */
 import { denToolsOld } from "../../shared/agents/den-tools-version.js";
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
+import { SizeLead } from "./term-size-lead.js";
 import * as fs from "fs";
 import type * as http from "http";
 import * as os from "os";
@@ -60,6 +60,11 @@ import {
   SERVER_SCOPE,
   isServerScope,
 } from "../../shared/agents/server-agent.js";
+import {
+  personKey,
+  withAgentStates,
+  type AgentStateDeps,
+} from "./agent-state.js";
 import type { Duplex } from "stream";
 import {
   getActiveWorkspaces,
@@ -93,7 +98,15 @@ import { parseSessionName } from "../../shared/sessions/names.js";
 import { sessionPaths } from "../../shared/sessions/paths.js";
 import { loadPty, type PtyLoad } from "../../shared/sessions/pty.js";
 import type { SessionInfo } from "../../shared/sessions/types.js";
-import type { HelperSettings } from "../../shared/agents/helpers.js";
+import {
+  HELPER_DEFAULTS,
+  type HelperSettings,
+} from "../../shared/agents/helpers.js";
+import {
+  HelperRows,
+  SERVER_HELPER_ROWS,
+  type HelperAsk,
+} from "./helper-rows.js";
 import {
   agentsListWaits,
   readAgentsConfig,
@@ -118,8 +131,16 @@ import type { AgentRecord, Override } from "../../shared/agents/records.js";
 import { state as sessionState } from "../cli/sessions-command.js";
 import { recordAction } from "./audit.js";
 import { sendJson } from "./http-helpers.js";
-import { agentOrderOf, inAgentOrder } from "../../shared/agents/order.js";
+import {
+  agentOrderOf,
+  inAgentOrder,
+  placeInOrder,
+} from "../../shared/agents/order.js";
 import { agentHubWork } from "./hub-delivery-service.js";
+import {
+  agentHubBound,
+  usesInstallToken,
+} from "../../shared/hub-agent-tokens.js";
 import { hubToolsRestarting } from "./hub-tools-service.js";
 import { terminalReportOnly } from "../../shared/sessions/terminal-reports.js";
 import {
@@ -129,6 +150,7 @@ import {
 } from "../../shared/agents/draft-input.js";
 import {
   agentPrincipalOf,
+  agentRowFilter,
   auditActorOf,
   operatorActOf,
   principalOf,
@@ -139,6 +161,14 @@ import {
   refuseUpgrade,
   WS_CLOSE,
 } from "./websocket.js";
+
+function skillPacksOf(v: unknown): { skillPacks?: "off" | "on" | string[] } {
+  if (v === "off" || v === false) return { skillPacks: "off" };
+  if (v === "on" || v === true) return { skillPacks: "on" };
+  if (Array.isArray(v) && v.every((x) => typeof x === "string"))
+    return { skillPacks: [...(v as string[])] };
+  return {};
+}
 
 export interface SessionRouteDeps {
   stateDir?: () => string;
@@ -157,6 +187,7 @@ export interface SessionRouteDeps {
    * "permission", "input" or "asked" (its hooks, ask_human).
    */
   waitingWhy?: () => ReadonlyMap<string, string>;
+  activity?: () => ReadonlyMap<string, "working" | "idle">;
   /** The person typed into session `id` (its pane): its agent's wait ends. */
   typed?: (id: string) => void;
   /**
@@ -186,6 +217,8 @@ export interface SessionRouteDeps {
     | undefined;
   /** D32: agents.helpers (default: the agents config's, else its defaults). */
   helperSettings?: () => HelperSettings | undefined;
+  helperRows?: HelperRows | null;
+  rowHelpers?: typeof rowHelpers;
   /** 0.4.45: agents.exited_shell_minutes (0: an exited shell stays). */
   exitedShellMinutes?: () => number;
   /** D44: the Hub server URL an agent would get now (null: none). */
@@ -194,11 +227,14 @@ export interface SessionRouteDeps {
   uploadSettings?: () => UploadSettings;
   /** sessions.close_grace_seconds: Close's wait between HUP and KILL. */
   closeGrace?: () => number;
+  sizeClaimGraceMs?: () => number;
+  sizeLeaveGraceMs?: () => number;
   /** D65 v2: workspace `ws`'s repo names (null: it can't be read). */
   repoNames?: (ws: string) => ReadonlySet<string> | null;
   now?: () => Date;
   /** den#156: the Agents list's waits, in seconds (user.yml agents_list). */
   listWaits?: () => ListWaits;
+  agentStates?: () => AgentStateDeps;
 }
 
 /** den#156: how long a list waits for the host, and the page for a list. */
@@ -216,16 +252,21 @@ interface Resolved {
   pty: () => PtyLoad;
   waitingAgents: () => ReadonlySet<string>;
   waitingWhy: () => ReadonlyMap<string, string>;
+  activity: () => ReadonlyMap<string, "working" | "idle">;
   typed: (id: string) => void;
   draftWaiting: (agent: string) => number;
   rotationPolicy?: SessionRouteDeps["rotationPolicy"];
   restartResume?: SessionRouteDeps["restartResume"];
   modeOf?: SessionRouteDeps["modeOf"];
   helperSettings: () => HelperSettings | undefined;
+  helperRows: HelperRows | null;
+  rowHelpers: typeof rowHelpers;
   exitedShellMinutes: () => number;
   hubNow: () => Promise<string | null>;
   uploadSettings: () => UploadSettings;
   closeGrace: () => number;
+  sizeClaimGraceMs: () => number;
+  sizeLeaveGraceMs: () => number;
   repoNames: (ws: string) => ReadonlySet<string> | null;
   now: () => Date;
   listWaits: () => ListWaits;
@@ -268,6 +309,8 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
           return undefined;
         }
       }),
+    helperRows: d.helperRows === undefined ? SERVER_HELPER_ROWS : d.helperRows,
+    rowHelpers: d.rowHelpers ?? rowHelpers,
     activeWorkspaces: d.activeWorkspaces ?? (() => getActiveWorkspaces()),
     workspaceExists:
       d.workspaceExists ??
@@ -279,6 +322,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     pty: d.pty ?? (() => loadPty()),
     waitingAgents: d.waitingAgents ?? (() => new Set<string>()),
     waitingWhy: d.waitingWhy ?? (() => new Map<string, string>()),
+    activity: d.activity ?? (() => new Map<string, "working" | "idle">()),
     typed:
       d.typed ??
       ((id) =>
@@ -288,6 +332,12 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     draftWaiting: d.draftWaiting ?? defaultDraftWaiting,
     hubNow: d.hubNow ?? (() => defaultHubNow()),
     closeGrace: d.closeGrace ?? (() => readSessionsConfig().closeGraceSeconds),
+    sizeClaimGraceMs:
+      d.sizeClaimGraceMs ??
+      (() => readSessionsConfig().sizeClaimGraceSeconds * 1000),
+    sizeLeaveGraceMs:
+      d.sizeLeaveGraceMs ??
+      (() => readSessionsConfig().sizeLeaveGraceSeconds * 1000),
     uploadSettings:
       d.uploadSettings ??
       (() => readAgentsConfig().uploads ?? { ...UPLOAD_DEFAULTS }),
@@ -340,6 +390,28 @@ const VIEWERS = new Map<
   Set<{ open: boolean; send(d: string): void }>
 >();
 
+const LEADS = new Map<string, SizeLead<string>>();
+const VIEW_IDS = new WeakMap<object, string>();
+const VIEW_ID = /^[A-Za-z0-9_-]{8,64}$/;
+const PANE_CLOSED = 4000;
+const GOING_AWAY = 1001;
+let unnamedViews = 0;
+
+function tellLead(id: string): void {
+  const lead = LEADS.get(id);
+  const set = VIEWERS.get(id);
+  if (!lead || !set) return;
+  for (const v of set)
+    if (v.open)
+      v.send(
+        JSON.stringify({
+          type: "lead",
+          yours: lead.holds(VIEW_IDS.get(v) ?? ""),
+          held: lead.held(),
+        }),
+      );
+}
+
 /**
  * Issue 1311: Den's typing queue's and Hub's held messages for `agent`
  * while its person's draft holds them. Loaded on first use (the server's
@@ -378,6 +450,7 @@ function tellViewers(id: string): void {
 export interface ListedSession {
   /** The session host's id; for an agent with no session, its last one. */
   id: string;
+  place?: number;
   /** `<dist>-<ws>:<name>`. */
   name: string;
   workspace: string;
@@ -412,9 +485,11 @@ export interface ListedSession {
   orphan?: boolean;
   persona?: string;
   runtime?: string;
+  runtimeLabel?: string;
   model?: string;
   /** Issue 340: the label of the vendor account it runs on (never an email). */
   signIn?: string;
+  hubBound?: boolean;
   /** den#3: its subagents' model ("inherit": the runtime decides). */
   subagentModel?: string;
   subagentModelFrom?: "persona" | "org" | "default";
@@ -431,6 +506,7 @@ export interface ListedSession {
   modeRunning?: string;
   /** Issue 199: its mode is its own, not its project's. */
   modeOwn?: boolean;
+  skillPacks?: "off" | "on" | string[];
   /** Issue 199: with its own: the project's mode it doesn't follow. */
   modeFollowed?: string;
   /** Extra allowed commands it was started with (AG-13.3). */
@@ -469,6 +545,7 @@ export interface ListedSession {
    * 659's "trust": its folder-trust question), when known.
    */
   waitingWhy?: string;
+  activity?: "working" | "idle";
   /** Issue 659: it ended because its folder-trust question was declined. */
   trustDeclined?: true;
   /** Issue 658: Relaunch from its last handoff is offered (none ready). */
@@ -476,7 +553,7 @@ export interface ListedSession {
   /** Issue 631: it didn't come back after a restart, and why. */
   restartFailed?: { at: string; why: string };
   /** 0.4.40: the Hub comments it's working on or has waiting (its card line). */
-  hubWork?: import("../../shared/hub-delivery-loop.js").AgentHubWork;
+  hubWork?: import("../../shared/hub/hub-delivery-loop.js").AgentHubWork;
   /**
    * Session rotation (den#4): why it rotates and its handoff.md. `ready`:
    * Relaunch from handoff is its action, not Resume.
@@ -486,6 +563,7 @@ export interface ListedSession {
   lastRotation?: RotationEntry;
   /** D32: its helpers (counts and the recent ones). */
   helpers?: AgentRow["helpers"];
+  helpersPending?: true;
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
   /** Issue 749: MCP servers whose tools failed to load in its session. */
@@ -502,6 +580,9 @@ export interface ListedSession {
     rangAt?: string;
     paused?: true;
   };
+  attn?: "needs" | "done" | "working" | "idle";
+  attnSince?: string;
+  attnWhat?: string;
   /** Issue 278: its instruction files were over the share at its last start. */
   instructions?: {
     totalBytes: number;
@@ -585,7 +666,10 @@ export function listedSessions(
   sessions: SessionInfo[],
   d: Pick<Resolved, "stateDir" | "dist" | "activeWorkspaces"> &
     Partial<
-      Pick<Resolved, "waitingAgents" | "waitingWhy" | "workspaceExists">
+      Pick<
+        Resolved,
+        "waitingAgents" | "waitingWhy" | "activity" | "workspaceExists"
+      >
     > &
     Partial<Pick<Resolved, "helperSettings" | "repoNames">> &
     Pick<SessionRouteDeps, "rotationPolicy" | "restartResume" | "modeOf"> & {
@@ -594,7 +678,8 @@ export function listedSessions(
       /** 0.4.40: an agent's Hub comments (hub-delivery-service.ts). */
       hubWork?: (
         id: string,
-      ) => import("../../shared/hub-delivery-loop.js").AgentHubWork | null;
+      ) => import("../../shared/hub/hub-delivery-loop.js").AgentHubWork | null;
+      helpersOf?: HelpersOf;
     },
   /** A workspace asked for by name (`?ws=`), listed even when inactive. */
   also?: string,
@@ -647,6 +732,7 @@ export function listedSessions(
   const toolsRestarting = hubToolsRestarting();
   const waiting = d.waitingAgents?.() ?? new Set<string>();
   const why = d.waitingWhy?.() ?? new Map<string, string>();
+  const doing = d.activity?.() ?? new Map<string, "working" | "idle">();
   const out: ListedSession[] = [];
   const agentSessions = new Set<string>();
   noteEnded(d.stateDir(), mine, records);
@@ -660,6 +746,13 @@ export function listedSessions(
     const set = repoSets.get(ws);
     return set ? !set.has(repo) : false;
   };
+  const ownPacks = (() => {
+    try {
+      return readAgentsConfig().agents;
+    } catch {
+      return {};
+    }
+  })();
   for (const r of agentRows(
     mine,
     records,
@@ -691,6 +784,9 @@ export function listedSessions(
       ...(rec.outside ? { outside: true } : {}),
       persona: rec.persona,
       runtime: rec.runtime,
+      ...(getRuntime(rec.runtime)?.label
+        ? { runtimeLabel: getRuntime(rec.runtime)?.label }
+        : {}),
       ...(rec.model ? { model: rec.model } : {}),
       // den#3: its subagents' model and where it came from.
       ...(r.subagentModel
@@ -718,6 +814,7 @@ export function listedSessions(
             }
           : {};
       })(),
+      ...skillPacksOf(ownPacks[rec.id]?.skillPacks),
       ...(rec.allow?.length ? { allow: [...rec.allow] } : {}),
       ...(rec.overrides?.length ? { overrides: [...rec.overrides] } : {}),
       // D59: its own Resume after a restart, and the setting all told.
@@ -753,6 +850,13 @@ export function listedSessions(
       ...(r.trustWait && s && !s.exited
         ? { waiting: true, waitingWhy: "trust" }
         : {}),
+      ...(doing.has(rec.id) &&
+      s &&
+      !s.exited &&
+      !waiting.has(rec.id) &&
+      !r.trustWait
+        ? { activity: doing.get(rec.id) }
+        : {}),
       ...(r.trustDeclined ? { trustDeclined: true as const } : {}),
       ...(r.handoffOnFile ? { handoffOnFile: true as const } : {}),
       ...(r.restartFailed ? { restartFailed: { ...r.restartFailed } } : {}),
@@ -780,6 +884,9 @@ export function listedSessions(
         const failed = mcpLoadFailures(d.stateDir(), rec);
         return failed.length ? { mcpFailed: failed } : {};
       })(),
+      ...(typeof hubUrl === "string" && !usesInstallToken(rec)
+        ? { hubBound: agentHubBound(d.stateDir(), rec.id) }
+        : {}),
       ...(toolsRestarting.has(rec.id)
         ? { toolsRestarting: true as const }
         : {}),
@@ -787,15 +894,19 @@ export function listedSessions(
       ...contextFields(d.stateDir(), rec.id, isStoppedState(r.state)),
       // D32: the helpers it started in its own session.
       ...(() => {
-        const h = rowHelpers(
-          rec,
-          !isStoppedState(r.state),
-          helperSettings,
-          process.env,
-          Date.now(),
-          readClearedAt(agentFilesDir(d.stateDir(), rec.id)),
-          r.startedAt,
-        );
+        const live = !isStoppedState(r.state);
+        const clearedAt = readClearedAt(agentFilesDir(d.stateDir(), rec.id));
+        const h = d.helpersOf
+          ? d.helpersOf(rec, live, clearedAt, r.startedAt)
+          : rowHelpers(
+              rec,
+              live,
+              helperSettings,
+              process.env,
+              Date.now(),
+              clearedAt,
+              r.startedAt,
+            );
         return h ? { helpers: h } : {};
       })(),
     });
@@ -826,6 +937,16 @@ export function listedSessions(
     });
   }
   const order = [...active];
+  const saved = new Map<string, readonly string[]>();
+  const orderOf = (ws: string) => {
+    if (!saved.has(ws)) saved.set(ws, agentOrderOf(ws));
+    return saved.get(ws)!;
+  };
+  for (const r of out)
+    if (r.kind === "agent" && r.agent) {
+      const place = placeInOrder(orderOf, r.workspace, r.agent);
+      if (place !== undefined) r.place = place;
+    }
   // Issue 96: within a project, the person's order for its agents (one helper
   // for every list: the page, the rail, the flyout read this one).
   return inAgentOrder(
@@ -839,7 +960,80 @@ export function listedSessions(
       r.kind === "agent" && r.agent
         ? { ws: r.workspace, id: r.agent, startedAt: r.startedAt }
         : null,
-    (ws) => agentOrderOf(ws),
+    orderOf,
+  );
+}
+
+type HelpersOf = (
+  rec: AgentRecord,
+  live: boolean,
+  clearedAt: number | undefined,
+  liveSince: string | undefined,
+) => AgentRow["helpers"];
+
+async function listWithHelpers(
+  sessions: SessionInfo[],
+  d: Resolved,
+  also?: string,
+  hubUrl?: string | null,
+): Promise<ListedSession[]> {
+  const rows = d.helperRows;
+  if (!rows) return listedSessions(sessions, d, also, hubUrl);
+  const settings = d.helperSettings();
+  const all = { ...HELPER_DEFAULTS, ...settings };
+  const asks: HelperAsk[] = [];
+  const where = [d.stateDir(), process.env.HOME, process.env.CLAUDE_CONFIG_DIR];
+  const stampOf = (rec: AgentRecord): string | null => {
+    try {
+      return getRuntime(rec.runtime)?.helpersStamp?.(rec) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const helpersOf: HelpersOf = (rec, live, clearedAt, liveSince) => {
+    const ask: HelperAsk = {
+      id: rec.id,
+      key: JSON.stringify([
+        where,
+        stampOf(rec),
+        rec.runtime,
+        rec.resumeToken,
+        live,
+        clearedAt ?? null,
+        liveSince ?? null,
+        all,
+      ]),
+      compute: () =>
+        d.rowHelpers(
+          rec,
+          live,
+          settings,
+          process.env,
+          Date.now(),
+          clearedAt,
+          liveSince,
+        ),
+    };
+    asks.push(ask);
+    return rows.peek(ask);
+  };
+  const first = listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
+  const fresh = await rows.ensure(
+    asks,
+    all.refreshSeconds * 1000,
+    all.factsCacheMb * 1024 * 1024,
+    { waitMs: all.listWaitSeconds * 1000, restMs: all.readerRestMs },
+  );
+  if (fresh) asks.length = 0;
+  const listed = fresh
+    ? listedSessions(sessions, { ...d, helpersOf }, also, hubUrl)
+    : first;
+  const pending = new Set(asks.filter((a) => !rows.known(a)).map((a) => a.id));
+  if (!pending.size) return listed;
+  return listed.map((r) =>
+    r.kind === "agent" && r.agent && pending.has(r.agent)
+      ? { ...r, helpersPending: true as const }
+      : r,
   );
 }
 
@@ -903,17 +1097,29 @@ export async function handleSessionList(
           known: d.workspaceExists(asked),
         }
       : null;
+  const keep = agentRowFilter(req);
+  const listed = await listWithHelpers(
+    sessions,
+    d,
+    wanted?.known ? wanted.workspace : undefined,
+    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
+  );
+  let states: AgentStateDeps | undefined;
+  try {
+    states = deps.agentStates?.();
+  } catch {
+    states = undefined;
+  }
+  const rows = states
+    ? withAgentStates(listed, personKey(req), states)
+    : listed;
   sendJson(res, {
-    sessions: listedSessions(
-      sessions,
-      d,
-      wanted?.known ? wanted.workspace : undefined,
-      sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-    ),
-    workspaces: d.activeWorkspaces(),
+    sessions: keep ? rows.filter((r) => keep(r.workspace)) : rows,
+    workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
+    ...(rows.some((r) => r.helpersPending) ? { helpersPending: true } : {}),
     // den#156: how long the page waits for its next list.
     refreshTimeoutSeconds: waits.refresh_timeout_seconds,
     backend: pty.available
@@ -1508,6 +1714,36 @@ export async function handleSessionUpgrade(
   VIEWERS.set(s.ref.id, set);
   set.add(ws);
   const viewers = set.size;
+  const asked = new URL(req.url ?? "/", "http://localhost").searchParams.get(
+    "view",
+  );
+  const asView = asked && VIEW_ID.test(asked) ? asked : `~${++unnamedViews}`;
+  const lead =
+    LEADS.get(s.ref.id) ??
+    new SizeLead<string>({
+      graceMs: d.sizeClaimGraceMs,
+      leaveMs: d.sizeLeaveGraceMs,
+    });
+  LEADS.set(s.ref.id, lead);
+  for (const v of set)
+    if (v !== ws && VIEW_IDS.get(v) === asView) {
+      const renamed = `~${++unnamedViews}`;
+      VIEW_IDS.set(v, renamed);
+      lead.attach(renamed);
+    }
+  VIEW_IDS.set(ws, asView);
+  const view = () => VIEW_IDS.get(ws) ?? asView;
+  const ledBefore = lead.leader();
+  lead.attach(asView);
+  const relead = (f: () => void) => {
+    const was = lead.leader();
+    f();
+    if (lead.leader() !== was) tellLead(s.ref.id);
+  };
+  let ptySize: { cols: number; rows: number } | null = null;
+  const resize = (z: { cols: number; rows: number } | null) => {
+    if (z && !exited) client.resize(s.ref.id, z.cols, z.rows);
+  };
   ws.send(
     JSON.stringify({
       type: "session",
@@ -1516,16 +1752,20 @@ export async function handleSessionUpgrade(
       workspace: p.workspace,
       label: p.name,
       viewers,
+      lead: lead.holds(view()),
+      held: lead.held(),
       exited: s.exited === true,
       ...(s.exitCode !== undefined ? { exitCode: s.exitCode } : {}),
     }),
   );
   // The others hear there's one more (it follows: D54).
   tellViewers(s.ref.id);
+  if (lead.leader() !== ledBefore) tellLead(s.ref.id);
   let exited = s.exited === true;
   const att = client.attach(s.ref.id, {
     onData: (data) => ws.send(data),
     onSize: (cols, rows) => {
+      ptySize = { cols, rows };
       if (ws.open) ws.send(JSON.stringify({ type: "size", cols, rows }));
     },
     onExit: (exitCode) => {
@@ -1547,6 +1787,7 @@ export async function handleSessionUpgrade(
   ws.on("message", (data: Buffer, binary: boolean) => {
     if (binary) {
       if (!exited && data.length) {
+        if (!terminalReportOnly(data)) relead(() => lead.input(view()));
         client.write(s.ref.id, data);
         // Issue 142: the terminal's own answers aren't the person.
         if (!terminalReportOnly(data)) {
@@ -1557,7 +1798,13 @@ export async function handleSessionUpgrade(
       }
       return;
     }
-    let msg: { type?: unknown; cols?: unknown; rows?: unknown; data?: unknown };
+    let msg: {
+      type?: unknown;
+      cols?: unknown;
+      rows?: unknown;
+      data?: unknown;
+      claim?: unknown;
+    };
     try {
       msg = JSON.parse(data.toString("utf-8")) as typeof msg;
     } catch {
@@ -1567,11 +1814,20 @@ export async function handleSessionUpgrade(
       // Never below 2x2: a pane measured before it was laid out.
       const ok = (n: unknown): n is number =>
         typeof n === "number" && Number.isInteger(n) && n >= 2 && n <= 1000;
-      if (!exited && ok(msg.cols) && ok(msg.rows))
-        client.resize(s.ref.id, msg.cols, msg.rows);
+      if (!exited && ok(msg.cols) && ok(msg.rows)) {
+        const size = { cols: msg.cols, rows: msg.rows };
+        const claim = msg.claim === true;
+        const was = lead.leader();
+        const z = lead.resize(view(), size, claim);
+        if (lead.leader() !== was) tellLead(s.ref.id);
+        if (z) resize(z);
+        else if (ptySize && ws.open)
+          ws.send(JSON.stringify({ type: "size", ...ptySize, lead: false }));
+      }
     } else if (msg?.type === "input" && typeof msg.data === "string") {
       if (!exited && msg.data) {
         const data = Buffer.from(msg.data, "utf-8");
+        if (!terminalReportOnly(data)) relead(() => lead.input(view()));
         client.write(s.ref.id, data);
         if (!terminalReportOnly(data)) {
           d.typed(s.ref.id);
@@ -1597,14 +1853,31 @@ export async function handleSessionUpgrade(
   }, DRAFT_WAITING_LOOK_MS);
   waitingTimer.unref?.();
   let done = false;
-  const detach = () => {
+  const detach = (code?: number) => {
     if (done) return;
     done = true;
     clearInterval(waitingTimer);
     const viewing = VIEWERS.get(s.ref.id);
     viewing?.delete(ws);
+    const held = lead.holds(view());
+    relead(() =>
+      lead.detach(view(), code !== PANE_CLOSED, code === GOING_AWAY),
+    );
     if (viewing?.size) tellViewers(s.ref.id);
     else VIEWERS.delete(s.ref.id);
+    if (!lead.held()) LEADS.delete(s.ref.id);
+    else if (held && lead.holds(view())) {
+      const arm = (ms: number): void => {
+        setTimeout(() => {
+          const left = lead.left();
+          if (left !== null && left > 0) return arm(left + 50);
+          if (lead.expire()) tellLead(s.ref.id);
+          if (!lead.held() && LEADS.get(s.ref.id) === lead)
+            LEADS.delete(s.ref.id);
+        }, ms).unref?.();
+      };
+      arm((lead.left() ?? 0) + 50);
+    }
     // Detach only: the session keeps running in the host.
     att.detach();
     client.close();
@@ -1612,7 +1885,7 @@ export async function handleSessionUpgrade(
       `detach ${s.name} (browser, ${Math.round((Date.now() - since) / 1000)}s)`,
     );
   };
-  ws.on("close", detach);
+  ws.on("close", (code: number) => detach(code));
   client.once("close", () => {
     if (ws.open) ws.close(WS_CLOSE.goingAway, "the session host went away");
     detach();
@@ -1647,9 +1920,73 @@ async function helpersRunning(
   } catch {
     /* no host: nothing runs, so no helper runs */
   }
-  let running = 0;
-  for (const r of listedSessions(sessions, d))
-    running += r.helpers?.running ?? 0;
-  sendJson(res, { running });
+  const keep = agentRowFilter(req);
+  const rows = await listWithHelpers(sessions, d);
+  let needs = 0;
+  for (const r of keep ? rows.filter((x) => keep(x.workspace)) : rows)
+    if (isNeedsYouRow(r)) needs += 1;
+  sendJson(res, { running: helpersRunningIn(rows, keep), needs });
   return true;
+}
+
+export function helpersRunningIn(
+  rows: readonly { workspace: string; helpers?: { running?: number } }[],
+  keep: ((ws: string) => boolean) | null,
+): number {
+  let running = 0;
+  for (const r of rows)
+    if (!keep || keep(r.workspace)) running += r.helpers?.running ?? 0;
+  return running;
+}
+
+export function isNeedsYouRow(r: {
+  kind?: string;
+  state?: string;
+  waiting?: boolean;
+  waitingWhy?: string;
+}): boolean {
+  return (
+    r.kind === "agent" &&
+    r.state === "running" &&
+    !!r.waiting &&
+    r.waitingWhy !== "input"
+  );
+}
+
+export async function needsYouNow(deps: SessionRouteDeps): Promise<number> {
+  const d = resolve(deps);
+  let sessions: SessionInfo[] = [];
+  try {
+    const c = await d.connectExisting();
+    if (!c) return 0;
+    try {
+      sessions = await c.list();
+    } finally {
+      c.close();
+    }
+  } catch {
+    return 0;
+  }
+  let n = 0;
+  for (const r of listedSessions(sessions, d)) if (isNeedsYouRow(r)) n += 1;
+  return n;
+}
+
+const NEEDS_SHARED_MS = 2000;
+let needsShared: { at: number; key: unknown; n: Promise<number> } | null = null;
+
+export function needsYouShared(
+  deps: SessionRouteDeps,
+  now: () => number = Date.now,
+  key?: unknown,
+): Promise<number> {
+  const t = now();
+  if (
+    needsShared &&
+    needsShared.key === key &&
+    t - needsShared.at < NEEDS_SHARED_MS
+  )
+    return needsShared.n;
+  needsShared = { at: t, key, n: needsYouNow(deps) };
+  return needsShared.n;
 }

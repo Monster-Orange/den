@@ -14,6 +14,7 @@
 // host from before and tells it the new version; the audit says "host
 // kept: code unchanged". Either way is a pass, as long as the host, the
 // audit and the bell agree on which one happened.
+import { doctorChecks } from "./lib/read-json.mjs";
 export const issue = 563;
 export const clauses = [
   "after the update, the terminal host runs the installed Den: restarted (not the host from before the web start), or kept because its code is unchanged",
@@ -36,7 +37,7 @@ const parse = (b) => {
 
 /** Doctor's terminal host row: { status, detail, host } or null. */
 function hostRow(ctx) {
-  const d = parse(ctx.cli(["doctor", "--json"]).out);
+  const d = { checks: doctorChecks(ctx.cli(["doctor", "--json"])) };
   const c = (Array.isArray(d?.checks) ? d.checks : []).find(
     (x) => x?.id === "terminal_host_module",
   );

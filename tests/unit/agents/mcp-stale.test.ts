@@ -8,11 +8,19 @@
  * A real host on a temp socket with a scripted PTY: nothing runs. A temp
  * CLAUDE_CONFIG_DIR, never ~/.claude. Invented names only.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
-import * as os from "os";
+import os from "os";
 import * as path from "path";
 import { writeApiOnlyRules } from "../../../src/shared/agents/api-only.js";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
@@ -42,6 +50,9 @@ import {
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { listedSessions } from "../../../src/ui/server/session-routes.js";
 import { DEN_BASE, cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
@@ -60,8 +71,10 @@ const TOKEN = "hubi_TESTONLY_d44_token";
 const agents = (r: Rig, ...args: string[]) => cmdAgents(args, r.deps);
 
 describe("D44: an agent's MCP servers against Hub now", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-d44-"));
-  afterEach(() => undefined);
+  let dir = "";
+  beforeAll(() => {
+    dir = tempDir("den-d44-");
+  });
   const files = (servers: Record<string, unknown> | null) => {
     const d = fs.mkdtempSync(path.join(dir, "a-"));
     if (servers)
@@ -495,6 +508,24 @@ describe("D44: Restart keeps the conversation and never cuts a turn", () => {
 });
 
 describe("D44: the routes", () => {
+  let running: (() => Promise<string[]>) | null = null;
+  let load: { mockRestore(): void } | null = null;
+  beforeAll(() => {
+    load = jest.spyOn(os, "loadavg").mockReturnValue([0, 0, 0]);
+  });
+  afterAll(() => load?.mockRestore());
+  afterEach(async () => {
+    let left: string[] = [];
+    for (let i = 0; i < 250 && running; i++) {
+      left = await running();
+      if (!left.length) break;
+      await settle(20);
+    }
+    running = null;
+    expect({ restartsStillRunning: left }).toEqual({
+      restartsStillRunning: [],
+    });
+  });
   async function api(r: Rig) {
     const server = http.createServer((req, res) => {
       jsonApiErrors(res, newRequestId());
@@ -511,6 +542,24 @@ describe("D44: the routes", () => {
           grants: t.grants,
           session: t.session,
         });
+      // Who the caller proved itself to be, for the
+      // person-only read (the request guard sets this in the server).
+      else if (req.headers["x-test-as"] === "person")
+        setPrincipal(req, { kind: "person", actor: "person:test" });
+      else if (req.headers["x-test-as"] === "browser")
+        setPrincipal(req, { kind: "person-browser", session: "k1" });
+      else if (req.headers["x-test-as"] === "view")
+        setPrincipal(req, {
+          kind: "person-browser",
+          session: "k2",
+          view: { agent: "planner", workspace: "north" },
+        });
+      else if (req.headers["x-test-as"] === "fixture")
+        setPrincipal(req, {
+          kind: "person-browser",
+          session: "k3",
+          fixture: true,
+        });
       void handleAgentRoutes(req, res, p, {
         agents: r.deps,
         personaWait: { pollMs: 20 },
@@ -524,7 +573,7 @@ describe("D44: the routes", () => {
     servers.push(server);
     await new Promise<void>((res) => server.listen(0, "localhost", res));
     const port = (server.address() as AddressInfo).port;
-    return async (
+    const call = async (
       method: string,
       p: string,
       body?: unknown,
@@ -540,6 +589,17 @@ describe("D44: the routes", () => {
         json: (await res.json()) as Record<string, unknown>,
       };
     };
+    running = async () =>
+      (
+        (
+          await call("GET", "/api/agents/restart-status", undefined, {
+            "x-test-as": "person",
+          })
+        ).json.agents as { id: string; state: string }[]
+      )
+        .filter((a) => a.state === "now" || a.state === "turn")
+        .map((a) => a.id);
+    return call;
   }
 
   it("issue 1223: only: hub restarts the Hub-stale only (Settings' Hub offer); an agent on an older Den's tools waits for the bell's", async () => {
@@ -583,6 +643,72 @@ describe("D44: the routes", () => {
     ]);
     for (let i = 0; i < 100 && r.made.length < 2; i++) await settle(20);
     expect(r.made[1].args.slice(0, 2)).toEqual(["--resume", token]);
+  });
+
+  it("issue 1407 part 2: restart-status follows each agent live; the stale list drops it once back", async () => {
+    const { r } = await startedBeforeHub();
+    const call = await api(r);
+    await call("POST", "/api/agents/restart-stale", {});
+    const person = { "x-test-as": "person" };
+    const st = await call(
+      "GET",
+      "/api/agents/restart-status",
+      undefined,
+      person,
+    );
+    expect(st.status).toBe(200);
+    expect(
+      (st.json.agents as { id: string; state: string }[]).find(
+        (a) => a.id === "planner",
+      )?.state,
+    ).toMatch(/^(now|restarted)$/);
+    for (let i = 0; i < 100 && r.made.length < 2; i++) await settle(20);
+    let state = "";
+    for (let i = 0; i < 100 && state !== "restarted"; i++) {
+      await settle(20);
+      state =
+        (
+          (await call("GET", "/api/agents/restart-status", undefined, person))
+            .json.agents as {
+            id: string;
+            state: string;
+          }[]
+        ).find((a) => a.id === "planner")?.state ?? "";
+    }
+    expect(state).toBe("restarted");
+    expect(
+      (await call("GET", "/api/agents/stale?fresh=1")).json.agents,
+    ).toEqual([]);
+    expect(
+      (await call("POST", "/api/agents/restart-status", {}, person)).status,
+    ).toBe(405);
+  });
+
+  it("issue 1407 part 2: restart-status is a person's read: an agent's token, an agent's view, the fixture and no sign-in get 403", async () => {
+    const { r } = await startedBeforeHub();
+    const call = await api(r);
+    await call("POST", "/api/agents/restart-stale", {});
+    const env = r.made[0].opts.env as Record<string, string>;
+    const agent = { authorization: `Bearer ${actorTokenOf(env) ?? ""}` };
+    const callers: [string, Record<string, string>][] = [
+      ["agent token", agent],
+      ["agent view", { "x-test-as": "view" }],
+      ["fixture", { "x-test-as": "fixture" }],
+      ["no sign-in", {}],
+    ];
+    for (const [who, h] of callers) {
+      const x = await call("GET", "/api/agents/restart-status", undefined, h);
+      expect({ who, status: x.status }).toEqual({ who, status: 403 });
+      expect(JSON.stringify(x.json)).not.toContain("planner");
+    }
+    for (const as of ["person", "browser"])
+      expect(
+        (
+          await call("GET", "/api/agents/restart-status", undefined, {
+            "x-test-as": as,
+          })
+        ).status,
+      ).toBe(200);
   });
 
   it("tools: what the agent's MCP whoami reads", async () => {

@@ -24,12 +24,23 @@ import { signingLines } from "../../../src/ui/cli/doctor-command.js";
 let dir: string;
 let key: string;
 let globalCfg: string;
-const GLOBAL_TEXT = "[user]\n\tname = person\n\tsigningkey = PERSONS-OWN\n[commit]\n\tgpgsign = false\n";
+const GLOBAL_TEXT =
+  "[user]\n\tname = person\n\tsigningkey = PERSONS-OWN\n[commit]\n\tgpgsign = false\n";
 
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-gitsign-"));
   key = path.join(dir, "den_agents");
-  const r = spawnSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-C", "den agents", "-f", key]);
+  const r = spawnSync("ssh-keygen", [
+    "-q",
+    "-t",
+    "ed25519",
+    "-N",
+    "",
+    "-C",
+    "den agents",
+    "-f",
+    key,
+  ]);
   if (r.status !== 0) throw new Error(String(r.stderr));
   globalCfg = path.join(dir, "home", ".gitconfig");
   fs.mkdirSync(path.dirname(globalCfg));
@@ -39,29 +50,40 @@ afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 describe("agents.git.signing_key: the setting", () => {
   it("~ expands; a relative path, a non-string or another key is refused, naming it", () => {
-    expect(gitSigningBlock({ signing_key: "~/.ssh/den_agents" }, "/h")).toEqual({
-      signingKey: "/h/.ssh/den_agents",
-    });
+    expect(gitSigningBlock({ signing_key: "~/.ssh/den_agents" }, "/h")).toEqual(
+      {
+        signingKey: "/h/.ssh/den_agents",
+      },
+    );
     expect(gitSigningBlock(undefined)).toBeUndefined();
     expect(() => gitSigningBlock({ signing_key: "keys/x" })).toThrow(
       /agents\.git\.signing_key: must be an absolute path/,
     );
-    expect(() => gitSigningBlock({ signing_key: 3 })).toThrow(/agents\.git\.signing_key/);
+    expect(() => gitSigningBlock({ signing_key: 3 })).toThrow(
+      /agents\.git\.signing_key/,
+    );
     expect(() => gitSigningBlock({ signing_key: "/k", gpg: 1 })).toThrow(
       /agents\.git\.gpg: unknown key/,
     );
   });
 
   it("readAgentsConfig takes it; an agent called git with grants stays an agent", () => {
-    const cfg = readAgentsConfig({ agents: { git: { signing_key: key } } } as never);
+    const cfg = readAgentsConfig({
+      agents: { git: { signing_key: key } },
+    } as never);
     expect(cfg.git).toEqual({ signingKey: key });
     expect(cfg.agents.git).toBeUndefined();
     // Issue 1072: grants come from user.yml only; the org's is named, not read.
-    const org = readAgentsConfig({ agents: { git: { grants: ["north"] } } } as never);
+    const org = readAgentsConfig({
+      agents: { git: { grants: ["north"] } },
+    } as never);
     expect(org.git).toBeUndefined();
     expect(org.agents.git).toBeUndefined();
     expect(org.notReadFromOrg).toEqual(["agents.git.grants"]);
-    const mine = readAgentsConfig({} as never, { agents: { git: { grants: ["north"] } } } as never);
+    const mine = readAgentsConfig(
+      {} as never,
+      { agents: { git: { grants: ["north"] } } } as never,
+    );
     expect(mine.git).toBeUndefined();
     expect(mine.agents.git).toEqual({ grants: ["north"] });
     expect(readAgentsConfig({} as never).git).toBeUndefined();
@@ -69,20 +91,29 @@ describe("agents.git.signing_key: the setting", () => {
 
   it("gate 0.4.44-dev.0: user.yml's (per machine) is read, and wins over the org's; a bad one names user.yml", () => {
     const org = { agents: { git: { signing_key: "/org/key" } } } as never;
-    expect(readAgentsConfig({} as never, { agents: { git: { signing_key: key } } }).git).toEqual({
+    expect(
+      readAgentsConfig({} as never, { agents: { git: { signing_key: key } } })
+        .git,
+    ).toEqual({
       signingKey: key,
     });
-    expect(readAgentsConfig(org, { agents: { git: { signing_key: key } } }).git).toEqual({
+    expect(
+      readAgentsConfig(org, { agents: { git: { signing_key: key } } }).git,
+    ).toEqual({
       signingKey: key,
     });
     expect(readAgentsConfig(org, {}).git).toEqual({ signingKey: "/org/key" });
     let err: unknown;
     try {
-      readAgentsConfig({} as never, { agents: { git: { signing_key: "rel/x" } } });
+      readAgentsConfig({} as never, {
+        agents: { git: { signing_key: "rel/x" } },
+      });
     } catch (e) {
       err = e;
     }
-    expect((err as { issues: { file: string; key: string }[] }).issues[0]).toMatchObject({
+    expect(
+      (err as { issues: { file: string; key: string }[] }).issues[0],
+    ).toMatchObject({
       file: "config/local/user.yml",
       key: "agents.git.signing_key",
     });
@@ -113,7 +144,15 @@ describe("an agent's env", () => {
       GIT_CONFIG_KEY_2: "commit.gpgsign",
       GIT_CONFIG_VALUE_2: "true",
     });
-    const env = agentSessionEnv({ PATH: "/bin", HOME: "/h" }, {}, {}, "a1", undefined, [], g);
+    const env = agentSessionEnv(
+      { PATH: "/bin", HOME: "/h" },
+      {},
+      {},
+      "a1",
+      undefined,
+      [],
+      g,
+    );
     for (const [k, v] of Object.entries(g)) expect(env[k]).toBe(v);
   });
 });
@@ -140,14 +179,26 @@ describe("a commit made with that env", () => {
     expect(c.status).toBe(0);
     const allowed = path.join(dir, "allowed");
     const pub = fs.readFileSync(`${key}.pub`, "utf8").trim().split(/\s+/);
-    fs.writeFileSync(allowed, `agent@example.test namespaces="git" ${pub[0]} ${pub[1]}\n`);
-    const v = git(["-c", `gpg.ssh.allowedSignersFile=${allowed}`, "verify-commit", "HEAD"]);
+    fs.writeFileSync(
+      allowed,
+      `agent@example.test namespaces="git" ${pub[0]} ${pub[1]}\n`,
+    );
+    const v = git([
+      "-c",
+      `gpg.ssh.allowedSignersFile=${allowed}`,
+      "verify-commit",
+      "HEAD",
+    ]);
     expect(v.status).toBe(0);
     expect(v.stderr).toMatch(/Good "git" signature/);
     expect(fs.readFileSync(globalCfg, "utf8")).toBe(GLOBAL_TEXT);
     // Without the env, the person's own config holds: commit.gpgsign false.
     const { GIT_CONFIG_COUNT: _n, ...without } = env;
-    const p = spawnSync("git", ["config", "commit.gpgsign"], { cwd: repo, env: without, encoding: "utf8" });
+    const p = spawnSync("git", ["config", "commit.gpgsign"], {
+      cwd: repo,
+      env: without,
+      encoding: "utf8",
+    });
     expect(p.stdout.trim()).toBe("false");
   });
 });
@@ -155,16 +206,23 @@ describe("a commit made with that env", () => {
 describe("doctor's check", () => {
   it("a good key: signs and verifies", () => {
     const r = checkAgentSigning({ signingKey: key }, { tmp: dir });
-    expect(r).toEqual({ ok: true, detail: `commits sign with ${key} and verify` });
+    expect(r).toEqual({
+      ok: true,
+      detail: `commits sign with ${key} and verify`,
+    });
   });
 
   it("no key, or no .pub: says which", () => {
-    expect(checkAgentSigning({ signingKey: path.join(dir, "nope") }, { tmp: dir })).toEqual({
+    expect(
+      checkAgentSigning({ signingKey: path.join(dir, "nope") }, { tmp: dir }),
+    ).toEqual({
       ok: false,
       detail: `no key at ${path.join(dir, "nope")}`,
     });
     fs.rmSync(`${key}.pub`);
-    expect(checkAgentSigning({ signingKey: key }, { tmp: dir }).detail).toMatch(/no public key at/);
+    expect(checkAgentSigning({ signingKey: key }, { tmp: dir }).detail).toMatch(
+      /no public key at/,
+    );
   });
 
   it("a .pub that isn't the key's: the check fails, naming the step", () => {
@@ -183,36 +241,67 @@ describe("agents start", () => {
   it("an agent Den starts gets the key's GIT_CONFIG_*; unset, none", async () => {
     const r = await rig();
     r.config.git = { signingKey: key };
-    expect(await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps)).toBe(0);
+    expect(
+      await cmdAgents(["start", "-w", "north", "--persona", "planner"], r.deps),
+    ).toBe(0);
     const env = r.made[0].opts.env;
     expect(env.GIT_CONFIG_COUNT).toBe("3");
     expect(env.GIT_CONFIG_VALUE_1).toBe(key);
     expect(env.GIT_CONFIG_VALUE_2).toBe("true");
     const r2 = await rig();
-    expect(await cmdAgents(["start", "-w", "north", "--persona", "planner"], r2.deps)).toBe(0);
+    expect(
+      await cmdAgents(
+        ["start", "-w", "north", "--persona", "planner"],
+        r2.deps,
+      ),
+    ).toBe(0);
     expect("GIT_CONFIG_COUNT" in r2.made[0].opts.env).toBe(false);
   });
 });
 
 describe("doctor's signing row", () => {
-  it("unset: no row", () => {
-    expect(signingLines("Acme", () => undefined)).toEqual({ lines: [], problem: false, checks: [] });
+  it("unset (issue 730): not signed, said, with the fix; not a problem", () => {
+    const r = signingLines("Acme", () => undefined);
+    expect(r.problem).toBe(false);
+    expect(r.lines.join("\n")).toContain("not signed: no agents' signing key");
+    expect(r.checks).toEqual([
+      expect.objectContaining({ id: "agents:signing", status: "ok" }),
+    ]);
   });
 
   it("a key that signs: ✓, and the gh line", () => {
-    const r = signingLines("Acme", () => ({ signingKey: key }), (g) => checkAgentSigning(g, { tmp: dir }));
+    const r = signingLines(
+      "Acme",
+      () => ({ signingKey: key }),
+      (g) => checkAgentSigning(g, { tmp: dir }),
+    );
     expect(r.problem).toBe(false);
-    expect(r.lines.join("\n")).toContain(`signing  ✓  commits sign with ${key} and verify`);
-    expect(r.lines.join("\n")).toContain(`gh ssh-key add "${key}.pub" --type signing`);
+    expect(r.lines.join("\n")).toContain(
+      `signing  ✓  commits sign with ${key} and verify`,
+    );
+    expect(r.lines.join("\n")).toContain(
+      `gh ssh-key add "${key}.pub" --type signing`,
+    );
     expect(r.lines.join("\n")).toContain("admin:ssh_signing_key");
     expect(r.checks).toEqual([
-      expect.objectContaining({ id: "agents:signing", status: "ok", fix: signingKeyAddLine({ signingKey: key }) }),
+      expect.objectContaining({
+        id: "agents:signing",
+        status: "ok",
+        fix: signingKeyAddLine({ signingKey: key }),
+      }),
     ]);
   });
 
   it("one that doesn't: ✗, a problem", () => {
-    const r = signingLines("Acme", () => ({ signingKey: path.join(dir, "gone") }), (g) => checkAgentSigning(g, { tmp: dir }));
+    const r = signingLines(
+      "Acme",
+      () => ({ signingKey: path.join(dir, "gone") }),
+      (g) => checkAgentSigning(g, { tmp: dir }),
+    );
     expect(r.problem).toBe(true);
-    expect(r.checks[0]).toMatchObject({ status: "fail", detail: `no key at ${path.join(dir, "gone")}` });
+    expect(r.checks[0]).toMatchObject({
+      status: "fail",
+      detail: `no key at ${path.join(dir, "gone")}`,
+    });
   });
 });

@@ -46,6 +46,7 @@
  * Start dialog and `agents doctor` ask `claude --version` once as well.
  */
 import {
+  helpersDir,
   readClaudeHelperTranscript,
   readClaudeHelpers,
 } from "./claude-helpers.js";
@@ -66,18 +67,24 @@ import { HUB_PROMPT_LINE } from "../hub.js";
 import {
   apiOnlyHooks,
   attentionHooks,
+  subagentHooks,
   widenHookTimeouts,
   GUARDRAILS_DIR,
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  envGuardHooks,
+  withEnvMask,
+  withoutEnvGuard,
   sandboxRefusalHooks,
   type GateRouteArgs,
 } from "./guardrails.js";
+import { ENV_HOLD_FILE, envHoldScript } from "./env-hold.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
 import { product } from "../product.js";
+import { statSettled } from "../stat-settled.js";
 import { distributionBin, shellQuote } from "../cli-command.js";
 import { getDistRoot, getEngineRoot } from "../paths.js";
 import { gateDir } from "../gates/store.js";
@@ -118,6 +125,7 @@ import {
   TURN_READ_MAX_BYTES,
 } from "./conversations.js";
 import { claudeOpenPid, claudeOpenPids } from "./open-check.js";
+import { REPO_SECRETS_FILE } from "../credential-paths.js";
 
 /**
  * `/rename "x"` keeps the quotes in customTitle: one matching pair around
@@ -273,7 +281,9 @@ function permissionMode(input: LaunchInput): string {
  * den#48: the modes `--permission-mode` takes, as `<bin> --help` lists
  * them ("(choices: "acceptEdits", "auto", …)"); null when they can't be
  * read (no such line, a failed or slow run). Kept per binary (its real
- * path, size and time), so an update is asked again.
+ * path, inode, size, mtime and ctime), so an update is asked again: an
+ * install can stamp every file with one fixed mtime, and a
+ * binary changed within a clock tick of the ask is asked again.
  */
 export function permissionModesOf(
   bin: string,
@@ -282,15 +292,17 @@ export function permissionModesOf(
   // Issue 456: a quarantined file is never run (macOS would warn).
   if (isQuarantined(bin)) return null;
   let key: string;
+  let st: fs.Stats;
   try {
     const real = fs.realpathSync(bin);
-    const st = fs.statSync(real);
-    key = `${real}\0${st.size}\0${st.mtimeMs}`;
+    st = fs.statSync(real);
+    key = `${real}\0${st.ino}\0${st.size}\0${st.mtimeMs}\0${st.ctimeMs}`;
   } catch {
     return null;
   }
   const hit = helpModes.get(key);
-  if (hit !== undefined) return hit;
+  if (hit && statSettled(st, hit.readAt)) return hit.modes;
+  const readAt = Date.now();
   let modes: string[] | null = null;
   try {
     const r = spawnSync(bin, ["--help"], {
@@ -304,12 +316,12 @@ export function permissionModesOf(
   } catch {
     modes = null;
   }
-  helpModes.set(key, modes);
+  helpModes.set(key, { modes, readAt });
   return modes;
 }
 
 const HELP_TIMEOUT_MS = 10_000;
-const helpModes = new Map<string, string[] | null>();
+const helpModes = new Map<string, { modes: string[] | null; readAt: number }>();
 
 /** Forget the modes asked (tests). */
 export function clearPermissionModesCache(): void {
@@ -585,6 +597,33 @@ export function credentialDirRules(
 }
 
 /**
+ * Deny an agent's Read, Edit and Bash tools each repo's stack secrets file
+ * (and the copies a write leaves beside it) and the cached sign-ins folders.
+ */
+export function repoSecretDenyRules(
+  repoDirs: readonly string[],
+  authDirs: readonly string[],
+  home?: string,
+): string[] {
+  const files = [...new Set(repoDirs.map((d) => path.resolve(d)))].map((d) =>
+    path.join(d, REPO_SECRETS_FILE),
+  );
+  const targets = files.flatMap((f) =>
+    shellSpellings(f, home).map((p) => `${p}*`),
+  );
+  return [
+    `Read(**/${REPO_SECRETS_FILE}*)`,
+    `Edit(**/${REPO_SECRETS_FILE}*)`,
+    `Bash(*${REPO_SECRETS_FILE}*)`,
+    ...files.map((f) => `Read(/${f}*)`),
+    ...files.map((f) => `Edit(/${f}*)`),
+    ...targets.map((t) => `Bash(*${t})`),
+    ...BASH_READERS.flatMap((r) => targets.map((t) => `Bash(${r} *${t})`)),
+    ...(authDirs.length ? credentialDirRules(authDirs, home) : []),
+  ];
+}
+
+/**
  * Issue 816 review: the folder where test installs announce themselves.
  * Reading it would show an agent the state folder (and so the web.secret)
  * of a test install announced after the agent started, which its launch
@@ -759,6 +798,18 @@ export function settingsPath(input: Pick<LaunchInput, "filesDir">): string {
 }
 
 /** The flags every run shares: Den's MCP only, the model, the role prompt. */
+export function skillPacksPrompt(packs: LaunchInput["skillPacks"]): string {
+  if (!packs?.length) return "";
+  const lines = packs.map(
+    (p) =>
+      `The ${p.name} skills are loaded as the plugin ${p.name}. Before you use one, read ${p.dir}/docs/harness/claude-code.md once.`,
+  );
+  lines.push(
+    "Den's rules win over a skill's: watch checks with github_watch, never merge or force-push, and hand a green PR to whoever merges.",
+  );
+  return `\n\n${lines.join("\n")}`;
+}
+
 function common(input: LaunchInput): {
   argv: string[];
   files: Record<string, string>;
@@ -805,10 +856,18 @@ function common(input: LaunchInput): {
           inbox && { ...inbox, files: input.filesDir },
         )
       : null;
+  const envGuard = input.envHold?.guard;
+  const guarded =
+    envGuard === true && !baseHooks?.PreToolUse
+      ? mergeHooks(baseHooks, envGuardHooks(GUARDRAILS_DIR, process.execPath))
+      : baseHooks;
+  if (envGuard === false && guarded) withoutEnvGuard(guarded);
+  else if (guarded && input.envHold?.mask?.length)
+    withEnvMask(guarded, input.envHold.mask);
   // NT-1: every agent tells Den when it waits for its person.
-  if (inbox && baseHooks)
+  if (inbox && guarded)
     widenHookTimeouts(
-      baseHooks,
+      guarded,
       "Stop",
       hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
     );
@@ -816,8 +875,8 @@ function common(input: LaunchInput): {
     // Issue 936: a refused write in the sandbox says why, with Den's hooks
     // (a persona with den_hooks: false gets none of them).
     input.persona.guardrails?.hooks
-      ? mergeHooks(baseHooks, sandboxRefusalHooks())
-      : baseHooks,
+      ? mergeHooks(guarded, sandboxRefusalHooks())
+      : guarded,
     input.attention
       ? attentionHooks(
           input.attention.base,
@@ -828,6 +887,12 @@ function common(input: LaunchInput): {
         )
       : null,
   );
+  const allHooks = input.attention
+    ? mergeHooks(
+        hooks,
+        subagentHooks(input.attention.base, input.attention.call),
+      )
+    : hooks;
   const den = input.denToolsAllowed ? denToolRules(input.mcp.name) : null;
   // HUB-1.5: Hub's tools without asking, when hub.allow_tools is on (the
   // default). Claude Code checks deny before allow: an install's deny wins.
@@ -850,7 +915,7 @@ function common(input: LaunchInput): {
   const settings =
     input.stateDir ||
     input.personConfigDir ||
-    hooks ||
+    allHooks ||
     allow.length ||
     noConnectors
       ? settingsPath(input)
@@ -861,6 +926,7 @@ function common(input: LaunchInput): {
       file,
       ...(noConnectors ? ["--strict-mcp-config"] : []),
       ...(settings ? ["--settings", settings] : []),
+      ...(input.skillPacks ?? []).flatMap((p) => ["--plugin-dir", p.dir]),
       "--permission-mode",
       mode,
       ...(input.model ? ["--model", input.model] : []),
@@ -872,6 +938,7 @@ function common(input: LaunchInput): {
         input.mcp.name,
         input.webUrl ?? null,
       ) +
+        skillPacksPrompt(input.skillPacks) +
         (input.mcp.hub ? `\n\n${HUB_PROMPT_LINE}` : "") +
         // Issue 158: the Hub delivery loop, after the Hub line.
         (input.mcp.hub?.loop ? `\n\n${input.mcp.hub.loop}` : ""),
@@ -887,6 +954,15 @@ function common(input: LaunchInput): {
                   ...(ask.length ? { ask } : {}),
                   deny: [
                     ...ownFilesDenyRules([settings, file], input.env?.HOME),
+                    ...(input.skillPacks ?? []).map(
+                      (p) => `Edit(/${path.resolve(p.dir)}/**)`,
+                    ),
+                    // Issue 1264: the gate's settings (route_agents and
+                    // route_commands among them) are a person's; its slot
+                    // log beside them stays the hook's to append to.
+                    ...(gate
+                      ? ownFilesDenyRules([gate.settings], input.env?.HOME)
+                      : []),
                     // Issue 728: this install's own folders by their
                     // given and their real paths (a symlink in either).
                     ...(input.stateDir
@@ -901,6 +977,15 @@ function common(input: LaunchInput): {
                       (input.edgeKeyDirs ?? []).flatMap(bothSpellings),
                       input.env?.HOME,
                     ),
+                    ...(input.repoDirs?.length || input.playwrightAuthDir
+                      ? repoSecretDenyRules(
+                          (input.repoDirs ?? []).flatMap(bothSpellings),
+                          input.playwrightAuthDir
+                            ? bothSpellings(input.playwrightAuthDir)
+                            : [],
+                          input.env?.HOME,
+                        )
+                      : []),
                     // Issue 816: announced test installs'; issue 728:
                     // the other installs in the install registry.
                     ...(input.otherStateDirs ?? []).flatMap((d) =>
@@ -928,7 +1013,7 @@ function common(input: LaunchInput): {
                       : []),
                   ],
                 },
-                ...(hooks ? { hooks } : {}),
+                ...(allHooks ? { hooks: allHooks } : {}),
                 ...(noConnectors ? { disableClaudeAiConnectors: true } : {}),
                 ...(strays
                   ? {
@@ -1040,6 +1125,38 @@ export function transcriptFile(
   return null;
 }
 
+function envHold(input: LaunchInput): {
+  env: Record<string, string>;
+  files: Record<string, string>;
+} {
+  if (!input.envHold) return { env: {}, files: {} };
+  const file = path.join(input.filesDir, ENV_HOLD_FILE);
+  const h = input.envHold;
+  return {
+    env: { CLAUDE_ENV_FILE: file },
+    files: { [file]: envHoldScript(h.hold, h.allow, h.own, {}) },
+  };
+}
+
+const stampFiles = new Map<string, string>();
+
+function stampedTranscript(
+  token: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const k = `${claudeProjectsDir(env)}\0${token}`;
+  const known = stampFiles.get(k);
+  if (known && fs.existsSync(known)) return known;
+  const file = transcriptFile(token, env);
+  if (file) {
+    stampFiles.delete(k);
+    stampFiles.set(k, file);
+    if (stampFiles.size > 4096)
+      stampFiles.delete(stampFiles.keys().next().value as string);
+  } else stampFiles.delete(k);
+  return file;
+}
+
 export const denClaude: Runtime = {
   id: DEN_CLAUDE_ID,
   label: DEN_CLAUDE_CATALOG.name,
@@ -1069,8 +1186,8 @@ export const denClaude: Runtime = {
         ...c.argv,
         ...firstPromptArg(input.firstPrompt),
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       resumeToken: id,
       warnings: [...c.warnings, ...modeWarnings],
     };
@@ -1088,8 +1205,8 @@ export const denClaude: Runtime = {
         ...nameArg(input.sessionLabel),
         ...c.argv,
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       warnings: [...c.warnings, ...modeWarnings],
     };
   },
@@ -1212,6 +1329,21 @@ export const denClaude: Runtime = {
         out.push(c.current ? h : { ...h, earlier: true });
     }
     return sortHelpers(out);
+  },
+  helpersStamp(rec, env) {
+    const out: number[] = [];
+    for (const c of conversationsOf(rec)) {
+      const file = stampedTranscript(c.token, env);
+      if (!file) continue;
+      const base = helpersDir(file);
+      for (const sub of ["subagents", "workflows"])
+        try {
+          out.push(fs.statSync(path.join(base, sub)).mtimeMs);
+        } catch {
+          out.push(0);
+        }
+    }
+    return out.join(",");
   },
   helperTranscript(rec, id, opts = {}) {
     for (const c of conversationsOf(rec)) {

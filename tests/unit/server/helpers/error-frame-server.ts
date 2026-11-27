@@ -21,6 +21,7 @@ import type { AddressInfo } from "net";
 import * as os from "os";
 import * as path from "path";
 import { denAuth } from "./den-auth.js";
+import { boxOwnPort } from "@monster-orange/den/pw-guard";
 import { spawnServer, stopServer } from "../../../child-servers.js";
 
 export const ENGINE = path.resolve(__dirname, "../../../..");
@@ -187,7 +188,13 @@ export async function startFrameServer(
     const deadline = Date.now() + 25_000;
     for (;;) {
       try {
-        if ((await req("GET", "/api/server-info")).status === 200) return;
+        if ((await req("GET", "/api/server-info")).status === 200) {
+          // Issue 191: this run's own Den answers here, so a box run's
+          // "host:*" may reach it (freePort's pick was closed, so it
+          // doesn't count by itself), as startDenServer does.
+          boxOwnPort(port);
+          return;
+        }
       } catch {
         /* not up yet */
       }

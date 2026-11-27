@@ -23,6 +23,10 @@ import * as path from "path";
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { writeRecord } from "../../../src/shared/agents/records.js";
+import {
+  agentHubTokenDir,
+  readAgentTokenProblems,
+} from "../../../src/shared/hub-agent-tokens.js";
 import { configuredRemoveStoppedAfter } from "../../../src/shared/den-config.js";
 import { cmdAgents } from "../../../src/ui/cli/agents-command.js";
 import {
@@ -560,6 +564,108 @@ describe("Remove (AG-14.1b)", () => {
     expect(fs.existsSync(path.join(r.stateDir, "agents", "planner.json"))).toBe(
       false,
     );
+  });
+});
+
+describe("issue 249: a removed agent's Hub token is unbound after its record is gone", () => {
+  it("remove and prune each unbind with the record already moved aside", async () => {
+    const r = await rig();
+    await prompted(r);
+    await agents(r, "stop", "planner");
+    r.made[0].exit(0);
+    await settle();
+    const seen: Record<string, boolean> = {};
+    const file = (id: string) => path.join(r.stateDir, "agents", `${id}.json`);
+    const d = resolveAgentsDeps({
+      ...r.deps,
+      hubAgentUnbind: async (id: string) => {
+        seen[id] = fs.existsSync(file(id));
+      },
+    });
+    await removeAgent(d, "planner");
+    expect(seen).toEqual({ planner: false });
+    writeRecord(r.stateDir, {
+      ...(JSON.parse(
+        fs.readFileSync(
+          path.join(r.stateDir, "removed-agents", "planner.json"),
+          "utf-8",
+        ),
+      ) as Parameters<typeof writeRecord>[1]),
+      id: "old1",
+      stoppedAt: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+    });
+    await pruneStopped(d, 7, Date.now());
+    expect(seen).toEqual({ planner: false, old1: false });
+  });
+});
+
+describe("issue 249: a remove whose Hub unbind throws (security review)", () => {
+  it("the remove still ends, and doctor names the agent and its token id (never the token)", async () => {
+    const r = await rig();
+    await prompted(r);
+    await agents(r, "stop", "planner");
+    r.made[0].exit(0);
+    await settle();
+    const dir = agentHubTokenDir(r.stateDir);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const secret = "hubi_TESTONLY_249_orphan";
+    fs.writeFileSync(
+      path.join(dir, "planner.json"),
+      JSON.stringify({
+        agentId: "planner",
+        agentName: "planner",
+        hubUrl: "http://127.0.0.1:9",
+        tokenId: "tok-orphan-1",
+        token: secret,
+        at: new Date().toISOString(),
+      }),
+      { mode: 0o600 },
+    );
+    const d = resolveAgentsDeps({
+      ...r.deps,
+      hubAgentUnbind: async () => {
+        throw new Error("EIO: the disk said no");
+      },
+    });
+    const lines: string[] = [];
+    const orig = console.error;
+    console.error = (...a: unknown[]) => void lines.push(a.join(" "));
+    try {
+      await removeAgent(d, "planner");
+    } finally {
+      console.error = orig;
+    }
+    expect(fs.existsSync(path.join(r.stateDir, "agents", "planner.json"))).toBe(
+      false,
+    );
+    const row = readAgentTokenProblems(r.stateDir).find(
+      (p) => p.agentId === "planner",
+    );
+    expect(row?.what).toBe("revoke");
+    expect(row?.detail).toContain("tok-orphan-1");
+    expect(lines.join("\n")).toContain("tok-orphan-1");
+    expect(JSON.stringify(row) + lines.join("\n")).not.toContain(secret);
+  });
+});
+
+describe("issue 249: each agent record has its own record id", () => {
+  it("made once, kept by every rewrite, and a new one for an agent made again with that id", async () => {
+    const r = await rig();
+    await prompted(r);
+    const file = path.join(r.stateDir, "agents", "planner.json");
+    const read = () =>
+      JSON.parse(fs.readFileSync(file, "utf-8")) as Parameters<
+        typeof writeRecord
+      >[1];
+    const first = read().recordId;
+    expect(first).toMatch(/^[a-f0-9]{16,}$/);
+    const { recordId: _drop, ...rest } = read();
+    writeRecord(r.stateDir, { ...rest, stoppedAt: new Date().toISOString() });
+    expect(read().recordId).toBe(first);
+    fs.rmSync(file);
+    writeRecord(r.stateDir, rest);
+    expect(read().recordId).toMatch(/^[a-f0-9]{16,}$/);
+    expect(read().recordId).not.toBe(first);
   });
 });
 

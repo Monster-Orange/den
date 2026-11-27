@@ -30,6 +30,7 @@ import {
 } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { signIn, signInPage } from "./helpers/signed-in.js";
+import { agentsSource } from "./helpers/agents-source.js";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -272,11 +273,11 @@ describe("0.4.46: a pane reconnects on its own", () => {
         path.join(process.cwd(), "src", "ui", "server", "public", f),
         "utf-8",
       );
-    for (const f of ["agents-page.js", "server-agent-page.js"]) {
-      expect(src(f)).toMatch(
+    for (const code of [agentsSource(), src("server-agent-page.js")]) {
+      expect(code).toMatch(
         /import \{[^}]*\btermPane\b[^}]*\} from "\/term-pane\.js"/,
       );
-      expect(src(f)).not.toContain("new WebSocket(");
+      expect(code).not.toContain("new WebSocket(");
     }
   });
 

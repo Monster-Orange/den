@@ -15,7 +15,7 @@ import {
   type Run,
 } from "../../../src/shared/edge/bridge-listen.js";
 import { bridgeListenLines } from "../../../src/ui/cli/doctor-command.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
 import {
   PERSON_ONLY_SETTINGS,
   patchCliRows,

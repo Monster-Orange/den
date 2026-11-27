@@ -30,14 +30,14 @@ import type * as http from "http";
 import {
   groupsView,
   type HubGroupsDeps,
-} from "../../shared/hub-groups-view.js";
+} from "../../shared/hub/hub-groups-view.js";
 import { sendJson } from "./http-helpers.js";
 
 export {
   defaultHubGroupsDeps,
   groupsView,
   type HubGroupsDeps,
-} from "../../shared/hub-groups-view.js";
+} from "../../shared/hub/hub-groups-view.js";
 
 export const HUB_GROUPS_PATH = "/api/hub/groups";
 

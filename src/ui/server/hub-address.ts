@@ -25,6 +25,11 @@ export interface HubAddressDeps {
   changed?: (url: string | null) => Promise<unknown>;
   /** Restart Den after answering. */
   restart: (reason: string) => Promise<{ ok: boolean; error?: string }>;
+  switching: (s: {
+    to: string;
+    from: string;
+    at: string;
+  }) => void | Promise<void>;
 }
 
 const current = (user: Record<string, unknown>): string => {
@@ -62,6 +67,7 @@ export function checkHubAddress(
         : "no Hub address is set; nothing to clear",
     };
   const leaving = connected(d.readUser());
+  const switching = !!(leaving && p.url && was);
   // Issue 205: each Review line with its message key.
   type Line = [string, { key: string; vars?: Record<string, string> }];
   const lines: Line[] = [
@@ -79,7 +85,22 @@ export function checkHubAddress(
           `Hub's address ${was} is cleared; this Den stops using Hub.`,
           { key: "ap.det.hub_connect.clear", vars: { was } },
         ],
-    ...(leaving
+    ...(switching
+      ? [
+          [
+            `Den stays on ${was} with its key until you sign in to ${p.url}.`,
+            { key: "ap.det.hub_connect.keep", vars: { was, url: p.url ?? "" } },
+          ] as Line,
+          [
+            `After your Allow, ${p.url}'s sign-in opens. Once that Hub answers, Den switches to it and ${was} revokes its key; if it fails, Den stays on ${was} and says why.`,
+            {
+              key: "ap.det.hub_connect.signin",
+              vars: { was, url: p.url ?? "" },
+            },
+          ] as Line,
+        ]
+      : []),
+    ...(leaving && !switching
       ? [
           [
             "Den disconnects from the Hub it uses now first, so that Hub revokes its key.",
@@ -87,11 +108,15 @@ export function checkHubAddress(
           ] as Line,
         ]
       : []),
-    [
-      "Then Den restarts, and agents get Hub's tools when they next restart.",
-      { key: "ap.det.hub_connect.restart" },
-    ],
-    ...(p.url
+    ...(switching
+      ? []
+      : [
+          [
+            "Then Den restarts, and agents get Hub's tools when they next restart.",
+            { key: "ap.det.hub_connect.restart" },
+          ] as Line,
+        ]),
+    ...(p.url && !switching
       ? [
           [
             "You connect in Settings › Hub afterwards: Connect signs you in to Hub there.",
@@ -120,8 +145,23 @@ export async function runHubAddress(
   url?: string | null;
   error?: string;
   next?: string;
+  connect?: true;
 }> {
   const target = wanted(a);
+  const was = current(d.readUser());
+  if (connected(d.readUser()) && target && was) {
+    const p = patchHubUrl(d.readUser(), target);
+    if (!p.ok) return p;
+    if (p.url && p.url !== was) {
+      await d.switching({ to: p.url, from: was, at: new Date().toISOString() });
+      return {
+        ok: true,
+        url: p.url,
+        connect: true,
+        next: `Allowed. Den stays on ${was} until your person signs in to ${p.url} (their browser opens its sign-in; Settings › Hub has it too). Then Den switches, and ${was} revokes its key.`,
+      };
+    }
+  }
   if (connected(d.readUser()))
     await d
       .disconnect(false)

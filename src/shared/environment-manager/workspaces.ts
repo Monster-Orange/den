@@ -33,7 +33,7 @@ import { depService } from "../manifest/deps.js";
 import { getDistRoot } from "../paths.js";
 import { readCatalog } from "./catalog.js";
 import { auditConfig, callerName } from "../config-audit.js";
-import { noteLinksSeen } from "../hub-links-seen.js";
+import { noteLinksSeen } from "../hub/hub-links-seen.js";
 
 import { product } from "../product.js";
 const ROOT = getDistRoot();
@@ -1212,6 +1212,28 @@ export function setWorkspaceMcpServers(
   const agents = { ...(cfg.agents ?? {}) };
   if (servers.length) agents.mcp_servers = servers;
   else delete agents.mcp_servers;
+  const next = { ...cfg };
+  if (Object.keys(agents).length) next.agents = agents;
+  else delete next.agents;
+  file.workspaces[ws] = next;
+  writeWorkspacesFile(file);
+}
+
+/**
+ * Issue 1480: write workspace `ws`'s `agents.event_feeds` (the list as
+ * written: entries Den can't read stay as they are). The caller checks
+ * each entry it adds. An empty list takes the key out.
+ */
+export function setWorkspaceEventFeeds(
+  ws: string,
+  feeds: Record<string, unknown>[],
+): void {
+  const file = readWorkspacesFile();
+  const cfg = file.workspaces[ws];
+  if (!cfg) throw new Error(`project "${ws}" does not exist`);
+  const agents = { ...(cfg.agents ?? {}) };
+  if (feeds.length) agents.event_feeds = feeds;
+  else delete agents.event_feeds;
   const next = { ...cfg };
   if (Object.keys(agents).length) next.agents = agents;
   else delete next.agents;

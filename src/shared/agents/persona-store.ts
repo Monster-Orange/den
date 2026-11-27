@@ -23,6 +23,7 @@ import {
   type PermissionIntent,
 } from "./permissions.js";
 import type { RuntimeModel } from "./runtime.js";
+import { checkSubagentModel } from "./subagents.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 /** Where a person's own personas live. */
@@ -42,6 +43,12 @@ export interface PersonaInput {
   version: string;
   permission: PermissionIntent;
   allowedCommands: string[];
+  /**
+   * Issue 110: its subagents' model (`subagent_model`). Written only when
+   * given: an edit that leaves it out keeps the file's own.
+   */
+  subagentModel?: string;
+  skillPacks?: "off" | null;
 }
 
 /** What a field may name: the registries and runtimes it is checked against. */
@@ -67,6 +74,8 @@ export const PERSONA_KEYS = [
   "version",
   "permission",
   "allowedCommands",
+  "subagentModel",
+  "skillPacks",
 ] as const;
 const KEYS = PERSONA_KEYS;
 
@@ -213,7 +222,20 @@ export function checkPersonaInput(
     MAX_PERSONA_NAME,
     false,
   );
+  let subagentModel: string | undefined;
+  if (r.subagentModel !== undefined && r.subagentModel !== null)
+    try {
+      subagentModel = checkSubagentModel(r.subagentModel, "subagentModel");
+    } catch (e) {
+      throw new PersonaInputError((e as Error).message);
+    }
+  const packs = r.skillPacks;
+  if (packs !== undefined && packs !== null && packs !== "" && packs !== "off")
+    throw new PersonaInputError("skillPacks: off, or null for the install's");
   return {
+    ...(packs === undefined
+      ? {}
+      : { skillPacks: packs === "off" ? "off" : null }),
     ...(displayName ? { displayName } : {}),
     role,
     category,
@@ -224,6 +246,7 @@ export function checkPersonaInput(
     version,
     permission,
     allowedCommands,
+    ...(subagentModel ? { subagentModel } : {}),
   };
 }
 
@@ -251,16 +274,25 @@ export function personaMarkdown(
     ...(input.allowedCommands.length
       ? { allowed_commands: input.allowedCommands }
       : {}),
+    ...(input.subagentModel ? { subagent_model: input.subagentModel } : {}),
+    ...(input.skillPacks === "off" ? { skill_packs: "off" } : {}),
   };
   // Issue 978: the keys the form doesn't manage, as the file had them.
   for (const [k, v] of Object.entries(kept))
-    if (!(k in fm) && !MANAGED_KEYS.has(k)) fm[k] = v;
+    if (
+      !(k in fm) &&
+      !MANAGED_KEYS.has(k) &&
+      !(k === "skill_packs" && input.skillPacks === null)
+    )
+      fm[k] = v;
   return `---\n${yaml.stringify(fm).trimEnd()}\n---\n\n${input.instructions}\n`;
 }
 
 /**
  * Issue 978: the front-matter keys the form writes, and the other
  * spellings the reader takes for them. Every other key is the file's own.
+ * Issue 110: subagent_model is written only when given, so a file's
+ * own is kept otherwise.
  */
 const MANAGED_KEYS: ReadonlySet<string> = new Set([
   "name",

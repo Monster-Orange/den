@@ -184,3 +184,12 @@ export function moveInOrder(
   } else at = Math.min(rest.length, Math.max(0, Math.floor(to) - 1));
   return [...rest.slice(0, at), id, ...rest.slice(at)];
 }
+
+export function placeInOrder(
+  orderOf: (ws: string) => readonly string[],
+  ws: string,
+  id: string,
+): number | undefined {
+  const i = orderOf(ws).indexOf(id);
+  return i >= 0 ? i : undefined;
+}

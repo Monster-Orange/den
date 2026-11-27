@@ -15,7 +15,7 @@ import * as os from "os";
 import * as path from "path";
 import type { AddressInfo } from "net";
 import { cmdWebLogin } from "../../../src/ui/cli/web-command.js";
-import { ensureWebSecret } from "../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../src/shared/web/web-secret.js";
 import {
   DEN_IDENTITY_PATH,
   identityBody,

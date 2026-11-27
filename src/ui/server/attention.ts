@@ -31,6 +31,7 @@
  * page to say in its own language.
  * Agent state and output come from `deps` (tests use fakes).
  */
+import { agentPagePath } from "../../shared/agent-links.js";
 import type {
   NoteMsg,
   Notification,
@@ -38,6 +39,15 @@ import type {
 } from "../../shared/notifications.js";
 import { trimWhat } from "../../shared/agents/guardrails/attention-hook.js";
 import { leadAskText } from "./lead-routing.js";
+import { STATUS_STATES, type StatusState } from "../../shared/sessions/bell.js";
+import { fromTerm, type TermStatus } from "../../shared/agents/detect/index.js";
+
+export interface StatusReport {
+  agent: string;
+  workspace: string;
+  state: StatusState;
+  at: string;
+}
 
 export type WaitingWhy = "permission" | "input" | "asked";
 
@@ -55,6 +65,20 @@ export function rowWhy(n: Notification): "permission" | "asked" | null {
   if (/ needs your permission(:|$)/.test(n.text)) return "permission";
   if (/ asked: /.test(n.text)) return "asked";
   return null;
+}
+
+const KEPT_WHAT: Record<string, string> = {
+  "bell.m.permissionWhat": "what",
+  "bell.m.asked": "text",
+};
+
+export function keptWhat(n: Notification): string {
+  if (n.msg?.key) {
+    const v = n.msg.vars[KEPT_WHAT[n.msg.key] ?? ""];
+    return typeof v === "string" ? trimWhat(v) : "";
+  }
+  const m = / needs your permission: (.+)$| asked: (.+)$/s.exec(n.text);
+  return trimWhat(m?.[1] ?? m?.[2] ?? "");
 }
 
 /**
@@ -94,6 +118,7 @@ export function deliveryHeld(
 
 export interface AttentionDeps {
   store: NotificationStore;
+  turnEnded?: (agent: string, at: number) => void;
   /**
    * Issue 1129: the agent is working (a tool ran, a prompt came) or idle
    * (its turn ended, it waits for its person), kept so a resume after a
@@ -149,7 +174,7 @@ export interface AttentionDeps {
   alert?: (n: {
     agent: string;
     workspace: string;
-    why: "permission" | "asked";
+    why: "permission" | "asked" | "finished";
   }) => void;
 }
 
@@ -229,6 +254,8 @@ interface Waiting {
   workspace: string;
   /** Cleared by the runtime's hooks, not by its output. */
   byHook: boolean;
+  byStatus?: boolean;
+  fromStatus?: boolean;
   /** Issue 609: the hash of the asked tool's input (attention-hook.ts). */
   input?: string;
   /** Issue 101: the lead its question went to, instead of its person. */
@@ -252,9 +279,13 @@ export class Attention {
   private readonly settledAsks = new Map<string, SettledAsk>();
   /** NT-2: agent → until when a page shows it, visible and focused. */
   private readonly looking = new Map<string, number>();
+  private readonly working = new Map<string, number>();
   private readonly now: () => number;
   /** NT-1: each agent's last bell seen (its session's bellAt). */
   private readonly bellSeen = new Map<string, string>();
+  private readonly statusSeen = new Map<string, string>();
+  private readonly status = new Map<string, StatusState>();
+  private readonly statusAt = new Map<string, string>();
   /** Issue 369: rows from before this server still to decide. */
   private orphansLeft = true;
   /** Issue 609: events in the order they came (a set's awaits aside). */
@@ -274,9 +305,41 @@ export class Attention {
     return this.d.nameOf(agent);
   }
 
+  workingNow(): Map<string, number> {
+    return new Map(this.working);
+  }
+
+  private turnEnd(agent: string): void {
+    this.working.delete(agent);
+    try {
+      this.d.turnEnded?.(agent, this.now());
+    } catch {
+      /* the seen mark is best effort */
+    }
+  }
+
   /** The agents waiting now, and why (the sessions list, the bell). */
   waitingNow(): Map<string, WaitingWhy> {
     return new Map([...this.waiting].map(([a, w]) => [a, w.why]));
+  }
+
+  statusNow(): Map<string, StatusState> {
+    return new Map(this.status);
+  }
+
+  activityNow(): Map<string, "working" | "idle"> {
+    const out = new Map<string, "working" | "idle">();
+    for (const [agent, state] of this.status) {
+      const { status } = fromTerm(state);
+      if (status === "working" || status === "idle") out.set(agent, status);
+    }
+    return out;
+  }
+
+  termOf(agent: string): TermStatus | undefined {
+    const state = this.status.get(agent);
+    const at = this.statusAt.get(agent);
+    return state && at ? { state, at } : undefined;
   }
 
   /** Issue 327: what `agent` waits on and since when, or undefined. */
@@ -319,6 +382,7 @@ export class Attention {
           turn?: boolean;
           /** Issue 828: a question on the agent's screen. */
           dialog?: boolean;
+          status?: boolean;
         }
       | { event: "finished"; text?: string; question?: string }
       | {
@@ -332,7 +396,7 @@ export class Attention {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
-    const link = `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
+    const link = agentPagePath(workspace, agent);
     const seq = ++this.seq;
     try {
       if (ev.event !== "resumed") this.d.activity?.(agent, false);
@@ -350,6 +414,8 @@ export class Attention {
           ? { seq, at: arrived, what: ev.what, input: ev.input }
           : undefined;
       if (run) this.lastRun.set(agent, run);
+      if (ev.from !== "session" && !this.working.has(agent))
+        this.working.set(agent, arrived);
       // Issue 1008: the person's prompt after a withdraw: a late answer.
       if (ev.from === "prompt") await this.lateAnswer(agent);
       const w = this.waiting.get(agent);
@@ -376,6 +442,7 @@ export class Attention {
       return;
     }
     if (ev.event === "finished") {
+      this.working.delete(agent);
       // Asked (ask_human), then ended its turn to wait for the answer:
       // still waiting. A question its last turn ended on is the turn's
       // own: this turn's end says again whether it asks (a hand-back with
@@ -405,6 +472,7 @@ export class Attention {
           hooked: true,
           turn: true,
         });
+      this.turnEnd(agent);
       // Issue 142: kept even while a page shows the agent. That page's
       // next "looking" takes it out (opening an agent clears its updates);
       // a page that closed meanwhile (NT-2 keeps it 10 s) never does, and
@@ -419,6 +487,12 @@ export class Attention {
           : { key: "bell.m.turn", vars: { name } },
         link,
       });
+      if (!this.onScreen(agent))
+        try {
+          this.d.alert?.({ agent, workspace, why: "finished" });
+        } catch {
+          /* an alert is best effort: the bell has it */
+        }
       return;
     }
     const prev = this.waiting.get(agent);
@@ -433,6 +507,10 @@ export class Attention {
       (!ev.input || /AskUserQuestion/.test(`${ev.what ?? ""} ${ev.text ?? ""}`))
     )
       return;
+    this.working.delete(agent);
+    const hookless =
+      ev.hooked !== true && prev?.byHook !== true && !this.d.hooked?.(agent);
+    if (ev.why === "input" && hookless && !prev) this.turnEnd(agent);
     // Issue 327: Claude Code's idle notice means no dialog is open: a
     // permission wait from before it is over.
     if (
@@ -521,6 +599,8 @@ export class Attention {
       mark,
       workspace,
       byHook: hooked,
+      byStatus: ev.status === true || cur?.byStatus === true,
+      fromStatus: ev.status === true && (!cur || cur.fromStatus === true),
       input: what === cur?.what ? (cur?.input ?? ev.input) : ev.input,
       ...(lead ? { lead } : {}),
       ...(ev.why === "asked" && ev.turn ? { turn: true } : {}),
@@ -567,9 +647,8 @@ export class Attention {
     // #142: without hooks, a bell is all there is: an update, not a need.
     // Issue 142: kept even while a page shows the agent (only the alert
     // waits for it to be off screen). A need counts until it is answered;
-    // an update goes on that page's next "looking".
     this.d.store.add({
-      kind: ev.why === "input" ? "finished" : "waiting",
+      kind: ev.why === "input" && ev.status !== true ? "finished" : "waiting",
       subject,
       scope,
       text,
@@ -772,7 +851,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : agentPagePath(workspace, agent),
     });
   }
 
@@ -800,7 +879,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : agentPagePath(workspace, agent),
     });
   }
 
@@ -827,6 +906,42 @@ export class Attention {
     }
   }
 
+  async statuses(list: readonly StatusReport[]): Promise<void> {
+    for (const r of list) {
+      if (!(STATUS_STATES as readonly string[]).includes(r.state)) continue;
+      const key = `${r.state}@${r.at}`;
+      const prev = this.statusSeen.get(r.agent);
+      if (prev === key) continue;
+      this.statusSeen.set(r.agent, key);
+      this.status.set(r.agent, r.state);
+      this.statusAt.set(r.agent, r.at);
+      const raises = r.state === "blocked" || r.state === "error";
+      if (
+        !raises &&
+        prev === undefined &&
+        this.now() - Date.parse(r.at) > 10_000
+      )
+        continue;
+      const w = this.waiting.get(r.agent);
+      if (raises) {
+        if (w) w.byStatus = true;
+        else
+          await this.event(r.agent, r.workspace, {
+            event: "waiting",
+            why: "input",
+            status: true,
+          });
+      } else if (w && !w.fromStatus) {
+        // Anything printed can say a 7501: it never clears another's wait,
+        // only lets go of its own hold on it.
+        w.byStatus = false;
+        continue;
+      } else if (r.state === "done") {
+        await this.event(r.agent, r.workspace, { event: "finished" });
+      } else if (w) this.clear(r.agent);
+    }
+  }
+
   /**
    * An agent without hooks whose output moved since it settled: no longer
    * waiting. In its first SETTLE_MS, output only moves the mark.
@@ -835,7 +950,7 @@ export class Attention {
     await this.reconcile();
     await this.sweepEnded();
     for (const [agent, w] of [...this.waiting]) {
-      if (w.byHook) continue;
+      if (w.byHook || w.byStatus) continue;
       const m = await this.d.outputMark(agent);
       if (m === null || m === w.mark) continue;
       if (w.mark === null || this.now() - w.at < SETTLE_MS) {
@@ -908,11 +1023,10 @@ export class Attention {
           }
         }
         const at = Date.parse(n.at);
-        const what = n.msg?.vars.what;
         this.waiting.set(agent, {
           why,
           text: n.text,
-          what: typeof what === "string" ? what : "",
+          what: keptWhat(n),
           at: Number.isFinite(at) ? at : this.now(),
           mark: await this.d.outputMark(agent),
           workspace: n.scope.startsWith("workspace/")
@@ -932,6 +1046,9 @@ export class Attention {
   /** The agent stopped or was removed: nothing waits on it. */
   gone(agent: string): void {
     this.lastRun.delete(agent);
+    this.working.delete(agent);
+    this.status.delete(agent);
+    this.statusAt.delete(agent);
     this.clear(agent);
   }
 

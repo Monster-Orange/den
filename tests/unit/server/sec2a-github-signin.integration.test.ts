@@ -21,7 +21,7 @@ import * as fs from "fs";
 import * as http from "http";
 import * as os from "os";
 import * as path from "path";
-import { cliAuthHeaders } from "../../../src/shared/web-secret.js";
+import { cliAuthHeaders } from "../../../src/shared/web/web-secret.js";
 import { startDenServer, stopServer } from "../../child-servers.js";
 import { startFakeGithub, type FakeGithub } from "./helpers/fake-github.js";
 import { EDGE_PROOF, writeTestEdgeProof } from "./helpers/edge-proof.js";
@@ -40,6 +40,7 @@ let port = 0;
 let server: ChildProcess;
 let serverLog: () => string = () => "";
 let gh: FakeGithub;
+let dockerAnswers = "";
 /** Every cookie and link this suite saw: none may reach the server's log. */
 const secrets: string[] = [];
 
@@ -164,12 +165,21 @@ beforeAll(async () => {
       "  org: acme",
       "  domain: acme.localhost",
       "  tls: none",
+      "  address_recheck_seconds: 1",
       "",
     ].join("\n"),
   );
   fs.writeFileSync(
     path.join(root, "config", "local", "user.yml"),
     "web:\n  github_client_id: Iv23liAcmeTest\n",
+  );
+  const bin = path.join(tmp, "bin");
+  dockerAnswers = path.join(tmp, "docker-answers");
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(
+    path.join(bin, "docker"),
+    `#!/bin/sh\nwhile [ ! -e '${dockerAnswers}' ]; do sleep 0.1; done\necho "Error: No such object: $*" >&2\nexit 1\n`,
+    { mode: 0o755 },
   );
   const started = await startDenServer(
     TSX,
@@ -186,6 +196,7 @@ beforeAll(async () => {
         DEN_NO_OPEN: "1",
         NO_COLOR: "1",
         DEN_TEST_GITHUB_URL: gh.url,
+        PATH: `${path.join(tmp, "bin")}${path.delimiter}${process.env.PATH ?? ""}`,
       },
     },
     { timeoutMs: 40_000 },
@@ -199,6 +210,27 @@ afterAll(async () => {
   await stopServer(server);
   await gh.close();
   fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("the edge at this server's start (by design: fail closed)", () => {
+  const local = () =>
+    call("GET", "/api/settings", {
+      ...edge(),
+      "x-forwarded-for": "127.0.0.1",
+    });
+
+  it("nothing through the edge is believed until the start check answers; then this machine needs no sign-in", async () => {
+    expect((await local()).status).toBe(401);
+    fs.writeFileSync(dockerAnswers, "");
+    const until = Date.now() + 30_000;
+    let status = 0;
+    while (Date.now() < until) {
+      status = (await local()).status;
+      if (status === 200) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    expect(status).toBe(200);
+  }, 40_000);
 });
 
 describe("before an owner is linked", () => {

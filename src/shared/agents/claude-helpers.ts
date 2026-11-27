@@ -27,6 +27,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { notATurn } from "./conversations.js";
+import { statSettled } from "../stat-settled.js";
 import {
   HELPER_DEFAULTS,
   sortHelpers,
@@ -258,12 +259,17 @@ interface ParentFacts {
 }
 const parentCache = new Map<
   string,
-  { offset: number; rest: string; facts: ParentFacts; ino: number }
+  {
+    offset: number;
+    rest: string;
+    facts: ParentFacts;
+    ino: number;
+    bytes: number;
+  }
 >();
+let parentCacheBytes = 0;
 /** D76: the most helper ids kept per transcript (the oldest go first). */
 const MAX_FACTS = 50_000;
-/** D76: the most transcripts followed at once (the oldest go first). */
-const MAX_FOLLOWED = 64;
 const READ_CHUNK = 8 * 1024 * 1024;
 
 const NOTE_RE =
@@ -284,13 +290,31 @@ function keep<V>(m: Map<string, V>, k: string, v: V): void {
   if (m.size > MAX_FACTS) m.delete(m.keys().next().value as string);
 }
 
+function factsBytes(c: { rest: string; facts: ParentFacts }): number {
+  let n = 64 + 2 * c.rest.length;
+  for (const k of c.facts.notified.keys()) n += 2 * k.length + 48;
+  for (const k of c.facts.results.keys()) n += 2 * k.length + 48;
+  return n;
+}
+
+function forget(file: string): void {
+  const old = parentCache.get(file);
+  if (!old) return;
+  parentCacheBytes -= old.bytes;
+  parentCache.delete(file);
+}
+
 /**
  * The facts from the agent's transcript. D76: never more than `maxBytes`
  * of it per read: the first read starts that far from its end, and a read
  * that falls further behind skips ahead to that far from the end. So a
  * 4 GB transcript costs what a 64 MB one does.
  */
-function parentFacts(file: string, maxBytes: number): ParentFacts {
+function parentFacts(
+  file: string,
+  maxBytes: number,
+  budgetBytes: number,
+): ParentFacts {
   let st: fs.Stats;
   try {
     st = fs.statSync(file);
@@ -299,17 +323,17 @@ function parentFacts(file: string, maxBytes: number): ParentFacts {
   }
   let c = parentCache.get(file);
   if (!c || c.ino !== st.ino || st.size < c.offset) {
+    forget(file);
     c = {
       offset: 0,
       rest: "",
       ino: st.ino,
       facts: { notified: new Map(), results: new Map() },
+      bytes: 0,
     };
-    parentCache.delete(file);
-    if (parentCache.size >= MAX_FOLLOWED)
-      parentCache.delete(parentCache.keys().next().value as string);
-    parentCache.set(file, c);
   }
+  parentCache.delete(file);
+  parentCache.set(file, c);
   if (st.size === c.offset) return c.facts;
   // Too far behind: only the end; the line cut there is skipped.
   let cut = false;
@@ -348,6 +372,13 @@ function parentFacts(file: string, maxBytes: number): ParentFacts {
   } finally {
     if (fd !== null) fs.closeSync(fd);
   }
+  parentCacheBytes -= c.bytes;
+  c.bytes = factsBytes(c);
+  parentCacheBytes += c.bytes;
+  for (const k of parentCache.keys()) {
+    if (parentCacheBytes <= budgetBytes || k === file) break;
+    forget(k);
+  }
   return c.facts;
 }
 
@@ -375,6 +406,7 @@ function scanParentLine(l: string, f: ParentFacts): void {
 /** Forget what was read of agents' transcripts (tests). */
 export function resetHelperCache(): void {
   parentCache.clear();
+  parentCacheBytes = 0;
   workflowCache.clear();
 }
 
@@ -392,7 +424,12 @@ interface WorkflowAgent {
 }
 const workflowCache = new Map<
   string,
-  { mtime: number; agents: Map<string, WorkflowAgent> }
+  {
+    mtime: number;
+    size: number;
+    readAt: number;
+    agents: Map<string, WorkflowAgent>;
+  }
 >();
 
 /** agentId → where it ran in a workflow, from every wf_*.json in `dir`. */
@@ -406,14 +443,22 @@ function workflowAgents(dir: string): Map<string, WorkflowAgent> {
   }
   for (const n of names) {
     const file = path.join(dir, n);
-    let mtime = 0;
+    let st: fs.Stats;
     try {
-      mtime = fs.statSync(file).mtimeMs;
+      st = fs.statSync(file);
     } catch {
       continue;
     }
     let c = workflowCache.get(file);
-    if (!c || c.mtime !== mtime) {
+    // Kept only while its size and mtime stay the same, and only once its
+    // last write is more than a clock tick older than the read (stat-settled).
+    if (
+      !c ||
+      c.mtime !== st.mtimeMs ||
+      c.size !== st.size ||
+      !statSettled({ mtimeMs: c.mtime }, c.readAt)
+    ) {
+      const readAt = Date.now();
       const agents = new Map<string, WorkflowAgent>();
       const d = readJson(file);
       const runId = str(d?.runId, 128) ?? n.replace(/\.json$/, "");
@@ -437,7 +482,7 @@ function workflowAgents(dir: string): Map<string, WorkflowAgent> {
           lastTool: str(o.lastToolName, 80),
         });
       }
-      c = { mtime, agents };
+      c = { mtime: st.mtimeMs, size: st.size, readAt, agents };
       workflowCache.set(file, c);
     }
     for (const [k, v] of c.agents) out.set(k, v);
@@ -484,6 +529,7 @@ function readAll(transcript: string, opts: ReadHelpersOptions): Helper[] {
   const facts = parentFacts(
     transcript,
     Math.max(1, Math.round(s.readMaxMb * 1024 * 1024)),
+    s.factsCacheMb * 1024 * 1024,
   );
   const out: Helper[] = [];
   for (const id of ids) {

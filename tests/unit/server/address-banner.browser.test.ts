@@ -15,7 +15,7 @@
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
-import type { Browser, Page } from "playwright";
+import type { Browser, Page, Response } from "playwright";
 import {
   startAgentsPageServer,
   type AgentsPageServer,
@@ -24,6 +24,8 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { proxyRoutes } from "../../../src/shared/edge/proxy-route.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { settled } from "../helpers/find.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 jest.setTimeout(90_000);
 
@@ -110,13 +112,8 @@ async function open(e: (typeof ENGINES)[number], width: number): Promise<Page> {
     reducedMotion: "reduce",
   });
   await signIn(ctx, s!.stateDir, s!.base);
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
-    try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
-    } catch {
-      /* none */
-    }
     document.addEventListener("DOMContentLoaded", () => {
       const st = document.createElement("style");
       st.textContent = "#cl-overlay{display:none!important}";
@@ -179,8 +176,12 @@ describe.each(ENGINES)("issue 455 in %s", (e) => {
       await b.waitFor({ state: "detached", timeout: 5000 });
       await shot(p, `dismissed-${e}-${width}`);
       // Shown once for this address: the next page says nothing.
-      await p.goto(`${s.base}/agents`);
-      await p.waitForTimeout(1500);
+      const base = s.base;
+      const answer = await settled<Response>(p, "/api/edge/address", () =>
+        p.goto(`${base}/agents`),
+      );
+      await answer.finished();
+      await p.evaluate(() => new Promise((ok) => requestAnimationFrame(ok)));
       expect(await b.count()).toBe(0);
       await p.context().close();
     });

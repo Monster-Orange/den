@@ -26,7 +26,6 @@ import {
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as http from "http";
-import * as os from "os";
 import * as path from "path";
 import type { AddressInfo } from "net";
 import {
@@ -53,14 +52,17 @@ import {
 } from "../../../src/ui/server/request-guard.js";
 import { DeviceFlows } from "../../../src/ui/server/device-flows.js";
 import type { GithubDeviceClient } from "../../../src/shared/github-device.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 
 /** Everything that happened, in order: Hub's calls and gh's. */
 const events: string[] = [];
 
 // ── The fake Hub ────────────────────────────────────────────────────────
 let hubAnswer: [number, unknown] = [201, {}];
-/** How long the fake Hub waits before it answers an upload (ms). */
-let hubDelay = 0;
+/** Set: the fake Hub answers an upload only once this settles. */
+let hubHeld: Promise<void> | null = null;
 /** The user.yml the limits are read from (Settings). */
 let user: Record<string, unknown> = {};
 let preflightAnswer: [number, unknown] = [200, {}];
@@ -263,14 +265,14 @@ beforeAll(async () => {
         body: Buffer.concat(chunks),
       });
       const [status, body] = pre ? preflightAnswer : hubAnswer;
-      setTimeout(
-        () => {
-          if (res.destroyed) return;
-          res.writeHead(status, { "content-type": "application/json" });
-          res.end(JSON.stringify(body));
-        },
-        pre ? 0 : hubDelay,
-      );
+      const answer = () => {
+        if (res.destroyed) return;
+        res.writeHead(status, { "content-type": "application/json" });
+        res.end(JSON.stringify(body));
+      };
+      const held = pre ? null : hubHeld;
+      if (held) void held.then(answer);
+      else answer();
     });
   });
   await new Promise<void>((ok) => hub.listen(0, "127.0.0.1", ok));
@@ -293,7 +295,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
-  state = fs.mkdtempSync(path.join(os.tmpdir(), "den-report-shot-"));
+  state = tempDir("den-report-shot-");
   events.length = 0;
   hubSeen.length = 0;
   ghCalls.length = 0;
@@ -301,7 +303,7 @@ beforeEach(() => {
   connected = true;
   ghFileCode = 0;
   ghEditCode = 0;
-  hubDelay = 0;
+  hubHeld = null;
   user = {};
   appStatus = 201;
   preflightAnswer = [
@@ -647,19 +649,20 @@ describe("issue 403: filing with a screenshot", () => {
 
   it("Hub doesn't answer within reports.hub_timeout_seconds: filed, kept here, 'unreachable'", async () => {
     user = { reports: { hub_timeout_seconds: 1 } };
-    hubDelay = 1500;
+    let answer = () => {};
+    hubHeld = new Promise<void>((ok) => (answer = ok));
     const t0 = Date.now();
     const r = await call("POST", "/api/report/send", {
       ...FORM,
       shot: SHOT,
       shareShot: true,
-    });
-    expect(Date.now() - t0).toBeLessThan(1450);
+    }).finally(answer);
+    expect(Date.now() - t0).toBeLessThan(5_000);
     expect(r.status).toBe(200);
     expect(r.body.shot).toMatchObject({ where: "local", why: "unreachable" });
     expect(filedBody()).toContain(LOCAL_LINE(r.body.shot.id));
     noPointer(filedBody());
-  });
+  }, 30_000);
 
   it("over reports.hub_screenshot_max_mb: kept here, never sent ('too-big')", async () => {
     user = { reports: { hub_screenshot_max_mb: 1 } };

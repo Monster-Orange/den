@@ -97,6 +97,7 @@ export const ROUTES: readonly RouteEntry[] = [
     "/perf-report.js",
     "/workspace-picker.js",
     "/project-colour-picker.js",
+    "/health-rollup.js",
     "/favicon.ico",
     // Issue 644: the kit's site files (its head snippet names them).
     "/favicon.svg",
@@ -132,6 +133,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ),
   R("/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
   R("/api/_den/throw", "a test-only route (DEN_DEBUG_ROUTES): it throws"),
+  R("/api/_den/slow", "a test-only route (DEN_DEBUG_ROUTES): it waits"),
+  R("/api/_den/block", "a test-only route (DEN_DEBUG_ROUTES): it blocks"),
 
   // ── Read-only /api ──────────────────────────────────────────────────────
   ...[
@@ -239,6 +242,10 @@ export const ROUTES: readonly RouteEntry[] = [
   R(
     "/api/agents/stale",
     "D44: the running agents whose MCP servers are out of date (ids and projects)",
+  ),
+  R(
+    "/api/agents/restart-status",
+    "issue 1407: each agent of a restart for its tools, live (state, job command redacted, why one failed, redacted); a signed-in person's only",
   ),
   R(
     "/api/workspaces/:ws/agents/:id/helpers/:helper",
@@ -436,7 +443,17 @@ export const ROUTES: readonly RouteEntry[] = [
   M(
     ["POST"],
     "/api/coach/dismiss",
-    "issue 52: Dismiss a Coach finding, a person's, with the reason kept",
+    "issue 52: Dismiss a Coach finding, a person's (a reason kept when given)",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/undismiss",
+    "issue 52: Undo a Coach finding's dismissal, a person's",
+  ),
+  M(
+    ["POST"],
+    "/api/coach/apply",
+    "issue 110: Apply a Coach finding's change, a person's: it asks for a held write, which waits for a person's Allow",
   ),
   M(
     ["POST"],
@@ -680,6 +697,16 @@ export const ROUTES: readonly RouteEntry[] = [
     "issue 459: a project's app event feeds and their state, names, agents and urls only",
   ),
   M(
+    ["POST"],
+    "/api/workspaces/:ws/event-feeds",
+    "issue 1480: a person adds an app event feed (its bearer a secrets.refs name); a person's only (an agent asks with project_event_feed_add)",
+  ),
+  M(
+    ["DELETE"],
+    "/api/workspaces/:ws/event-feeds/:name",
+    "issue 1480: a person removes an app event feed; a person's only (an agent asks with project_event_feed_remove)",
+  ),
+  M(
     ["POST", "DELETE"],
     "/api/workspaces/:ws/mcp-servers/:name",
     "issue 352: a person changes one's url or bearer reference, or removes it; a person's only (an agent asks with project_mcp_update or project_mcp_remove)",
@@ -835,6 +862,20 @@ export const ROUTES: readonly RouteEntry[] = [
     "Issue 625: a person turns a test box on or off; off, it gets no slot and no contact",
   ),
   R(
+    "/api/gate-slots/runner-entries",
+    "Issue 642: the CI runner entries (a repo's jobs on a test box); a person's only",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries",
+    "Issue 642: a person adds or replaces a runner entry; an agent asks with gate_runner_entry_set",
+  ),
+  M(
+    ["POST"],
+    "/api/gate-slots/runner-entries/remove",
+    "Issue 642: a person removes a runner entry",
+  ),
+  R(
     "/api/notifications",
     "NT-3: the bell: notifications grouped by project then agent, and who waits now",
   ),
@@ -928,6 +969,20 @@ export const ROUTES: readonly RouteEntry[] = [
     ["POST"],
     "/api/alerts/forget",
     "Issue 172: a person stops push alerts to one device, by its id",
+  ),
+  R(
+    "/api/alerts/stream",
+    "Issue 774: an open tab's alert stream (it shows an alert before its device's push); a person's only, never an agent's or the test install's fixture person's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/presence",
+    "Issue 774: an open tab says which of its person's own devices it is and whether it shows; never an agent's or the test install's fixture person's",
+  ),
+  M(
+    ["POST"],
+    "/api/alerts/ack",
+    "Issue 774: an open tab showed an alert, so its device's push is skipped; never an agent's or the test install's fixture person's",
   ),
   R(
     "/api/hub/link-suggestions",
@@ -1251,6 +1306,7 @@ export const REGEX_ROUTES: Readonly<Record<string, readonly string[]>> = {
   "agent-routes.ts:MCP_SERVERS_PATH": ["/api/workspaces/:ws/mcp-servers"],
   "agent-routes.ts:MCP_SERVER_PATH": ["/api/workspaces/:ws/mcp-servers/:name"],
   "agent-routes.ts:EVENT_FEEDS_PATH": ["/api/workspaces/:ws/event-feeds"],
+  "agent-routes.ts:EVENT_FEED_PATH": ["/api/workspaces/:ws/event-feeds/:name"],
   "app-feed-routes.ts:LIST": ["/api/agents/self/app-feeds"],
   "app-feed-routes.ts:ONE": ["/api/agents/self/app-feeds/:name"],
   "hub-project-routes.ts:HUB_PROJECT_ROUTE": [
@@ -1304,6 +1360,18 @@ export function routeClass(
   method: string,
   pathname: string,
 ): RouteClass | null {
+  return routeEntry(method, pathname)?.cls ?? null;
+}
+
+export function routePattern(method: string, pathname: string): string {
+  const e = routeEntry(method, pathname);
+  if (e) return e.path;
+  const seg = pathname.split("/").filter(Boolean);
+  if (!seg.length) return "/";
+  return seg.length > 1 ? `/${seg[0]}/…` : "/…";
+}
+
+function routeEntry(method: string, pathname: string): RouteEntry | null {
   const m = method.toUpperCase();
   const hits = ROUTES.filter(
     (e) =>
@@ -1314,7 +1382,7 @@ export function routeClass(
   const rank = (e: RouteEntry) =>
     e.path.endsWith("*") ? 2 : e.path.includes(":") ? 1 : 0;
   hits.sort((x, y) => rank(x) - rank(y));
-  return hits[0].cls;
+  return hits[0];
 }
 
 /** A GET (or HEAD) that runs or changes something: the mutating-GET check. */

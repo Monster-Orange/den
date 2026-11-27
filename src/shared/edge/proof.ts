@@ -7,7 +7,6 @@
  *
  * 32 random bytes as hex, 0600, in the edge's state folder (edge.stateDir,
  * beside dynamic/, which is the only part the container mounts; the
- * generated dynamic/edge.yml carries it for Traefik). Never logged, never in
  * doctor output, Report payloads or a service print: only its file path and
  * whether it is there are ever said.
  */
@@ -15,6 +14,7 @@ import { randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { statSettled } from "../stat-settled.js";
 
 /** The request header the edge adds (Den deletes it once read). */
 export const EDGE_PROOF_HEADER = "x-den-edge-proof";
@@ -34,17 +34,36 @@ export function readEdgeProof(stateDir: string): string | null {
   }
 }
 
+export const EDGE_PROOF_GENERATION = 2;
+
+export const edgeProofGenerationFile = (edgeStateDir: string): string =>
+  `${edgeProofFile(edgeStateDir)}.generation`;
+
+export function proofIsCurrent(stateDir: string): boolean {
+  try {
+    const g = fs.readFileSync(edgeProofGenerationFile(stateDir), "utf8");
+    return Number(g.trim()) >= EDGE_PROOF_GENERATION;
+  } catch {
+    return false;
+  }
+}
+
 function writeProof(stateDir: string): string {
   const p = randomBytes(32).toString("hex");
   const f = edgeProofFile(stateDir);
   fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 });
   writeFileAtomic(f, p + "\n", { mode: 0o600 });
+  writeFileAtomic(
+    edgeProofGenerationFile(stateDir),
+    `${EDGE_PROOF_GENERATION}\n`,
+    { mode: 0o600 },
+  );
   return p;
 }
 
-/** The proof, made the first time (edge up). */
 export function ensureEdgeProof(stateDir: string): string {
-  return readEdgeProof(stateDir) ?? writeProof(stateDir);
+  const have = readEdgeProof(stateDir);
+  return have && proofIsCurrent(stateDir) ? have : writeProof(stateDir);
 }
 
 /** A new proof (`edge up --rotate-proof`): the old one stops matching. */
@@ -63,6 +82,37 @@ export function proofMatches(
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+export const edgeTrustHeldFile = (edgeStateDir: string): string =>
+  path.join(edgeStateDir, "edge-trust-held.json");
+
+export function holdEdgeTrust(stateDir: string, reason: string): void {
+  fs.mkdirSync(stateDir, { recursive: true, mode: 0o700 });
+  writeFileAtomic(
+    edgeTrustHeldFile(stateDir),
+    JSON.stringify({ reason, at: new Date().toISOString() }) + "\n",
+    { mode: 0o600 },
+  );
+}
+
+export function releaseEdgeTrust(stateDir: string): void {
+  fs.rmSync(edgeTrustHeldFile(stateDir), { force: true });
+}
+
+export function edgeTrustHeld(stateDir: string): string | null {
+  let text: string;
+  try {
+    text = fs.readFileSync(edgeTrustHeldFile(stateDir), "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    const r = (JSON.parse(text) as { reason?: unknown }).reason;
+    return typeof r === "string" && r ? r : "held back";
+  } catch {
+    return "held back";
+  }
+}
+
 /** A request as the checker needs it (http.IncomingMessage fits). */
 interface ProofRequest {
   headers: Record<string, string | string[] | undefined>;
@@ -72,26 +122,51 @@ interface ProofRequest {
  * H1: the web server's check, per request. The header is read once and
  * taken off the request (it never reaches a log, a Report or a proxied
  * service); the answer is kept for the request's later checks. The proof
- * file is re-read when it changes (a rotation renames a new file in), so
- * an old proof fails on the very next request. `dir`: the edge's state
- * folder, or null (no edge: nothing proves).
  */
 export function edgeProofChecker(
   dir: () => string | null,
 ): (req: ProofRequest) => boolean {
   const seen = new WeakMap<ProofRequest, boolean>();
-  let cache: { key: string; proof: string | null } = { key: "", proof: null };
+  let cache: { key: string; proof: string | null; readAt: number } = {
+    key: "",
+    proof: null,
+    readAt: 0,
+  };
   const current = (): string | null => {
     const d = dir();
     if (!d) return null;
+    // The trust hold is read on every call, never from the cache.
+    if (fs.existsSync(edgeTrustHeldFile(d))) return null;
     let key: string;
+    // When it last changed, to judge whether its stat has settled.
+    let changed: { mtimeMs: number; ctimeMs: number };
     try {
       const st = fs.statSync(edgeProofFile(d));
-      key = `${d}:${st.ino}:${st.mtimeMs}:${st.size}`;
+      key = `${d}:${st.ino}:${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
+      changed = { mtimeMs: st.mtimeMs, ctimeMs: st.ctimeMs };
     } catch {
       return null;
     }
-    if (key !== cache.key) cache = { key, proof: readEdgeProof(d) };
+    try {
+      const g = fs.statSync(edgeProofGenerationFile(d));
+      key += `:${g.ino}:${g.mtimeMs}:${g.ctimeMs}:${g.size}`;
+      changed = {
+        mtimeMs: Math.max(changed.mtimeMs, g.mtimeMs),
+        ctimeMs: Math.max(changed.ctimeMs, g.ctimeMs),
+      };
+    } catch {
+      key += ":-";
+    }
+    // Kept only while both files' stats stay the same, and only once the
+    // newer stamp is a clock tick older than the read (an inode can be reused).
+    if (key !== cache.key || !statSettled(changed, cache.readAt)) {
+      const readAt = Date.now();
+      cache = {
+        key,
+        proof: proofIsCurrent(d) ? readEdgeProof(d) : null,
+        readAt,
+      };
+    }
     return cache.proof;
   };
   return (req) => {
