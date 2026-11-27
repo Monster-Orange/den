@@ -193,7 +193,7 @@ export const seedFiles = { findHome, seed, seedBig, bigRoom, clean };
 async function timedList(d2) {
   const t = Date.now();
   const r = await d2
-    .fetch("/api/sessions", { method: "GET" })
+    .fetch("/api/sessions?all=1", { method: "GET" })
     .catch((e) => ({ status: null, body: { error: msg(e) } }));
   return {
     ms: Date.now() - t,

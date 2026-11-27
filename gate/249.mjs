@@ -9,7 +9,7 @@ const ID = "gate-249-bound";
 const SERVER = "server";
 
 async function rows(ctx) {
-  const r = await ctx.api("/api/sessions").catch(() => ({}));
+  const r = await ctx.api("/api/sessions?all=1").catch(() => ({}));
   return Array.isArray(r?.sessions) ? r.sessions : [];
 }
 const rowOf = async (ctx, id) => (await rows(ctx)).find((x) => x.agent === id);
