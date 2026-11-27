@@ -16,7 +16,7 @@ export const HELPERS_WAIT_MS = 60000;
 export const clauses = [
   `with ${SEED_AGENTS} agents, each with helpers and ${SEED_MB} MB of transcript, the agents list (GET /api/sessions) answers within ${LIMIT_MS} ms: the first list right after the seed (cold, its helpers not yet read), and the median of ${TRIES} tries once the list shows every seeded agent's helpers (within ${HELPERS_WAIT_MS / 1000} s)`,
   `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries, unless the list itself answers within ${PROBE_MS} ms, so nothing can wait behind it longer; the same bar holds during the cold list and on each poll while the helpers fill; its idle time is shown beside it)`,
-  `with one more agent added after those lists, whose transcript is ${BIG_MB} MB (as large as a real install's biggest), the next list (cold for it) answers within ${LIMIT_MS} ms, and /api/server-info started ${PROBE_AFTER_MS} ms into that list answers within ${PROBE_MS} ms (skipped, naming the free disk, when the disk has less than ${BIG_ROOM} times ${BIG_MB} MB free)`,
+  `with one more agent added after those lists, whose transcript is ${BIG_MB} MB (as large as a real install's biggest), the next list (cold for it) answers within ${LIMIT_MS} ms, and /api/server-info started ${PROBE_AFTER_MS} ms into that list answers within ${PROBE_MS} ms, as does each server-info poll (once a second) until the list shows that agent's helpers (within ${HELPERS_WAIT_MS / 1000} s); skipped as needs-disk-room, naming the free disk, only when the disk has less than ${BIG_ROOM} times ${BIG_MB} MB free`,
 ];
 export const SEED_WAY =
   "one real stub start makes a template agent; the gate process then writes the other agents' records, transcripts and helpers into that test Den's own state (the one home whose template record holds the token it just made), so seeding takes seconds and /api/sessions reads them as it reads any agent";
@@ -352,15 +352,15 @@ async function bigList(ctx, s, fs, d2, info) {
   try {
     st = fs.statfsSync(s.dir);
   } catch (e) {
-    return { skipped: `free disk unknown: ${msg(e)}` };
+    return { error: `free disk unknown for the big transcript: ${msg(e)}` };
   }
   const room = bigRoom(st.bavail * st.bsize);
-  if (room) return { skipped: room };
+  if (room) return { skipped: "needs-disk-room", room };
   const t = Date.now();
   try {
     seedBig(fs, path, crypto, s.home, s.dir, s.made);
   } catch (e) {
-    return { skipped: `the big transcript could not be written: ${msg(e)}` };
+    return { error: `the big transcript could not be written: ${msg(e)}` };
   }
   const big = { mb: BIG_MB, writeMs: Date.now() - t };
   await ctx.sleep(1000);
@@ -368,14 +368,29 @@ async function bigList(ctx, s, fs, d2, info) {
   await ctx.sleep(PROBE_AFTER_MS);
   const p = await info();
   const l = await list;
-  const rows = Array.isArray(l.body?.sessions) ? l.body.sessions : [];
-  return {
+  const bigOf = (body) =>
+    (Array.isArray(body?.sessions) ? body.sessions : []).find(
+      (x) => x?.agent === BIG_ID,
+    );
+  const out = {
     ...big,
     ms: l.ms,
     status: l.status,
-    listed: rows.some((x) => x?.agent === BIG_ID),
+    listed: !!bigOf(l.body),
     probe: { ms: p.ms, status: p.status, inFlight: l.end > p.start },
+    fill: [],
   };
+  const t0 = Date.now();
+  let row = bigOf(l.body);
+  while (!(row?.helpers?.total > 0) && Date.now() - t0 < HELPERS_WAIT_MS) {
+    await ctx.sleep(1000);
+    const fp = await info();
+    out.fill.push({ ms: fp.ms, status: fp.status });
+    row = bigOf((await timedList(d2)).body);
+    if (row) out.listed = true;
+  }
+  out.fillMs = row?.helpers?.total > 0 ? Date.now() - t0 : null;
+  return out;
 }
 
 export async function teardown(ctx, s) {
@@ -404,17 +419,29 @@ const row = (clause, ok, detail, skip) =>
     : { clause, ok, detail, evidence: ["1668-run.json"] };
 
 function bigRow(b) {
-  if (!b || b.skipped || b.ms == null) {
-    const why = b?.skipped ?? "the big transcript's list was not reached";
-    return row(clauses[2], null, why, why);
-  }
+  if (b?.skipped === "needs-disk-room")
+    return row(clauses[2], null, b.room, "needs-disk-room");
+  if (!b || b.error || b.ms == null)
+    throw new Error(
+      `1668 not measured: ${b?.error ?? "the big transcript's list was not reached"}`,
+    );
+  if (b.listed !== true)
+    throw new Error(
+      `1668 not measured: the list did not show the big agent (${BIG_MB} MB transcript)`,
+    );
+  if (b.fillMs == null)
+    throw new Error(
+      `1668 not measured: the big agent's helpers did not show within ${HELPERS_WAIT_MS / 1000} s`,
+    );
+  const fill = b.fill ?? [];
   return row(
     clauses[2],
     b.status === 200 &&
       b.ms <= LIMIT_MS &&
       b.probe?.status === 200 &&
-      b.probe.ms <= PROBE_MS,
-    `one agent with a ${b.mb} MB transcript written in ${b.writeMs ?? "?"} ms${b.listed === false ? " (the list did not show it)" : ""}; cold list with the big transcript ${b.ms} ms (limit ${LIMIT_MS}); server-info during it ${b.probe?.ms ?? "?"} ms${b.probe?.inFlight ? "" : " (list done)"} (limit ${PROBE_MS})`,
+      b.probe.ms <= PROBE_MS &&
+      fill.every((p) => p.status === 200 && p.ms <= PROBE_MS),
+    `one agent with a ${b.mb} MB transcript written in ${b.writeMs ?? "?"} ms; its helpers showed after ${b.fillMs} ms, ${fill.length} probes, max ${fill.length ? Math.max(...fill.map((p) => p.ms)) : "-"} ms; cold list with the big transcript ${b.ms} ms (limit ${LIMIT_MS}); server-info during it ${b.probe?.ms ?? "?"} ms${b.probe?.inFlight ? "" : " (list done)"} (limit ${PROBE_MS})`,
   );
 }
 
