@@ -895,7 +895,7 @@ function activityList(x) {
         page = r;
         el.innerHTML = entries.length
           ? `<ol class="act">${entries.map((a) => `<li>${timeHtml(a.ts, { style: "time" })}<span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? (a.agent ? "[" + a.agent + "]" : `[${gw("gr.who.agent", "agent")}]`) + (a.client ? " " + a.client : "") : a.claimed && a.claimed.client ? gw("gr.who.youVia", "you · {client} (unverified)", { client: a.claimed.client }) : gw("gr.who.you", "you"))}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">${esc(gw("gr.refused", "refused: {reason}", { reason: a.reason || "" }))}</em>` : ""}</span></li>`).join("")}</ol>` +
-            listPagerHtml("activity", r, entries.length, per)
+            listPagerHtml("activity", r, entries.length, per, { url: false })
           : none(
               N(
                 "noActivity",
@@ -903,10 +903,14 @@ function activityList(x) {
               ),
             );
       });
-  const stop = watchPagers(el, (_name, ask) => {
-    if (ask.kind === "per") per = ask.target.per;
-    void show(pageQuery(page, ask.target, per).toString());
-  });
+  const stop = watchPagers(
+    el,
+    (_name, ask) => {
+      if (ask.kind === "per") per = ask.target.per;
+      void show(pageQuery(page, ask.target, per).toString());
+    },
+    { url: false },
+  );
   disposers.push(() => {
     live = false;
     stop();
