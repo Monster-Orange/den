@@ -26,8 +26,10 @@ function run(js: string): string {
 const limits = JSON.parse(
   run(`
     const g = await import("./gate/1668.mjs");
-    console.log(JSON.stringify({ n: g.SEED_AGENTS, tries: g.TRIES, limit: g.LIMIT_MS, probe: g.PROBE_MS, min: g.IN_FLIGHT_MIN, wait: g.HELPERS_WAIT_MS }));`),
+    console.log(JSON.stringify({ n: g.SEED_AGENTS, tries: g.TRIES, limit: g.LIMIT_MS, probe: g.PROBE_MS, min: g.IN_FLIGHT_MIN, wait: g.HELPERS_WAIT_MS, big: g.BIG_MB, clauses: g.clauses.length }));`),
 ) as {
+  big: number;
+  clauses: number;
   n: number;
   tries: number;
   limit: number;
@@ -73,11 +75,60 @@ const fast = {
   inFlight: limits.tries,
   medianMs: Math.floor(limits.limit / 4),
   maxProbeMs: Math.floor(limits.probe / 4),
+  big: {
+    mb: limits.big,
+    ms: 60,
+    status: 200,
+    probe: { ms: 7, status: 200, inFlight: true },
+  },
 };
 
 describe("gate/1668 rows", () => {
-  it("a list and a probe under their limits pass both rows", () => {
-    expect(rows(fast).map((r) => r.ok)).toEqual([true, true]);
+  it("a list and a probe under their limits pass every row", () => {
+    expect(rows(fast).map((r) => r.ok)).toEqual([true, true, true]);
+  });
+
+  it("the bars are fixed: 1500 ms for any list, cold or warm, and 250 ms for server-info", () => {
+    expect(limits.limit).toBe(1500);
+    expect(limits.probe).toBe(250);
+  });
+
+  it("one big transcript (300 MB to 1 GB) rides beside the seed, and its cold list has its own row", () => {
+    expect(limits.big).toBeGreaterThanOrEqual(300);
+    expect(limits.big).toBeLessThanOrEqual(1024);
+    expect(limits.clauses).toBe(3);
+    const r = rows(fast);
+    expect(r[2].clause).toContain(`${limits.big} MB`);
+    expect(r[2].detail).toContain("cold list with the big transcript 60 ms");
+  });
+
+  it("the cold list with the big transcript over the bar fails only its row", () => {
+    const slow = rows({ ...fast, big: { ...fast.big, ms: limits.limit + 1 } });
+    expect(slow.map((x) => x.ok)).toEqual([true, true, false]);
+    const stall = rows({
+      ...fast,
+      big: {
+        ...fast.big,
+        probe: { ms: limits.probe + 1, status: 200, inFlight: true },
+      },
+    });
+    expect(stall.map((x) => x.ok)).toEqual([true, true, false]);
+    expect(stall[2].detail).toContain(
+      `server-info during it ${limits.probe + 1} ms`,
+    );
+    expect(rows({ ...fast, big: { ...fast.big, status: 500 } })[2].ok).toBe(
+      false,
+    );
+  });
+
+  it("no room for the big transcript skips its row, naming the free disk, never a PASS", () => {
+    const r = rows({
+      ...fast,
+      big: { skipped: "free disk 120 MB, needs 3072 MB" },
+    });
+    expect(r.map((x) => x.ok)).toEqual([true, true, null]);
+    expect(r[2].detail).toContain("free disk 120 MB");
+    expect(rows({ ...fast, big: undefined })[2].ok).toBeNull();
   });
 
   it("a list over the limit, with the server stalled behind it, fails both", () => {
@@ -88,7 +139,7 @@ describe("gate/1668 rows", () => {
       medianMs: limits.limit * 5,
       maxProbeMs: limits.probe * 5,
     };
-    expect(rows(slow).map((r) => r.ok)).toEqual([false, false]);
+    expect(rows(slow).map((r) => r.ok)).toEqual([false, false, true]);
   });
 
   it("server-info waiting behind the list (0.4.90: 9 s against an idle 3-9 ms) fails row 2 and shows the idle time", () => {
@@ -97,7 +148,7 @@ describe("gate/1668 rows", () => {
       probes: probes(9000),
       maxProbeMs: 9000,
     });
-    expect(r.map((x) => x.ok)).toEqual([true, false]);
+    expect(r.map((x) => x.ok)).toEqual([true, false, true]);
     expect(r[1].detail).toContain("server-info idle 5 ms");
     expect(r[1].detail).toContain("max in flight 9000");
   });
@@ -112,7 +163,7 @@ describe("gate/1668 rows", () => {
       maxProbeMs: null,
     };
     const r = rows(quick);
-    expect(r.map((x) => x.ok)).toEqual([true, true]);
+    expect(r.map((x) => x.ok)).toEqual([true, true, true]);
     expect(r[1].detail).toContain("so nothing could wait behind it longer");
     const stuck = rows({ ...quick, probes: probes(limits.probe * 2, 0) });
     expect(stuck[1].ok).toBe(false);
@@ -139,7 +190,7 @@ describe("gate/1668 rows", () => {
       coldHelperRows: limits.n,
       coldProbe: { ms: limits.probe * 18, status: 200, inFlight: true },
     });
-    expect(r.map((x) => x.ok)).toEqual([false, false]);
+    expect(r.map((x) => x.ok)).toEqual([false, false, true]);
     expect(r[0].detail).toContain(`cold list ${limits.limit * 6} ms`);
     expect(r[1].detail).toContain(
       `during the cold list ${limits.probe * 18} ms`,
@@ -154,7 +205,7 @@ describe("gate/1668 rows", () => {
         { ms: limits.probe * 8, status: 200 },
       ],
     });
-    expect(r.map((x) => x.ok)).toEqual([true, false]);
+    expect(r.map((x) => x.ok)).toEqual([true, false, true]);
     expect(r[1].detail).toContain(
       `while the helpers filled 2 probes, max ${limits.probe * 8} ms`,
     );
@@ -298,6 +349,42 @@ describe("gate/1668 seed files", () => {
     expect(got.left).toEqual(["g1668-template.json"]);
     expect(got.stub).toBe(0);
     expect(got.other).toBe(true);
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it("room for the big transcript needs three times its size free", () => {
+    const got = JSON.parse(
+      seedJs(
+        "/",
+        `console.log(JSON.stringify([f.bigRoom(400 * 1048576, 300), f.bigRoom(4000 * 1048576, 300)]));`,
+      ),
+    );
+    expect(got[0]).toMatch(/free disk 400 MB, needs 900 MB/);
+    expect(got[1]).toBeNull();
+  });
+
+  it("seeds one big agent with a transcript of the size asked, and clean removes it too", () => {
+    const d = fakeDen();
+    const got = JSON.parse(
+      seedJs(
+        d,
+        `const s = { home: D + "/cwd/abc123/h", dir: D + "/stub", made: [] };
+        f.seed(fs, path, crypto, s.home, s.dir, s.made, 0.01);
+        const b = f.seedBig(fs, path, crypto, s.home, s.dir, s.made, 2);
+        const size = fs.statSync(b.transcript).size;
+        const rec = JSON.parse(fs.readFileSync(b.record, "utf8"));
+        const helper = fs.existsSync(b.transcript.slice(0, -6) + "/subagents/agent-h1.jsonl");
+        f.clean(fs, path, s);
+        console.log(JSON.stringify({ id: b.id, size, recId: rec.id, helper, left: fs.readdirSync(s.home + "/agents"), stub: fs.readdirSync(s.dir).length }));`,
+      ),
+    );
+    expect(got.id).toBe("g1668-big");
+    expect(got.recId).toBe("g1668-big");
+    expect(got.size).toBeGreaterThanOrEqual(2 * 1048576);
+    expect(got.size).toBeLessThan(3 * 1048576);
+    expect(got.helper).toBe(true);
+    expect(got.left).toEqual(["g1668-template.json"]);
+    expect(got.stub).toBe(0);
     fs.rmSync(d, { recursive: true, force: true });
   });
 });

@@ -5,7 +5,9 @@ export const SEED_AGENTS = 140;
 export const SEED_MB = 4;
 export const TRIES = 5;
 export const LIMIT_MS = 1500;
-export const PROBE_MS = 500;
+export const PROBE_MS = 250;
+export const BIG_MB = 1024;
+export const BIG_ROOM = 3;
 export const PROBE_AFTER_MS = 20;
 export const IN_FLIGHT_MIN = 3;
 export const IDLE_TRIES = 3;
@@ -14,6 +16,7 @@ export const HELPERS_WAIT_MS = 60000;
 export const clauses = [
   `with ${SEED_AGENTS} agents, each with helpers and ${SEED_MB} MB of transcript, the agents list (GET /api/sessions) answers within ${LIMIT_MS} ms: the first list right after the seed (cold, its helpers not yet read), and the median of ${TRIES} tries once the list shows every seeded agent's helpers (within ${HELPERS_WAIT_MS / 1000} s)`,
   `while that list is being made, /api/server-info answers within ${PROBE_MS} ms (started ${PROBE_AFTER_MS} ms after each list, counted only while that list is still in flight, on at least ${IN_FLIGHT_MIN} of ${TRIES} tries, unless the list itself answers within ${PROBE_MS} ms, so nothing can wait behind it longer; the same bar holds during the cold list and on each poll while the helpers fill; its idle time is shown beside it)`,
+  `with one more agent added after those lists, whose transcript is ${BIG_MB} MB (as large as a real install's biggest), the next list (cold for it) answers within ${LIMIT_MS} ms, and /api/server-info started ${PROBE_AFTER_MS} ms into that list answers within ${PROBE_MS} ms (skipped, naming the free disk, when the disk has less than ${BIG_ROOM} times ${BIG_MB} MB free)`,
 ];
 export const SEED_WAY =
   "one real stub start makes a template agent; the gate process then writes the other agents' records, transcripts and helpers into that test Den's own state (the one home whose template record holds the token it just made), so seeding takes seconds and /api/sessions reads them as it reads any agent";
@@ -22,6 +25,7 @@ export const timeoutMs = 600000;
 const WS = "proj-gate";
 const TEMPLATE = "g1668-template";
 const PREFIX = "g1668-a";
+const BIG_ID = "g1668-big";
 const idOf = (i) => `${PREFIX}${String(i).padStart(3, "0")}`;
 const D2S = [];
 
@@ -63,65 +67,100 @@ function findHome(fs, path, cwd, token) {
     : { error: `found ${homes.length} Den homes holding this template` };
 }
 
-function seed(fs, path, crypto, home, dir, made, mb = SEED_MB) {
-  const adir = path.join(home, "agents");
-  const tpl = JSON.parse(
-    fs.readFileSync(path.join(adir, `${TEMPLATE}.json`), "utf8"),
+const PAD = "x".repeat(1800);
+const lineOf = (tid) =>
+  JSON.stringify({
+    type: "user",
+    message: {
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: tid, content: PAD }],
+    },
+  }) + "\n";
+
+function readTemplate(fs, path, home) {
+  return JSON.parse(
+    fs.readFileSync(path.join(home, "agents", `${TEMPLATE}.json`), "utf8"),
   );
-  const pad = "x".repeat(1800);
+}
+
+function writeAgent(fs, path, crypto, home, dir, tpl, id, write) {
+  const token = crypto.randomUUID();
+  const rec = {
+    ...tpl,
+    id,
+    displayName: id,
+    resumeToken: token,
+    stoppedAt: new Date().toISOString(),
+  };
+  for (const k of ["sessionName", "peerName"])
+    if (typeof rec[k] === "string") rec[k] = rec[k].split(TEMPLATE).join(id);
+  rec.session = {
+    ...(tpl.session && typeof tpl.session === "object" ? tpl.session : {}),
+    id: crypto.randomUUID(),
+  };
+  if (typeof rec.session.name === "string")
+    rec.session.name = rec.session.name.split(TEMPLATE).join(id);
+  const f = path.join(home, "agents", `${id}.json`);
+  const t = path.join(dir, `${token}.jsonl`);
+  const m = { id, record: f, transcript: t };
+  fs.writeFileSync(`${f}.tmp`, JSON.stringify(rec, null, 2));
+  fs.renameSync(`${f}.tmp`, f);
+  write(t);
+  const sub = path.join(dir, token, "subagents");
+  fs.mkdirSync(sub, { recursive: true });
+  fs.writeFileSync(
+    path.join(sub, "agent-h1.meta.json"),
+    JSON.stringify({ toolUseId: "toolu_s1", requestShape: "task" }),
+  );
+  fs.writeFileSync(
+    path.join(sub, "agent-h1.jsonl"),
+    JSON.stringify({ type: "assistant", timestamp: new Date().toISOString() }) +
+      "\n",
+  );
+  return m;
+}
+
+function seed(fs, path, crypto, home, dir, made, mb = SEED_MB) {
+  const tpl = readTemplate(fs, path, home);
   const lines = [];
   for (let n = 0; n * 2000 < mb * 1048576; n++)
-    lines.push(
-      JSON.stringify({
-        type: "user",
-        message: {
-          role: "user",
-          content: [
-            { type: "tool_result", tool_use_id: `toolu_s${n}`, content: pad },
-          ],
-        },
-      }),
+    lines.push(lineOf(`toolu_s${n}`));
+  const body = lines.join("");
+  for (let i = 1; i <= SEED_AGENTS; i++)
+    made.push(
+      writeAgent(fs, path, crypto, home, dir, tpl, idOf(i), (t) =>
+        fs.writeFileSync(t, body),
+      ),
     );
-  const body = lines.join("\n") + "\n";
-  for (let i = 1; i <= SEED_AGENTS; i++) {
-    const id = idOf(i);
-    const token = crypto.randomUUID();
-    const rec = {
-      ...tpl,
-      id,
-      displayName: id,
-      resumeToken: token,
-      stoppedAt: new Date().toISOString(),
-    };
-    for (const k of ["sessionName", "peerName"])
-      if (typeof rec[k] === "string") rec[k] = rec[k].split(TEMPLATE).join(id);
-    rec.session = {
-      ...(tpl.session && typeof tpl.session === "object" ? tpl.session : {}),
-      id: crypto.randomUUID(),
-    };
-    for (const k of ["name"])
-      if (typeof rec.session[k] === "string")
-        rec.session[k] = rec.session[k].split(TEMPLATE).join(id);
-    const f = path.join(adir, `${id}.json`);
-    const t = path.join(dir, `${token}.jsonl`);
-    made.push({ id, record: f, transcript: t });
-    fs.writeFileSync(`${f}.tmp`, JSON.stringify(rec, null, 2));
-    fs.renameSync(`${f}.tmp`, f);
-    fs.writeFileSync(t, body);
-    const sub = path.join(dir, token, "subagents");
-    fs.mkdirSync(sub, { recursive: true });
-    fs.writeFileSync(
-      path.join(sub, "agent-h1.meta.json"),
-      JSON.stringify({ toolUseId: "toolu_s1", requestShape: "task" }),
-    );
-    fs.writeFileSync(
-      path.join(sub, "agent-h1.jsonl"),
-      JSON.stringify({
-        type: "assistant",
-        timestamp: new Date().toISOString(),
-      }) + "\n",
-    );
-  }
+}
+
+function bigRoom(freeBytes, mb = BIG_MB) {
+  const free = Math.floor(freeBytes / 1048576);
+  return free >= mb * BIG_ROOM
+    ? null
+    : `free disk ${free} MB, needs ${mb * BIG_ROOM} MB`;
+}
+
+function seedBig(fs, path, crypto, home, dir, made, mb = BIG_MB) {
+  const tpl = readTemplate(fs, path, home);
+  const m = writeAgent(fs, path, crypto, home, dir, tpl, BIG_ID, (t) => {
+    made.push({
+      id: BIG_ID,
+      record: path.join(home, "agents", `${BIG_ID}.json`),
+      transcript: t,
+    });
+    const fd = fs.openSync(t, "w");
+    try {
+      for (let n = 0, w = 0; w < mb * 1048576; n++) {
+        const block = [];
+        for (let k = 0; k < 512; k++) block.push(lineOf(`toolu_b${n}_${k}`));
+        w += fs.writeSync(fd, block.join(""));
+      }
+    } finally {
+      fs.closeSync(fd);
+    }
+  });
+  return m;
 }
 
 function fillSay(fill) {
@@ -135,7 +174,7 @@ function clean(fs, path, s) {
   const inside = (f, d) =>
     path.resolve(f).startsWith(path.resolve(d) + path.sep);
   for (const m of s?.made ?? []) {
-    if (!m.id.startsWith(PREFIX)) continue;
+    if (!m.id.startsWith(PREFIX) && m.id !== BIG_ID) continue;
     if (inside(m.record, path.join(s.home, "agents")))
       fs.rmSync(m.record, { force: true });
     if (inside(m.transcript, s.dir) && m.transcript.endsWith(".jsonl")) {
@@ -147,7 +186,7 @@ function clean(fs, path, s) {
   return n;
 }
 
-export const seedFiles = { findHome, seed, clean };
+export const seedFiles = { findHome, seed, seedBig, bigRoom, clean };
 
 async function timedList(d2) {
   const t = Date.now();
@@ -301,8 +340,42 @@ export async function run(ctx, s) {
   r.inFlight = counted.length;
   r.maxProbeMs = counted.length ? Math.max(...counted.map((p) => p.ms)) : null;
   const fs = await import("fs");
+  r.big = await bigList(ctx, s, fs, d2, info);
   fs.writeFileSync(ctx.evidence("1668-run.json"), JSON.stringify(r, null, 2));
   return r;
+}
+
+async function bigList(ctx, s, fs, d2, info) {
+  const path = await import("path");
+  const crypto = await import("crypto");
+  let st;
+  try {
+    st = fs.statfsSync(s.dir);
+  } catch (e) {
+    return { skipped: `free disk unknown: ${msg(e)}` };
+  }
+  const room = bigRoom(st.bavail * st.bsize);
+  if (room) return { skipped: room };
+  const t = Date.now();
+  try {
+    seedBig(fs, path, crypto, s.home, s.dir, s.made);
+  } catch (e) {
+    return { skipped: `the big transcript could not be written: ${msg(e)}` };
+  }
+  const big = { mb: BIG_MB, writeMs: Date.now() - t };
+  await ctx.sleep(1000);
+  const list = timedList(d2);
+  await ctx.sleep(PROBE_AFTER_MS);
+  const p = await info();
+  const l = await list;
+  const rows = Array.isArray(l.body?.sessions) ? l.body.sessions : [];
+  return {
+    ...big,
+    ms: l.ms,
+    status: l.status,
+    listed: rows.some((x) => x?.agent === BIG_ID),
+    probe: { ms: p.ms, status: p.status, inFlight: l.end > p.start },
+  };
 }
 
 export async function teardown(ctx, s) {
@@ -325,12 +398,25 @@ export async function teardown(ctx, s) {
   }
 }
 
-const row = (clause, ok, detail) => ({
-  clause,
-  ok,
-  detail,
-  evidence: ["1668-run.json"],
-});
+const row = (clause, ok, detail, skip) =>
+  ok === null
+    ? { clause, ok: null, skip, detail, evidence: ["1668-run.json"] }
+    : { clause, ok, detail, evidence: ["1668-run.json"] };
+
+function bigRow(b) {
+  if (!b || b.skipped || b.ms == null) {
+    const why = b?.skipped ?? "the big transcript's list was not reached";
+    return row(clauses[2], null, why, why);
+  }
+  return row(
+    clauses[2],
+    b.status === 200 &&
+      b.ms <= LIMIT_MS &&
+      b.probe?.status === 200 &&
+      b.probe.ms <= PROBE_MS,
+    `one agent with a ${b.mb} MB transcript written in ${b.writeMs ?? "?"} ms${b.listed === false ? " (the list did not show it)" : ""}; cold list with the big transcript ${b.ms} ms (limit ${LIMIT_MS}); server-info during it ${b.probe?.ms ?? "?"} ms${b.probe?.inFlight ? "" : " (list done)"} (limit ${PROBE_MS})`,
+  );
+}
 
 export function expect(cells) {
   const r =
@@ -372,5 +458,6 @@ export function expect(cells) {
           : r.maxProbeMs <= PROBE_MS),
       `${seedLine}; server-info idle ${r.idleMs} ms (median of ${IDLE_TRIES}); during the cold list ${r.coldProbe?.ms ?? "?"} ms${r.coldProbe?.inFlight ? "" : " (list done)"}; while the helpers filled ${fillSay(r.fill)}; during each list ${JSON.stringify((r.probes ?? []).map((p) => (p.inFlight ? p.ms : `${p.ms} (list done)`)))} ms, ${bounded ? `in flight on ${r.inFlight} of ${TRIES}, but the list answered in ${r.medianMs} ms (median), within ${PROBE_MS}, so nothing could wait behind it longer; max ${Math.max(...r.probes.map((p) => p.ms))}` : `max in flight ${r.maxProbeMs} over ${r.inFlight} of ${TRIES}`} (limit ${PROBE_MS})`,
     ),
+    bigRow(r.big),
   ];
 }
