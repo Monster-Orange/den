@@ -245,16 +245,19 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
   /** Every answer asked for while `dropping` leaves out the Allow row; the poll's too. */
   async function answers(p: Page): Promise<{ dropping: boolean }> {
     const c = { dropping: false };
-    await p.route("**/api/notifications", async (r) => {
-      if (r.request().method() !== "GET") return r.continue();
-      const drop = c.dropping;
-      const res = await r.fetch();
-      const b = (await res.json()) as { waiting?: unknown[] };
-      await r.fulfill({
-        response: res,
-        json: drop ? { ...b, waiting: [] } : b,
-      });
-    });
+    await p.route(
+      (u) => u.pathname === "/api/notifications",
+      async (r) => {
+        if (r.request().method() !== "GET") return r.continue();
+        const drop = c.dropping;
+        const res = await r.fetch();
+        const b = (await res.json()) as { waiting?: unknown[] };
+        await r.fulfill({
+          response: res,
+          json: drop ? { ...b, waiting: [] } : b,
+        });
+      },
+    );
     return c;
   }
   /** A refresh now (the bell refreshes on the window's focus). */
@@ -370,7 +373,9 @@ describe("the bell keeps the keyboard across a refresh that drops the row (issue
       const late = new Promise<void>((r) => (free = r));
       let n = 0;
       window.fetch = (async (u: RequestInfo | URL, o?: RequestInit) => {
-        const mine = String(u).endsWith("/api/notifications") && !o?.method;
+        const mine =
+          new URL(String(u), location.href).pathname === "/api/notifications" &&
+          !o?.method;
         const first = mine && ++n === 1;
         const r = await real(u, o);
         if (!mine) return r;

@@ -32,6 +32,7 @@ export type PagerTarget =
 
 export interface PagerModel {
   mode?: "pages" | "more";
+  loaded?: boolean;
   from: number;
   to: number;
   total?: number | null;
@@ -67,7 +68,7 @@ export interface PagerNav {
 export interface PagerOptions {
   load?: () => Promise<PagerLoad>;
   list?: HTMLElement | string | null;
-  onNavigate?: (ask: PagerNav) => void;
+  onNavigate?: (ask: PagerNav) => void | Promise<unknown>;
   shortcuts?: boolean | (() => boolean);
 }
 

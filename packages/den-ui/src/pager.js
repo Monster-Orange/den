@@ -241,7 +241,8 @@ export function pagerHtml(o = {}) {
     m.total == null
       ? m.from <= 1 && !(m.mode === "more" ? m.moreHref : m.hasNext)
       : m.from <= 1 && m.to >= m.total;
-  if (m.total === 0 || onePage) return "";
+  const keepAll = m.mode === "more" && o.loaded === true && m.total != null;
+  if (m.total === 0 || (onePage && !keepAll)) return "";
   const w = m.words;
   const open =
     `<nav class="den-pager" data-den-pager="${m.mode}"` +
@@ -253,10 +254,13 @@ export function pagerHtml(o = {}) {
     `${open} data-den-pager-model="${esc(JSON.stringify(keep))}">` +
     `<div class="den-pager-row">` +
     `<p class="den-pager-range" aria-live="polite">${esc(rangeText(m))}</p>` +
-    `<div class="den-pager-ctl">` +
-    `<p class="den-pager-err" hidden>${esc(String(w.moreErr ?? ""))}</p>` +
-    `<a class="den-pager-btn den-pager-more" href="${esc(m.moreHref || "#")}">${esc(moreText(m))}</a>` +
-    "</div></div></nav>"
+    (done(m)
+      ? ""
+      : `<div class="den-pager-ctl">` +
+        `<p class="den-pager-err" hidden>${esc(String(w.moreErr ?? ""))}</p>` +
+        `<a class="den-pager-btn den-pager-more" href="${esc(m.moreHref || "#")}">${esc(moreText(m))}</a>` +
+        "</div>") +
+    "</div></nav>"
   );
 }
 
@@ -298,7 +302,23 @@ export function hydratePager(el, opts = {}) {
   }
 
   async function more() {
-    if (loading || typeof opts.load !== "function") return;
+    if (loading) return;
+    if (typeof opts.load !== "function") {
+      if (typeof opts.onNavigate !== "function") return;
+      loading = true;
+      holdDots(btn, true);
+      try {
+        await opts.onNavigate({
+          kind: "more",
+          target: "more",
+          href: btn.getAttribute("href") ?? "",
+        });
+      } finally {
+        holdDots(btn, false);
+        loading = false;
+      }
+      return;
+    }
     loading = true;
     if (err) err.hidden = true;
     holdDots(btn, true);

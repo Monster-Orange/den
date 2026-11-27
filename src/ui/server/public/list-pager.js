@@ -24,6 +24,10 @@ const WORDS = [
   "go",
   "perPage",
   "more",
+  "moreN",
+  "lastN",
+  "all",
+  "moreErr",
 ];
 const attr = (s) =>
   String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -41,9 +45,44 @@ const keys = (k) => ({
   o: `${k}o`,
 });
 
+const byNumber = (r) =>
+  !!r &&
+  Number.isInteger(r.page) &&
+  Number.isInteger(r.pages) &&
+  !("prev" in r) &&
+  !("next" in r);
+const hasPrev = (r) => (byNumber(r) ? r.page > 1 : !!r?.prev);
+const hasNext = (r) => (byNumber(r) ? r.page < r.pages : !!r?.next);
+
+function numberHref(k, reply, target, url) {
+  const u = new URL(url, "http://localhost/");
+  const q = u.searchParams;
+  const n =
+    target === "first"
+      ? 1
+      : target === "prev"
+        ? reply.page - 1
+        : target === "next"
+          ? reply.page + 1
+          : target === "last"
+            ? reply.pages
+            : target && typeof target === "object" && "page" in target
+              ? Number(target.page)
+              : null;
+  for (const x of [k.c, k.b, k.p, k.at, k.o]) q.delete(x);
+  if (target && typeof target === "object" && "per" in target)
+    q.set(k.n, String(target.per));
+  else if (!Number.isInteger(n) || n < 1 || n > reply.pages) return null;
+  else if (typeof target === "string" && n === reply.page) return null;
+  else if (n > 1) q.set(k.p, String(n));
+  const str = q.toString();
+  return `${u.pathname}${str ? `?${str}` : ""}${u.hash}`;
+}
+
 export function pageHref(name, reply, target, per, url = here()) {
   const k = keys(name);
-  if (!reply || !("prev" in reply))
+  if (byNumber(reply)) return numberHref(k, reply, target, url);
+  if (!reply || !("prev" in reply) || reply.forwardOnly === true)
     return (
       cursorHref(url, target, reply?.next, {
         after: k.c,
@@ -101,22 +140,45 @@ export function listPagerHtml(name, p, shown, per, { url = true } = {}) {
     typeof p.offset === "number"
       ? p.offset
       : cursorStart(url ? here() : "", { offset: keys(name).o });
+  const back = p.forwardOnly
+    ? !!new URL(url ? here() : "http://localhost/").searchParams.get(
+        keys(name).b,
+      )
+    : hasPrev(p);
   const on = {
-    first: !!p.prev,
-    prev: !!p.prev,
-    next: !!p.next,
-    last: !!p.next && !!p.pages,
+    first: back,
+    prev: back,
+    next: hasNext(p),
+    last: hasNext(p) && !!p.pages,
   };
   const html = pagerHtml({
     from: offset + 1,
     to: offset + shown,
     total: typeof p.total === "number" ? p.total : null,
-    hasNext: !!p.next,
+    hasNext: hasNext(p),
     ...(p.pages ? { page: p.page, pages: p.pages } : {}),
     per,
     href: url
       ? (t) => pageHref(name, p, t, per)
       : (t) => (typeof t === "string" && !on[t] ? null : `#${name}`),
+    lang: globalThis.denShell?.lang?.() ?? "en",
+    words: pagerWords(),
+  });
+  return html ? `<div data-list-pager="${attr(name)}">${html}</div>` : "";
+}
+
+export function listMoreHtml(name, p, shown, step) {
+  if (!p || !shown) return "";
+  const html = pagerHtml({
+    mode: "more",
+    from: 1,
+    to: shown,
+    loaded: shown > step,
+    total: typeof p.total === "number" ? p.total : null,
+    hasNext: !!p.next,
+    step,
+    per: step,
+    moreHref: p.next ? `#${name}` : null,
     lang: globalThis.denShell?.lang?.() ?? "en",
     words: pagerWords(),
   });
@@ -136,7 +198,7 @@ export function pageQuery(p, target, per) {
   return q;
 }
 
-export function watchPagers(root, onNav, { url = true } = {}) {
+export function watchPagers(root, onNav, { url = true, more = null } = {}) {
   const win = root.ownerDocument.defaultView;
   const seen = new WeakSet();
   const hydrate = () => {
@@ -148,6 +210,14 @@ export function watchPagers(root, onNav, { url = true } = {}) {
         continue;
       }
       seen.add(el);
+      const name = el.closest("[data-list-pager]").dataset.listPager;
+      if (el.dataset.denPager === "more") {
+        hydratePager(el, {
+          list: root.ownerDocument.createElement("div"),
+          load: async () => ({ html: "", ...(await more(name)) }),
+        });
+        continue;
+      }
       hydratePager(el, {
         shortcuts: false,
         onNavigate: (ask) => {
