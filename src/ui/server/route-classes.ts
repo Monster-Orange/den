@@ -396,7 +396,7 @@ export const ROUTES: readonly RouteEntry[] = [
   R("/api/web/owner", "who the owner is (`web owner show`)"),
   R(
     "/api/account",
-    "the Account pop-up: whether you are this Den's owner, and the admin link (none on Den)",
+    "the person's own pop-up: whether they are this Den's owner, and the admin link (none on Den)",
   ),
   S(
     ["POST"],
