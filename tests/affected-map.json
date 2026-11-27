@@ -2674,6 +2674,7 @@
         "tests/unit/test-infra/gate-746-ask-inside.test.ts",
         "tests/unit/test-infra/gate-746-teardown-1293.test.ts",
         "tests/unit/test-infra/gate-828.test.ts",
+        "tests/unit/test-infra/gate-93-bell-state-1905.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
         "tests/unit/test-infra/gate-974-probes.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
@@ -3159,6 +3160,7 @@
       "when": ["gate/93.mjs"],
       "run": [
         "tests/unit/test-infra/gate-142-stubs.test.ts",
+        "tests/unit/test-infra/gate-93-bell-state-1905.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts"
       ],
       "why": "tests that load gate/93.mjs"
