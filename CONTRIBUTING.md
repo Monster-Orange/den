@@ -254,12 +254,15 @@ Wait for what the page does, never for a fixed time:
   page's own last step (its announcement, or the row back in the list). A list
   shows a move before the server has it; a test that stops there leaves the
   save in flight, and on a busy runner it lands in the next test.
-- A held button shows dots until its answer comes. An action that names its
-  steps opens the working pop-up after `DOTS_MS` (3 s), or after `OPEN_MS`
-  (300 ms) for a button marked `data-instant`; the pop-up stays at least
-  `MIN_MS` (600 ms) and takes the keyboard. These live in
-  `packages/den-ui/src/busy.js`. A key pressed before it closes goes to the
-  pop-up, not the row. Waiting for the page's last step covers this too.
+- A held button shows dots until its answer comes. For one request, that is
+  all: no pop-up (issue 1054). An action that names its steps, or one in
+  reconnect mode, opens the working pop-up after `DOTS_MS` (3 s, or
+  `configureBusy({ dotsMs })`), with the dots behind it. A button marked
+  `data-instant` shows no dots, and opens the pop-up after `OPEN_MS`
+  (300 ms) for any request. The pop-up stays at least `MIN_MS` (600 ms) and
+  takes the keyboard. These live in `packages/den-ui/src/busy.js`. A key
+  pressed before it closes goes to the pop-up, not the row. Waiting for the
+  page's last step covers this too.
 - Each test leaves nothing running: every request it started has answered
   before it ends.
 
