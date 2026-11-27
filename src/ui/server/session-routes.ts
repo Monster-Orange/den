@@ -41,6 +41,21 @@
  * an agent token's own session only. The attach and the detach are audited
  * with the actor from the credential.
  */
+import {
+  parseSeen,
+  parseUsed,
+  VIEW_LIST,
+  viewPage,
+  type ViewGroup,
+  type ViewPage,
+} from "./agents-view.js";
+import {
+  isPageError,
+  pageOf,
+  readPageAsk,
+  sendPageError,
+  type Page,
+} from "./paging.js";
 import { denToolsOld } from "../../shared/agents/den-tools-version.js";
 import { apiOnlyNames } from "../../shared/agents/api-only.js";
 import { SizeLead } from "./term-size-lead.js";
@@ -976,6 +991,7 @@ async function listWithHelpers(
   d: Resolved,
   also?: string,
   hubUrl?: string | null,
+  only?: ReadonlySet<string>,
 ): Promise<ListedSession[]> {
   const rows = d.helperRows;
   if (!rows) return listedSessions(sessions, d, also, hubUrl);
@@ -1014,6 +1030,7 @@ async function listWithHelpers(
           liveSince,
         ),
     };
+    if (only && !only.has(rec.id)) return rows.peek(ask);
     asks.push(ask);
     return rows.peek(ask);
   };
@@ -1098,23 +1115,139 @@ export async function handleSessionList(
         }
       : null;
   const keep = agentRowFilter(req);
-  const listed = await listWithHelpers(
-    sessions,
-    d,
-    wanted?.known ? wanted.workspace : undefined,
-    sessions.length ? await d.hubNow().catch(() => undefined) : undefined,
-  );
+  const params = new URL(req.url ?? "/", "http://localhost").searchParams;
+  const viewKind = params.get("view");
+  if (viewKind !== null && viewKind !== "agents" && viewKind !== "terminals") {
+    sendJson(
+      res,
+      { ok: false, code: "bad_view", error: "view is agents or terminals" },
+      400,
+    );
+    return true;
+  }
+  if (params.has("all")) {
+    sendPageError(res, {
+      status: 400,
+      code: "bad_page",
+      error:
+        "all=1 is retired: the list pages. Follow next with cursor, or ask page=N (limit up to the install's page size)",
+    });
+    return true;
+  }
+  const ask = readPageAsk(params, viewKind ? VIEW_LIST : SESSIONS_LIST);
+  if (isPageError(ask)) {
+    sendPageError(res, ask);
+    return true;
+  }
+  if (viewKind && ask?.after) {
+    sendPageError(res, {
+      status: 400,
+      code: "bad_cursor",
+      error: "this view pages by page number: ask page=N, not a cursor",
+    });
+    return true;
+  }
+  const only = rowsAsked(params);
+  const also = wanted?.known ? wanted.workspace : undefined;
+  const hubUrl = sessions.length
+    ? await d.hubNow().catch(() => undefined)
+    : undefined;
   let states: AgentStateDeps | undefined;
   try {
     states = deps.agentStates?.();
   } catch {
     states = undefined;
   }
-  const rows = states
-    ? withAgentStates(listed, personKey(req), states)
-    : listed;
+  const withStates = (xs: ListedSession[]) =>
+    states ? withAgentStates(xs, personKey(req), states) : xs;
+  let page: Page<ListedSession> | ViewPage | null = null;
+  let rows: ListedSession[];
+  if (viewKind) {
+    const picked = asked && WS_NAME.test(asked) ? asked : null;
+    const scope = picked ? [picked] : d.activeWorkspaces();
+    const first = withStates(
+      await listWithHelpers(sessions, d, also, hubUrl, new Set()),
+    ).filter(
+      (r) =>
+        (viewKind === "terminals") === (r.kind === "session") &&
+        (!keep || keep(r.workspace)) &&
+        (r.server ? !picked : r.orphan === true || scope.includes(r.workspace)),
+    );
+    const serverWs = first.find((r) => r.server)?.workspace;
+    const by = params.get("by");
+    const view = viewPage(
+      first,
+      {
+        by:
+          viewKind === "terminals"
+            ? "used"
+            : by === "project" || by === "group"
+              ? by
+              : "need",
+        limit: ask.limit,
+        page: ask.at === "last" ? "last" : (ask.page ?? 1),
+        seen: parseSeen(params.get("seen")),
+        used: parseUsed(params.get("used")),
+      },
+      [...(serverWs ? [serverWs] : []), ...scope],
+      by === "group" ? await ownGroups() : [],
+    );
+    const openIds = new Set(
+      (params.get("open") ?? "").split(",").filter(Boolean).slice(0, 20),
+    );
+    const shown = new Set([...view.pinned, ...view.items].map((r) => r.id));
+    const extra = first.filter((r) => openIds.has(r.id) && !shown.has(r.id));
+    const want = [...view.pinned, ...view.items, ...extra];
+    const ids = new Set(
+      want.flatMap((r) => (r.kind === "agent" && r.agent ? [r.agent] : [])),
+    );
+    const byId = ids.size
+      ? new Map(
+          withStates(await listWithHelpers(sessions, d, also, hubUrl, ids)).map(
+            (r) => [r.id, r],
+          ),
+        )
+      : new Map<string, ListedSession>();
+    const full = (r: ListedSession) => byId.get(r.id) ?? r;
+    page = {
+      ...view,
+      pinned: view.pinned.map(full),
+      items: view.items.map(full),
+    };
+    rows = want.map(full);
+  } else {
+    const first = withStates(
+      await listWithHelpers(sessions, d, also, hubUrl, new Set()),
+    );
+    page = pageOf(first, ask, {
+      key: (r) => [r.workspace, r.name],
+      id: (r) => r.id,
+      ...(keep || only
+        ? {
+            filter: (r: ListedSession) =>
+              (!keep || keep(r.workspace)) && (!only || only(r)),
+          }
+        : {}),
+      total: true,
+    });
+    const ids = new Set(
+      page.items.flatMap((r) =>
+        r.kind === "agent" && r.agent ? [r.agent] : [],
+      ),
+    );
+    if (ids.size) {
+      const byId = new Map(
+        withStates(await listWithHelpers(sessions, d, also, hubUrl, ids)).map(
+          (r) => [r.id, r],
+        ),
+      );
+      page = { ...page, items: page.items.map((r) => byId.get(r.id) ?? r) };
+    }
+    rows = page.items;
+  }
   sendJson(res, {
-    sessions: keep ? rows.filter((r) => keep(r.workspace)) : rows,
+    ...(page ?? {}),
+    sessions: rows,
     workspaces: keep ? d.activeWorkspaces().filter(keep) : d.activeWorkspaces(),
     ...(wanted ? { requested: wanted } : {}),
     host,
@@ -1130,6 +1263,85 @@ export async function handleSessionList(
     apiOnly: apiOnlyNames(d.stateDir()),
   });
   return true;
+}
+
+export const SESSIONS_LIST = "sessions";
+
+const ASK_MAX = 20;
+const listOf = (v: string | null) =>
+  (v ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, ASK_MAX);
+
+export function rowsAsked(
+  q: URLSearchParams,
+): ((r: ListedSession) => boolean) | null {
+  const tests: ((r: ListedSession) => boolean)[] = [];
+  const agents = listOf(q.get("agents"));
+  if (agents.length) {
+    const want = new Set(agents);
+    tests.push(
+      (r) =>
+        r.kind === "agent" &&
+        !!r.agent &&
+        want.has(`${r.workspace}/${r.agent}`),
+    );
+  }
+  const kind = q.get("kind");
+  if (kind === "agent" || kind === "session")
+    tests.push((r) => r.kind === kind && !r.server);
+  const projects = listOf(q.get("projects"));
+  if (projects.length) {
+    const want = new Set(projects);
+    tests.push((r) => want.has(r.project || r.workspace));
+  }
+  const repo = q.get("repo");
+  if (repo) tests.push((r) => !r.repo || r.repo === repo);
+  const text = (q.get("q") ?? "").trim().toLowerCase().slice(0, 100);
+  if (text)
+    tests.push((r) =>
+      [
+        r.agent,
+        r.displayName,
+        r.persona,
+        r.label,
+        r.workspace,
+        r.sessionTitle,
+      ].some((v) => typeof v === "string" && v.toLowerCase().includes(text)),
+    );
+  return tests.length ? (r) => tests.every((f) => f(r)) : null;
+}
+
+type GroupMember = { kind?: unknown; agentId?: unknown; here?: unknown };
+
+async function ownGroups(): Promise<ViewGroup[]> {
+  try {
+    const m = await import("./hub-groups-routes.js");
+    const read = await m.groupsView(await m.defaultHubGroupsDeps());
+    if (read.state !== "ok" || !Array.isArray(read.groups)) return [];
+    const own = (x: GroupMember | null | undefined) =>
+      x?.kind === "agent" && x.here === true && typeof x.agentId === "string"
+        ? [x.agentId]
+        : [];
+    return (
+      read.groups as {
+        slug?: unknown;
+        lead?: GroupMember | null;
+        members?: GroupMember[];
+      }[]
+    ).flatMap((g) => {
+      if (typeof g.slug !== "string") return [];
+      const lead = own(g.lead);
+      const rest = (g.members ?? [])
+        .flatMap(own)
+        .filter((id) => !lead.includes(id));
+      return [{ slug: g.slug, agents: [...lead, ...rest] }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 /** Whether `pathname` is a session's io route. */

@@ -14,6 +14,7 @@
  *
  * Unit tests for the same paths: tests/unit/server/notice-type-828.test.ts.
  */
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 828;
 export const items = [828, 1104];
 export const clauses = [
@@ -69,7 +70,7 @@ async function waits(a) {
 
 /** Agent `id`'s row in the Agents list: whether it waits, and why. */
 export async function agentRow(ctx, id) {
-  const d = await body(await ctx.api("/api/sessions"));
+  const d = await allSessions(async (u) => body(await ctx.api(u)));
   const s = (d?.sessions ?? []).find(
     (x) => x.kind === "agent" && x.agent === id,
   );

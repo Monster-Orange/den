@@ -20,6 +20,7 @@
 // whose session's Hub initialize fails (the stub's /hubmcp-badinit, through
 // Den's real /hub/mcp proxy). Each step skips by name while the harness
 // lacks what it needs.
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 750;
 export const clauses = [
   "By group beside By project: each group's kit header with its lead marked, opening the group in Hub (a new tab)",
@@ -284,7 +285,7 @@ async function hubLeg(ctx) {
     const failed = await poll(
       ctx,
       async () => {
-        const ss = await d2.api("/api/sessions");
+        const ss = await allSessions((u) => d2.api(u));
         const row = (ss?.sessions ?? []).find((x) => x.agent === HELD);
         return Array.isArray(row?.mcpFailed) && row.mcpFailed.length
           ? row.mcpFailed

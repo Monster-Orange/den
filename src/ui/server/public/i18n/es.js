@@ -597,6 +597,7 @@
     "kind.setting": "Ajuste",
     "kind.workspace": "Proyecto",
     "pal.goWs": "Ir al proyecto {ws}",
+    "pal.moreAgents": "{n} más en la página de Agentes",
     "pal.repos": "{n} repositorios",
     "pal.repos.one": "{n} repositorio",
     "pal.restart": "Reiniciar {s}",
@@ -3080,6 +3081,8 @@
     "ag.waiting.asked": "te preguntó",
     "ag.waiting.trust": "En espera: ¿confiar en esta carpeta?",
     "ag.band.needs": "Te necesitan",
+    "ag.continued": "{group} (continuación)",
+    "ag.continuedTag": "(continuación)",
     "ag.band.done": "Terminado, sin ver",
     "ag.band.working": "Trabajando",
     "ag.band.idle": "Inactivo",
@@ -4385,6 +4388,8 @@
     "set.ui.asked": "lo pidió {ago}",
     "set.ui.appKeyAllow": "Permítelo en el cuadro de diálogo.",
     "set.ui.appKeyAgent": "Agente",
+    "set.ui.appKeyAgentFind": "Buscar un agente",
+    "set.ui.appKeyAgentPick": "Elige un agente de la lista.",
     "set.ui.appKeyOrigin": "Aplicación web",
     "set.ui.appKeyLabel": "Nombre (opcional)",
     "set.ui.appKeyMake": "Crear clave",
@@ -5187,13 +5192,10 @@
     "lg.empty.click":
       "No hay registros abiertos. Haz clic en el nombre de un servicio de arriba para abrir uno.",
     "lg.search.pane": 'búsqueda: "{q}"',
-    "lg.search.matches": "{n} coincidencias (haz clic para abrir el registro)",
+    "lg.search.matches":
+      "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.matches.one":
-      "{n} coincidencia (haz clic para abrir el registro)",
-    "lg.search.matchesMore":
-      "{n}+ coincidencias (haz clic para abrir el registro)",
-    "lg.search.matchesMore.one":
-      "{n}+ coincidencia (haz clic para abrir el registro)",
+      "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.none":
       'no hay coincidencias para "{q}" en el historial de ningún servicio',
     "lg.aws.expired": "El acceso a AWS ha caducado",

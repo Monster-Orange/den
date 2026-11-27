@@ -28,6 +28,7 @@
  */
 import { sudoRun } from "./topbar.js";
 import { formatTime } from "/kit/time.js";
+import { listMoreHtml, watchPagers } from "/list-pager.js";
 import { logStreamUrl } from "./log-source.js";
 import { dismissable, focusBack } from "./popover.js";
 import { healthReason } from "./value-words.js";
@@ -210,6 +211,14 @@ const running = (s) =>
  * its project on no one repo. Stopped ones too (dimmed, with Start). A
  * project is its workspace until H5's projects.
  */
+const AGENTS_STEP = 20;
+function agentsAsk(s, limit = AGENTS_STEP) {
+  const q = new URLSearchParams({ kind: "agent", limit: String(limit) });
+  if (s.workspaces.length) q.set("projects", s.workspaces.join(","));
+  if (s.repo) q.set("repo", s.repo);
+  return q;
+}
+
 export function agentsOf(s, sessions = S.sessions) {
   const inProject = (a) =>
     !s.workspaces.length || s.workspaces.includes(a.project || a.workspace);
@@ -279,6 +288,14 @@ const project = (s) => s.workspaces[0] || "—";
 export function panelHtml(s) {
   const st = stateOf(s);
   const ags = agentsOf(s);
+  const shownAgents = ags.here.length + ags.also.length;
+  const allAgents = Math.max(shownAgents, S.agentsTotal ?? 0);
+  const more = listMoreHtml(
+    "svp",
+    { next: S.agentsNext, total: allAgents },
+    shownAgents,
+    AGENTS_STEP,
+  );
   const pinned = window.denShell?.isPinned?.(s.id);
   const testing = S.testing.has(s.id) || S.lastRuns[s.repo]?.running;
   return (
@@ -300,7 +317,8 @@ export function panelHtml(s) {
     `<button type="button" class="den-btn" data-svx="logs">${esc(t("svp.logs"))}</button></div>` +
     `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.tests"))}</div>` +
     `<div class="den-svp-line">${testsHtml(s)}<button type="button" class="den-btn sm den-svp-sp" data-svx="tests"${testing ? " disabled" : ""}>${esc(t("svp.runTests"))}</button></div></div>` +
-    `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.agents"))}${ags.here.length + ags.also.length ? ` · ${ags.here.length + ags.also.length}` : ""}</div>` +
+    `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.agents"))}${allAgents ? ` · ${allAgents}` : ""}</div>` +
+    `<div id="den-svp-agents">` +
     `<div class="den-svp-sub" id="den-svp-here">${esc(t("svp.onRepo"))}</div>` +
     (ags.here.length
       ? ags.here.map(agRow).join("")
@@ -310,6 +328,7 @@ export function panelHtml(s) {
         ags.also.map(agRow).join("") +
         `</details>`
       : "") +
+    `</div>${more}` +
     `<div><button type="button" class="den-btn sm" data-svx="startag">+ ${esc(t("svp.startHere"))}</button></div></div>` +
     // den#143: Report drawn in its own row, so a refresh doesn't wipe it.
     `<div class="den-svp-foot">${window.denShell?.reportButton?.(true) ?? ""}<button type="button" class="den-lnk" data-svx="services">${esc(t("svp.openSvc"))}</button>` +
@@ -413,10 +432,12 @@ async function refresh() {
     fetch(u, { headers: { accept: "application/json" } })
       .then((r) => (r.ok ? r.json() : d))
       .catch(() => d);
+  const svc = S.open ? serviceOf(S.open.id) : null;
+  S.agentsAsked = svc ? String(agentsAsk(svc)) : "";
   const [last, daemons, sess] = await Promise.all([
     get("/api/runs/last", null),
     get("/api/service/daemons", []),
-    get("/api/sessions", null),
+    svc ? get(`/api/sessions?${S.agentsAsked}`, null) : null,
   ]);
   S.lastRuns = last?.repos ?? S.lastRuns;
   if (Array.isArray(daemons)) {
@@ -428,8 +449,67 @@ async function refresh() {
       if (cur === undefined || at < cur) S.upSince.set(d.repoName, at);
     }
   }
-  if (Array.isArray(sess?.sessions)) S.sessions = sess.sessions;
+  if (Array.isArray(sess?.sessions) && !S.agentsBusy) firstAgents(sess);
   sync();
+}
+
+function firstAgents(reply) {
+  const head = reply.sessions;
+  if (!S.agentsLoaded || S.agentsLoaded <= (S.agentsHead ?? 0)) {
+    gotAgents(reply, false);
+    S.agentsHead = head.length;
+    return;
+  }
+  const ids = new Set(head.map((a) => a.id));
+  const below = S.sessions
+    .slice(S.agentsHead ?? 0)
+    .filter((a) => !ids.has(a.id));
+  S.sessions = [...head, ...below];
+  S.agentsHead = head.length;
+  S.agentsLoaded = S.sessions.length;
+  if (typeof reply.total === "number") S.agentsTotal = reply.total;
+}
+
+function gotAgents(reply, append) {
+  const rows = reply.sessions;
+  S.sessions = append ? [...S.sessions, ...rows] : rows;
+  S.agentsLoaded = S.sessions.length;
+  S.agentsNext = typeof reply.next === "string" ? reply.next : null;
+  S.agentsTotal =
+    typeof reply.total === "number" ? reply.total : S.sessions.length;
+}
+
+async function moreAgents() {
+  const svc = S.open ? serviceOf(S.open.id) : null;
+  if (!svc || !S.agentsNext) return { html: "", hasNext: false };
+  const q = agentsAsk(svc);
+  q.set("cursor", S.agentsNext);
+  const before = new Set(S.sessions.map((a) => a.id));
+  S.agentsBusy = true;
+  try {
+    const r = await fetch(`/api/sessions?${q}`, {
+      headers: { accept: "application/json" },
+    });
+    const reply = r.ok ? await r.json() : null;
+    if (!Array.isArray(reply?.sessions)) throw new Error(String(r.status));
+    gotAgents(reply, true);
+  } finally {
+    S.agentsBusy = false;
+  }
+  queueMicrotask(() => {
+    sync();
+    const first = S.sessions.find((a) => !before.has(a.id));
+    const row =
+      first &&
+      S.open?.el.querySelector(
+        `.den-svp-ag[data-agent="${CSS.escape(first.agent || first.id)}"]`,
+      );
+    if (row) {
+      row.closest("details")?.setAttribute("open", "");
+      row.querySelector("button")?.focus();
+    }
+  });
+  return { html: "", to: S.sessions.length, hasNext: !!S.agentsNext };
 }
 
 /**
@@ -448,6 +528,13 @@ export function openPanel(id, opener, opts = {}) {
     return;
   }
   closePanel(false);
+  Object.assign(S, {
+    sessions: [],
+    agentsLoaded: 0,
+    agentsHead: 0,
+    agentsNext: null,
+    agentsTotal: 0,
+  });
   const el = document.createElement("div");
   el.className = "den-pop den-svp";
   el.tabIndex = -1;
@@ -467,11 +554,16 @@ export function openPanel(id, opener, opts = {}) {
   opener.setAttribute?.("aria-expanded", "true");
   // D50: a press outside or Esc closes it (popover.js). The rail redraws
   // its rows: a press on this pin's row is the opener's.
-  S.open.release = dismissable(el, {
+  const release = dismissable(el, {
     opener: () => S.open?.opener,
     ignore: (tgt) => !!S.open?.fromRail && !!tgt.closest?.("[data-svpanel]"),
     close: (refocus) => closePanel(refocus),
   });
+  const unwatch = watchPagers(el, () => {}, { url: false, more: moreAgents });
+  S.open.release = () => {
+    unwatch();
+    release?.();
+  };
   window.denShell?.setState?.({ svpOpen: id });
   sync();
   (el.querySelector(".den-svp-acts .den-btn:not([disabled])") || el).focus();
@@ -712,6 +804,8 @@ export function initServicePanel(deps = {}) {
       if (r?.repo && r.service) S.results.set(`${r.repo}/${r.service}`, r);
     settleBusy();
     sync();
+    if (S.open && String(agentsAsk(serviceOf(S.open.id))) !== S.agentsAsked)
+      void refresh();
   });
   window.addEventListener("den:pins", () => sync());
   // D27: a press inside the open panel holds its repaint until it ends.

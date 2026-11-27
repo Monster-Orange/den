@@ -824,12 +824,22 @@ function openLogs(svc) {
  * the Agents page (AG-4a-term).
  */
 let palSessions = [];
-function askPaletteSessions(redraw) {
+let palTotal = 0;
+let palText = "";
+let palAsk = 0;
+let palWait = null;
+function askPaletteSessions(redraw, text = "") {
   if (sh()?.apiOff?.()) return;
-  fetch("/api/sessions")
+  const run = ++palAsk;
+  const q = new URLSearchParams({ limit: "20" });
+  if (text.trim()) q.set("q", text.trim().slice(0, 100));
+  fetch(`/api/sessions?${q}`)
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
+      if (run !== palAsk) return;
       palSessions = Array.isArray(d?.sessions) ? d.sessions : [];
+      palTotal = typeof d?.total === "number" ? d.total : palSessions.length;
+      palText = text.trim();
       redraw();
     })
     .catch(() => {
@@ -962,6 +972,14 @@ function paletteItems() {
       ...page(`/agents?open=${encodeURIComponent(x.id)}`),
     });
   }
+  if (palTotal > palSessions.length)
+    items.push({
+      key: "agent:more",
+      kind: "action",
+      label: t("pal.moreAgents", { n: palTotal - palSessions.length }),
+      keywords: [palText, "agents", "more"],
+      ...page("/agents"),
+    });
   // 0.4.17: Go to workspace <ws>, for every workspace, the front agent's
   // first (on the Agents page); an agent's name finds its workspace too.
   const byWs = new Map();
@@ -1080,6 +1098,14 @@ function openPalette() {
   input.addEventListener("input", () => {
     sel = 0;
     draw();
+    clearTimeout(palWait);
+    palWait = setTimeout(
+      () =>
+        askPaletteSessions(() => {
+          if (overlay?.kind === "palette") draw();
+        }, input.value),
+      150,
+    );
   });
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
