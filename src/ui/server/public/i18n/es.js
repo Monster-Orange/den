@@ -4356,6 +4356,7 @@
     "set.ui.viaClaim": "reclamado con un enlace de configuración",
     "set.ui.viaLink": "sesión iniciada con un enlace de un solo uso",
     "set.ui.unknownBrowser": "Navegador desconocido",
+    "set.ui.thisBrowser": "Este navegador",
     "set.ui.deviceOn": "{browser} en {os}",
     "set.ui.aBrowserOn": "Un navegador en {os}",
     "set.ui.tzBrowser": "La de tu navegador ({zone})",
@@ -4474,7 +4475,7 @@
     "set.ui.testInstallSignedIn":
       "La instalación de prueba solo se puede leer con la sesión iniciada o en esta máquina.",
     "set.ui.noPairHost":
-      "Ningún nombre de host de edge apunta a __DEN_TITLE__, así que no hay dirección que otro dispositivo pueda abrir. Añade uno al bloque edge de la configuración (edge.aliases para un nombre de VPN) y usa el botón de abajo: inicia el edge, o aplica el cambio al que ya está en marcha. {cmd}",
+      "Aún no hay ninguna dirección que llegue a __DEN_TITLE__ desde otro dispositivo. Añade un nombre de host de edge a la configuración y luego inicia el edge.",
     "set.ui.edgeStart": "Iniciar el edge",
     "set.ui.edgeApply": "Aplicar",
     "set.ui.edgeStarted": "Edge iniciado",
@@ -4897,7 +4898,7 @@
     "set.access.owner.d":
       "La cuenta de GitHub a la que pertenece este Den. Vincularla solo guarda su id (el token se descarta), y desde entonces esa cuenta puede iniciar sesión desde cualquier dispositivo. __DEN_CLI__ web owner link hace lo mismo desde la línea de comandos.", // words-ok: the en string's own word, translated
     "set.access.devices.d":
-      "Los navegadores con la sesión iniciada en este Den. Revocar cierra uno al instante. __DEN_CLI__ web logout --all los cierra todos.",
+      "Los navegadores con la sesión iniciada en este Den. Revocar cierra la sesión de uno.",
     "set.access.waiting.d":
       "Ordenadores cuya página sin iniciar sesión muestra un código. Escribe el código que muestra la pantalla de ese ordenador para aprobarlo, y su página inicia sesión sola; una solicitud dura 10 minutos. __DEN_CLI__ web approve --list los muestra.",
     "set.embed.url_max.d":
@@ -4915,7 +4916,7 @@
     "set.access.machine_name.d":
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
-      "Sin GitHub, o sin conexión: un enlace de un solo uso y un código QR para un nombre de host de edge (__DEN_CLI__ web login --host <name>).",
+      "Un enlace de un solo uso y un código QR, para un dispositivo sin GitHub.",
     "set.access.test_installs_here.d":
       "Instalaciones de prueba de esta máquina que su lanzador anuncia y que esperan su persona de prueba. Configurar persona de prueba la configura desde aquí, en cualquier navegador, con tu propia autorización.",
     "set.access.test_install.d":
