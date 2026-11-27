@@ -44,7 +44,7 @@ describe("gates 701 and 629: a test doc whose Send to offers no agent", () => {
       for (const row of r701(m)) {
         expect(row).toMatchObject({
           ok: null,
-          skip: "needs-hub-fixture-comment",
+          skip: "needs-fixture-comment",
         });
         expect(row.detail).toContain("offers no agent to send a comment to");
       }
@@ -56,10 +56,15 @@ describe("gates 701 and 629: a test doc whose Send to offers no agent", () => {
     (m) => {
       expect(r629(m)).toMatchObject({
         ok: null,
-        skip: "needs-hub-fixture-comment",
+        skip: "needs-fixture-comment",
       });
     },
   );
+
+  it("the skip is not the bed's needs-hub, which the bed turns into ERROR", () => {
+    const skips = [...r701(PERSON), r629(PERSON)].map((x) => String(x.skip));
+    expect(skips.filter((s) => /needs-hub\b/.test(s))).toEqual([]);
+  });
 
   it("any other failure to post still FAILs both checks' rows", () => {
     expect(r701(OTHER).map((x) => x.ok)).toEqual([false, false, false]);
