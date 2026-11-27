@@ -13,6 +13,7 @@ export const IN_FLIGHT_MIN = 3;
 export const IDLE_TRIES = 3;
 export const HELPERS_WAIT_MS = 60000;
 export const COLD_KNOWN = 1861;
+export const COLD_KNOWN_MAX = { listMs: 15000, probeMs: 6000 };
 
 export const clauses = [
   `with ${SEED_AGENTS} agents, each with helpers and ${SEED_MB} MB of transcript, once the list shows every seeded agent's helpers (within ${HELPERS_WAIT_MS / 1000} s), the agents list (GET /api/sessions) answers within ${LIMIT_MS} ms, the median of ${TRIES} tries`,
@@ -421,13 +422,20 @@ const row = (clause, ok, detail, skip) =>
     ? { clause, ok: null, skip, detail, evidence: ["1668-run.json"] }
     : { clause, ok, detail, evidence: ["1668-run.json"] };
 
-function coldRow(clause, answered, within, detail, known) {
+function coldRow(clause, answered, ms, bar, ceiling, detail, known) {
+  const within = ms <= bar;
   if (!answered || within || !known)
     return row(clause, answered && within, detail);
+  if (!(ms <= ceiling))
+    return row(
+      clause,
+      false,
+      `${detail}; over the known stall's ceiling ${ceiling} ms (issue ${known}), so a FAIL`,
+    );
   return row(
     clause,
     null,
-    `${detail}; over the bar, a known stall (issue ${known}): judged again when it is fixed`,
+    `${detail}; over the bar, a known stall (issue ${known}), ceiling ${ceiling} ms: judged again when it is fixed`,
     `awaits-${known}`,
   );
 }
@@ -493,7 +501,9 @@ export function judge(r, coldKnown = COLD_KNOWN) {
     coldRow(
       clauses[1],
       r.coldStatus === 200,
-      r.coldMs <= LIMIT_MS,
+      r.coldMs,
+      LIMIT_MS,
+      COLD_KNOWN_MAX.listMs,
       `${seedLine}; ${coldList} (limit ${LIMIT_MS})`,
       coldKnown,
     ),
@@ -509,7 +519,9 @@ export function judge(r, coldKnown = COLD_KNOWN) {
     coldRow(
       clauses[3],
       r.coldProbe?.status === 200,
-      r.coldProbe?.ms <= PROBE_MS,
+      r.coldProbe?.ms,
+      PROBE_MS,
+      COLD_KNOWN_MAX.probeMs,
       `${seedLine}; ${coldProbe} (limit ${PROBE_MS})`,
       coldKnown,
     ),
