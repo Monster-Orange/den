@@ -123,11 +123,14 @@ export function tagHtml(r, { all = false, name, pc } = {}) {
   return `<span class="ptag" data-ptag="project"${at}>${esc(n)}</span>`;
 }
 
-export function attnSub(rows, scope, seenNow, whole = null) {
+export function attnSub(rows, scope, seenNow, whole = null, stoppedN = 0) {
   const list = rows ?? [];
-  const agents = whole
-    ? whole.needs + whole.done + whole.working + whole.idle
-    : list.filter((r) => r.kind === "agent").length;
+  const stopped = whole ? (whole.stopped ?? 0) : stoppedN;
+  const agents =
+    stopped +
+    (whole
+      ? whole.needs + whole.done + whole.working + whole.idle
+      : list.filter((r) => r.kind === "agent").length);
   const shells = whole ? 0 : list.length - agents;
   const parts = [];
   if (agents || !shells)
@@ -148,6 +151,10 @@ export function attnSub(rows, scope, seenNow, whole = null) {
           n: c[s],
         }),
       );
+  if (stopped)
+    parts.push(
+      t(stopped === 1 ? "ag.sub.stoppedOne" : "ag.sub.stopped", { n: stopped }),
+    );
   if (scope) parts.push(scope);
   return parts.join(" · ");
 }

@@ -4030,6 +4030,8 @@
     "ag.sub.working": "{n} working",
     "ag.sub.idle": "{n} idle",
     "ag.sub.idleOne": "{n} idle",
+    "ag.sub.stopped": "{n} stopped",
+    "ag.sub.stoppedOne": "{n} stopped",
     "ag.meta.finished": "finished {ago}",
     "ag.whyLong.command": "asks to run a command",
     "ag.whyLong.tool": "asks to use {tool}",

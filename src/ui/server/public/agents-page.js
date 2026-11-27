@@ -1004,6 +1004,7 @@ function paintSub() {
             st.scopeLabel,
             seenMap(),
             Array.isArray(st.data?.items) ? st.data.bands : null,
+            rows.filter((r) => inStopped(r) && r.kind === "agent").length,
           );
   const url = st.root.querySelector("#ag-url");
   if (url) url.textContent = location.pathname + location.search;

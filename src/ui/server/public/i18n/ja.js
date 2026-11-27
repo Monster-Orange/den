@@ -3025,6 +3025,8 @@
     "ag.sub.working": "作業中 {n}",
     "ag.sub.idle": "待機中 {n}",
     "ag.sub.idleOne": "待機中 {n}",
+    "ag.sub.stopped": "停止中 {n}",
+    "ag.sub.stoppedOne": "停止中 {n}",
     "ag.meta.finished": "{ago}に完了",
     "ag.whyLong.command": "コマンドの実行を求めています",
     "ag.whyLong.tool": "{tool} の使用を求めています",

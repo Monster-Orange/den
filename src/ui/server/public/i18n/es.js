@@ -3106,6 +3106,8 @@
     "ag.sub.working": "{n} trabajando",
     "ag.sub.idle": "{n} inactivos",
     "ag.sub.idleOne": "{n} inactivo",
+    "ag.sub.stopped": "{n} detenidos",
+    "ag.sub.stoppedOne": "{n} detenido",
     "ag.meta.finished": "terminó {ago}",
     "ag.whyLong.command": "pide ejecutar un comando",
     "ag.whyLong.tool": "pide usar {tool}",
