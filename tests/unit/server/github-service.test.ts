@@ -24,7 +24,7 @@ import * as path from "path";
 import { readDenConfig } from "../../../src/shared/den-config.js";
 import { readCatalog } from "../../../src/shared/environment-manager/catalog.js";
 import { GitHubService } from "../../../src/ui/server/github-service.js";
-import { decodeCursor } from "../../../src/ui/server/paging.js";
+import { readPageAsk, type PageAsk } from "../../../src/ui/server/paging.js";
 
 const mockExecFile = execFile as unknown as jest.Mock;
 type Reply = string | Error;
@@ -184,10 +184,13 @@ describe("GitHubService", () => {
       );
 
       const first = await svc.listOrgRepos();
-      const second = await svc.listOrgRepos({
-        limit: 100,
-        after: decodeCursor(first.next!),
-      });
+      const second = await svc.listOrgRepos(
+        readPageAsk(
+          `?cursor=${first.next}&limit=100`,
+          "github.repos",
+          200,
+        ) as PageAsk,
+      );
       expect(
         [...first.items, ...second.items].map((r) => r.nameWithOwner),
       ).toEqual(["Hooli/hooli-app", "Initech/initech-web"]);

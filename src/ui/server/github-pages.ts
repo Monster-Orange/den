@@ -8,12 +8,23 @@ import {
   sendPageError,
   type Page,
   type PageAsk,
+  type PageError,
 } from "./paging.js";
 
 export type GhRun = (args: string[]) => Promise<string>;
 export const GH_PAGE_MAX = 100;
 
+export const firstAsk = (list: string, limit = GH_PAGE_MAX): PageAsk => ({
+  list,
+  limit,
+  after: null,
+  dir: "next",
+  page: null,
+  at: null,
+});
+
 export class BadCursor extends Error {}
+export class BadPage extends Error {}
 
 const BRANCH_Q = /^[A-Za-z0-9._/-]{1,100}$/;
 const BRANCH_NAME = /^[A-Za-z0-9._/-]{1,255}$/;
@@ -57,9 +68,11 @@ export async function branchPage(
       "[.[].ref]",
     ]);
     const heads = names(raw).map((r) => r.replace(/^refs\/heads\//, ""));
-    return pageOf(heads, ask, { key: (n) => n, id: (n) => n });
+    return pageOf(heads, ask, { key: (n) => n, id: (n) => n, total: true });
   }
-  let page = 1;
+  if (ask.at === "last")
+    throw new BadPage("this list has no last page: GitHub gives no count");
+  let page = ask.page ?? 1;
   let per = Math.min(ask.limit, GH_PAGE_MAX);
   if (ask.after) {
     const k = ask.after.key;
@@ -85,9 +98,14 @@ export async function branchPage(
   const d = def.trim();
   const pin = BRANCH_NAME.test(d) ? d : "";
   const rest = got.filter((n) => n !== pin);
+  const to = (p: number, dir: "next" | "prev") =>
+    encodeCursor(ask.list, { key: [p, per], id: slug }, dir);
   return {
     items: page === 1 && pin ? [pin, ...rest] : rest,
-    next: got.length === per ? encodeCursor([page + 1, per], slug) : null,
+    next: got.length === per ? to(page + 1, "next") : null,
+    prev: page > 1 ? to(page - 1, "prev") : null,
+    offset: (page - 1) * per,
+    page,
   };
 }
 
@@ -100,35 +118,35 @@ export interface GhRepoNode {
 
 interface GqlPage {
   nodes: (GhRepoNode | null)[];
-  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+  pageInfo: {
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+    startCursor: string | null;
+    endCursor: string | null;
+  };
 }
 
 const NODE = "name nameWithOwner isArchived defaultBranchRef { name }";
-const OWNER_QUERY = `query($login: String!, $n: Int!, $after: String) {
+const INFO = "pageInfo { hasNextPage hasPreviousPage startCursor endCursor }";
+const VARS = "$first: Int, $last: Int, $after: String, $before: String";
+const SPAN = "first: $first, last: $last, after: $after, before: $before";
+const OWNER_QUERY = `query($login: String!, ${VARS}) {
   repositoryOwner(login: $login) {
-    repositories(first: $n, after: $after, orderBy: { field: NAME, direction: ASC }) {
-      nodes { ${NODE} } pageInfo { hasNextPage endCursor } } } }`;
-const SEARCH_QUERY = `query($q: String!, $n: Int!, $after: String) {
-  search(query: $q, type: REPOSITORY, first: $n, after: $after) {
-    nodes { ... on Repository { ${NODE} } } pageInfo { hasNextPage endCursor } } }`;
+    repositories(${SPAN}, orderBy: { field: NAME, direction: ASC }) {
+      nodes { ${NODE} } ${INFO} } } }`;
+const SEARCH_QUERY = `query($q: String!, ${VARS}) {
+  search(query: $q, type: REPOSITORY, ${SPAN}) {
+    nodes { ... on Repository { ${NODE} } } ${INFO} } }`;
 
 const EMPTY: GqlPage = {
   nodes: [],
-  pageInfo: { hasNextPage: false, endCursor: null },
+  pageInfo: {
+    hasNextPage: false,
+    hasPreviousPage: false,
+    startCursor: null,
+    endCursor: null,
+  },
 };
-
-function gql(
-  query: string,
-  vars: Record<string, string | number>,
-  after: string,
-  jq: string,
-) {
-  const args = ["api", "graphql", "-f", `query=${query}`];
-  for (const [k, v] of Object.entries(vars))
-    args.push(typeof v === "number" ? "-F" : "-f", `${k}=${v}`);
-  if (after) args.push("-f", `after=${after}`);
-  return [...args, "--jq", jq];
-}
 
 function parseGql(raw: string): GqlPage {
   try {
@@ -139,10 +157,52 @@ function parseGql(raw: string): GqlPage {
   }
 }
 
+interface Span {
+  back: boolean;
+  from: string;
+}
+
+function gql(
+  query: string,
+  vars: Record<string, string>,
+  n: number,
+  span: Span,
+  jq: string,
+) {
+  const args = ["api", "graphql", "-f", `query=${query}`];
+  for (const [k, v] of Object.entries(vars)) args.push("-f", `${k}=${v}`);
+  args.push("-F", `${span.back ? "last" : "first"}=${n}`);
+  if (span.from)
+    args.push("-f", `${span.back ? "before" : "after"}=${span.from}`);
+  return [...args, "--jq", jq];
+}
+
 export interface RepoPageOf {
   nodes: GhRepoNode[];
-  owner: string;
   next: string | null;
+  prev: string | null;
+}
+
+const nodesOf = (p: GqlPage) =>
+  p.nodes.filter((x): x is GhRepoNode => !!x?.nameWithOwner);
+
+function spanOf(
+  ask: PageAsk,
+  id: string,
+  scope: string[],
+): { at: number; span: Span } {
+  if (ask.page !== null && ask.page !== 1)
+    throw new BadPage(
+      "this list pages by Next and Prev: GitHub gives no count",
+    );
+  if (ask.at === "last")
+    return { at: scope.length - 1, span: { back: true, from: "" } };
+  if (!ask.after) return { at: 0, span: { back: false, from: "" } };
+  const k = ask.after.key;
+  const at =
+    Array.isArray(k) && typeof k[0] === "string" ? scope.indexOf(k[0]) : -1;
+  if (ask.after.id !== id || at < 0 || !Array.isArray(k)) throw new BadCursor();
+  return { at, span: { back: ask.dir === "prev", from: String(k[1] ?? "") } };
 }
 
 export async function repoPage(
@@ -153,71 +213,63 @@ export async function repoPage(
   onOwnerError?: (owner: string, e: Error) => void,
 ): Promise<RepoPageOf> {
   const n = Math.min(ask.limit, GH_PAGE_MAX);
-  const k = ask.after?.key;
-  if (q) {
-    const id = `q:${q}`;
-    if (
-      ask.after &&
-      (ask.after.id !== id || !Array.isArray(k) || typeof k[0] !== "string")
-    )
-      throw new BadCursor();
-    const after = ask.after ? String((k as string[])[0]) : "";
-    const search = `${q} in:name ${owners.map((o) => `user:${o}`).join(" ")}`;
-    const p = parseGql(
-      await run(gql(SEARCH_QUERY, { q: search, n }, after, ".data.search")),
-    );
-    return {
-      nodes: p.nodes.filter((x): x is GhRepoNode => !!x?.nameWithOwner),
-      owner: "",
-      next:
-        p.pageInfo.hasNextPage && p.pageInfo.endCursor
-          ? encodeCursor([p.pageInfo.endCursor], id)
-          : null,
-    };
-  }
-  let i = 0;
-  let after = "";
-  if (ask.after) {
-    i =
-      Array.isArray(k) && typeof k[0] === "string" ? owners.indexOf(k[0]) : -1;
-    if (ask.after.id !== "repos" || i < 0) throw new BadCursor();
-    after = String((k as string[])[1] ?? "");
-  }
-  const owner = owners[i];
+  const id = q ? `q:${q}` : "repos";
+  const scope = q ? [""] : owners;
+  const { at, span } = spanOf(ask, id, scope);
+  const owner = scope[at];
   let p = EMPTY;
   try {
     p = parseGql(
       await run(
-        gql(
-          OWNER_QUERY,
-          { login: owner, n },
-          after,
-          ".data.repositoryOwner.repositories",
-        ),
+        q
+          ? gql(
+              SEARCH_QUERY,
+              { q: `${q} in:name ${owners.map((o) => `user:${o}`).join(" ")}` },
+              n,
+              span,
+              ".data.search",
+            )
+          : gql(
+              OWNER_QUERY,
+              { login: owner },
+              n,
+              span,
+              ".data.repositoryOwner.repositories",
+            ),
       ),
     );
   } catch (e) {
+    if (q) throw e;
     onOwnerError?.(owner, e as Error);
   }
-  const next =
-    p.pageInfo.hasNextPage && p.pageInfo.endCursor
-      ? encodeCursor([owner, p.pageInfo.endCursor], "repos")
-      : i + 1 < owners.length
-        ? encodeCursor([owners[i + 1], ""], "repos")
-        : null;
+  const to = (o: string, from: string, dir: "next" | "prev") =>
+    encodeCursor(ask.list, { key: [o, from], id }, dir);
+  const { hasNextPage, hasPreviousPage, startCursor, endCursor } = p.pageInfo;
   return {
-    nodes: p.nodes.filter((x): x is GhRepoNode => !!x?.nameWithOwner),
-    owner,
-    next,
+    nodes: nodesOf(p),
+    next:
+      hasNextPage && endCursor
+        ? to(owner, endCursor, "next")
+        : at + 1 < scope.length
+          ? to(scope[at + 1], "", "next")
+          : null,
+    prev:
+      hasPreviousPage && startCursor
+        ? to(owner, startCursor, "prev")
+        : at > 0
+          ? to(scope[at - 1], "", "prev")
+          : null,
   };
 }
+
 export async function sendGhPage<T>(
   res: http.ServerResponse,
   params: URLSearchParams,
   kind: "branch" | "repo",
+  list: string,
   fetch: (ask: PageAsk, q: string) => Promise<Page<T>>,
 ): Promise<void> {
-  const ask = readPageAsk(params);
+  const ask = readPageAsk(params, list);
   if (isPageError(ask)) return sendPageError(res, ask);
   const q = readListQ(params, kind);
   if (q === null)
@@ -233,11 +285,17 @@ export async function sendGhPage<T>(
   try {
     return sendJson(res, await fetch(ask, q));
   } catch (e) {
-    if (!(e instanceof BadCursor)) throw e;
-    return sendPageError(res, {
-      status: 400,
-      code: "bad_cursor",
-      error: "cursor is not one this list gave: start again without it",
-    });
+    const bad: PageError | null =
+      e instanceof BadCursor
+        ? {
+            status: 400,
+            code: "bad_cursor",
+            error: "cursor is not one this list gave: start again without it",
+          }
+        : e instanceof BadPage
+          ? { status: 400, code: "bad_page", error: e.message }
+          : null;
+    if (!bad) throw e;
+    return sendPageError(res, bad);
   }
 }

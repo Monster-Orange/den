@@ -25,8 +25,9 @@ import { product } from "../../shared/product.js";
 import { isRepoName } from "../../shared/repo-name.js";
 import {
   BadCursor,
+  BadPage,
   branchPage,
-  GH_PAGE_MAX,
+  firstAsk,
   type GhRun,
   repoPage,
 } from "./github-pages.js";
@@ -94,17 +95,17 @@ export class GitHubService {
    */
   async listBranches(
     slug: string,
-    ask: PageAsk = { limit: GH_PAGE_MAX, after: null },
+    ask: PageAsk = firstAsk("github.branches"),
     q = "",
   ): Promise<Page<string>> {
     // Strict owner/name: no shell metacharacters, and never a
     // "." or ".." segment, which would reach another GitHub API path.
-    if (!isRepoName(slug)) return { items: [], next: null };
+    if (!isRepoName(slug)) return { items: [], next: null, prev: null };
     try {
       return await branchPage(this.cachedGh(BRANCH_CACHE_TTL_MS), slug, ask, q);
     } catch (e) {
-      if (e instanceof BadCursor) throw e;
-      return { items: [], next: null };
+      if (e instanceof BadCursor || e instanceof BadPage) throw e;
+      return { items: [], next: null, prev: null };
     }
   }
 
@@ -115,7 +116,7 @@ export class GitHubService {
    * REPO_CACHE_TTL_MS unless forceRefresh is true.
    */
   async listOrgRepos(
-    ask: PageAsk = { limit: GH_PAGE_MAX, after: null },
+    ask: PageAsk = firstAsk("github.repos"),
     q = "",
     forceRefresh = false,
   ): Promise<Page<GitHubRepo>> {
@@ -132,7 +133,7 @@ export class GitHubService {
             `${product().configFile} to list them (no gh is run until then)`,
         );
       }
-      return { items: [], next: null };
+      return { items: [], next: null, prev: null };
     }
     let page;
     try {
@@ -144,9 +145,9 @@ export class GitHubService {
         (org, e) => warnOrg(org, e),
       );
     } catch (e) {
-      if (e instanceof BadCursor) throw e;
+      if (e instanceof BadCursor || e instanceof BadPage) throw e;
       warnOrg(orgs.join(","), e as Error);
-      return { items: [], next: null };
+      return { items: [], next: null, prev: null };
     }
     const owners = [
       ...new Set(page.nodes.map((r) => ownerOf(r.nameWithOwner))),
@@ -166,7 +167,7 @@ export class GitHubService {
         hasDen: den.get(ownerOf(r.nameWithOwner))?.has(r.name) ?? false,
         isArchived: r.isArchived ?? false,
       }));
-    return { items, next: page.next };
+    return { items, next: page.next, prev: page.prev };
   }
 
   private async denReposOf(org: string): Promise<Set<string>> {

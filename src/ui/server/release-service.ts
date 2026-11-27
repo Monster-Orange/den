@@ -36,7 +36,7 @@ import {
   orgHasGithub,
 } from "../../shared/org-sources.js";
 import { listReposWithManifests } from "../../shared/manifest/workspace-manifests.js";
-import { branchPage, GH_PAGE_MAX } from "./github-pages.js";
+import { branchPage, firstAsk } from "./github-pages.js";
 import type { Page, PageAsk } from "./paging.js";
 
 import { product } from "../../shared/product.js";
@@ -755,7 +755,7 @@ export class ReleaseService {
   /** One page of a repo's branches (the deploy-time branch selector). */
   async listBranches(
     repo: string,
-    ask: PageAsk = { limit: GH_PAGE_MAX, after: null },
+    ask: PageAsk = firstAsk("release.branches"),
     q = "",
   ): Promise<Page<string>> {
     return branchPage((a) => ghSafe(a), this.slug(repo), ask, q);

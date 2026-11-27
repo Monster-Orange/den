@@ -10351,8 +10351,12 @@ async function handleRequest(
     const cfg = releaseService.config();
     if (!cfg.repos.some((r) => r.name === repo))
       return send400(res, `Unknown repo: ${repo}`);
-    return sendGhPage(res, url.searchParams, "branch", (ask, q) =>
-      releaseService.listBranches(repo, ask, q),
+    return sendGhPage(
+      res,
+      url.searchParams,
+      "branch",
+      "release.branches",
+      (ask, q) => releaseService.listBranches(repo, ask, q),
     );
   }
 

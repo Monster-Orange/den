@@ -8,8 +8,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
-- A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default) and an opaque `?cursor`, filters before the cut, and one answer shape `{ items, next, total? }`. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
-- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) answer one page, `{ items, next }`, with `?limit`, `?cursor` and `?q`. The cursor carries GitHub's own page state, and branch page 1 starts with the repo's default branch. `q` runs on GitHub before the cut: branch names that start with it, repo names that contain it. The Add service picker sends `q` as you type, for repos and branches. (issue 1926)
+- A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
+- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) answer one page, `{ items, next, prev }`, with `?limit`, `?cursor`, `?q`, `?page` and `?at`. The cursor carries GitHub's own page state, and branch page 1 starts with the repo's default branch. `q` runs on GitHub before the cut: branch names that start with it, repo names that contain it. The Add service picker sends `q` as you type, for repos and branches. (issue 1926)
 
 ### Fixed
 

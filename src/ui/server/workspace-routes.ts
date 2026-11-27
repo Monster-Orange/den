@@ -993,15 +993,19 @@ export async function handleWorkspaceRoutes(
   // ── API: GitHub branches ──────────────────────────────────────────────────
   if (pathname === "/api/github/branches" && req.method === "GET") {
     const gh = url.searchParams.get("gh") ?? "";
-    return sendGhPage(res, url.searchParams, "branch", (ask, q) =>
-      github.listBranches(gh, ask, q),
+    return sendGhPage(
+      res,
+      url.searchParams,
+      "branch",
+      "github.branches",
+      (ask, q) => github.listBranches(gh, ask, q),
     );
   }
 
   // ── API: GitHub repos ─────────────────────────────────────────────────────
   if (pathname === "/api/github/repos" && req.method === "GET") {
     const forceRefresh = url.searchParams.get("refresh") === "1";
-    return sendGhPage(res, url.searchParams, "repo", (ask, q) =>
+    return sendGhPage(res, url.searchParams, "repo", "github.repos", (ask, q) =>
       github.listOrgRepos(ask, q, forceRefresh),
     );
   }
