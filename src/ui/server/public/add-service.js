@@ -34,6 +34,7 @@ const st = {
   managed: [],
   services: {},
   gh: null, // null: not loaded yet
+  ghQ: "",
   selLocal: null,
   selGh: null,
   sort: "name", // "name" | "workspace"
@@ -51,8 +52,16 @@ export function setRepos({ local, managed, services } = {}) {
 
 /** GitHub's repos, fetched ahead so the dialog opens with them. */
 export function setGhRepos(list) {
-  if (Array.isArray(list) && list.length) st.gh = list;
+  const items = pageItems(list);
+  if (items.length) st.gh = items;
 }
+
+// A GitHub list route answers one page, { items, next }; q runs on GitHub.
+const pageItems = (r) =>
+  Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : [];
+const ghQ = (v, re) => (re.test(v) ? v : "");
+let ghSeq = 0;
+let ghTimer = 0;
 
 const dlg = () => st.frame?.dialog ?? null;
 const $ = (sel) => dlg()?.querySelector(sel) ?? null;
@@ -137,14 +146,35 @@ function renderLocal() {
   list.innerHTML = html || empty(t("addSvc.noResults"));
 }
 
-function loadGh(refresh) {
-  st.gh = null;
-  fetch(`/api/github/repos${refresh ? "?refresh=1" : ""}`)
+function loadGh(refresh, q = "") {
+  if (!q) st.gh = null;
+  const seq = ++ghSeq;
+  const p = new URLSearchParams({ limit: "100" });
+  if (q) p.set("q", q);
+  if (refresh) p.set("refresh", "1");
+  fetch(`/api/github/repos?${p}`)
     .then((r) => r.json())
     .catch(() => [])
     .then((repos) => {
-      st.gh = Array.isArray(repos) ? repos : [];
+      if (seq !== ghSeq) return;
+      st.gh = pageItems(repos);
       renderGh();
+    });
+}
+
+function loadBranches(gh, q = "") {
+  const dl = $("#add-svc-branch-list");
+  const p = new URLSearchParams({ gh, limit: "100" });
+  if (q) p.set("q", q);
+  fetch(`/api/github/branches?${p}`)
+    .then((r) => r.json())
+    .catch(() => [])
+    .then((r) => {
+      const branches = pageItems(r);
+      if (dl && branches.length)
+        dl.innerHTML = branches
+          .map((b) => `<option value="${esc(b)}">`)
+          .join("");
     });
 }
 
@@ -236,16 +266,7 @@ function pickGh(repo) {
   dl.innerHTML = `<option value="${esc(first)}">`;
   $("#add-svc-newbranch").value = "";
   sync();
-  if (repo.nameWithOwner)
-    fetch(`/api/github/branches?gh=${encodeURIComponent(repo.nameWithOwner)}`)
-      .then((r) => r.json())
-      .catch(() => [])
-      .then((branches) => {
-        if (Array.isArray(branches) && branches.length)
-          dl.innerHTML = branches
-            .map((b) => `<option value="${esc(b)}">`)
-            .join("");
-      });
+  if (repo.nameWithOwner) loadBranches(repo.nameWithOwner);
 }
 
 /** What the add sends, from what is chosen and filled. */
@@ -402,9 +423,26 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
   );
   const d = st.frame.dialog;
   d.addEventListener("input", (e) => {
-    if (e.target.id !== "add-svc-global-search") return;
+    const id = e.target.id;
+    if (id !== "add-svc-global-search" && id !== "add-svc-branch") return;
+    clearTimeout(ghTimer);
+    const v = e.target.value.trim();
+    if (id === "add-svc-branch") {
+      const gh = st.selGh?.nameWithOwner;
+      if (gh)
+        ghTimer = setTimeout(
+          () => loadBranches(gh, ghQ(v, /^[A-Za-z0-9._/-]{1,100}$/)),
+          250,
+        );
+      return;
+    }
     renderLocal();
     renderGh();
+    const q = ghQ(v, /^[A-Za-z0-9._-]{1,100}$/);
+    if (q !== st.ghQ) {
+      st.ghQ = q;
+      ghTimer = setTimeout(() => loadGh(false, q), 250);
+    }
   });
   d.addEventListener("click", (e) => {
     const b = e.target.closest("button");

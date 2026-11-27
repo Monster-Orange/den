@@ -500,22 +500,23 @@ describe("listRepoRuns — live CD state for the Release page poll", () => {
 describe("listBranches", () => {
   it("returns [] when gh fails", async () => {
     onErr("branches?per_page");
-    expect(await svc.listBranches("files-api")).toEqual([]);
+    expect((await svc.listBranches("files-api")).items).toEqual([]);
   });
 
-  it("merges paginated lines, drops junk lines, and puts main first", async () => {
-    on("branches?per_page", '["zeta","main"]\nnot-json\n["alpha"]');
-    expect(await svc.listBranches("files-api")).toEqual([
+  it("asks GitHub for one page, and puts main first", async () => {
+    on("branches?per_page", '["alpha","main","zeta"]');
+    expect((await svc.listBranches("files-api")).items).toEqual([
       "main",
       "alpha",
       "zeta",
     ]);
+    expect(ghCalls()[0]).not.toContain("--paginate");
   });
 
-  it("sorts plainly when main is absent (and tolerates a missing org)", async () => {
+  it("keeps GitHub's order when main is absent (and tolerates a missing org)", async () => {
     mockReadReleaseConfig.mockReturnValue(cfg({ org: undefined }));
-    on("branches?per_page", '["z","a"]');
-    expect(await svc.listBranches("files-api")).toEqual(["a", "z"]);
+    on("branches?per_page", '["a","z"]');
+    expect((await svc.listBranches("files-api")).items).toEqual(["a", "z"]);
     // org ?? "" → slug degrades to "/repo" rather than "undefined/repo".
     expect(ghCalls()[0]).toContain("repos//files-api/branches");
   });

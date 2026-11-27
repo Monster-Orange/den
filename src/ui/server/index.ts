@@ -1549,6 +1549,7 @@ import {
 import { parseChangelog } from "./changelog-parser.js";
 
 // ── Extracted services ───────────────────────────────────────────────────────
+import { sendGhPage } from "./github-pages.js";
 import { GitHubService } from "./github-service.js";
 import { EditorManager, SUPPORTED_LANGUAGES } from "./editor-manager.js";
 import {
@@ -10348,11 +10349,9 @@ async function handleRequest(
     const cfg = releaseService.config();
     if (!cfg.repos.some((r) => r.name === repo))
       return send400(res, `Unknown repo: ${repo}`);
-    try {
-      return sendJson(res, await releaseService.listBranches(repo));
-    } catch {
-      return sendJson(res, ["main"]);
-    }
+    return sendGhPage(res, url.searchParams, "branch", (ask, q) =>
+      releaseService.listBranches(repo, ask, q),
+    );
   }
 
   // ── API: release deploy (session-backed) ───────────────────────────────────
@@ -10415,8 +10414,7 @@ async function handleRequest(
           );
         const ref = refParam || target.branch;
         if (ref !== target.branch) {
-          const branches = await releaseService.listBranches(repoParam);
-          if (!branches.includes(ref))
+          if (!(await releaseService.branchExists(repoParam, ref)))
             return send400(res, `Unknown branch "${ref}" for ${repoParam}.`);
         }
         if (isProd && ref !== target.branch)

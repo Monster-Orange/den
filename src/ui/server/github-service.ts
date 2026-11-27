@@ -23,6 +23,14 @@ import { getDistRoot } from "../../shared/paths.js";
 
 import { product } from "../../shared/product.js";
 import { isRepoName } from "../../shared/repo-name.js";
+import {
+  BadCursor,
+  branchPage,
+  GH_PAGE_MAX,
+  type GhRun,
+  repoPage,
+} from "./github-pages.js";
+import type { Page, PageAsk } from "./paging.js";
 // Anchored to the den root, NOT process.cwd(): "this repo" identification
 // (basename + origin remote) must not depend on where the server was started.
 const ROOT = getDistRoot();
@@ -42,6 +50,19 @@ function gh(args: string[], timeout: number): Promise<string> {
   });
 }
 
+const ownerOf = (nameWithOwner: string) =>
+  nameWithOwner.slice(0, nameWithOwner.indexOf("/"));
+
+function warnOrg(org: string, e: Error): void {
+  const stderr = ((e as Error & { stderr?: string }).stderr ?? "").trim();
+  console.warn(
+    `[github-service] listOrgRepos: listing ${org} failed — ` +
+      `${e.message}${stderr ? ` | stderr: ${stderr}` : ""}. ` +
+      `Check: (1) \`gh auth status\`, (2) \`gh\` is on the PATH of the process running \`make web\`, ` +
+      `(3) your PAT is SSO-authorized for ${org}.`,
+  );
+}
+
 export interface GitHubRepo {
   name: string;
   nameWithOwner: string;
@@ -51,54 +72,58 @@ export interface GitHubRepo {
 }
 
 export class GitHubService {
-  private branchesCache = new Map<
-    string,
-    { names: string[]; fetchedAt: number }
-  >();
-  private reposCache: { data: GitHubRepo[]; fetchedAt: number } | null = null;
+  private pages = new Map<string, { raw: string; at: number }>();
+  private denRepos = new Map<string, { names: Set<string>; at: number }>();
   private warnedNotConfigured = false;
 
+  /** gh, with each answer kept for ttl ms (by its args). */
+  private cachedGh(ttl: number): GhRun {
+    return async (args) => {
+      const k = args.join("\0");
+      const hit = this.pages.get(k);
+      if (hit && Date.now() - hit.at < ttl) return hit.raw;
+      const raw = await gh(args, GH_API_TIMEOUT_MS);
+      if (this.pages.size >= 500) this.pages.clear();
+      this.pages.set(k, { raw, at: Date.now() });
+      return raw;
+    };
+  }
+
   /**
-   * List branches for a GitHub repo slug ("owner/repo").
-   * Cached per slug for BRANCH_CACHE_TTL_MS.
+   * One page of a GitHub repo's branches ("owner/repo"), names starting
+   * with q when set. Each GitHub page is cached for BRANCH_CACHE_TTL_MS.
    */
-  async listBranches(slug: string): Promise<string[]> {
+  async listBranches(
+    slug: string,
+    ask: PageAsk = { limit: GH_PAGE_MAX, after: null },
+    q = "",
+  ): Promise<Page<string>> {
     // Strict owner/name: no shell metacharacters, and never a
     // "." or ".." segment, which would reach another GitHub API path.
-    if (!isRepoName(slug)) return [];
-
-    const cached = this.branchesCache.get(slug);
-    if (cached && Date.now() - cached.fetchedAt < BRANCH_CACHE_TTL_MS) {
-      return cached.names;
-    }
-
+    if (!isRepoName(slug)) return { items: [], next: null };
     try {
-      const raw = await gh(
-        ["api", `repos/${slug}/branches?per_page=100`, "--jq", "[.[].name]"],
-        GH_API_TIMEOUT_MS,
-      );
-      const names = JSON.parse(raw.trim() || "[]") as string[];
-      this.branchesCache.set(slug, { names, fetchedAt: Date.now() });
-      return names;
-    } catch {
-      return [];
+      return await branchPage(this.cachedGh(BRANCH_CACHE_TTL_MS), slug, ask, q);
+    } catch (e) {
+      if (e instanceof BadCursor) throw e;
+      return { items: [], next: null };
     }
   }
 
   /**
-   * List the repos of every org Den knows (see resolveOrgs), with a hasDen
-   * flag. One org failing (no access, SSO) leaves the others listed.
-   * Cached for REPO_CACHE_TTL_MS unless forceRefresh is true.
+   * One page of the repos of every org Den knows (see resolveOrgs), org by
+   * org, with a hasDen flag; names containing q when set. One org failing
+   * (no access, SSO) leaves the others listed. Pages are cached for
+   * REPO_CACHE_TTL_MS unless forceRefresh is true.
    */
-  async listOrgRepos(forceRefresh = false): Promise<GitHubRepo[]> {
-    if (
-      !forceRefresh &&
-      this.reposCache &&
-      Date.now() - this.reposCache.fetchedAt < REPO_CACHE_TTL_MS
-    ) {
-      return this.reposCache.data;
+  async listOrgRepos(
+    ask: PageAsk = { limit: GH_PAGE_MAX, after: null },
+    q = "",
+    forceRefresh = false,
+  ): Promise<Page<GitHubRepo>> {
+    if (forceRefresh) {
+      this.pages.clear();
+      this.denRepos.clear();
     }
-
     const orgs = this.resolveOrgs();
     if (orgs.length === 0) {
       if (!this.warnedNotConfigured) {
@@ -108,79 +133,66 @@ export class GitHubService {
             `${product().configFile} to list them (no gh is run until then)`,
         );
       }
-      return [];
+      return { items: [], next: null };
     }
-    const data = (
-      await Promise.all(orgs.map((org) => this.listOneOrg(org)))
-    ).flat();
-    this.reposCache = { data, fetchedAt: Date.now() };
-    return data;
+    let page;
+    try {
+      page = await repoPage(
+        this.cachedGh(REPO_CACHE_TTL_MS),
+        orgs,
+        ask,
+        q,
+        (org, e) => warnOrg(org, e),
+      );
+    } catch (e) {
+      if (e instanceof BadCursor) throw e;
+      warnOrg(orgs.join(","), e as Error);
+      return { items: [], next: null };
+    }
+    const owners = [
+      ...new Set(page.nodes.map((r) => ownerOf(r.nameWithOwner))),
+    ];
+    const den = new Map(
+      await Promise.all(
+        owners.map(async (o) => [o, await this.denReposOf(o)] as const),
+      ),
+    );
+    const thisRepo = path.basename(ROOT);
+    const items = page.nodes
+      .filter((r) => r.name !== thisRepo)
+      .map((r) => ({
+        name: r.name,
+        nameWithOwner: r.nameWithOwner,
+        defaultBranch: r.defaultBranchRef?.name ?? "main",
+        hasDen: den.get(ownerOf(r.nameWithOwner))?.has(r.name) ?? false,
+        isArchived: r.isArchived ?? false,
+      }));
+    return { items, next: page.next };
   }
 
-  private async listOneOrg(org: string): Promise<GitHubRepo[]> {
+  /** The org's repos that hold a Den manifest (one code search, cached). */
+  private async denReposOf(org: string): Promise<Set<string>> {
+    const hit = this.denRepos.get(org);
+    if (hit && Date.now() - hit.at < REPO_CACHE_TTL_MS) return hit.names;
+    let names = new Set<string>();
     try {
       const raw = await gh(
         [
-          "repo",
-          "list",
-          org,
-          "--json",
-          "name,nameWithOwner,defaultBranchRef,isArchived",
-          "--limit",
-          "100",
+          "api",
+          `search/code?q=filename:${product().manifestYml}+org:${org}&per_page=100`,
+          "--jq",
+          "[.items[].repository.name]",
         ],
         GH_API_TIMEOUT_MS,
       );
-
-      let denRaw: string;
-      try {
-        denRaw = await gh(
-          [
-            "api",
-            `search/code?q=filename:${product().manifestYml}+org:${org}&per_page=100`,
-            "--jq",
-            "[.items[].repository.name]",
-          ],
-          GH_API_TIMEOUT_MS,
-        );
-      } catch (e) {
-        console.warn(
-          `[github-service] listOrgRepos: ${product().manifestYml} search failed (has${product().title} flags will be false): ${(e as Error).message}`,
-        );
-        denRaw = "[]";
-      }
-
-      const parsed = JSON.parse(raw) as Array<{
-        name: string;
-        nameWithOwner: string;
-        defaultBranchRef?: { name: string } | null;
-        isArchived?: boolean;
-      }>;
-      const denRepos = new Set<string>(JSON.parse(denRaw) as string[]);
-
-      const thisRepo = path.basename(ROOT);
-      const data = parsed
-        .filter((r) => r.name !== thisRepo)
-        .map((r) => ({
-          name: r.name,
-          nameWithOwner: r.nameWithOwner,
-          defaultBranch: r.defaultBranchRef?.name ?? "main",
-          hasDen: denRepos.has(r.name),
-          isArchived: r.isArchived ?? false,
-        }));
-
-      return data;
+      names = new Set(JSON.parse(raw.trim() || "[]") as string[]);
     } catch (e) {
-      const err = e as Error & { stderr?: string };
-      const stderr = (err.stderr ?? "").trim();
       console.warn(
-        `[github-service] listOrgRepos: \`gh repo list ${org}\` failed — ` +
-          `${err.message}${stderr ? ` | stderr: ${stderr}` : ""}. ` +
-          `Check: (1) \`gh auth status\`, (2) \`gh\` is on the PATH of the process running \`make web\`, ` +
-          `(3) your PAT is SSO-authorized for ${org}.`,
+        `[github-service] listOrgRepos: ${product().manifestYml} search failed (has${product().title} flags will be false): ${(e as Error).message}`,
       );
-      return [];
     }
+    this.denRepos.set(org, { names, at: Date.now() });
+    return names;
   }
 
   /**
