@@ -174,6 +174,8 @@ export const KIT_FILES: readonly string[] = [
   // den-ui 0.6.1: the working pop-up's look, linked (no injected <style>).
   "busy.css",
   "dialog.js",
+  "pager.js",
+  "pager.css",
   // den-ui 0.6.2: the dialogs' look, linked (no injected <style>).
   "dialog.css",
   // The save-state line for autosaving editors, and its look.
