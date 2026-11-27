@@ -120,12 +120,23 @@ export function wireCombo(
           : "")
       : `<li class="den-combo-none" aria-disabled="true">${esc(words.none ?? "No match")}</li>`;
     ul.hidden = false;
+    place();
     input.setAttribute("aria-expanded", "true");
     if (shown.length)
       input.setAttribute("aria-activedescendant", `${id}-o-${sel}`);
     ul.querySelector(`[data-i="${sel}"]`)?.scrollIntoView?.({
       block: "nearest",
     });
+  };
+  const place = () => {
+    const r = input.getBoundingClientRect();
+    const room = window.innerHeight - r.bottom;
+    const up = room < 160 && r.top > room;
+    ul.style.left = `${r.left}px`;
+    ul.style.width = `${r.width}px`;
+    ul.style.maxHeight = `${Math.max(120, Math.min(240, (up ? r.top : room) - 8))}px`;
+    ul.style.top = up ? "" : `${r.bottom + 2}px`;
+    ul.style.bottom = up ? `${window.innerHeight - r.top + 2}px` : "";
   };
   const labelOf = (v) =>
     (load ? found.items : items()).find((x) => x.id === v)?.label ??
@@ -139,6 +150,13 @@ export function wireCombo(
     onPick?.(x);
     onType?.(x.id);
   };
+  document.addEventListener(
+    "scroll",
+    () => {
+      if (!ul.hidden) place();
+    },
+    true,
+  );
   input.addEventListener("focus", () => {
     sel = 0;
     if (load) fetchFor(input.value.trim());

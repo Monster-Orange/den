@@ -16,11 +16,8 @@
   box-sizing: border-box;
 }
 .den-combo-list {
-  position: absolute;
+  position: fixed;
   z-index: 20;
-  left: 0;
-  right: 0;
-  top: calc(100% + 2px);
   max-height: 240px;
   overflow-y: auto;
   margin: 0;

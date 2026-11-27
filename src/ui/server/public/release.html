@@ -1213,9 +1213,8 @@
           const isProd = state.env === "prod";
           openModal(
             t("rel.dep.title", { repo, env: state.env }),
-            `<label for="dep-branch">${esc(t("rel.dep.ref"))}</label>
+            `<label for="dep-branch">${esc(t("rel.dep.ref"))} <span id="dep-branch-msg" class="err-text" aria-live="polite"></span></label>
          ${comboHtml({ id: "dep-branch", label: t("rel.dep.ref"), bare: true })}
-         <div id="dep-branch-msg" class="err-text" aria-live="polite"></div>
          <div id="dep-hotfix"></div>
          <div id="dep-confirm-wrap"></div>
          <div id="dep-err" class="err-text"></div>`,
