@@ -17,6 +17,7 @@
  */
 import { linkOpen } from "/term-input.js";
 import { timeHtml } from "/kit/time.js";
+import { listPagerHtml, pageQuery, watchPagers } from "/list-pager.js";
 import { healthReason } from "./value-words.js";
 import {
   commandTier,
@@ -708,6 +709,7 @@ export function entity(sel) {
 // Live sections (log tail, activity fetch) register a disposer here; a
 // re-render or close disposes them, so one panel holds at most one stream.
 let disposers = [];
+const ACTIVITY_PER = 50;
 export function disposePanel() {
   for (const d of disposers) d();
   disposers = [];
@@ -881,20 +883,34 @@ function activityList(x) {
     ? `repo=${encodeURIComponent(x.repo)}`
     : `address=${encodeURIComponent(x.repo + "/" + x.name)}`;
   let live = true;
-  disposers.push(() => (live = false));
-  fetch(`/api/activity?${q}`)
-    .then((r) => (r.ok ? r.json() : { entries: [] }))
-    .catch(() => ({ entries: [] }))
-    .then(({ entries = [] }) => {
-      if (!live) return;
-      el.innerHTML = entries.length
-        ? `<ol class="act">${entries.map((a) => `<li>${timeHtml(a.ts, { style: "time" })}<span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? (a.agent ? "[" + a.agent + "]" : `[${gw("gr.who.agent", "agent")}]`) + (a.client ? " " + a.client : "") : a.claimed && a.claimed.client ? gw("gr.who.youVia", "you · {client} (unverified)", { client: a.claimed.client }) : gw("gr.who.you", "you"))}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">${esc(gw("gr.refused", "refused: {reason}", { reason: a.reason || "" }))}</em>` : ""}</span></li>`).join("")}</ol>`
-        : none(
-            N(
-              "noActivity",
-              "No actions yet. Starts, restarts and syncs, yours and agents', show here.",
-            ),
-          );
-    });
+  let per = ACTIVITY_PER;
+  let page = null;
+  const show = (ask) =>
+    fetch(`/api/activity?${q}&${ask}`)
+      .then((r) => (r.ok ? r.json() : { entries: [] }))
+      .catch(() => ({ entries: [] }))
+      .then((r) => {
+        if (!live) return;
+        const { entries = [] } = r;
+        page = r;
+        el.innerHTML = entries.length
+          ? `<ol class="act">${entries.map((a) => `<li>${timeHtml(a.ts, { style: "time" })}<span class="dg-who ${a.actor === "agent" ? "agent" : ""}">${esc(a.actor === "agent" ? (a.agent ? "[" + a.agent + "]" : `[${gw("gr.who.agent", "agent")}]`) + (a.client ? " " + a.client : "") : a.claimed && a.claimed.client ? gw("gr.who.youVia", "you · {client} (unverified)", { client: a.claimed.client }) : gw("gr.who.you", "you"))}</span><span>${esc(a.verb)} ${esc(a.detail)}${a.outcome === "refused" ? ` <em class="refused">${esc(gw("gr.refused", "refused: {reason}", { reason: a.reason || "" }))}</em>` : ""}</span></li>`).join("")}</ol>` +
+            listPagerHtml("activity", r, entries.length, per)
+          : none(
+              N(
+                "noActivity",
+                "No actions yet. Starts, restarts and syncs, yours and agents', show here.",
+              ),
+            );
+      });
+  const stop = watchPagers(el, (_name, ask) => {
+    if (ask.kind === "per") per = ask.target.per;
+    void show(pageQuery(page, ask.target, per).toString());
+  });
+  disposers.push(() => {
+    live = false;
+    stop();
+  });
+  void show(`limit=${per}`);
   return el;
 }
