@@ -41,6 +41,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Browser alerts for finished turns: an open Den tab can play a sound when an agent finishes or needs you, and shows how many agents need you in its title and icon. Settings › Notifications has "Sounds" and "Count in the tab" (`alerts.sound`, `alerts.tab_count`). When a Den tab is open and visible on a device that also gets push, the tab shows the alert and that device's push is skipped; if the tab hasn't shown it within `alerts.tab_first_seconds` (3 by default), the push goes (issue 774).
 
+- Agents page: after an agent restarts, its pane no longer shows the old session's terminal size while the new session connects.
+
 ## [0.4.91] - 2026-11-26
 
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)

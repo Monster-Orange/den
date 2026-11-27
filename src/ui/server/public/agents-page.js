@@ -2024,6 +2024,12 @@ function freshLine(p) {
   p.term?.write(`\x1b[2m${t("ag.freshLine")}\x1b[0m\r\n`);
 }
 
+function forgetPty(p) {
+  p.pty = null;
+  delete p.el.dataset.ptyCols;
+  delete p.el.dataset.ptyRows;
+}
+
 /** Move pane `p` to session row `row`, where it was. */
 function retarget(p, row) {
   const old = p.id;
@@ -2032,6 +2038,7 @@ function retarget(p, row) {
   p.conn = null;
   p.sock = null;
   p.recon = null;
+  forgetPty(p);
   st.panes.delete(old);
   p.id = row.id;
   st.panes.set(row.id, p);
@@ -3203,7 +3210,7 @@ function connect(p) {
     onOpen: (sock) => {
       p.sock = sock;
       p.heardSession = false;
-      p.pty = null;
+      forgetPty(p);
       p.heardSize = false;
       // D54: who sizes the PTY is decided on the session frame (it says
       // how many view it); until then, this pane waits.
