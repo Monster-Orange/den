@@ -79,7 +79,13 @@ const fast = {
     mb: limits.big,
     ms: 60,
     status: 200,
+    listed: true,
     probe: { ms: 7, status: 200, inFlight: true },
+    fill: [
+      { ms: 6, status: 200 },
+      { ms: 9, status: 200 },
+    ],
+    fillMs: 2400,
   },
 };
 
@@ -121,14 +127,60 @@ describe("gate/1668 rows", () => {
     );
   });
 
-  it("no room for the big transcript skips its row, naming the free disk, never a PASS", () => {
+  it("only a proven low disk skips the big row, as needs-disk-room with the free disk", () => {
     const r = rows({
       ...fast,
-      big: { skipped: "free disk 120 MB, needs 3072 MB" },
+      big: {
+        skipped: "needs-disk-room",
+        room: "free disk 120 MB, needs 3072 MB",
+      },
     });
     expect(r.map((x) => x.ok)).toEqual([true, true, null]);
+    expect((r[2] as Row & { skip?: string }).skip).toBe("needs-disk-room");
     expect(r[2].detail).toContain("free disk 120 MB");
-    expect(rows({ ...fast, big: undefined })[2].ok).toBeNull();
+  });
+
+  it("an unknown disk, a failed write or an unreached list is not measured, never a skip", () => {
+    for (const big of [
+      { error: "free disk unknown: EPERM" },
+      { error: "the big transcript could not be written: ENOSPC" },
+      undefined,
+    ])
+      expect(() => rows({ ...fast, big })).toThrow(
+        /1668 not measured: (free disk unknown|the big transcript)/,
+      );
+  });
+
+  it("a big agent the list never showed is not measured", () => {
+    expect(() =>
+      rows({ ...fast, big: { ...fast.big, listed: false } }),
+    ).toThrow(/1668 not measured: the list did not show the big agent/);
+  });
+
+  it("the big agent's helpers are waited for, and never coming within the wait is not measured", () => {
+    expect(rows(fast)[2].detail).toContain(
+      "its helpers showed after 2400 ms, 2 probes, max 9 ms",
+    );
+    expect(() => rows({ ...fast, big: { ...fast.big, fillMs: null } })).toThrow(
+      new RegExp(
+        `1668 not measured: the big agent's helpers did not show within ${limits.wait / 1000} s`,
+      ),
+    );
+  });
+
+  it("server-info stalled while the 1 GB transcript is read fails the big row", () => {
+    const r = rows({
+      ...fast,
+      big: {
+        ...fast.big,
+        fill: [
+          { ms: 6, status: 200 },
+          { ms: limits.probe + 1, status: 200 },
+        ],
+      },
+    });
+    expect(r.map((x) => x.ok)).toEqual([true, true, false]);
+    expect(r[2].detail).toContain(`max ${limits.probe + 1} ms`);
   });
 
   it("a list over the limit, with the server stalled behind it, fails both", () => {
