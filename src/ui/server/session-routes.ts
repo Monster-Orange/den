@@ -162,6 +162,14 @@ import {
   WS_CLOSE,
 } from "./websocket.js";
 
+function skillPacksOf(v: unknown): { skillPacks?: "off" | "on" | string[] } {
+  if (v === "off" || v === false) return { skillPacks: "off" };
+  if (v === "on" || v === true) return { skillPacks: "on" };
+  if (Array.isArray(v) && v.every((x) => typeof x === "string"))
+    return { skillPacks: [...(v as string[])] };
+  return {};
+}
+
 export interface SessionRouteDeps {
   stateDir?: () => string;
   /** The distribution's name: the `<dist>` of a session name. */
@@ -498,6 +506,7 @@ export interface ListedSession {
   modeRunning?: string;
   /** Issue 199: its mode is its own, not its project's. */
   modeOwn?: boolean;
+  skillPacks?: "off" | "on" | string[];
   /** Issue 199: with its own: the project's mode it doesn't follow. */
   modeFollowed?: string;
   /** Extra allowed commands it was started with (AG-13.3). */
@@ -554,6 +563,7 @@ export interface ListedSession {
   lastRotation?: RotationEntry;
   /** D32: its helpers (counts and the recent ones). */
   helpers?: AgentRow["helpers"];
+  helpersPending?: true;
   /** D44: running with MCP servers out of date (Hub since it launched). */
   mcpStale?: AgentRow["mcpStale"];
   /** Issue 749: MCP servers whose tools failed to load in its session. */
@@ -736,6 +746,13 @@ export function listedSessions(
     const set = repoSets.get(ws);
     return set ? !set.has(repo) : false;
   };
+  const ownPacks = (() => {
+    try {
+      return readAgentsConfig().agents;
+    } catch {
+      return {};
+    }
+  })();
   for (const r of agentRows(
     mine,
     records,
@@ -797,6 +814,7 @@ export function listedSessions(
             }
           : {};
       })(),
+      ...skillPacksOf(ownPacks[rec.id]?.skillPacks),
       ...(rec.allow?.length ? { allow: [...rec.allow] } : {}),
       ...(rec.overrides?.length ? { overrides: [...rec.overrides] } : {}),
       // D59: its own Resume after a restart, and the setting all told.
@@ -1004,10 +1022,19 @@ async function listWithHelpers(
     asks,
     all.refreshSeconds * 1000,
     all.factsCacheMb * 1024 * 1024,
+    { waitMs: all.listWaitSeconds * 1000, restMs: all.readerRestMs },
   );
-  if (!fresh) return first;
-  asks.length = 0;
-  return listedSessions(sessions, { ...d, helpersOf }, also, hubUrl);
+  if (fresh) asks.length = 0;
+  const listed = fresh
+    ? listedSessions(sessions, { ...d, helpersOf }, also, hubUrl)
+    : first;
+  const pending = new Set(asks.filter((a) => !rows.known(a)).map((a) => a.id));
+  if (!pending.size) return listed;
+  return listed.map((r) =>
+    r.kind === "agent" && r.agent && pending.has(r.agent)
+      ? { ...r, helpersPending: true as const }
+      : r,
+  );
 }
 
 /** D32: the helpers count, under /api/sessions/ but no session's route. */
@@ -1092,6 +1119,7 @@ export async function handleSessionList(
     ...(wanted ? { requested: wanted } : {}),
     host,
     ...(hostError ? { hostError } : {}),
+    ...(rows.some((r) => r.helpersPending) ? { helpersPending: true } : {}),
     // den#156: how long the page waits for its next list.
     refreshTimeoutSeconds: waits.refresh_timeout_seconds,
     backend: pty.available
@@ -1895,15 +1923,8 @@ async function helpersRunning(
   const keep = agentRowFilter(req);
   const rows = await listWithHelpers(sessions, d);
   let needs = 0;
-  for (const r of rows)
-    if (
-      (!keep || keep(r.workspace)) &&
-      r.kind === "agent" &&
-      r.state === "running" &&
-      r.waiting &&
-      r.waitingWhy !== "input"
-    )
-      needs += 1;
+  for (const r of keep ? rows.filter((x) => keep(x.workspace)) : rows)
+    if (isNeedsYouRow(r)) needs += 1;
   sendJson(res, { running: helpersRunningIn(rows, keep), needs });
   return true;
 }
@@ -1916,4 +1937,56 @@ export function helpersRunningIn(
   for (const r of rows)
     if (!keep || keep(r.workspace)) running += r.helpers?.running ?? 0;
   return running;
+}
+
+export function isNeedsYouRow(r: {
+  kind?: string;
+  state?: string;
+  waiting?: boolean;
+  waitingWhy?: string;
+}): boolean {
+  return (
+    r.kind === "agent" &&
+    r.state === "running" &&
+    !!r.waiting &&
+    r.waitingWhy !== "input"
+  );
+}
+
+export async function needsYouNow(deps: SessionRouteDeps): Promise<number> {
+  const d = resolve(deps);
+  let sessions: SessionInfo[] = [];
+  try {
+    const c = await d.connectExisting();
+    if (!c) return 0;
+    try {
+      sessions = await c.list();
+    } finally {
+      c.close();
+    }
+  } catch {
+    return 0;
+  }
+  let n = 0;
+  for (const r of listedSessions(sessions, d)) if (isNeedsYouRow(r)) n += 1;
+  return n;
+}
+
+const NEEDS_SHARED_MS = 2000;
+let needsShared: { at: number; key: unknown; n: Promise<number> } | null = null;
+
+export function needsYouShared(
+  deps: SessionRouteDeps,
+  now: () => number = Date.now,
+  key?: unknown,
+): Promise<number> {
+  const t = now();
+  if (
+    needsShared &&
+    needsShared.key === key &&
+    t - needsShared.at < NEEDS_SHARED_MS
+  )
+    return needsShared.n;
+  needsShared = { at: t, key, n: needsYouNow(deps) };
+  return needsShared.n;
 }

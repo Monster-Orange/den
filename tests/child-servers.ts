@@ -249,6 +249,23 @@ export function serverGateEnv(
   };
 }
 
+function fileSize(file: string): number {
+  try {
+    return fs.statSync(file).size;
+  } catch {
+    return 0;
+  }
+}
+
+function readFrom(file: string, from: number): string {
+  try {
+    const buf = fs.readFileSync(file);
+    return buf.subarray(from).toString();
+  } catch {
+    return "";
+  }
+}
+
 export async function startDenServer(
   cmd: string,
   args: string[],
@@ -259,6 +276,8 @@ export async function startDenServer(
     tries?: number;
     /** How a port is picked (tests of this helper). */
     pickPort?: () => Promise<number>;
+    logFile?: string;
+    edgeSettled?: boolean;
   } = {},
 ): Promise<StartedServer> {
   const root = o.root ?? opts.env?.DEN_ROOT ?? String(opts.cwd ?? "");
@@ -268,7 +287,9 @@ export async function startDenServer(
   let log = "";
   for (let attempt = 1; attempt <= tries; attempt++) {
     const port = await (o.pickPort ?? freePort)();
-    let out = "";
+    let piped = "";
+    const from = o.logFile ? fileSize(o.logFile) : 0;
+    const out = (): string => (o.logFile ? readFrom(o.logFile, from) : piped);
     let exited = false;
     let how = "";
     const gates = serverGateEnv(opts.env ?? process.env);
@@ -278,8 +299,8 @@ export async function startDenServer(
       env: { ...gates.env, PORT: String(port) },
     });
     server.once("exit", gates.cleanup);
-    server.stdout?.on("data", (d: Buffer) => (out += d.toString()));
-    server.stderr?.on("data", (d: Buffer) => (out += d.toString()));
+    server.stdout?.on("data", (d: Buffer) => (piped += d.toString()));
+    server.stderr?.on("data", (d: Buffer) => (piped += d.toString()));
     server.once("exit", (code, signal) => {
       exited = true;
       // den#143: say how it ended, so a flake names its cause.
@@ -288,15 +309,21 @@ export async function startDenServer(
     const waitMs = o.timeoutMs ?? 20_000;
     const deadline = Date.now() + waitMs;
     let foreign = false;
+    let unsettled = false;
     while (!exited && Date.now() < deadline) {
       const info = await serverInfo(port);
       if (info?.code === 200) {
         const r = info.body?.root;
         if (typeof r === "string" && real(r) === want) {
+          if (o.edgeSettled !== false && info.body?.edgeSettled === false) {
+            unsettled = true;
+            await new Promise((r) => setTimeout(r, 200));
+            continue;
+          }
           // Issue 991: this run's own Den answers here, so a box run's
           // "host:*" may reach it.
           boxOwnPort(port);
-          return { server, port, out: () => out };
+          return { server, port, out };
         }
         foreign = true;
         break;
@@ -307,17 +334,23 @@ export async function startDenServer(
     // server that never answered must not read as one that exited.
     const ended = exited;
     await stopServer(server);
+    const said = out();
+    const shown = o.logFile
+      ? said.trimEnd().split("\n").slice(-40).join("\n") + "\n"
+      : said;
     log += `\n--- try ${attempt} on port ${port}: ${
       foreign
         ? "another server answered"
         : ended
           ? `it exited${how}`
-          : `it never answered within ${waitMs / 1000} s`
-    }\n${out}`;
+          : unsettled
+            ? `its edge start never settled within ${waitMs / 1000} s`
+            : `it never answered within ${waitMs / 1000} s`
+    }\n${shown}`;
     // A server that exits for its own reasons, or never answers, fails now;
     // only a port someone else holds is worth another try.
     // Den says it in words ("Port N is already in use."), not EADDRINUSE.
-    const portTaken = foreign || /EADDRINUSE|is already in use/.test(out);
+    const portTaken = foreign || /EADDRINUSE|is already in use/.test(said);
     if (!portTaken) break;
   }
   throw new Error(`the test's server did not start:${log}`);

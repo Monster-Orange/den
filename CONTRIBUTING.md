@@ -218,7 +218,10 @@ node scripts/affected-tests.mjs origin/main HEAD
   guard, `package.json`, jest or test setup, CI) runs them all.
 
 `node scripts/affected-map.mjs` rewrites the map's page rules from the code
-(CI also adds them fresh, so a new spec is never left out).
+(CI also adds them fresh, so a new spec is never left out). It writes the
+file in prettier's form, so there is no formatting step after it, and the pr
+job runs `node scripts/affected-map.mjs --check`, which fails on a stale map
+or one in another form.
 `scripts/ci-replay.mjs` replays the last 30 days of red CI runs and fails if
 the subset would have missed a real failure;
 `tests/fixtures/ci-replay-cases.json` keeps those failures, and

@@ -268,7 +268,7 @@ export interface ErrorPageData {
    * request checks refused it (SEC-1a): `message` says why, `code` names it.
    * 400: a request Den can't take as asked (/attest's return), the same.
    */
-  status: 400 | 401 | 403 | 404 | 421 | 422 | 500;
+  status: 400 | 401 | 403 | 404 | 421 | 422 | 500 | 503;
   /** 401, 403, 421: the refusal's code (misdirected, origin_rejected, …). */
   code?: string;
   /** 404 and 422: the path asked for (no query). */

@@ -1297,11 +1297,38 @@ later plugins.
   sends it on every request to Den's web route. Den believes what the edge
   says about a client only with it: without it, a request on the edge
   hostname signs in, this machine's included. An edge set up before 0.4.48
-  gets it at Den's next start (only `dynamic/edge.yml` is rewritten;
+  gets it at Den's next start (only Den's dynamic file is rewritten;
   Traefik reloads it, nothing restarts). `edge up --rotate-proof` makes a
   new one, and the old one stops working at once. Doctor's "Edge proof"
   line (`doctor --json`: check `edge_proof`) says whether the edge carries
-  it; the secret itself is never printed or logged.
+  it; the secret itself is never printed or logged. A proof from an older
+  version proves nothing, even when Den can't replace it (a read-only
+  state dir): doctor says so. The middleware that adds it has a name made
+  from the proof, so only Den's own route can use it: a Docker-label
+  router can't, and `edge.include` files and `edge.mounts` into the
+  dynamic folder that would are refused.
+- **Den's dynamic file is read first.** Traefik reads the dynamic folder
+  in name order and keeps the first definition of a name, so Den writes
+  its routes to `dynamic/000-den.yml` (an older `dynamic/edge.yml` is
+  moved there at the next start or edge up). Edge up refuses an
+  `edge.include` file that would sort before it, or that defines a
+  router, service, middleware or servers transport named like one Den
+  renders (`route-<name>`, `to-https`, `den-upstream`, anything starting
+  `den-`), naming the file and the key.
+- **An edge with Traefik's API on is recreated at Den's start.** If the
+  running edge's command turns the API on (one started before Den
+  refused it in `edge.args`), Den stops it before it writes any proof,
+  then recreates it without the API and with a new proof. If the stop or
+  the recreate fails, Den believes nothing through the edge (everyone
+  signs in) until `edge up` succeeds, and doctor's "Edge proof" line says
+  why.
+- **Den knows its edge by its container.** It believes the edge
+  hostname only from loopback or the edge container's own addresses: the
+  running container named `<org>-edge` that also has this state dir's
+  `den.edge.root` label and the `den.edge.org` label. It reads them again
+  every `edge.address_recheck_seconds` (default 60, 1 to 300), on a
+  request from any other address, and after edge up; with nothing read
+  for twice that, loopback only.
 - **A recreated edge keeps its routes.** After edge up creates, recreates
   or starts the edge, it rejoins the routed networks of every running stack
   whose routes file (`dynamic/stack-<project>.yml`) is in its state dir,
@@ -2618,8 +2645,21 @@ user, and the CLI does that for you:
   loopback and the Docker ranges (`127.0.0.1/32`, `::1/128`,
   `172.16.0.0/12`, `192.168.65.0/24`), never `forwardedHeaders.insecure`,
   so a client can't hand the edge an `X-Forwarded-For` of its own. An
-  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` is
-  dropped, and `edge up` says so.
+  `edge.args` entry that sets `forwardedHeaders` or `proxyProtocol` (one
+  dash or two) is dropped, and `edge up` says so.
+- **`edge.args` is an allow-list.** It may set the access log (not its
+  `filePath` or `fields.headers`), `log.level` (INFO or above),
+  `log.format`, `log.noColor`, `core.defaultRuleSyntax`, `global.*`
+  telemetry, the web and websecure entrypoints' transport timeouts,
+  `serversTransport` timeouts and `providers.providersThrottleDuration`.
+  Anything else (the API, a static config file, providers, entrypoints,
+  tracing, metrics, a bare value) is refused, with a line naming the
+  key, in any spelling: one dash or two, `=` or a space. Den sets the rest
+  of the edge's static config itself. The entrypoints' `readTimeout` and
+  `idleTimeout` must be above 0, and `providersThrottleDuration` at most
+  5s. A refused entry fails the config read, so the edge page, doctor,
+  stacks and the server's edge checks all stop on it until it is removed;
+  the line says which entry.
 - **A TCP passthrough in front of the edge** (a gateway that publishes
   `:443` and passes TLS through) hides the client: the edge sees the
   gateway's address. Have the gateway send the PROXY protocol, and list it
@@ -4702,6 +4742,8 @@ agents:
     read_max_mb: 64 # the most of an agent's transcript read for them
     facts_cache_mb: 256 # what Den keeps of all agents' transcripts between reads
     refresh_seconds: 5 # how old a helper row in the agents list may be
+    list_wait_seconds: 0.25 # how long a list waits for rows not read yet
+    reader_rest_ms: 2 # the pause between agents while rows are read
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
@@ -4712,6 +4754,8 @@ agents:
 | `read_max_mb`           | MB, above 0 to 4096        | 64      |
 | `facts_cache_mb`        | MB, above 0 to 4096        | 256     |
 | `refresh_seconds`       | seconds, 0 to 3600         | 5       |
+| `list_wait_seconds`     | seconds, 0 to 60           | 0.25    |
+| `reader_rest_ms`        | milliseconds, 0 to 1000    | 2       |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
 
 `read_max_mb` (0.4.36): a helper's state comes partly from its agent's own
@@ -4732,9 +4776,20 @@ MB for a busy agent, so the default holds thousands of agents.
 one set of helper rows. A row is read again in the background once it is
 older than this, and the list shows the last one meanwhile, so a list
 never waits on transcripts. A new agent, or one whose state changed
-(started, stopped, cleared), is read before the list answers. The
-reading yields between agents, so Den keeps answering while it reads.
-At 0, every list reads its rows, as before 0.4.90.
+(started, stopped, cleared), is read in the background too. At 0, every
+list reads its rows, as before 0.4.90.
+
+`list_wait_seconds` (0.4.92): how long a list waits for rows not read yet
+(after a restart, or a wave of new agents) before it answers with what it
+has. A row not read yet carries `helpersPending: true` and shows
+"Counting helpers…"; the list carries `helpersPending: true` too, and the
+page looks again within a second until every row is in. Before 0.4.92 the
+list waited for every row: with 140 unread agents, about 7 seconds.
+
+`reader_rest_ms` (0.4.92): the pause between agents while rows are read
+in the background, so Den's other requests get through while it reads.
+At 0 it only yields, and a request with many steps waits one agent's read
+per step, as before 0.4.92.
 
 `row_max` no longer does anything (0.4.45): how many helpers show under
 an agent is each person's `agents.helpers_shown` (above).

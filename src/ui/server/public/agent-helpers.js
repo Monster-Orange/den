@@ -182,6 +182,8 @@ function countLabel(key, total, running) {
  */
 export function helperBadgeHtml(r) {
   const n = r?.helpers?.running;
+  if (!n && r?.helpersPending)
+    return `<span class="agr-hp hp-wait" data-helpers-pending="1">${esc(t("hp.counting"))}</span>`;
   if (!n) return "";
   return `<span class="agr-hp agr-hp-ph hp-run" aria-hidden="true"><span class="hp-dot"></span>${esc(t("hp.chip", { n }))}</span>`;
 }
@@ -204,6 +206,7 @@ export function helperToggleHtml(r, open = false) {
 /** D62: "2 helpers running", for the row's label; "" when none run. */
 export function helperCountSaid(r) {
   const n = r?.helpers?.running;
+  if (!n && r?.helpersPending) return t("hp.counting");
   return n ? t("hp.rowRunning", { n }) : "";
 }
 
@@ -240,6 +243,7 @@ const CSS = `
 .agr-hp{flex:none;display:inline-flex;align-items:center;padding:0 6px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:11px;line-height:16px;font-weight:400;cursor:pointer}
 .agr-hp:hover{color:var(--text);border-color:var(--border-strong)}
 .agr-hp-ph{visibility:hidden}
+.agr-hp.hp-wait{cursor:default;border-style:dashed}
 .agrw{position:relative}
 .agrw>.agr-hpb{position:absolute;margin:0;font:inherit;font-size:11px;line-height:16px;background:var(--surface);min-height:0;z-index:1}
 .agrw>.agr-hpb[aria-expanded="true"]{color:var(--text);border-color:var(--border-strong)}

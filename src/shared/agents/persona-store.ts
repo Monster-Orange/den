@@ -48,6 +48,7 @@ export interface PersonaInput {
    * given: an edit that leaves it out keeps the file's own.
    */
   subagentModel?: string;
+  skillPacks?: "off" | null;
 }
 
 /** What a field may name: the registries and runtimes it is checked against. */
@@ -74,6 +75,7 @@ export const PERSONA_KEYS = [
   "permission",
   "allowedCommands",
   "subagentModel",
+  "skillPacks",
 ] as const;
 const KEYS = PERSONA_KEYS;
 
@@ -227,7 +229,13 @@ export function checkPersonaInput(
     } catch (e) {
       throw new PersonaInputError((e as Error).message);
     }
+  const packs = r.skillPacks;
+  if (packs !== undefined && packs !== null && packs !== "" && packs !== "off")
+    throw new PersonaInputError("skillPacks: off, or null for the install's");
   return {
+    ...(packs === undefined
+      ? {}
+      : { skillPacks: packs === "off" ? "off" : null }),
     ...(displayName ? { displayName } : {}),
     role,
     category,
@@ -267,10 +275,16 @@ export function personaMarkdown(
       ? { allowed_commands: input.allowedCommands }
       : {}),
     ...(input.subagentModel ? { subagent_model: input.subagentModel } : {}),
+    ...(input.skillPacks === "off" ? { skill_packs: "off" } : {}),
   };
   // Issue 978: the keys the form doesn't manage, as the file had them.
   for (const [k, v] of Object.entries(kept))
-    if (!(k in fm) && !MANAGED_KEYS.has(k)) fm[k] = v;
+    if (
+      !(k in fm) &&
+      !MANAGED_KEYS.has(k) &&
+      !(k === "skill_packs" && input.skillPacks === null)
+    )
+      fm[k] = v;
   return `---\n${yaml.stringify(fm).trimEnd()}\n---\n\n${input.instructions}\n`;
 }
 

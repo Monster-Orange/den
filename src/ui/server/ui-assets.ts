@@ -33,6 +33,8 @@ export const UI_MODULES: readonly string[] = [
   "/bell.js",
   // Issue 172: alerts outside the bell (desktop notifications).
   "/alerts.js",
+  "/alert-sounds.js",
+  "/tab-count.js",
   // Issue 172 S2: the service worker that shows push alerts.
   "/den-sw.js",
   "/edge-page.js",
@@ -45,6 +47,9 @@ export const UI_MODULES: readonly string[] = [
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
+  "/agents-core.js",
+  "/agents-url.js",
+  "/agents-rows.js",
   // D32: an agent's helpers, and the shared read-only transcript view.
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
@@ -92,6 +97,8 @@ export const UI_MODULES: readonly string[] = [
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
+  "/peek.js",
+  "/peek.css",
   // Issue 448: which shell the rail's Terminal opens.
   "/shell-pick.js",
   // Issue 482: the Terminals list's rules.

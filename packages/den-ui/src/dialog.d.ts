@@ -75,6 +75,7 @@ export interface DialogSpec {
   report?: string;
   /** Shown with no script (the open attribute). */
   open?: boolean;
+  sheet?: boolean;
   /** Extra classes on the <dialog> (the product's hooks). */
   className?: string;
   /** Extra attributes on the <dialog>. */

@@ -232,8 +232,6 @@ export interface GuardContext {
    */
   peerIsLoopback?: (req: http.IncomingMessage) => boolean;
   /**
-   * Whether the request's peer is one the edge's proxy runs on (isEdgePeer:
-   * loopback or a Docker network). The edge hostname is believed only from
    * one: a LAN client that sends `Host: <edge hostname>` straight to this
    * server's port gets 421. Unset: taken as yes (a unit test).
    */
@@ -262,6 +260,7 @@ export interface GuardContext {
    * whatever web.edge_unattested says. Unset: no proof (fails closed).
    */
   edgeProved?: (req: http.IncomingMessage) => boolean;
+  edgeStarting?: () => boolean;
   /**
    * Issue 636: whether this install is a test bed right now (issue 810's
    * test install binding). Unset: never (the test-person path is refused).
@@ -296,7 +295,7 @@ export type GuardResult =
     }
   | {
       ok: false;
-      status: 401 | 403 | 421;
+      status: 401 | 403 | 421 | 503;
       code:
         | "misdirected"
         | "unauthorized"
@@ -310,7 +309,8 @@ export type GuardResult =
         | "embed_key_scope"
         | "runner_scope"
         | "test_person_refused"
-        | "not_test_bed";
+        | "not_test_bed"
+        | "edge_starting";
       error: string;
       /** signin_required: why (beyond loopback: `den`). */
       scope?: SigninScope;
@@ -404,13 +404,7 @@ export function isLoopbackAddress(addr: string | undefined): boolean {
   return net.isIPv4(a) && a.startsWith("127.");
 }
 
-/**
- * A peer the edge's X-Forwarded-Proto is believed from: loopback, or a
- * Docker network (172.16.0.0/12, Docker Desktop's 192.168.65.0/24), where
- * the edge's Traefik runs.
- */
-export function isEdgePeer(addr: string | undefined): boolean {
-  if (isLoopbackAddress(addr)) return true;
+export function isDockerRangeAddress(addr: string | undefined): boolean {
   const a = String(addr ?? "")
     .toLowerCase()
     .replace(/^::ffff:/, "");
@@ -419,6 +413,23 @@ export function isEdgePeer(addr: string | undefined): boolean {
   return (
     (x === 172 && y >= 16 && y <= 31) || (x === 192 && y === 168 && z === 65)
   );
+}
+
+let EDGE_ADDRESSES: ReadonlySet<string> | null = null;
+
+export function setEdgeAddresses(addrs: readonly string[] | null): void {
+  EDGE_ADDRESSES = addrs?.length ? new Set(addrs.map(normAddress)) : null;
+}
+
+/** The edge: loopback, or the addresses of this install's labelled edge
+ * container. No other Docker-range peer. */
+export function isEdgePeer(
+  addr: string | undefined,
+  edge: ReadonlySet<string> | null = EDGE_ADDRESSES,
+): boolean {
+  if (isLoopbackAddress(addr)) return true;
+  if (!addr || !edge) return false;
+  return edge.has(normAddress(addr));
 }
 
 /** An address without its zone, IPv4-mapped prefix or brackets, lowercase. */
@@ -502,7 +513,6 @@ export type EdgeClient = "local" | "unattested" | "foreign";
  *  - loopback, or one of this machine's own interface addresses (its LAN
  *    or VPN address, a Tailscale 100.x one included): `local`;
  *  - missing, unreadable, or a container/VM network's address (the Docker
- *    ranges isEdgePeer takes, a subnet of one of this machine's bridges,
  *    one of the edge's own Docker networks, or OrbStack's 0.250.250.254):
  *    `unattested`. Docker Desktop and OrbStack on macOS hand the edge
  *    their gateway's address, and a TCP passthrough in front hides the
@@ -517,7 +527,7 @@ export function edgeClient(
   const c = forwardedClient(xff);
   if (!c) return "unattested";
   if (isLoopbackAddress(c)) return "local";
-  if (isEdgePeer(c) || local.bridges.some((b) => inSubnet(c, b)))
+  if (isDockerRangeAddress(c) || local.bridges.some((b) => inSubnet(c, b)))
     return "unattested";
   // 0.0.0.0/8 ("this network") is never a client on another machine:
   // OrbStack presents the host to its containers as 0.250.250.254.
@@ -626,6 +636,14 @@ export function checkRequest(
       error:
         "This server answers only to its own host names (localhost, " +
         "127.0.0.1, [::1] with its port, or its edge hostname).",
+    };
+  if (via === "edge" && ctx.edgeStarting?.())
+    return {
+      ok: false,
+      status: 503,
+      code: "edge_starting",
+      error: `${title} is starting. Try again in a moment.`,
+      via,
     };
   // Issue 334: an embed key reaches its own routes only, never another
   // (loopback lets an anonymous request through: the key must not ride along).
@@ -1062,6 +1080,8 @@ export const AGENT_PERSON_WRITES: readonly string[] = [
   "/api/alerts/unsubscribe",
   "/api/alerts/test",
   "/api/alerts/forget",
+  "/api/alerts/presence",
+  "/api/alerts/ack",
   // This install's Hub link.
   "/api/hub/connect",
   "/api/hub/disconnect",
@@ -1227,6 +1247,7 @@ export const STRICT_PERSON_READS: readonly string[] = [
   "/api/approvals",
   "/api/alerts",
   "/api/alerts/devices",
+  "/api/alerts/stream",
   "/api/report/diagnostics",
   "/api/report/drafts",
   "/api/report/drafts/:id",

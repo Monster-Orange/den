@@ -71,11 +71,16 @@ describe("the lookup: an agent limit's value in force, and its source", () => {
     expect(agentLimitInForce("sandbox", user(), den())).toBeUndefined();
   });
 
-  it.each([...AGENTS_USER_LIMIT_KEYS])("%s has a default, a number", (k) => {
-    const r = agentLimitInForce(k, user(), den());
-    expect(r?.from).toBe("default");
-    expect(typeof r?.value).toBe("number");
-  });
+  it.each([...AGENTS_USER_LIMIT_KEYS])(
+    "%s has a default, a number (true or false for a switch)",
+    (k) => {
+      const r = agentLimitInForce(k, user(), den());
+      expect(r?.from).toBe("default");
+      expect(k === "subagents_respect_load_hold" ? "boolean" : "number").toBe(
+        typeof r?.value,
+      );
+    },
+  );
 
   it("the defaults are the readers' own (no second copy to drift)", () => {
     const d = (k: string) => agentLimitInForce(k, user(), den())?.value;

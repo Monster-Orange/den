@@ -232,7 +232,7 @@ Den writes On and Off to `user.yml` as `true` and `false`, and Auto as no key, s
 
 `den hub groups` prints the same read as the Agents page gets, as one line of JSON. Add `--fresh` to read Hub now.
 
-- **By group.** The Agents page can show your agents by group, each group's lead first. Agents in no group sit under "Not in a group". A group's header opens it in Hub.
+- **Group.** The Agents list's switch (Need, Project, Group) can show your agents by group, each group's lead first. Agents in no group sit under "Not in a group". A group's header opens it in Hub.
 - **Message group.** This opens Hub's own composer in a new tab, and you send with your own Hub sign-in. Den never sends to a group itself.
 - **Reached.** A group message reaches each member through Den's usual delivery. Hub shows each member's state from Den's answer:
   - The agent got it: Reached.

@@ -99,7 +99,6 @@ import {
   followRestarts,
   restartAllHtml,
   restartNow,
-  restartRowHtml,
   waitsOnPerson,
 } from "/restart-result.js";
 import {
@@ -110,17 +109,11 @@ import {
   runtimeOptions,
   wireQuarantine,
 } from "/agent-start.js";
-import {
-  PROJECT_COLOURS_KEY,
-  projectColour,
-  projectLabel,
-} from "/workspace-picker.js";
+import { PROJECT_COLOURS_KEY, projectColour } from "/workspace-picker.js";
 import {
   groupsLineHtml,
   groupsOffered,
   groupsViewHtml,
-  toolsRestartButton,
-  toolsRestartHtml,
   toolsStale,
   viewSwitchHtml,
 } from "/agent-groups.js";
@@ -148,21 +141,13 @@ import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 import { termPane } from "/term-pane.js";
 import { makeComposer } from "/agent-composer.js";
-import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
+import { dropTo, orderTo, orderable } from "/agent-order.js";
 import {
   attnSub,
-  bandGroup,
   bandsOf,
   byNeed,
-  chipHtml,
-  markHtml,
-  metaHtml,
-  needsWhy,
   personOrdered,
   railNeeds,
-  rowState,
-  sinceShort,
-  tagHtml,
 } from "/agent-bands.js";
 import {
   attachFiles,
@@ -171,11 +156,7 @@ import {
   wireDrop,
 } from "/term-drop.js";
 import {
-  helperBadgeHtml,
-  helperCountSaid,
   helperBarButtonHtml,
-  helperRowsHtml,
-  helperToggleHtml,
   openHelpers,
   wireHelperRows,
 } from "/agent-helpers.js";
@@ -184,11 +165,8 @@ import {
   filterBarHtml,
   modelOptionsHtml,
   normalizeData,
-  openPersonaEditor,
-  overrideTagsHtml,
-  ownModeLabel,
-  modeLabel,
   openAgentModeMenu,
+  openPersonaEditor,
   permBlockHtml,
   personaDetail,
   personaDetailHtml,
@@ -213,210 +191,103 @@ import {
   imeOnce,
   softNewlineKey,
 } from "/term-input.js";
+import {
+  BY,
+  CLI,
+  LAYOUTS,
+  MAX_NAME,
+  MAX_PANES,
+  PHONE,
+  REFRESH_MS,
+  SERVER_WS,
+  TITLE,
+  UNDO_MS,
+  agd,
+  agentPath,
+  api,
+  esc,
+  restartKey,
+  rowOf,
+  st,
+  t,
+} from "/agents-core.js";
+import {
+  OPEN_KEY,
+  PAGE,
+  SHELL_USED_KEY,
+  deepLinkOf,
+  layoutFromUrl,
+  linkedAgentAsked,
+  openFromUrl,
+  phone,
+  pickedWorkspace,
+  rememberedOpen,
+  shellUsed,
+  shownLayout,
+  urlWorkspace,
+  viewWorkspaces,
+  visibleIds,
+} from "/agents-url.js";
+import {
+  compactingHtml,
+  compactingTag,
+  cwdText,
+  displayName,
+  exitedShell,
+  exitedShellHtml,
+  groupOf,
+  hubBoundTag,
+  inStopped,
+  instructionsTag,
+  isStopped,
+  isToday,
+  linkTag,
+  markOpened,
+  mcpStaleTag,
+  modeName,
+  modeTagHtml,
+  paneName,
+  pcAttr,
+  projName,
+  rotActionsHtml,
+  rotFromText,
+  rotMessage,
+  rotationOf,
+  rotationWhy,
+  rowHtml,
+  sayLooking,
+  seenMap,
+  sessionExtra,
+  signInTag,
+  stateTone,
+  stopReason,
+  stoppedChip,
+  stoppedHtml,
+  stoppedTip,
+  subagentTag,
+  tileHtml,
+  waitingText,
+  when,
+  whereTag,
+  wsLinkHtml,
+} from "/agents-rows.js";
 
-const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
-const esc = (s) =>
-  String(s ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
-  );
-const api = (method, url, body, opts) =>
-  window.denShell.api(method, url, body, opts);
-const CLI = "__DEN_CLI__";
-const TITLE = "__DEN_TITLE__";
-/** ON-6: the server agent's scope (no workspace), shared/agents/server-agent.ts. */
-const SERVER_WS = "den-server";
-/** How long Remove's Undo stays offered (AG-14.1b). */
-export const UNDO_MS = 10_000;
-
-/** The most panes at once (the prototype's 2x2). */
-export const MAX_PANES = 4;
-
-/** The layouts (AG-4b), in the switch's order (⌃⇧1, ⌃⇧2, ⌃⇧3). */
-export const LAYOUTS = ["focus", "tabs", "tile"];
-/** At or below this width Focus and Tile are Tabs (the shell's phone width). */
-const PHONE = "(max-width: 720px)";
-/** The longest name a tab takes (records.ts MAX_DISPLAY_NAME). */
-const MAX_NAME = 40;
-const REFRESH_MS = 5_000;
-
-const BY = ["need", "project", "group"];
-
-const st = {
-  root: null,
-  seenNow: new Map(),
-  loadFailed: false,
-  /**
-   * Issue 1407: each agent's answer to a restart for its tools (ws\0id →
-   * now, turn, job with what and how long, unknown), shown under its row
-   * until its tools are current.
-   */
-  restarts: new Map(),
-  /** Issue 96: the row being dragged (the list isn't redrawn meanwhile). */
-  drag: null,
-  /** Issue 96: a drag just ended, so the click it makes is swallowed. */
-  dragClick: false,
-  /** Issue 226: on a phone, whether the Stopped group's agents show them. */
-  reorderStopped: false,
-  reorderBand: null,
-  /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
-  reconnect: reconnectOptions(undefined),
-  /** 0.4.45: /api/workspaces, for the projects' names (projName). */
-  projects: null,
-  projectsAt: 0,
-  scope: "all",
-  /** Issue 750: Hub's groups (GET /api/hub/groups), or null until read. */
-  groupsRead: null,
-  groupsAt: 0,
-  /** Issue 750: the list by project (as before) or by group. */
-  by: savedBy(),
-  scopeLabel: "",
-  data: null,
-  signedOut: false,
-  open: [],
-  panes: new Map(),
-  // AG-18: agents (ws\0id) whose persona change started fresh, for the
-  // pane's line once it follows them.
-  fresh: new Set(),
-  timer: null,
-  xterm: null,
-  // Issue 128: failed loads of the terminal code so far.
-  xtermFails: 0,
-  csrf: null,
-  docWired: false,
-  // AG-4b: the person's layout, the pane in front, and in Focus the panes
-  // Shift-clicked in alongside it.
-  layout: "focus",
-  cur: null,
-  side: new Set(),
-  // D40: the pane whose terminal takes the keyboard once its socket opens,
-  // and the one whose terminal last had it.
-  focusOnOpen: null,
-  // D58: whether that focus is a link's: only for a keyboard on nothing yet.
-  focusIfIdle: false,
-  // D54/D58: whether that pick also sizes the PTY (a pick from the list
-  // does; a link that opens the page only puts the keyboard there).
-  claimOnOpen: false,
-  // Issue 1315: a person picked a pane (a tab, a row) while the page was
-  // still opening its ?open= panes: their pick stays in front. Cleared
-  // once start-up has opened them.
-  picked: false,
-  keyPane: null,
-  // #80: ?open= ids of other projects' sessions, left out of this
-  // project's tabs (one line offers them in All active).
-  hiddenOpen: [],
-  // #80: the project a deliberate open left (its "Back to" line), or null.
-  switchedFrom: null,
-  // #80: agents (ws\0id) whose helpers badge is open. Closed by default;
-  // kept while the page is open, never across a reload.
-  helpersOpen: new Set(),
-  // #80: how many running helpers an open badge shows (agents.helpers_shown).
-  helpersShown: 3,
-  // AG-4b: where a path link opens (Settings editor_open).
-  editorOpen: "none",
-  // Issue 103: the deep link this page opened on, until its agent opens.
-  deep: null,
-};
-
-/** ?layout=, when it names one; else null. */
-export function layoutFromUrl(search) {
-  const l = new URLSearchParams(search).get("layout");
-  return LAYOUTS.includes(l) ? l : null;
-}
-
-const phone = () => !!window.matchMedia?.(PHONE).matches;
-
-/** The layout drawn: the person's, except at phone width (Tabs). */
-function shownLayout() {
-  return phone() ? "tabs" : st.layout;
-}
-
-/** The panes in sight, in the URL's order. */
-function visibleIds() {
-  const l = shownLayout();
-  if (l === "tile") return [...st.open];
-  if (!st.open.includes(st.cur)) st.cur = st.open.at(-1) ?? null;
-  if (l === "tabs") return st.cur ? [st.cur] : [];
-  return st.open.filter((id) => id === st.cur || st.side.has(id));
-}
+export { UNDO_MS, MAX_PANES, LAYOUTS };
+export {
+  compactingHtml,
+  compactingTag,
+  exitedShell,
+  hubWorkHtml,
+  inStopped,
+  instructionsTag,
+  isStopped,
+  modeDriftOf,
+  modeTagHtml,
+  stopReason,
+} from "/agents-rows.js";
+export { deepLinkOf, layoutFromUrl, openFromUrl };
 
 // ── the URL ─────────────────────────────────────────────────────────────
-
-/** The ids ?open= names (at most MAX_PANES, in order, no repeats). */
-export function openFromUrl(search) {
-  const raw = new URLSearchParams(search).get("open") ?? "";
-  const ids = [];
-  for (const id of raw.split(",").map((s) => s.trim())) {
-    if (id && !ids.includes(id)) ids.push(id);
-  }
-  return ids.slice(-MAX_PANES);
-}
-
-/**
- * Issue 103: a deep link, /p/<project>/agents/<id>[?context=<url>]: the
- * page's own address for it (?agent=<id>&ws=<project>, which D43 opens),
- * and the context for the composer. Null when the path isn't one. The
- * server checked the project, the agent and the context before the page.
- */
-export function deepLinkOf(pathname, search) {
-  const m = /^\/p\/([^/]+)\/agents\/([^/]+)\/?$/.exec(pathname || "");
-  if (!m) return null;
-  let ws, agent;
-  try {
-    ws = decodeURIComponent(m[1]);
-    agent = decodeURIComponent(m[2]);
-  } catch {
-    return null;
-  }
-  const q = new URLSearchParams(search || "");
-  const context = q.get("context");
-  q.delete("context");
-  q.set("agent", agent);
-  q.set("ws", ws);
-  return { ws, agent, context, href: `/agents?${q.toString()}` };
-}
-
-/**
- * Issue 482: which page this is: "terminal" (the Terminals page, served
- * from this file at /terminals) or "agents". Each lists its own kind.
- */
-const PAGE =
-  typeof document !== "undefined" &&
-  document.getElementById?.("den-shell")?.dataset?.page === "terminal"
-    ? "terminal"
-    : "agents";
-
-/** D73: the panes this browser has open, so a Terminal link adds a tab. */
-// Issue 482: each page keeps its own.
-const OPEN_KEY = PAGE === "terminal" ? "den-terminals-open" : "den-agents-open";
-
-function rememberedOpen() {
-  try {
-    return openFromUrl(`?open=${localStorage.getItem(OPEN_KEY) ?? ""}`);
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Issue 448: when this browser last used each shell (a person clicked or
- * typed in its pane), so the rail's Terminal opens the one used last. The
- * server keeps when each was last typed in from any browser (inputAt);
- * this adds a click here. A shell never used counts from its start.
- */
-const SHELL_USED_KEY = "den-shell-used";
-
-function shellUsed() {
-  try {
-    const v = JSON.parse(localStorage.getItem(SHELL_USED_KEY) ?? "{}");
-    return v && typeof v === "object" ? v : {};
-  } catch {
-    return {};
-  }
-}
 
 function markShellUsed(id) {
   const r = rowOf(id);
@@ -469,550 +340,6 @@ function writeUrl() {
 
 // ── the list ────────────────────────────────────────────────────────────
 
-/** A link that names one agent (?agent=): it picks the pane itself. */
-const linkedAgentAsked = () =>
-  new URLSearchParams(location.search).has("agent");
-
-/** ?ws=: the one workspace the page was asked for, or null. */
-const urlWorkspace = () => {
-  // #80: ?project=, with ?ws= read as its old name.
-  const q = new URLSearchParams(location.search);
-  return q.get("project") || q.get("ws");
-};
-
-/**
- * The workspaces to show: ?ws= (always that one, even when it isn't active
- * or isn't known: never All in its place), else the scope bar's view.
- */
-function viewWorkspaces() {
-  return pickedWorkspace() ? [pickedWorkspace()] : (st.data?.workspaces ?? []);
-}
-
-function pickedWorkspace() {
-  const all = st.data?.workspaces ?? [];
-  const ws = urlWorkspace();
-  if (ws) return ws;
-  if (st.scope && st.scope !== "all" && all.includes(st.scope)) return st.scope;
-  return null;
-}
-
-function stateTone(r) {
-  // The shell's dot: plain is the good one (the repo table's look).
-  if (r.state === "running") return "";
-  if (r.state === "stopping") return "pending";
-  if (/^exited \((?!0\))/.test(r.state)) return "bad";
-  return "off";
-}
-
-function stateText(state) {
-  const m = /^exited(?: \((-?\d+)\))?$/.exec(state);
-  if (m)
-    return m[1] === undefined
-      ? t("ag.state.exited")
-      : t("ag.state.exitedCode", { code: m[1] });
-  return ["running", "stopping", "stopped", "ended", "interrupted"].includes(
-    state,
-  )
-    ? t(`ag.state.${state}`)
-    : state;
-}
-
-function displayName(r) {
-  if (r.kind !== "agent") return r.label;
-  return r.displayName || (r.persona ?? r.label);
-}
-
-/**
- * A row's name: the name a person gave it (AG-4b), then its persona and
- * id; else its persona, then its id (when they differ).
- */
-function nameHtml(r) {
-  const extra = sessionExtra(r);
-  if (r.displayName)
-    return `${esc(r.displayName)} <span class="id">${esc([r.persona, r.label, extra].filter(Boolean).join(" · "))}</span>`;
-  const id = [r.persona && r.persona !== r.label ? r.label : "", extra]
-    .filter(Boolean)
-    .join(" · ");
-  return `${esc(displayName(r))}${id ? ` <span class="id">${esc(id)}</span>` : ""}`;
-}
-
-/**
- * The session's name (AG-4b: the runtime's /rename or Den's, the later),
- * where it says more than the agent's own name: not empty, not the
- * persona, not the name already shown. Else "".
- */
-function sessionExtra(r) {
-  const n = r?.kind === "agent" ? (r.sessionTitle ?? "").trim() : "";
-  if (!n || n === r.persona || n === paneName(r) || n === displayName(r))
-    return "";
-  return n;
-}
-
-// A pane's title and its Close: the agent's display name (AG-10.8), else
-// its id, never the persona. There is no display name before AG-10.
-function paneName(r) {
-  return r.kind === "agent" ? r.displayName || r.agent || r.label : r.label;
-}
-
-/** An agent that isn't running: stopped, interrupted or exited (AG-14). */
-export function isStopped(r) {
-  return r.kind === "agent" && r.state !== "running" && r.state !== "stopping";
-}
-
-/** 0.4.45: a shell that exited (it has nothing to resume). */
-export const exitedShell = (r) => r?.kind === "session" && r.exited === true;
-
-/** 0.4.45: what the Stopped group holds: stopped agents, exited shells. */
-export const inStopped = (r) => isStopped(r) || exitedShell(r);
-
-/** issue 206: true when `iso` is today in the person's own zone. */
-function isToday(iso) {
-  const day = formatTime(iso, { style: "date" });
-  return !!day && day === formatTime(Date.now(), { style: "date" });
-}
-
-/** "7:52 PM" today, else "Nov 6, 7:52 PM": the person's zone (issue 206). */
-function when(iso) {
-  return formatTime(iso, { style: isToday(iso) ? "time" : "datetime" });
-}
-
-/** Why a stopped agent stopped (AG-14.1). */
-export function stopReason(r) {
-  // Issue 659: its folder-trust question was declined: it never started.
-  if (r.trustDeclined) return t("ag.why.trustDeclined");
-  // Issue 631: it didn't come back after a restart (its terminal host's
-  // too), and why.
-  if (r.restartFailed?.why)
-    return t("ag.why.restartFailed", { why: r.restartFailed.why });
-  if (r.state === "interrupted")
-    return t("ag.why.interrupted", { name: TITLE });
-  if (r.state === "stopped")
-    return t("ag.why.stopped", { time: when(r.stoppedAt ?? "") }).trim();
-  const m = /^exited(?: \((-?\d+)\))?$/.exec(r.state);
-  if (m)
-    return m[1] === undefined
-      ? t("ag.why.exited")
-      : t("ag.why.exitedCode", { code: m[1] });
-  return stateText(r.state);
-}
-
-/** Why it rotates, in words: "3 compactions", "PR merged" (den#4). */
-function rotationWhy(rot) {
-  if (rot.due === "pr-merged") return t("ag.rot.merged");
-  return t(
-    rot.compactions === 1 ? "ag.rot.compactions.one" : "ag.rot.compactions",
-    {
-      n: rot.compactions,
-    },
-  );
-}
-
-/** The Workspaces page, focused on workspace `ws` (0.4.17). */
-function wsHref(ws) {
-  const nav = window.denShell?.nav?.() ?? [];
-  const base = nav.find((n) => n.id === "local-dev")?.href ?? "/local-dev";
-  return `${base}?project=${encodeURIComponent(ws)}`;
-}
-
-/**
- * 0.4.45: a project's name as the header's picker shows it: Hub's when it
- * is linked to a Hub project, else its own (workspace-picker.js). From
- * /api/workspaces, read with the list now and then (st.projects).
- */
-function projName(ws) {
-  return projectLabel(st.projects, ws);
-}
-
-/**
- * Issue 168: ` data-pc="<colour>"` for what belongs to project `ws` (its
- * agents' rows, tabs and pane inherit its colour), or "" for none (the
- * server agent: neutral grey). The colour is in CSS (shell.js, --pc).
- */
-function pcAttr(ws) {
-  const c = projectColour(st.projects, ws);
-  return c ? ` data-pc="${esc(c)}"` : "";
-}
-
-/**
- * Issue 168: an agent's letter tile, in its project's colour. The letter
- * is drawn by CSS (data-l), so the row's and the bar's text stay the
- * agent's name alone, as screen readers and copies read it.
- */
-function tileHtml(name) {
-  const ch = [...String(name ?? "").trim()][0] ?? "";
-  return ch
-    ? `<span class="agtile" data-l="${esc(ch.toLocaleUpperCase())}" aria-hidden="true"></span>`
-    : "";
-}
-
-/** Workspace `ws` as a link to it on Workspaces. */
-function wsLinkHtml(ws) {
-  // ON-6: the server agent belongs to no workspace: its group is "Server".
-  if (ws === SERVER_WS)
-    return `<span class="wslink" data-server>${esc(t("ag.server"))}</span>`;
-  const name = projName(ws);
-  // Issue 168: its colour beside its name, never colour alone.
-  return `<span class="den-pc"${pcAttr(ws)} aria-hidden="true"></span><a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws: name }))}">${esc(name)}</a>`;
-}
-
-/**
- * D20: where its session runs, as a tag: "Stops at logout" (the desktop
- * session) or "No GUI" (outside it: kept across logout). `button`: a
- * button that says why when tapped (the pane bar); else a span (a row,
- * itself a button). "" when the host didn't say (off macOS, older host).
- */
-function whereTag(r, button = false) {
-  const s = r?.launchd;
-  const logout = s === "Aqua" || s === "LoginWindow";
-  if (!logout && s !== "Background" && s !== "System") return "";
-  const key = logout ? "ag.where.logout" : "ag.where.bg";
-  const tip = t(`${key}Tip`, { cli: CLI });
-  const cls = `tagx${logout ? " warn" : ""}`;
-  const where = logout ? "logout" : "bg";
-  return button
-    ? `<button type="button" class="${cls}" data-act="where" data-where="${where}" title="${esc(tip)}" aria-label="${esc(`${t(key)}: ${tip}`)}">${logout ? "⚠ " : ""}${esc(t(key))}</button>`
-    : `<span class="${cls}" data-where="${where}" title="${esc(tip)}">${logout ? "⚠ " : ""}${esc(t(key))}</span>`;
-}
-
-/**
- * D65 v2: "<project> › <repo>" in the pane bar, with Change; a repo that
- * is no longer its project's says so, with Re-link. Read from its record,
- * never its folder.
- */
-function linkTag(r) {
-  if (r?.kind !== "agent" || r.server) return "";
-  const project = projName(r.project || r.workspace);
-  const path = r.repo ? `${project} › ${r.repo}` : project;
-  return (
-    `<span class="aglink" data-link><span class="mono">${esc(path)}</span>` +
-    (r.repoMissing
-      ? `<span class="tagx warn" data-repo-missing>${esc(t("ag.link.missing"))}</span>`
-      : "") +
-    `<button type="button" class="den-lnk" data-act="link" aria-label="${esc(t("ag.link.changeName", { id: r.agent }))}">${esc(t(r.repoMissing ? "ag.link.relink" : "ag.link.change"))}</button></span>`
-  );
-}
-
-/**
- * den#3: what its subagents run on, and where that came from: the pane
- * bar's tag. Nothing for a runtime that takes no subagent model.
- */
-function subagentTag(r) {
-  if (r?.kind !== "agent" || !r.subagentModel) return "";
-  const inherit = r.subagentModel === "inherit";
-  const model = inherit ? t("ag.subagents.inherit") : r.subagentModel;
-  const from = r.subagentModelFrom || "default";
-  // inherit: Den sets none, said plainly (not "runs on the runtime's").
-  const tip = inherit
-    ? t(`ag.subagents.inheritFrom.${from === "persona" ? "persona" : "org"}`)
-    : t(`ag.subagents.from.${from}`, { model });
-  return `<span class="tagx" data-subagents="${esc(r.subagentModel)}" title="${esc(tip)}">${esc(t("ag.subagents", { model }))}</span>`;
-}
-
-/**
- * Issue 340: the vendor account it runs on under the always-on service, by
- * its label (never an email): the pane bar's tag. Nothing without one.
- */
-function signInTag(r) {
-  if (r?.kind !== "agent" || !r.signIn) return "";
-  return `<span class="tagx" data-signin title="${esc(t("ag.signIn.tip", { label: r.signIn }))}">${esc(t("ag.signIn", { label: r.signIn }))}</span>`;
-}
-
-function hubBoundTag(r) {
-  if (r?.kind !== "agent" || typeof r.hubBound !== "boolean") return "";
-  const [word, tip] = r.hubBound
-    ? [t("ag.hub.bound"), t("ag.hub.bound.tip")]
-    : [t("ag.hub.unbound"), t("ag.hub.unbound.tip")];
-  return `<span class="tagx" data-hub-bound="${r.hubBound}" title="${esc(tip)}">${esc(word)}</span>`;
-}
-
-/** Its rotation, when one is due: "ready" or "due" (den#4). */
-function rotationOf(r) {
-  // D28: on_due off: nothing will happen, so nothing is shown.
-  if (!r.rotation?.due || r.rotation.onDue === "off") return "";
-  return r.rotation.ready ? "ready" : "due";
-}
-
-/** D28: Settings › Agents (its Rotation row). */
-function settingsHref() {
-  const nav = window.denShell?.nav?.() ?? [];
-  const base = nav.find((n) => n.id === "settings")?.href ?? "/settings";
-  return `${base}?q=rotation#agents`;
-}
-
-/**
- * D28: what happens to a due agent, in words, from its on_due (auto: Den
- * asks for the handoff at idle and relaunches it; ask; auto that gave up
- * asking). Older servers send no on_due: as ask.
- */
-function rotMessage(r) {
-  const rot = r.rotation;
-  const why = rotationWhy(rot);
-  const auto = rot.onDue === "auto" && !rot.fellBack;
-  // Issue 914: its turn is over, but background work it started still runs.
-  if (rot.waiting > 0)
-    return t(rot.waiting === 1 ? "ag.rc.waiting.one" : "ag.rc.waiting", {
-      why,
-      n: rot.waiting,
-    });
-  if (rot.relaunchWanted && !rot.ready) return t("ag.rc.wanted", { why });
-  if (auto && !isStopped(r))
-    return t(rot.ready ? "ag.rc.autoReady" : "ag.rc.autoAsk", { why });
-  if (rot.fellBack && !rot.ready)
-    return t(
-      rot.handoff === "invalid" ? "ag.rc.fellBackBad" : "ag.rc.fellBack",
-      { why },
-    );
-  return t(
-    rot.ready
-      ? "ag.rc.ready"
-      : rot.handoff === "invalid"
-        ? "ag.rc.bad"
-        : "ag.rc.missing",
-    { why },
-  );
-}
-
-/**
- * D28: the rotation callout's buttons, wherever it shows (a row, the pane
- * bar): Relaunch now (from the handoff, or asking for it first), Write
- * handoff (a running agent without one), Keep this conversation with
- * "don't ask again", and Settings. "" when nothing is due or on_due is off.
- */
-function rotActionsHtml(r) {
-  const rot = r.rotation;
-  if (!rot?.due || rot.onDue === "off") return "";
-  const id = r.agent;
-  const now = `<button type="button" class="den-btn sm primary" data-act="relaunch" aria-label="${esc(t("ag.relaunchName", { id }))}">${esc(t("ag.relaunch"))}</button>`;
-  const write =
-    !isStopped(r) && !rot.ready && !rot.relaunchWanted
-      ? `<button type="button" class="den-btn sm" data-act="rot-write" aria-label="${esc(t("ag.rc.writeName", { id }))}">${esc(t("ag.rc.write"))}</button>`
-      : "";
-  const keep = `<button type="button" class="den-btn sm" data-act="rot-keep" aria-label="${esc(t("ag.rc.keepName", { id }))}">${esc(t("ag.rc.keep"))}</button>`;
-  const never = `<label class="agnever"><input type="checkbox" data-rot-never> ${esc(t("ag.rc.never"))}</label>`;
-  const settings = `<a class="lnk" data-rot-settings href="${esc(settingsHref())}">${esc(t("ag.rc.settings"))}</a>`;
-  return now + write + keep + never + settings;
-}
-
-/** D28: the effective settings and where each comes from, in words. */
-function rotFromText(rot) {
-  if (!rot?.from) return "";
-  return t(
-    rot.after === 0
-      ? "ag.rc.fromNever"
-      : rot.after === 1
-        ? "ag.rc.from.one"
-        : "ag.rc.from",
-    {
-      n: rot.after,
-      src: rot.from.after_compactions,
-      mode: t(`ag.rc.mode.${rot.onDue}`),
-      src2: rot.from.on_due,
-    },
-  );
-}
-
-/** D28: the callout under a row: the message, its line of settings, the buttons. */
-function rotCalloutHtml(r) {
-  const acts = rotActionsHtml(r);
-  if (!acts) return "";
-  const from = rotFromText(r.rotation);
-  return (
-    `<span class="agcant" data-rot-msg data-handoff="${esc(r.rotation.handoff)}">${esc(rotMessage(r))}</span>` +
-    (from
-      ? `<span class="agcant agfrom" data-rot-from>${esc(from)}</span>`
-      : "") +
-    acts
-  );
-}
-
-/** D37: "10:13 PM" today, else "Nov 6": short, a <time> (issue 206). */
-function whenShort(iso) {
-  return timeHtml(iso, { style: isToday(iso) ? "time" : "date" });
-}
-
-/** D37: a not-running agent's chip: Stopped, Exited or Interrupted. */
-function stoppedChip(r) {
-  if (r.state === "interrupted") return t("ag.chip.interrupted");
-  if (/^exited\b/.test(r.state)) return t("ag.chip.exited");
-  return t("ag.chip.stopped");
-}
-
-/** D37: what a stopped row leaves out, for its tooltip. */
-function stoppedTip(r) {
-  const who = [r.persona, r.agent].filter(Boolean).join(" · ");
-  const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
-  const cant =
-    !r.resumable && r.noResume
-      ? r.noResume.startsWith(`${r.runtime} `)
-        ? t("ag.noResume", { runtime: r.runtime })
-        : r.noResume
-      : "";
-  return [who, meta, stopReason(r), cant].filter(Boolean).join("\n");
-}
-
-/**
- * A stopped agent's row (D37): one line. A hollow dot, its name, a chip
- * (Stopped, Exited, Interrupted), when, then Resume and ⋯ (Start fresh,
- * Remove). Its persona, id, runtime and folder are in its tooltip and its
- * pane. No Rename (a running agent's), no helpers (D34: only a running
- * agent's active ones). A runtime that can't resume: Start fresh instead
- * of Resume, and ⋯ has Remove. D28: a due rotation's callout stays.
- */
-function stoppedHtml(r, wsTag = false) {
-  const open = st.open.includes(r.id);
-  const name = displayName(r);
-  // Its own name, else its id: short, and unique (the persona is in the
-  // tooltip; several stopped agents often share one).
-  const label = r.displayName || r.agent || name;
-  const who = esc(r.agent);
-  const rot = rotationOf(r);
-  const callout = rotCalloutHtml(r);
-  const at = whenShort(r.stoppedAt ?? r.endedAt ?? "");
-  const chip =
-    rot === "ready"
-      ? t("ag.rot.ready", { why: rotationWhy(r.rotation) })
-      : stoppedChip(r);
-  const first = r.resumable
-    ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
-    : `<button type="button" class="den-btn sm" data-act="fresh" aria-label="${esc(t("ag.freshName", { id: r.agent }))}">${esc(t("ag.fresh"))}</button>`;
-  const more = `<button type="button" class="den-btn sm" data-act="row-more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`;
-  return (
-    `<div class="agst agst1" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
-    // D45: a click (or Enter) opens its details, with Resume in them.
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}"${pcAttr(r.workspace)} data-details=""` +
-    ` aria-haspopup="dialog" aria-expanded="${agd.r?.id === r.id}"` +
-    ` title="${esc(stoppedTip(r))}"` +
-    ` aria-label="${esc(t("ag.det.label", { id: `${r.workspace} / ${name}` }))}">` +
-    gripHtml(r) +
-    `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
-    `<span class="nm">${tileHtml(label)}${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
-    `<span class="stchip" title="${esc(chip)}">${esc(chip)}</span>` +
-    (at ? `<span class="when">${at}</span>` : "") +
-    `</button>` +
-    `<span class="agacts">${first}${more}</span>` +
-    (callout ? `<div class="agcallout">${callout}</div>` : "") +
-    // Issue 278: deliveries still held after a loop: Clear.
-    (compactingHtml(r)
-      ? `<div class="agcallout">${compactingHtml(r)}</div>`
-      : "") +
-    hubWorkHtml(r) +
-    `</div>`
-  );
-}
-
-/**
- * 0.4.45: an exited shell in Stopped: its name, "Exited", and Remove. A
- * click opens its pane, where its last output still reads.
- */
-function exitedShellHtml(r, wsTag = false) {
-  const label = r.label || r.name;
-  return (
-    `<div class="agst agst1" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}">` +
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"${pcAttr(r.workspace)}` +
-    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${label}` }))}">` +
-    `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
-    `<span class="nm">${tileHtml(label)}${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
-    `<span class="stchip">${esc(stoppedChip(r))}</span>` +
-    `</button>` +
-    `<span class="agacts"><button type="button" class="den-btn sm" data-act="remove-shell" aria-label="${esc(t("ag.removeShell", { id: label }))}">${esc(t("ag.remove"))}</button></span>` +
-    `</div>`
-  );
-}
-
-/**
- * 0.4.40: "Working on N Hub comments · <artifact>" (its turn has them), or
- * "N Hub comments wait for it" (stopped, or mid-turn); the artifact links
- * to Hub. Under the row (never inside its button).
- */
-export function hubWorkHtml(r, tr = t) {
-  const w = r?.kind === "agent" ? r.hubWork : null;
-  if (!w || !(w.working > 0 || w.queued > 0)) return "";
-  const n = w.working > 0 ? w.working : w.queued;
-  const key = w.working > 0 ? "ag.hub.working" : "ag.hub.queued";
-  const url =
-    typeof w.url === "string" && /^https?:\/\//.test(w.url) ? w.url : "";
-  const art = w.artifact
-    ? url
-      ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(w.artifact)}</a>`
-      : ` · ${esc(w.artifact)}`
-    : "";
-  // Issue 664: why the queued ones wait, when Den knows.
-  const why =
-    w.working > 0 || w.held !== "not_at_prompt"
-      ? ""
-      : ` · <span data-held="not_at_prompt">${esc(tr("ag.hub.notAtPrompt"))}</span>`;
-  return (
-    `<div class="aghub" data-hubwork="${w.working > 0 ? "working" : "queued"}">` +
-    `<span class="den-dot ${w.working > 0 ? "ok" : "warn"}" aria-hidden="true"></span> ` +
-    `${esc(tr(key, { n }))}${art}${why}</div>`
-  );
-}
-
-/** Issue 278: "840 KB" (whole KB; under 1 KB: bytes). */
-function sizeText(bytes) {
-  return bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`;
-}
-
-/**
- * Issue 278: the agent's instruction files were over the share of its
- * context at its last start: a tag, its tooltip naming the largest file.
- */
-export function instructionsTag(r, tr = t) {
-  const i = r?.kind === "agent" ? r.instructions : null;
-  if (!i) return "";
-  const tip = tr("ag.ins.tip", {
-    size: sizeText(i.totalBytes),
-    share: i.sharePercent,
-    path: i.largest?.path ?? "",
-    big: sizeText(i.largest?.bytes ?? 0),
-  });
-  return `<span class="tagx warn" data-instructions title="${esc(tip)}">${esc(tr("ag.ins.tag"))}</span>`;
-}
-
-/** Issue 278: "Compacting repeatedly" (a loop now) as a tag. */
-export function compactingTag(r, tr = t) {
-  const c = r?.kind === "agent" ? r.compacting : null;
-  if (!c?.active) return "";
-  return `<span class="tagx warn" data-compacting title="${esc(tr("ag.ctx.looping", { n: c.count }))}">${esc(tr("ag.ctx.tag"))}</span>`;
-}
-
-/**
- * Issue 278: under the row of an agent stuck compacting: what is
- * happening, the likely cause (its instruction files, when its start's
- * check warned), Stop (the same Stop as its pane's) and, when Den holds its
- * deliveries, Clear. Nothing when there is neither a loop nor a hold.
- */
-export function compactingHtml(r, tr = t, { withStop = true } = {}) {
-  const c = r?.kind === "agent" ? r.compacting : null;
-  if (!c || !(c.active || c.paused)) return "";
-  const i = r.instructions;
-  const cause = i
-    ? tr("ag.ctx.causeFiles", {
-        size: sizeText(i.totalBytes),
-        share: i.sharePercent,
-        path: i.largest?.path ?? "",
-        big: sizeText(i.largest?.bytes ?? 0),
-      })
-    : tr("ag.ctx.causeOther");
-  const said = [
-    c.active ? tr("ag.ctx.looping", { n: c.count }) : "",
-    c.active ? cause : "",
-    c.paused ? tr("ag.ctx.held") : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const stop =
-    withStop && c.active && (r.state === "running" || r.state === "stopping")
-      ? `<button type="button" class="den-btn sm" data-act="stop" aria-label="${esc(tr("ag.stopName", { id: r.agent }))}">${esc(tr("ag.stop"))}</button>`
-      : "";
-  const clear = `<button type="button" class="den-btn sm" data-act="ctx-clear" aria-label="${esc(tr("ag.ctx.clearName", { id: r.agent }))}">${esc(tr(c.paused ? "ag.ctx.clearHeld" : "ag.ctx.clear"))}</button>`;
-  return (
-    `<span class="agcant" data-compacting-msg>${esc(said)}</span>` +
-    stop +
-    clear
-  );
-}
-
 /** Issue 278: a person looked: the loop is over for now; held deliveries go. */
 async function clearCompacting(r, button) {
   await window.denShell.busyAction(
@@ -1026,174 +353,6 @@ async function clearCompacting(r, button) {
   );
   await refresh();
 }
-
-/** NT-3b: what the "waiting" badge says: why, when the server knows. */
-function waitingText(r) {
-  const k = r.waitingWhy ? `ag.waiting.${r.waitingWhy}` : "";
-  const s = k ? t(k) : "";
-  return s && s !== k ? s : t("ag.waiting");
-}
-
-function seenMap() {
-  const out = new Map(st.seenNow);
-  if (typeof document !== "undefined" && document.visibilityState !== "hidden")
-    for (const id of visibleIds()) {
-      const r = rowOf(id);
-      if (r?.attn === "done") out.set(id, r.attnSince);
-    }
-  return out;
-}
-
-function markOpened(id) {
-  const r = rowOf(id);
-  if (!r || r.kind !== "agent") return;
-  if (r.attn === "done") st.seenNow.set(id, r.attnSince);
-  sayLooking([r.agent]);
-}
-
-function sayLooking(agents) {
-  // busy-ok: a background ping while the tab is looked at; no button
-  if (agents.length)
-    void api("POST", "/api/notifications/looking", { agents }).catch(() => {});
-}
-
-function allProjects() {
-  return viewWorkspaces().length > 1;
-}
-
-function attnParts(r, attn) {
-  const ago = (iso) =>
-    iso && Number.isFinite(Date.parse(iso))
-      ? formatTime(iso, { style: "relative" })
-      : "";
-  if (r.kind !== "agent") return { detail: cwdText(r) };
-  if (attn === "needs") {
-    const w = needsWhy(r);
-    return {
-      detail: w && !w.startsWith("ag.whyLong.") ? w : waitingText(r),
-      time: r.attnSince ? sinceShort(r.attnSince) : "",
-    };
-  }
-  if (attn === "done")
-    return {
-      detail: r.attnSince
-        ? t("ag.meta.finished", { ago: ago(r.attnSince) })
-        : "",
-    };
-  if (attn === "working")
-    return { detail: r.attnSince ? sinceShort(r.attnSince) : "" };
-  if (r.attn === "done") return { detail: t("ag.meta.seen") };
-  return { detail: r.attnSince ? ago(r.attnSince) : cwdText(r) };
-}
-
-function rowHtml(r) {
-  if (isStopped(r)) return stoppedHtml(r);
-  const open = st.open.includes(r.id);
-  const nm =
-    r.kind === "agent"
-      ? nameHtml(r)
-      : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
-  const seen = seenMap();
-  const attn = rowState(r, seen);
-  const right = chipHtml(r, seen);
-  const meta = metaHtml({
-    runtime: r.runtimeLabel || r.runtime,
-    ...attnParts(r, attn),
-  });
-  const ptag = tagHtml(r, {
-    all: allProjects(),
-    name: projName,
-    pc: (ws) => projectColour(st.projects, ws),
-  });
-  // D62: the helpers chip is on line 2, before the meta, never in the dot's
-  // column (it pushed this row's name right of the others').
-  const chip = r.kind === "agent" ? helperBadgeHtml(r) : "";
-  const said = r.kind === "agent" ? helperCountSaid(r) : "";
-  const rot = rotationOf(r);
-  const rotTag = rot
-    ? `<span class="tagx warn" data-rotation="${rot}">${esc(
-        t(rot === "ready" ? "ag.rot.ready" : "ag.rot.due", {
-          why: rotationWhy(r.rotation),
-        }),
-      )}</span>`
-    : "";
-  const revokedTag = r.tokenRevoked
-    ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
-    : "";
-  const ovTags = r.kind === "agent" ? overrideTagsHtml(r) : "";
-  const wTag = whereTag(r);
-  const mTag = mcpStaleTag(r, false);
-  const modeTag = modeTagHtml(r, false);
-  // Issue 144: this agent holds (or waits for) the machine's gate slot.
-  const gateText =
-    r.kind === "agent" ? (st.gate?.tagFor(`agent:${r.agent}`) ?? "") : "";
-  const gateTag = gateText
-    ? `<span class="tagx" data-gate-tag>${esc(gateText)}</span>`
-    : "";
-  // Issue 278: compacting repeatedly; instruction files over the share.
-  const ctxTags = compactingTag(r) + instructionsTag(r);
-  const tags =
-    rotTag ||
-    revokedTag ||
-    ovTags ||
-    wTag ||
-    mTag ||
-    modeTag ||
-    gateTag ||
-    ctxTags
-      ? `<span class="agtags">${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
-      : "";
-  const button =
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${pcAttr(r.workspace)}` +
-    ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
-    ` data-attn="${attn}"` +
-    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + ` · ${t(`ag.chip.${attn}`)}` + (said ? ` · ${said}` : ""))}">` +
-    gripHtml(r) +
-    markHtml(attn) +
-    `<span class="nm">${tileHtml(r.kind === "agent" ? displayName(r) : r.label)}${nm}</span>${right}` +
-    (chip
-      ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta" data-meta>${ptag}${meta}</span>` : ""}</span>`
-      : meta || ptag
-        ? `<span class="meta" data-meta>${ptag}${meta}</span>`
-        : "") +
-    tags +
-    (attn ? `<span class="agchev" data-chev aria-hidden="true">›</span>` : "") +
-    `</button>`;
-  // D28: a running agent whose rotation is due: its callout, with buttons
-  // (before, only a tag: nothing to press).
-  // MODE-3: Restart to apply, under a row whose mode differs.
-  // Issue 278: compacting repeatedly: why, Stop, and Clear.
-  const callout =
-    r.kind === "agent"
-      ? rotCalloutHtml(r) +
-        modeApplyHtml(r) +
-        // Issues 750 and 1223: Restart for its tools, on the row too.
-        // Issue 1407: once asked, its own answer (and Restart now).
-        restartAnswerHtml(r) +
-        compactingHtml(r)
-      : "";
-  // D32: the helpers it started in its own session, under it. #80: only
-  // once its badge is opened (closed by default, the agent in front too).
-  const hOpen = r.kind === "agent" && st.helpersOpen.has(helperKey(r));
-  const helpers =
-    r.kind === "agent" ? helperRowsHtml(r, hOpen, st.helpersShown) : "";
-  // #80: the badge is a button beside the row's (laid over its place).
-  const toggle = r.kind === "agent" ? helperToggleHtml(r, hOpen) : "";
-  const row = toggle ? `<div class="agrw">${button}${toggle}</div>` : button;
-  const hub = hubWorkHtml(r);
-  if (!callout) return row + hub + helpers;
-  return (
-    `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
-    row +
-    `<div class="agacts">${callout}</div>` +
-    hub +
-    `</div>` +
-    helpers
-  );
-}
-
-/** #80: an agent's key in st.helpersOpen. */
-const helperKey = (r) => `${r.workspace}\0${r.agent}`;
 
 /**
  * #80: each helpers badge sits over its placeholder on its row's second
@@ -1561,15 +720,6 @@ function terminalsHref() {
     : "/terminals";
 }
 
-function savedBy() {
-  try {
-    const v = localStorage.getItem("den-agents-by");
-    return BY.includes(v) ? v : "need";
-  } catch {
-    return "need";
-  }
-}
-
 function setBy(by) {
   st.by = BY.includes(by) ? by : "need";
   try {
@@ -1850,10 +1000,12 @@ function repaintNames() {
  */
 async function refresh() {
   clearTimeout(st.timer);
+  let listed = false;
   try {
     await refreshOnce();
+    listed = true;
   } finally {
-    nextRefresh();
+    nextRefresh(listed);
   }
 }
 
@@ -1958,11 +1110,12 @@ async function refreshOnce() {
   if (strip) paintTabs(strip);
 }
 
-function nextRefresh() {
+function nextRefresh(listed) {
   if (!st.root?.isConnected) return;
   // A pane whose session just ended may have a new one soon (a persona
   // change, a resume): look again every second for a while.
-  const soon = Date.now() < (st.followUntil ?? 0);
+  const soon =
+    Date.now() < (st.followUntil ?? 0) || (listed && !!st.data?.helpersPending);
   st.timer = setTimeout(
     () => {
       if (!document.hidden) void refresh();
@@ -1971,8 +1124,6 @@ function nextRefresh() {
     soon ? FOLLOW_MS : REFRESH_MS,
   );
 }
-
-const rowOf = (id) => st.data?.sessions?.find((s) => s.id === id) ?? null;
 
 /** How often, and how long, the list is read after a pane's session ends. */
 const FOLLOW_MS = 1_000;
@@ -2019,6 +1170,12 @@ function freshLine(p) {
   p.term?.write(`\x1b[2m${t("ag.freshLine")}\x1b[0m\r\n`);
 }
 
+function forgetPty(p) {
+  p.pty = null;
+  delete p.el.dataset.ptyCols;
+  delete p.el.dataset.ptyRows;
+}
+
 /** Move pane `p` to session row `row`, where it was. */
 function retarget(p, row) {
   const old = p.id;
@@ -2027,6 +1184,7 @@ function retarget(p, row) {
   p.conn = null;
   p.sock = null;
   p.recon = null;
+  forgetPty(p);
   st.panes.delete(old);
   p.id = row.id;
   st.panes.set(row.id, p);
@@ -2305,7 +1463,10 @@ function focusTerm(id, claim = true, { ifIdle = false } = {}) {
     // over a field the person went to since (a double-click's rename).
     const idle = st.focusIfIdle;
     st.focusIfIdle = false;
+    st.focusSoon = id;
     requestAnimationFrame(() => {
+      if (st.focusSoon !== id) return;
+      st.focusSoon = null;
       if (p.closed || p.exited || inField()) return;
       // D58: a link's focus is only for a keyboard that went nowhere yet.
       if (idle && !keyboardIdle()) return;
@@ -2322,12 +1483,12 @@ function focusTerm(id, claim = true, { ifIdle = false } = {}) {
  * counts: the page moving focus back to a row it redrew does not.
  */
 function dropStalePick(e) {
-  const id = st.focusOnOpen;
+  const id = st.focusOnOpen ?? st.focusSoon;
   if (!id || !e.isTrusted) return;
   // Typing straight after a pick is for the picked agent; Tab moves away.
   if (e.type === "keydown" && e.key !== "Tab") return;
   const at = e.type === "keydown" ? document.activeElement : e.target;
-  if (!st.panes.get(id)?.el?.contains(at)) st.focusOnOpen = null;
+  if (!st.panes.get(id)?.el?.contains(at)) st.focusOnOpen = st.focusSoon = null;
 }
 document.addEventListener("pointerdown", dropStalePick, true);
 document.addEventListener("keydown", dropStalePick, true);
@@ -2468,79 +1629,6 @@ function apiOnlyTag(r) {
 }
 
 /**
- * D44: a running agent whose MCP servers are out of date (Hub connected or
- * disconnected since it launched): a tag, and on the pane bar Restart (at
- * its next idle, same conversation). Issue 749: so does one whose session
- * failed to load a server's tools, with the error in the tag's title.
- */
-function mcpStaleTag(r, withButton) {
-  const why = toolsStale(r);
-  if (!why) return "";
-  // Issue 193: Den restarts it to load Hub's new tools (no button: under way).
-  if (why === "restarting")
-    return `<span class="tagx warn" data-tools-restarting="1" title="${esc(t("ag.mcp.reloadingTip"))}">${esc(t("ag.mcp.reloading"))}</span>`;
-  let tag;
-  if (why === "failed") {
-    // Issue 749: its session didn't get a server's tools (the error says why).
-    const fx = r.mcpFailed[0];
-    const tip = t("ag.mcp.failedTip", { error: String(fx?.error ?? "") });
-    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx?.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
-  } else if (why === "den") {
-    // Issue 1223: its Den tools are an older Den's (Den updated since).
-    const v = {
-      from: String(r.mcpStale.den.from),
-      to: String(r.mcpStale.den.to),
-    };
-    tag = `<span class="tagx warn" data-mcp-stale="den" title="${esc(t("ag.mcp.denTip", v))}">${esc(t("ag.mcp.den", v))}</span>`;
-  } else {
-    tag = `<span class="tagx warn" data-mcp-stale="${why}" title="${esc(t(`ag.mcp.${why}Tip`))}">${esc(t(`ag.mcp.${why}`))}</span>`;
-  }
-  if (!withButton) return tag;
-  return `<span class="agstale">${tag}${toolsRestartButton(r, t)}</span>`;
-}
-
-/**
- * MODE-3 (0.4.48): a running agent's mode differs from the one its
- * process runs in (a mode chosen while it ran; MODE-2 restarts it after
- * its turn, unless that waits on something): { want, running }, else null.
- */
-export function modeDriftOf(r) {
-  if (r?.kind !== "agent" || isStopped(r) || !r.mode || !r.modeRunning)
-    return null;
-  return r.mode === r.modeRunning
-    ? null
-    : { want: r.mode, running: r.modeRunning };
-}
-
-const modeName = (m) => t(`pm.name.${m}`);
-
-/**
- * MODE-3: its mode on its row and its pane bar ("mode: Auto"); on a
- * mismatch, "Set to Auto, running Ask", and in the pane bar Restart to
- * apply beside it (the row has it under the row: modeApplyHtml).
- */
-export function modeTagHtml(r, withButton) {
-  if (r?.kind !== "agent" || isStopped(r) || !r.mode) return "";
-  const d = modeDriftOf(r);
-  // Issue 199: a mode of its own says so, and the project's it doesn't follow.
-  // Issue 225: every mode says where it comes from.
-  const own = ownModeLabel(r);
-  const src = r.modeSource ? ` data-mode-source="${esc(r.modeSource)}"` : "";
-  if (!d)
-    return `<span class="tagx${r.mode === "all" || own ? " warn" : ""}" data-mode="${esc(r.mode)}"${src}${own ? ' data-mode-own="1"' : ""}>${esc(modeLabel(r))}</span>`;
-  const tag = `<span class="tagx warn" data-mode-drift="${esc(d.want)}">${esc(t("ag.mode.drift", { want: modeName(d.want), running: modeName(d.running) }))}</span>`;
-  return withButton
-    ? `<span class="agmode">${tag}${modeApplyHtml(r)}</span>`
-    : tag;
-}
-
-/** MODE-3: Restart to apply, a person's one click (a mismatch only). */
-function modeApplyHtml(r) {
-  if (!modeDriftOf(r)) return "";
-  return `<button type="button" class="den-btn sm primary" data-act="mode-apply" aria-label="${esc(t("ag.mode.applyName", { id: r.agent }))}">${esc(t("ag.mode.apply"))}</button>`;
-}
-
-/**
  * MODE-3: restart it now, on the same conversation; it starts in its mode
  * (the server reads it again at every start). Only a person's page can
  * (the restart route refuses an agent).
@@ -2559,25 +1647,6 @@ async function applyMode(r, button) {
   await refresh();
 }
 
-const restartKey = (ws, id) => `${ws}\0${id}`;
-
-/**
- * Issue 1407: agent `r`'s answer under its row, once a restart for its
- * tools was asked (now, turn, job with what and how long, unknown, with
- * Restart now for the last two); else its Restart. Gone once its tools
- * are current.
- */
-function restartAnswerHtml(r) {
-  const k = restartKey(r.workspace, r.agent);
-  const a = st.restarts.get(k);
-  const why = toolsStale(r);
-  if (a && (!why || why === "restarting") && a.state !== "failed") {
-    st.restarts.delete(k);
-    return toolsRestartHtml(r, t);
-  }
-  return a ? restartRowHtml(a, t) : toolsRestartHtml(r, t);
-}
-
 /**
  * Issue 1407: above the list, when two or more agents in view need a
  * restart for their tools: how many, Restart all at their next idle, and
@@ -2589,12 +1658,15 @@ function toolsBarHtml(rows) {
     return why && why !== "restarting";
   });
   if (stale.length < 2) return "";
+  const run = st.restartRun;
   const asked = stale
     .map((r) => st.restarts.get(restartKey(r.workspace, r.agent)))
     .filter(Boolean);
   return (
     `<div class="agnote" data-note="tools-stale" role="status">${esc(t("rs.bar", { n: stale.length }))} ` +
-    `<button type="button" class="den-btn sm" data-act="tools-restart-all">${esc(t("rs.barBtn", { n: stale.length }))}</button>` +
+    (run
+      ? `<button type="button" class="den-btn sm" data-act="tools-restart-all" disabled aria-busy="true">${esc(t("rs.barBusy", { done: run.done, total: run.total }))}</button>`
+      : `<button type="button" class="den-btn sm" data-act="tools-restart-all">${esc(t("rs.barBtn", { n: stale.length }))}</button>`) +
     restartAllHtml(asked, t) +
     `</div>`
   );
@@ -2657,11 +1729,14 @@ let restartFollow = null;
  * stale bar drops an agent the moment it is back.
  */
 function followAgentRestarts() {
-  if (restartFollow || !st.restarts.size) return;
+  if (restartFollow || (!st.restarts.size && !st.restartRun)) return;
   restartFollow = followRestarts({
     api,
-    onRows: (rows) => {
-      if (!st.root?.isConnected || !st.restarts.size) {
+    onRows: (rows, run) => {
+      const before = JSON.stringify(st.restartRun);
+      st.restartRun = run ?? null;
+      if (JSON.stringify(st.restartRun) !== before) void refresh();
+      if (!st.root?.isConnected || (!st.restarts.size && !st.restartRun)) {
         restartFollow?.stop();
         restartFollow = null;
         return;
@@ -2677,7 +1752,7 @@ function followAgentRestarts() {
           changed = true;
         }
       }
-      if (!st.restarts.size) {
+      if (!st.restarts.size && !st.restartRun) {
         restartFollow?.stop();
         restartFollow = null;
       }
@@ -2698,8 +1773,19 @@ async function restartAllForTools(button) {
   );
   for (const a of Array.isArray(out?.agents) ? out.agents : [])
     st.restarts.set(restartKey(a.workspace, a.id), a);
+  st.restartRun = out?.run ?? null;
   await refresh();
   followAgentRestarts();
+}
+
+async function resumeRestartRun() {
+  try {
+    const r = await api("GET", "/api/agents/restart-status");
+    st.restartRun = r?.run ?? null;
+  } catch {
+    st.restartRun = null;
+  }
+  if (st.restartRun) followAgentRestarts();
 }
 
 /** Issue 1407: Restart now (ends a job), one agent's or all that wait. */
@@ -3178,7 +2264,7 @@ function connect(p) {
     onOpen: (sock) => {
       p.sock = sock;
       p.heardSession = false;
-      p.pty = null;
+      forgetPty(p);
       p.heardSize = false;
       // D54: who sizes the PTY is decided on the session frame (it says
       // how many view it); until then, this pane waits.
@@ -3802,27 +2888,9 @@ async function newShell(r, button) {
 
 // ── Stopped agents (AG-14) ──────────────────────────────────────────────
 
-const agentPath = (r, verb) =>
-  `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/${verb}`;
-
 // ── Issue 96: a project's agents in the person's order ─────────────────
 // A grip and a pointer drag (mouse, pen and touch), ⋯ Move up, Move down
 // and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in
-
-const groupOf = (r) =>
-  inStopped(r)
-    ? orderGroup(st.data?.sessions ?? [], r, inStopped)
-    : bandGroup(
-        (st.data?.sessions ?? []).filter((s) => !inStopped(s)),
-        r,
-        { seenNow: seenMap() },
-      );
-
-/** The grip a pointer drags a row by (any pointer: mouse, pen, touch). */
-const gripHtml = (r) =>
-  orderable(r, SERVER_WS) && (inStopped(r) || groupOf(r).length > 0)
-    ? `<span class="agrip" data-grip="" role="img" aria-label="${esc(t("ag.ord.gripOne", { id: displayName(r) }))}" title="${esc(t("ag.ord.grip"))}">⠿</span>`
-    : "";
 
 const runningMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
 
@@ -4628,11 +3696,6 @@ function bringAll() {
 function bringPick() {
   const c = bringAll().find((x) => x.id === sd.bring.pick);
   return c && !c.open && !c.agent ? c : null;
-}
-
-/** D56: where an agent runs, saying so when that is outside its project. */
-function cwdText(r) {
-  return r.outside && r.cwd ? t("ag.outside", { folder: r.cwd }) : r.cwd;
 }
 
 /** "3 minutes ago", "2 hours ago", or the date: a <time> (issue 206). */
@@ -5985,6 +5048,75 @@ function modeItems(r, opener) {
   ];
 }
 
+function skillPackItems(r, opener) {
+  if (r?.kind !== "agent" || r.server) return [];
+  const own = r.skillPacks ?? null;
+  const now =
+    own === "off"
+      ? t("ag.packs.off")
+      : own === null
+        ? t("ag.packs.default")
+        : t("ag.packs.on");
+  return [
+    {
+      label: t("ag.packs.item", { v: now }),
+      onSelect: () => openSkillPackMenu(opener, r, own),
+    },
+  ];
+}
+
+function openSkillPackMenu(anchor, r, own) {
+  const sh = window.denShell;
+  const id = r.displayName || r.agent;
+  const pick = (value) => {
+    if (value === own) return;
+    void sh
+      .busyAction(
+        "agent-skill-packs",
+        (headers) =>
+          sh.api(
+            "POST",
+            "/api/settings",
+            {
+              skill_packs: {
+                key: `agents.${r.agent}.skill_packs`,
+                value,
+              },
+            },
+            { headers },
+          ),
+        {
+          button: anchor,
+          vars: { name: id },
+          success: () => t("ag.packs.set", { id }),
+        },
+      )
+      .then((x) => {
+        if (x !== undefined && x !== null) void refresh();
+      });
+  };
+  sh.openMenu(anchor, {
+    label: t("ag.packs.menu", { id }),
+    items: [
+      {
+        label: t("ag.packs.default"),
+        checked: own === null,
+        onSelect: () => pick(null),
+      },
+      {
+        label: t("ag.packs.off"),
+        checked: own === "off",
+        onSelect: () => pick("off"),
+      },
+      {
+        label: t("ag.packs.on"),
+        checked: own === "on",
+        onSelect: () => pick("on"),
+      },
+    ],
+  });
+}
+
 /** D37: a stopped agent's ⋯: Start fresh (when Resume is its button), Remove. */
 function stoppedMenuItems(r, opener) {
   return [
@@ -6017,16 +5149,6 @@ function stoppedMenuItems(r, opener) {
 
 /** Under this width the details are a bottom sheet (as the service panel). */
 const DET_SHEET = "(max-width: 639px)";
-/** The open details: the row, its opener, the pop-over and its scrim. */
-const agd = {
-  r: null,
-  opener: null,
-  el: null,
-  scrim: null,
-  det: null,
-  release: null,
-};
-
 // Issue 1085: its actions are the kit's small row-action size (den-btn sm),
 // as the stopped rows' own: Remove is never the one large button.
 function detailsHtml(r, det) {
@@ -6563,6 +5685,7 @@ export async function mountAgentsPage(root) {
             : [
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
                 ...modeItems(r, b),
+                ...skillPackItems(r, b),
                 restartResumeItem(r),
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
                 ...orderItems(r, false),
@@ -6680,6 +5803,7 @@ export async function mountAgentsPage(root) {
   const [, saved] = await Promise.all([loadScope(), savedLayout()]);
   // A link's &layout= wins for this page; else the person's.
   st.layout = linked ?? saved;
+  await resumeRestartRun();
   await refresh();
   paintLayout();
   // An id the list no longer has (removed, another distribution's) is

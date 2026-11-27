@@ -73,6 +73,10 @@ export const AGENT_SCOPE_ROUTES: Readonly<Record<string, AgentScopeEntry>> = {
     "person-strict",
     "the person's own, every project",
   ),
+  "GET /api/alerts/stream": e(
+    "person-strict",
+    "the person's own alerts as they come; the handler refuses agents",
+  ),
   "GET /api/report/drafts": e(
     "person-strict",
     "the person's own, every project",

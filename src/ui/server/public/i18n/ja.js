@@ -733,6 +733,10 @@
     "busy.restartS": "{name} を再起動しました。",
     "busy.restartF": "{name} を再起動できませんでした。",
     "busy.modeW": "{name} のモードを設定しています…",
+    "busy.packsW": "{name} のスキルパックを設定しています…",
+    "busy.packsS": "{name} のスキルパックを設定しました。",
+    "busy.packsF":
+      "{name} のスキルパックを設定できませんでした。何も変わっていません。",
     "busy.modeS": "{name} のモードを設定しました。",
     "busy.modeF":
       "{name} のモードを設定できませんでした。何も変わっていません。",
@@ -890,6 +894,9 @@
     "err.421.lead":
       "このサーバーは自身のアドレスでのみ応答するため、別の名前のページからは届きません。",
     "err.421.open": "localhost で開く",
+    "err.starting.title": "Den を起動しています",
+    "err.starting.lead":
+      "Den は起動したばかりで、このアドレスではまだ準備ができていません。このページはまもなく自動でもう一度試します。",
     "err.link.title": "このエージェントへのリンクは開けません",
     "err.link.project": "この Den にプロジェクト {project} はありません。",
     "err.link.agent":
@@ -1387,6 +1394,27 @@
     "set.agents.list_host_wait": "ターミナルホストの待ち時間",
     "set.agents.list_host_wait.d":
       "エージェント一覧がターミナルホストを待つ時間です。これを過ぎると、一覧は接続できなかったことを表示して再試行します。__DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_subagents": "同時に動かせるサブエージェント数",
+    "set.agents.max_subagents.d":
+      "このマシンのエージェント全体で、同時に動かせるサブエージェントの数です。これを超える開始は拒否され、エージェントにはこの設定の名前が伝えられます。未設定なら「同時に動かせるエージェント数」の2倍です。__DEN_CLI__ config agents.max_subagents=8",
+    "set.agents.subagents_respect_load_hold":
+      "負荷が高いときは新しいサブエージェントを止める",
+    "set.agents.subagents_respect_load_hold.d":
+      "オンの場合、マシンの負荷がエージェントの負荷上限を超えている間は新しいサブエージェントが拒否され、エージェントにはこの設定の名前が伝えられます。オフの場合、負荷に関係なくサブエージェントが開始します。__DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "スキルパック",
+    "set.agents.skill_packs.d":
+      "Den がエージェントに与えるスキルパック。それぞれ固定したバージョンで Den に同梱され、ダウンロードはしません。__DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "コーディングエージェント向けのオープンソースのスキル。Den のエージェントに渡すものを選びます。__DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "オン",
+    "set.ui.skillPackLicence": "ライセンス",
+    "set.ui.skillPackPin": "固定コミット",
+    "set.ui.skillPackOnCount": "{n} 個のスキルがオン",
+    "set.ui.skillPackCost": "各エージェントの起動に約 {n} トークン追加",
+    "set.ui.skillPackSkills": "スキル",
+    "set.ui.skillPackAll": "すべて",
+    "set.ui.skillPackNone": "なし",
     "set.agents.max_concurrent": "同時に動かせるエージェント数",
     "set.agents.max_concurrent.d":
       "このマシンで同時に動かせるエージェントの数です。通常のターミナルは数に入りません。これを超える起動は拒否され、その旨が表示されます。この値はディストリビューションの値より優先されます。__DEN_CLI__ config agents.max_concurrent=4",
@@ -1788,7 +1816,7 @@
       "オンにすると、Hub に接続したプロジェクトで Den が起動するすべてのエージェントの指示にデリバリーループが入ります。要件ドキュメントは Hub に、issue は完全な形でリンク、レビューとフィードバックは Hub のスレッドで、ステータスは git から。オフにすると、プロジェクトがオンにしない限り、ここのすべてのプロジェクトで外れます。エージェントの次の起動から反映されます。",
     "set.agents.hub_groups": "Hub のグループ",
     "set.agents.hub_groups.d":
-      "エージェントページに Hub のグループを表示するか（「プロジェクト別」の横の「グループ別」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
+      "エージェントページに Hub のグループを表示するか（一覧の切り替えの「プロジェクト」の横の「グループ」）。自動: Den Hub がグループに対応しているとき。オフ: Den は Hub にグループを一切たずねません。__DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "自動",
     "set.agents.hub_groups.o.on": "オン",
     "set.agents.hub_groups.o.off": "オフ",
@@ -2164,8 +2192,8 @@
     "ag.mcp.restartName": "{id} を次の待機時に再起動",
     "ag.by.label": "一覧の表示",
     "ag.by.need": "対応順",
-    "ag.by.project": "プロジェクト別",
-    "ag.by.group": "グループ別",
+    "ag.by.project": "プロジェクト",
+    "ag.by.group": "グループ",
     "ag.grp.noHub": "グループは Den Hub の機能です。",
     "ag.grp.connect": "Den Hub に接続",
     "ag.grp.notInPlan":
@@ -2656,6 +2684,13 @@
     "ag.mode.src.default": "Den の組み込みの既定",
     "ag.mode.item": "モード: {m}",
     "ag.mode.menu": "{id} のモード",
+    "ag.packs.item": "スキルパック: {v}",
+    "ag.packs.menu": "{id} のスキルパック",
+    "ag.packs.default": "インストールの既定",
+    "ag.packs.off": "オフ",
+    "ag.packs.on": "オン",
+    "ag.packs.set":
+      "{id} のスキルパックを設定しました。ターンの後、同じ会話のまま再起動します。",
     "ag.mode.pick": "{id} のモードを変更",
     "ag.mode.follow": "プロジェクトに従う",
     "ag.mode.setS":
@@ -2842,6 +2877,8 @@
     "pe.runtime": "既定のランタイム",
     "pe.model": "モデル",
     "pe.ver": "バージョン",
+    "pe.packs": "スキルパック",
+    "pe.packsList": "ファイルのリスト: {list}",
     "pe.rtDefault": "ランタイムの既定",
     "pe.perms": "権限モード",
     "pe.noneCmd": "なし",
@@ -3001,6 +3038,27 @@
     "bell.updates": "お知らせ({n})",
     "bell.rep": "同様の通知があと {n} 件",
     "bell.stop": "この種類を表示しない",
+    "bell.openInAgents": "エージェントで開く",
+    "peek.openInLayout": "レイアウトで開く",
+    "peek.close": "閉じる (Esc)",
+    "peek.back": "通知に戻る",
+    "peek.chipNeed": "対応が必要 · {why}",
+    "peek.chipNeedPlain": "対応が必要",
+    "peek.chipDone": "完了",
+    "peek.chipStopped": "停止済み",
+    "peek.chipRunning": "実行中",
+    "peek.connecting": "{name} に接続中…",
+    "peek.noConnect": "{name} のターミナルに接続できませんでした。",
+    "peek.retry": "再試行",
+    "peek.finished":
+      "{name} は見ている間に完了しました。今はあなたにとってアイドルです。",
+    "peek.stopped": "{name} は停止しました。答えることはありません。",
+    "peek.restart": "再起動",
+    "peek.next": "{name} ({project}) もあなたを必要としています: {why}",
+    "peek.whyWaiting": "あなたを待っています",
+    "peek.switch": "{name} に切り替える",
+    "peek.footType": "Esc で閉じる · 入力は {name} に送られます",
+    "peek.footEsc": "Esc で閉じる",
     "bell.askT": "「{kind}」を表示しませんか?",
     "bell.askB":
       "この種類だけです。アクティビティ記録には残ります。設定でいつでもオンに戻せます。",
@@ -3117,6 +3175,7 @@
     "rs.none": "再起動が必要なエージェントはありません。",
     "rs.bar": "{n} 件のエージェントがツールを読み込むために再起動が必要です。",
     "rs.barBtn": "{n} 件すべてを次の待機時に再起動",
+    "rs.barBusy": "{total} 件中 {done} 件を再起動中…",
     "rs.allName": "エージェント",
     "rs.done": "{id}: 同じ会話のまま再起動しました。",
     "rs.timedOut":
@@ -3282,6 +3341,7 @@
     "hp.rowRunning": "実行中のヘルパー {n}",
     "hp.runningN": "実行中 {n}",
     "hp.chip": "ヘルパー {n}",
+    "hp.counting": "ヘルパーを確認中…",
     "hp.groupOf": "{name} のヘルパー",
     "hp.open": "{what}、{status}: トランスクリプトを開く",
     "hp.dlg": "{name} のヘルパー",
@@ -4591,12 +4651,32 @@
     "set.notifications.push_ttl": "プッシュの保持時間",
     "set.notifications.push_ttl.d":
       "電源が切れているかオフラインの端末向けに、プッシュサービスが通知を保持する時間 (秒) です。86400 で 1 日です。0 にすると、端末がいまオンでなければ破棄されます。__DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.tab_first": "開いているタブを優先",
+    "set.notifications.tab_first.d":
+      "プッシュも受け取る端末で __DEN_TITLE__ のタブが開いていて前面にあるときは、タブが通知を表示し、その端末へのプッシュは送りません。この秒数のうちにタブが表示しなければ、プッシュを送ります。__DEN_CLI__ config alerts.tab_first_seconds=3",
+    "set.notifications.max_streams": "通知を受け取る開いたタブ",
+    "set.notifications.max_streams.d":
+      "通知を同時に受け取れる、開いている __DEN_TITLE__ のタブの数です。これを超えると、最も古いタブは再読み込みするまで通知を受け取りません。__DEN_CLI__ config alerts.max_streams=20",
     "set.notifications.desktop": "デスクトップ通知",
     "set.notifications.desktop.d":
       "エージェントがあなたを必要とするとき（許可、質問、「許可」の確認）、__DEN_TITLE__ が裏にあってもこのブラウザーが通知を表示します。クリックするとそのエージェントが開きます。ブラウザーが一度だけ確認します。",
     "set.notifications.desktop.denied":
       "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。",
-    "set.notifications.desktop.none": "このブラウザーは通知を表示できません。",
+    "set.notifications.desktop.none":
+      "このブラウザーではここで通知を表示できません。iPhone では、先に __DEN_TITLE__ をホーム画面に追加し、そこから開いてください。ベルとタブのカウントはそのまま使えます。",
+    "set.notifications.desktop.blocked":
+      "このブラウザーはこのページの通知をブロックしています。サイトの設定で許可してから、これをオンにしてください。ベルとタブのカウントはそのまま使えます。",
+    "set.notifications.alert_finished": "エージェントが終わったときも知らせる",
+    "set.notifications.alert_finished.d":
+      "エージェントがターンを終え、あなたがそれを見ていないときに通知します。既定はオフです。ミュートしたエージェントは通知しません。",
+    "set.notifications.alert_sound": "サウンド",
+    "set.notifications.alert_sound.d":
+      "デスクトップ通知ごとに短い音を鳴らします。「あなたが必要」用と、より控えめな「終わりました」用の 2 つです。__DEN_TITLE__ のタブが開いているときだけ鳴ります。閉じたタブやスマートフォンは、それぞれの通知音を使います。",
+    "set.notifications.alert_sound.needs": "▶ あなたが必要",
+    "set.notifications.alert_sound.finished": "▶ 終わりました",
+    "set.notifications.tab_count": "タブのカウント",
+    "set.notifications.tab_count.d":
+      "あなたを必要としているエージェントの数を、タブのタイトルとアイコンに表示します（ベルの件数ではありません）。0 のときは何も表示しません。",
     "hp.showAll": "すべて表示 ({n})",
     "set.agents.runtimes.d":
       "各ランタイムの状態とバージョン、使用中のパスとその出どころです。「パスを設定…」は先にバージョンコマンドを実行し、そのランタイムではないパスを拒否します。",

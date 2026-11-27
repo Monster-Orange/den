@@ -548,6 +548,9 @@ function editorBody(dlg, s) {
     version: v("#pe-ver") || "latest",
     permission: s.intent,
     allowedCommands: splitCommands(v("#pe-tools")),
+    ...(v("#pe-packs") === "list"
+      ? {}
+      : { skillPacks: v("#pe-packs") === "off" ? "off" : null }),
   };
 }
 
@@ -592,6 +595,7 @@ export function openPersonaEditor(o) {
         version: src.version || "latest",
         permission: src.permission || "ask",
         allowedCommands: [...(src.allowedCommands ?? [])],
+        skillPacks: src.skillPacks ?? null,
       }
     : {
         displayName: "",
@@ -604,6 +608,7 @@ export function openPersonaEditor(o) {
         version: "latest",
         permission: firstRole?.mode || "ask",
         allowedCommands: [],
+        skillPacks: null,
       };
   const s = {
     intent: d.permission,
@@ -635,6 +640,13 @@ export function openPersonaEditor(o) {
     `<div class="two"><label class="fld"><span>${esc(t("pe.runtime"))}</span><select id="pe-rt"${dis}>${runtimeOptionsHtml(data, d.runtime)}</select></label>` +
     `<label class="fld"><span>${esc(t("pe.model"))}</span><select id="pe-model"${dis}>${modelOptionsHtml(data, d.runtime, d.model, t("pe.rtDefault"))}</select></label></div>` +
     `<div class="two"><label class="fld"><span>${esc(t("pe.ver"))}</span><select id="pe-ver"${dis}>${versionOptionsHtml(data, d.runtime, d.model, d.version)}</select></label><span class="helpl" id="pe-newer">${isStale(data, d.runtime, d.model, d.version) ? `${newerBadge()} <button type="button" class="lnk" data-x="latest">${esc(t("ver.use"))}</button>` : ""}</span></div>` +
+    `<label class="fld"><span>${esc(t("pe.packs"))}</span><select id="pe-packs"${dis}>` +
+    `<option value=""${d.skillPacks === null ? " selected" : ""}>${esc(t("ag.packs.default"))}</option>` +
+    `<option value="off"${d.skillPacks === "off" ? " selected" : ""}>${esc(t("ag.packs.off"))}</option>` +
+    (Array.isArray(d.skillPacks)
+      ? `<option value="list" selected>${esc(t("pe.packsList", { list: d.skillPacks.join(", ") }))}</option>`
+      : "") +
+    `</select></label>` +
     `<div class="pblk">${permBlockHtml("pe", data, { ...s, disabled: ro, extrasOpen: s.extras.length > 0 })}</div>` +
     `<p class="err" id="pe-err" role="alert" hidden></p>` +
     `<div class="btns">${!isNew && src.origin === "local" ? `<button type="button" class="den-btn" data-x="del">${esc(t("pe.del"))}</button>` : ""}<span class="sp"></span>` +

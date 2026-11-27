@@ -1369,12 +1369,32 @@
     "set.notifications.push_ttl": "Push kept for",
     "set.notifications.push_ttl.d":
       "How long a push service keeps an alert for a device that is off or offline, in seconds. 86400 is a day; 0 drops it unless the device is on now. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.tab_first": "Open tab first",
+    "set.notifications.tab_first.d":
+      "When a __DEN_TITLE__ tab is open and in front on a device that also gets push, the tab shows the alert and the push to that device is skipped. If the tab hasn't shown it within this many seconds, the push goes. __DEN_CLI__ config alerts.tab_first_seconds=3",
+    "set.notifications.max_streams": "Open tabs that get alerts",
+    "set.notifications.max_streams.d":
+      "How many open __DEN_TITLE__ tabs of yours get alerts at once. Past this, the oldest stops getting them until it is reloaded. __DEN_CLI__ config alerts.max_streams=20",
     "set.notifications.desktop": "Desktop alerts",
     "set.notifications.desktop.d":
       "When an agent needs you (a permission, a question, an Allow), this browser shows a notification, even while __DEN_TITLE__ is in the background. Click it to open the agent. The browser asks once.",
     "set.notifications.desktop.denied":
       "This browser blocks notifications from this page. Allow them in its site settings, then turn this on.",
-    "set.notifications.desktop.none": "This browser can't show notifications.",
+    "set.notifications.desktop.none":
+      "This browser can't show notifications here. On iPhone, add __DEN_TITLE__ to your Home Screen first, then open it from there. The bell and the tab count still work.",
+    "set.notifications.desktop.blocked":
+      "This browser blocks notifications from this page. Allow them in its site settings, then turn this on. The bell and the tab count still work.",
+    "set.notifications.alert_finished": "Also tell me when an agent finishes",
+    "set.notifications.alert_finished.d":
+      "A notification when an agent finishes a turn and you are not looking at it. Off by default. An agent you muted never alerts.",
+    "set.notifications.alert_sound": "Sounds",
+    "set.notifications.alert_sound.d":
+      "A short sound with each desktop alert, one for “needs you” and a softer one for “finished”. Plays only while a __DEN_TITLE__ tab is open; a closed tab or a phone uses its own alert sound.",
+    "set.notifications.alert_sound.needs": "▶ Needs you",
+    "set.notifications.alert_sound.finished": "▶ Finished",
+    "set.notifications.tab_count": "Count in the tab",
+    "set.notifications.tab_count.d":
+      "Show the number of agents that need you in the tab title and on the tab icon (not the bell's count). Zero shows nothing.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
       "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
@@ -1748,6 +1768,9 @@
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
     "busy.modeW": "Setting {name}'s mode…",
+    "busy.packsW": "Setting {name}'s skill packs…",
+    "busy.packsS": "{name}'s skill packs are set.",
+    "busy.packsF": "Couldn't set {name}'s skill packs. Nothing changed.",
     "busy.modeS": "{name}'s mode is set.",
     "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
     "keep.label": "Keep agents running after logout",
@@ -1897,6 +1920,9 @@
     "err.421.lead":
       "This server answers only on its own addresses, so a page on another name can't reach it.",
     "err.421.open": "Open on localhost",
+    "err.starting.title": "Den is starting",
+    "err.starting.lead":
+      "Den has just started and isn't ready for this address yet. This page tries again by itself in a moment.",
     "err.link.title": "This agent link can't open",
     "err.link.project": "There is no project {project} in this Den.",
     "err.link.agent":
@@ -2298,7 +2324,7 @@
       "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
     "set.agents.hub_groups": "Groups from Hub",
     "set.agents.hub_groups.d":
-      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+      "Whether the Agents page shows your Hub's groups (Group, beside Project in the list's switch). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "Auto",
     "set.agents.hub_groups.o.on": "On",
     "set.agents.hub_groups.o.off": "Off",
@@ -2640,6 +2666,26 @@
     "set.agents.draft_hold_max": "Draft hold before the bell",
     "set.agents.draft_hold_max.d":
       "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    "set.agents.max_subagents": "Subagents at once",
+    "set.agents.max_subagents.d":
+      "How many subagents the agents on this machine may run at once, all together. A start past this is refused, and the agent is told this setting's name. Unset, twice Agents at once. __DEN_CLI__ config agents.max_subagents=8",
+    "set.agents.subagents_respect_load_hold": "No new subagents under load",
+    "set.agents.subagents_respect_load_hold.d":
+      "On, while the machine's load is over the agents' load ceiling, a new subagent is refused, and the agent is told this setting's name. Off, subagents start whatever the load. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "Skill packs",
+    "set.agents.skill_packs.d":
+      "Skill packs Den gives its agents. Each is vendored in Den at a pinned version and never fetched. __DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "Open-source skills for coding agents. Choose which of them Den's agents get. __DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "On",
+    "set.ui.skillPackLicence": "Licence",
+    "set.ui.skillPackPin": "pinned at",
+    "set.ui.skillPackOnCount": "{n} skills on",
+    "set.ui.skillPackCost": "Adds about {n} tokens to each agent's start",
+    "set.ui.skillPackSkills": "Skills",
+    "set.ui.skillPackAll": "All",
+    "set.ui.skillPackNone": "None",
     "set.agents.max_concurrent": "Agents at once",
     "set.agents.max_concurrent.d":
       "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
@@ -3171,9 +3217,9 @@
     "ag.mcp.restart": "Restart",
     "ag.mcp.restartName": "Restart {id} at its next idle",
     "ag.by.label": "Show the list",
-    "ag.by.need": "By need",
-    "ag.by.project": "By project",
-    "ag.by.group": "By group",
+    "ag.by.need": "Need",
+    "ag.by.project": "Project",
+    "ag.by.group": "Group",
     "ag.grp.noHub": "Groups come with Den Hub.",
     "ag.grp.connect": "Connect Den Hub",
     "ag.grp.notInPlan": "Groups aren't in this company's Den Hub plan.",
@@ -3649,6 +3695,13 @@
     "ag.mode.src.default": "Den's built-in default",
     "ag.mode.item": "Mode: {m}",
     "ag.mode.menu": "{id}'s mode",
+    "ag.packs.item": "Skill packs: {v}",
+    "ag.packs.menu": "{id}'s skill packs",
+    "ag.packs.default": "Install's default",
+    "ag.packs.off": "Off",
+    "ag.packs.on": "On",
+    "ag.packs.set":
+      "{id}'s skill packs are set. It restarts after its turn, on the same conversation.",
     "ag.mode.pick": "Change {id}'s mode",
     "ag.mode.follow": "Follow project",
     "ag.mode.setS":
@@ -3833,6 +3886,8 @@
     "pe.runtime": "Default runtime",
     "pe.model": "Model",
     "pe.ver": "Version",
+    "pe.packs": "Skill packs",
+    "pe.packsList": "Its file's list: {list}",
     "pe.rtDefault": "the runtime's default",
     "pe.perms": "Permission mode",
     "pe.noneCmd": "none",
@@ -3989,6 +4044,27 @@
     "bell.updates": "Updates ({n})",
     "bell.rep": "{n} more like this",
     "bell.stop": "Stop showing this kind",
+    "bell.openInAgents": "Open in Agents",
+    "peek.openInLayout": "Open in layout",
+    "peek.close": "Close (Esc)",
+    "peek.back": "Back to notifications",
+    "peek.chipNeed": "Needs you · {why}",
+    "peek.chipNeedPlain": "Needs you",
+    "peek.chipDone": "Done",
+    "peek.chipStopped": "Stopped",
+    "peek.chipRunning": "Running",
+    "peek.connecting": "Connecting to {name}…",
+    "peek.noConnect": "Could not connect to {name}’s terminal.",
+    "peek.retry": "Retry",
+    "peek.finished":
+      "{name} finished while you were looking. It is now Idle for you.",
+    "peek.stopped": "{name} stopped. Nothing to answer.",
+    "peek.restart": "Restart",
+    "peek.next": "{name} ({project}) also needs you: {why}",
+    "peek.whyWaiting": "waiting for you",
+    "peek.switch": "Switch to {name}",
+    "peek.footType": "Esc closes · typing goes to {name}",
+    "peek.footEsc": "Esc closes",
     "bell.askT": "Stop showing “{kind}”?",
     "bell.askB":
       "Only this kind. The activity trail still records it. You can turn it back on in Settings.",
@@ -4111,6 +4187,7 @@
     "rs.none": "No agents need a restart.",
     "rs.bar": "{n} agents need a restart to load their tools.",
     "rs.barBtn": "Restart all {n} at their next idle",
+    "rs.barBusy": "Restarting {done} of {total}…",
     "rs.allName": "the agents",
     "rs.done": "{id}: restarted, in the same conversation.",
     "rs.timedOut":
@@ -4309,6 +4386,7 @@
     "hp.rowRunning.one": "{n} helper running",
     "hp.runningN": "{n} running",
     "hp.chip": "{n} helpers",
+    "hp.counting": "Counting helpers…",
     "hp.chip.one": "{n} helper",
     "hp.groupOf": "Helpers of {name}",
     "hp.open": "{what}, {status}: open its transcript",
@@ -10957,6 +11035,7 @@
     ".den-bell-tw { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }",
     ".den-bell-t.long { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }",
     ".den-bell-row.rep { padding-left: 28px; }",
+    ".den-bell-page { flex: none; font-size: 12px; color: var(--accent-text); white-space: nowrap; }",
     // Issue 187: a row that opens on a click anywhere shows the pointer.
     ".den-bell-row.opens { cursor: pointer; }",
     ".den-bell-x, .den-bell-row .den-ib { font: 500 11px var(--mono); background: none; color: var(--muted);",

@@ -1,0 +1,87 @@
+--- a/skills/statechart/scripts/run.ts
++++ b/skills/statechart/scripts/run.ts
+@@ -1,5 +1,5 @@
+ import { Buffer } from "node:buffer";
+-import { type ChildProcess, execFile, type ExecFileException, spawn } from "node:child_process";
++import { type ChildProcess, spawn } from "node:child_process";
+ import { randomBytes } from "node:crypto";
+ import fs from "node:fs";
+ import os from "node:os";
+@@ -64,35 +64,9 @@
+   }
+ }
+ 
+-const TLC_TOOL =
+-  "http:tla2tools[url=https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar,checksum=sha256:936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88]@1.7.4";
+-const JAVA_TOOL = "java@temurin-25";
+ export const PINNED_FLAGS = ["-workers", "1", "-fp", "0", "-lncheck", "final"];
+ const SANY_ERRORS = /^\*\*\* ?(?:Errors|Abort messages|Parse Error)/m;
+ 
+-type ChildResult = {
+-  status: number | null;
+-  stdout: string;
+-  stderr: string;
+-  error: ExecFileException | undefined;
+-};
+-
+-const runChild = (file: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) =>
+-  new Promise<ChildResult>((resolve) => {
+-    execFile(
+-      file,
+-      args,
+-      { encoding: "utf8", maxBuffer: 1 << 30, windowsHide: true, ...options },
+-      (error, stdout, stderr) =>
+-        resolve({
+-          status: error ? (typeof error.code === "number" ? error.code : null) : 0,
+-          stdout,
+-          stderr,
+-          error: typeof error?.code === "string" ? error : undefined,
+-        }),
+-    );
+-  });
+-
+ export const messageOf = (error: unknown) =>
+   typeof error === "object" &&
+   error !== null &&
+@@ -183,26 +157,13 @@
+     });
+   });
+ 
+-async function findTlc(cwd: string) {
++async function findTlc() {
+   const { TLA2TOOLS, JAVA } = process.env;
+-  if (TLA2TOOLS) return { jar: TLA2TOOLS, java: JAVA || "java" };
+-  const mise = (...args: string[]) =>
+-    runChild("mise", args, { cwd, env: { ...process.env, MISE_CEILING_PATHS: cwd } });
+-  const where = () =>
+-    Promise.all([mise("where", TLC_TOOL), mise("which", "java", "--tool", JAVA_TOOL)]);
+-  let found = await where();
+-  if (found.some((r) => r.status !== 0)) {
+-    const r = await mise("install", JAVA_TOOL, TLC_TOOL);
+-    if (r.status !== 0)
+-      throw new Error(
+-        `Cannot find TLC: mise install failed: ${r.error?.message ?? r.stderr.trim()}\nOr set TLA2TOOLS to the path of tla2tools.jar, and JAVA to a java binary (Java 11 or later).`,
+-      );
+-    found = await where();
+-  }
+-  return {
+-    jar: path.join(found[0].stdout.trim(), "tla2tools.jar"),
+-    java: JAVA || found[1].stdout.trim(),
+-  };
++  if (!TLA2TOOLS || !fs.existsSync(TLA2TOOLS))
++    throw new Error(
++      "Cannot find TLC. Set TLA2TOOLS to the path of a local tla2tools.jar, and JAVA to a java binary (Java 11 or later). This copy never downloads or installs tools: ask a person to put them in place.",
++    );
++  return { jar: TLA2TOOLS, java: JAVA || "java" };
+ }
+ 
+ const exitClass = (status: number | null) =>
+@@ -277,7 +238,7 @@
+   const folder = path.dirname(path.resolve(specFile));
+   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "statechart-"));
+   try {
+-    const tlc = await findTlc(dir);
++    const tlc = await findTlc();
+     const config = (name: string, sections: ConfigSection[], extra: string[]) => {
+       fs.writeFileSync(path.join(dir, `${name}.cfg`), configText(sections, extra));
+       return [`-metadir`, path.join(dir, `meta-${name}`), "-config", path.join(dir, `${name}.cfg`)];
