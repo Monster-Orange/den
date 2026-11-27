@@ -687,6 +687,45 @@ never converted to HTML and back).
   `--surface` and slides over `--dur-fast`, not at all under reduced
   motion. A transparent border shows the track in forced colours.
 - Under `style-src 'self'`: no inline styles, nothing injected.
+- `src/tabs.js`, `src/tabs.css` (exports `./tabs`, `./tabs.css`): tabs,
+  the segmented control (DS component #1): one row of two to six choices,
+  exactly one chosen.
+
+      import { tabsHtml, hydrateTabs } from "@monster-orange/den-ui/tabs";
+      box.innerHTML = tabsHtml({ kind: "switch", label: "Tier",
+        items: [{ id: "p", text: "Primitive colours", count: 92 },
+                { id: "all", text: "All" }], chosen: "all", size: "auto" });
+      const tabs = hydrateTabs(box.querySelector(".den-tabs"), {
+        onChange: (id) => show(id),
+      });
+      tabs.set("p"); tabs.chosen(); tabs.destroy();
+
+- `kind: "page"` is a `<nav>` of links, the chosen one
+  `aria-current="page"`, each its own Tab stop, working with no script.
+  `kind: "switch"` is a `role="group"` of buttons, the chosen one
+  `aria-pressed="true"`: one Tab stop, ← and → move and choose, Home and
+  End go to the ends. `kind: "panel"` is a `role="tablist"`: each tab has
+  `aria-selected` and `aria-controls` its `panel` (the host's element,
+  which becomes a `role="tabpanel"` shown only while its tab is chosen),
+  with the same keys, and Tab goes on into the panel. With no script each
+  panel tab is a link, its `href` or `?tab=<id>`. The `label` names the group, and each item's
+  `text` is the host's own words; the kit adds none. A `count` follows
+  the label and is read with it. A `disabled` item is faint and read out,
+  but can't be chosen. No label, or fewer than two items: nothing is drawn.
+- It never wraps and never breaks a label. When the segments don't fit
+  the width the block is given, it folds into one native `<select>` with
+  the same choices (counts in brackets) after the visible label, and goes
+  back once they fit again, a few px later so it doesn't flicker. It is
+  measured with a ResizeObserver, not a breakpoint. With no script it
+  doesn't fold. Folded page tabs follow the chosen link, unless
+  `onChange` returns false.
+- 36px tall, or 44px (`--tap`) at 600px wide or less or with a coarse
+  pointer (`size: "auto"`; `"m"` and `"l"` fix it). Each segment is at
+  least 72px wide. The chosen one is `--accent-fill` with `--on-accent`
+  words; hover is `--sunken`; the focus ring is 2px `--accent` outside
+  the segment. `data-den-force="hover"` or `"focus"` on a segment shows
+  that state without the pointer or keys, for a page of its states.
+  Tokens only; under `style-src 'self'`, nothing injected.
 
 ## A list's filter bar and bulk bar
 

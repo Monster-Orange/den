@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Added
+
+- UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps: when it doesn't fit, it folds into one select with the same choices and a visible label. Every word is the host's.
+
 ## [0.4.92] - unreleased
 
 ### Changed

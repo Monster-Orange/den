@@ -1,0 +1,147 @@
+/* den-ui: tabs, the segmented control (DS component #1), tabs.js. Tokens
+   only. Linked, never injected: clean under style-src 'self'. The block
+   takes the width it is given (a flex item grows into its row): that is
+   the room the segments are measured against before they fold. */
+.den-tabs {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--sans);
+  --den-tab-h: var(--tap-min);
+}
+.den-tabs[data-size="l"] {
+  --den-tab-h: var(--tap);
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .den-tabs[data-size="auto"] {
+    --den-tab-h: var(--tap);
+  }
+}
+.den-tabs-row {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  vertical-align: top;
+  border: 1px var(--edge-style, solid) var(--border-strong);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+}
+.den-tabs-row[hidden],
+.den-tabs-fold[hidden] {
+  display: none;
+}
+.den-tab {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  min-width: calc(var(--tap-min) * 2);
+  height: var(--den-tab-h);
+  margin: 0;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-left: 1px var(--edge-style, solid) var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-s);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.den-tab:first-child {
+  border-left: 0;
+  border-top-left-radius: calc(var(--radius-button) - 1px);
+  border-bottom-left-radius: calc(var(--radius-button) - 1px);
+}
+.den-tab:last-child {
+  border-top-right-radius: calc(var(--radius-button) - 1px);
+  border-bottom-right-radius: calc(var(--radius-button) - 1px);
+}
+.den-tab-n {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.den-tab:not([aria-pressed="true"]):not([aria-current="page"]):not(
+    [aria-selected="true"]
+  ):not([aria-disabled="true"]):hover,
+.den-tab[data-den-force~="hover"]:not([aria-pressed="true"]):not(
+    [aria-current="page"]
+  ):not([aria-selected="true"]) {
+  background: var(--sunken);
+}
+.den-tab[aria-pressed="true"],
+.den-tab[aria-current="page"],
+.den-tab[aria-selected="true"] {
+  z-index: 1;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font-weight: 500;
+  box-shadow: 0 0 0 1px var(--accent-fill);
+  border-left-color: var(--accent-fill);
+}
+.den-tab[aria-pressed="true"] .den-tab-n,
+.den-tab[aria-current="page"] .den-tab-n,
+.den-tab[aria-selected="true"] .den-tab-n {
+  color: var(--on-accent);
+  opacity: 0.8;
+}
+.den-tab:focus {
+  outline: none;
+}
+.den-tab:focus-visible,
+.den-tab[data-den-force~="focus"] {
+  z-index: 2;
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+.den-tab[aria-disabled="true"] {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+.den-tab[aria-disabled="true"] .den-tab-n {
+  color: var(--faint);
+}
+/* Folded: one select with the host's label before it, the field look. */
+.den-tabs-fold {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 100%;
+  font-size: var(--fs-s);
+  color: var(--text);
+}
+.den-tabs-fold-l {
+  white-space: nowrap;
+}
+.den-tabs-select {
+  min-width: 0;
+  max-width: 100%;
+  height: var(--den-tab-h);
+  padding: 0 var(--space-2);
+  border: 1px var(--edge-style, solid) var(--border-strong);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-s);
+}
+.den-tabs-select:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-tab {
+    transition: none;
+  }
+}
