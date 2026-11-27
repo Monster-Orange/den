@@ -758,6 +758,42 @@ own parts or names.
 - The words are `kit.filter.*` and `kit.bulk.*` in `strings.js`. Both
   work under `script-src 'self'; style-src 'self'`.
 
+## The edit bar (DS component #14)
+
+`src/edit-bar.js` and `src/edit-bar.css` (exports `./edit-bar`,
+`./edit-bar.css`): one bar pinned to the bottom of an edited thing's
+column, so saving works the same in every editor.
+
+    import { editBarHtml, wireEditBar } from "@monster-orange/den-ui/edit-bar";
+    form.insertAdjacentHTML("beforeend", editBarHtml({ version: 4,
+      cancel: { href: "/doc" }, note: { name: "note" } }));
+    const eb = wireEditBar(form.querySelector("[data-edit-bar]"), {
+      onSave: (data) => post(data),   // false: "Not saved…"; { error }: that line
+      onLeave: () => go("/doc") });
+
+- Parts, start to end: the unsaved mark (a 6px `--accent` dot and
+  "Unsaved changes"; the words hide at 600px or less), "What changed"
+  (`note`: grows to 9 lines; Enter saves, Shift+Enter is a new line), a
+  host `line`, Cancel (`{ href }` or `{ form, label }`), and Save (Button
+  #7 primary, sm, last; "Save as v{n}" or `save`, with ⌘S, or Ctrl+S off
+  a Mac, in a `kbd`).
+- Sticky at the bottom of its column, `--surface` with a `--border` top
+  edge and room for the safe area. On a phone or a coarse pointer the note
+  is one 44px line at 16px, the buttons are 44px, and the bar rides above
+  the keyboard (`visualViewport`).
+- Save is off until a field other than the note changes (an editor that
+  writes elsewhere sends `edit-bar:changed` with `{ dirty }` on the form).
+  Saving holds Save with the kit's dots and holds Cancel; after 5 s the
+  line says it's still working. A failure is the bar's own line
+  (`role="alert"`, `--bad`) above the note, never a pop-up; Save tries
+  again. `setSave(text)` renames Save ("Save and merge").
+- ⌘S or Ctrl+S saves unless a dialog is open. Esc cancels unless a
+  dialog, a pop-over or a list is open. With changes, Cancel and Esc ask
+  "Leave without saving?" in the kit's confirm (Keep editing, then Leave
+  as danger), and a reload or a closed tab gets the browser's own
+  question. With no script: a plain form row, Save posts and Cancel is a
+  link. Words in en, es and ja (`EDIT_BAR_WORDS`), or `words`.
+
 ## The general button, the page action menu and the settings row
 
 Three pieces, data in, the kit's words out (en, es, ja).

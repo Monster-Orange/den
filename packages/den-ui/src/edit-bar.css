@@ -1,0 +1,117 @@
+.den-edit-bar {
+  position: sticky;
+  bottom: var(--eb-kb, 0px);
+  z-index: 5;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  padding: var(--space-2) 0
+    calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);
+  border-top: 1px var(--edge-style, solid) var(--border);
+  font-size: var(--fs-s);
+  color: var(--text);
+}
+.den-edit-bar .eb-start {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: var(--tap-min);
+}
+.den-edit-bar [data-unsaved][hidden],
+.den-edit-bar .eb-err[hidden] {
+  display: none;
+}
+.den-edit-bar .eb-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.den-edit-bar .eb-mark {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.den-edit-bar .eb-note {
+  flex: 1 1 8em;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 32px;
+  max-height: calc(9lh + var(--space-3));
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  resize: none;
+  overflow-y: auto;
+  border: 1px var(--edge-style, solid) var(--border-strong);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  color: var(--text);
+  font: var(--fs-s) / 1.4 var(--sans);
+}
+.den-edit-bar .eb-note:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: -1px;
+}
+.den-edit-bar .eb-line {
+  margin: 0;
+  min-width: 0;
+  color: var(--muted);
+}
+.den-edit-bar .eb-err {
+  order: -1;
+  flex: 1 0 100%;
+  color: var(--bad);
+}
+.den-edit-bar .eb-note::placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.den-edit-bar .eb-acts {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  min-height: var(--tap-min);
+  align-items: center;
+}
+.den-edit-bar [data-eb-cancel][aria-disabled="true"] {
+  pointer-events: none;
+}
+.den-edit-bar kbd {
+  font: inherit;
+  font-size: var(--fs-xs);
+  opacity: 0.8;
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .den-edit-bar {
+    align-items: center;
+    margin-inline: calc(-1 * var(--space-4));
+    padding-inline: var(--space-4);
+  }
+  .den-edit-bar .eb-note {
+    min-height: var(--tap);
+    max-height: var(--tap);
+    font-size: 16px;
+  }
+  .den-edit-bar .den-btn {
+    --den-btn-h: var(--tap);
+  }
+  .den-edit-bar kbd {
+    display: none;
+  }
+  .den-edit-bar .eb-mark {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
