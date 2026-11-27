@@ -11,6 +11,17 @@ export interface WhatsNewOptions {
   lang?: string | (() => string);
   /** The adapter's changelog(): newest first. */
   changelog?: (() => Promise<ChangelogEntry[]>) | null;
+  changelogPage?:
+    | ((ask: Record<string, string>) => Promise<{
+        items: ChangelogEntry[];
+        next: string | null;
+        prev: string | null;
+        total?: number;
+        offset?: number;
+        page?: number;
+        pages?: number;
+      }>)
+    | null;
   /** The Report button's HTML for the footer ("" for none). */
   reportButton?: () => string;
   /** After a close, with the newest version shown. */

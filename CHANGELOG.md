@@ -62,6 +62,7 @@ config and manifest changes a distribution must make to move to it under
 ### Migrations
 
 - **`GET /api/sessions` returns 50 rows by default.** A script or check that reads every session follows `next` with `?cursor=` (or asks `?page=N`), with `limit` up to the install's list page size (`web.list_page_max`, 200 by default). There is no whole-list ask: `?all=1` is a 400 `bad_page`. (issue 1926)
+- What's new › Show all versions shows the newest 10 versions and the kit's More button under them: Show 10 more adds the next 10 (fetched by cursor), until "All N shown", when the product's adapter has `changelogPage` (UI kit 0.23.0). Den's does.
 
 ## [0.4.92] - unreleased
 
