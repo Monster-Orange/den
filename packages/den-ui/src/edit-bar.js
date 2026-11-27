@@ -76,6 +76,7 @@ export function editBarHtml(o = {}) {
     `<span class="eb-mark" data-unsaved hidden>${esc(w.unsaved)}</span>` +
     note +
     (o.line ? `<span class="eb-line">${esc(o.line)}</span>` : "") +
+    `<p class="eb-line eb-still" role="status" data-eb-still hidden></p>` +
     `<p class="eb-line eb-err" role="alert" data-eb-err hidden></p>` +
     `</div>` +
     `<div class="eb-acts">${cancel}` +
@@ -96,6 +97,7 @@ export function wireEditBar(bar, opts = {}) {
   const cancel = bar.querySelector("[data-eb-cancel]");
   const noteEl = bar.querySelector("[data-eb-note]");
   const errLine = bar.querySelector("[data-eb-err]");
+  const stillLine = bar.querySelector("[data-eb-still]");
   const kbd = save.querySelector("kbd");
   if (kbd && !/Mac|iPhone|iPad/.test(win.navigator.platform ?? ""))
     kbd.textContent = "Ctrl+S";
@@ -122,6 +124,11 @@ export function wireEditBar(bar, opts = {}) {
     errLine.textContent = text ?? "";
     errLine.hidden = !text;
   };
+  const status = (text) => {
+    if (!stillLine) return;
+    stillLine.textContent = text ?? "";
+    stillLine.hidden = !text;
+  };
   const edited = () => {
     leaving = false;
     mark();
@@ -137,9 +144,10 @@ export function wireEditBar(bar, opts = {}) {
     holdDots(save, on);
     if (cancel) cancel.toggleAttribute("aria-disabled", on);
     win.clearTimeout(still);
+    status("");
     if (on)
       still = win.setTimeout(
-        () => say(fill(w.still, { s: STILL_AFTER_MS / 1000 })),
+        () => status(fill(w.still, { s: STILL_AFTER_MS / 1000 })),
         STILL_AFTER_MS,
       );
     mark();
@@ -245,6 +253,56 @@ export function wireEditBar(bar, opts = {}) {
       `${Math.max(0, Math.round(win.innerHeight - vv.height - vv.offsetTop))}px`,
     );
 
+  const scroller = (() => {
+    for (
+      let el = bar.parentElement;
+      el && el !== doc.body;
+      el = el.parentElement
+    ) {
+      const oy = win.getComputedStyle(el).overflowY;
+      if (oy === "auto" || oy === "scroll") return el;
+    }
+    return doc.scrollingElement || doc.documentElement;
+  })();
+  const inner =
+    scroller !== doc.scrollingElement && scroller !== doc.documentElement;
+  const was0 = {
+    spb: scroller.style.scrollPaddingBottom,
+    pb: scroller.style.paddingBottom,
+  };
+  const basePad = parseFloat(win.getComputedStyle(scroller).paddingBottom) || 0;
+  const keepRoom = () => {
+    const room = bar.offsetHeight + 16;
+    scroller.style.scrollPaddingBottom = `${room}px`;
+    if (inner) scroller.style.paddingBottom = `${basePad + room}px`;
+  };
+  const ro = win.ResizeObserver ? new win.ResizeObserver(keepRoom) : null;
+  ro?.observe(bar);
+  keepRoom();
+  const caretRect = () => {
+    if (bar.contains(doc.activeElement)) return null;
+    const cm = form.querySelector(".cm-cursor-primary, .cm-cursor");
+    if (cm) return cm.getBoundingClientRect();
+    const sel = win.getSelection();
+    if (!sel || !sel.rangeCount || !form.contains(sel.anchorNode)) return null;
+    const r = sel.getRangeAt(0).getClientRects();
+    return r.length ? r[r.length - 1] : null;
+  };
+  let pending = 0;
+  const clearCaret = () => {
+    if (pending) return;
+    pending = win.requestAnimationFrame(() => {
+      pending = 0;
+      const r = caretRect();
+      if (!r || (!r.height && !r.width)) return;
+      const over = r.bottom - (bar.getBoundingClientRect().top - 8);
+      if (over > 0) scroller.scrollBy({ top: over, behavior: "instant" });
+    });
+  };
+  const onSel = () => {
+    if (form.contains(doc.activeElement)) clearCaret();
+  };
+
   form.addEventListener("input", edited);
   form.addEventListener("change", edited);
   form.addEventListener("edit-bar:changed", onChanged);
@@ -254,6 +312,9 @@ export function wireEditBar(bar, opts = {}) {
   win.addEventListener("beforeunload", onUnload);
   noteEl?.addEventListener("input", grow);
   noteEl?.addEventListener("keydown", onNoteKey);
+  for (const t of ["keyup", "input", "click"])
+    form.addEventListener(t, clearCaret);
+  doc.addEventListener("selectionchange", onSel);
   vv?.addEventListener("resize", lift);
   vv?.addEventListener("scroll", lift);
   grow();
@@ -278,6 +339,13 @@ export function wireEditBar(bar, opts = {}) {
       noteEl?.removeEventListener("keydown", onNoteKey);
       vv?.removeEventListener("resize", lift);
       vv?.removeEventListener("scroll", lift);
+      for (const t of ["keyup", "input", "click"])
+        form.removeEventListener(t, clearCaret);
+      doc.removeEventListener("selectionchange", onSel);
+      ro?.disconnect();
+      if (pending) win.cancelAnimationFrame(pending);
+      scroller.style.scrollPaddingBottom = was0.spb;
+      scroller.style.paddingBottom = was0.pb;
       win.clearTimeout(still);
     },
   };
