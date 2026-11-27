@@ -702,7 +702,7 @@ never converted to HTML and back).
 
 - The model: `kind` (`"page"`, `"switch"` or `"panel"`), `label` (the
   group's name), `items` (each `{ id, text, href, count, disabled,
-  panel }`: `id` names it, `text` is its words, `href` its page, `count`
+panel }`: `id` names it, `text` is its words, `href` its page, `count`
   a number after it, `disabled` greys it, `panel` the id of the panel it
   shows), `chosen` (the chosen item's `id`) and `size` (`"auto"`, `"m"`
   or `"l"`).
