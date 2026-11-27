@@ -37,7 +37,11 @@ export function readListQ(
 ): string | null {
   const q = (p.get("q") ?? "").trim();
   if (!q) return "";
-  return (kind === "branch" ? isBranchPath(q, 100) : REPO_Q.test(q)) ? q : null;
+  return (
+    kind === "branch" ? isBranchPath(q.replace(/\/$/, ""), 100) : REPO_Q.test(q)
+  )
+    ? q
+    : null;
 }
 
 function names(raw: string): string[] {
