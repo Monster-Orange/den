@@ -384,6 +384,30 @@ echo " 500 http://archive.example/mirror noble-updates/main amd64 Packages"
     expect(fs.readdirSync(sources)).toContain("azure-cli.sources");
   }, 30_000);
 
+  it("a Microsoft source that can't be put back is kept where it was set aside, with a warning, never deleted", () => {
+    const sources = withSources("ms-stuck");
+    const sudo = path.join(tmp, "ms-stuck-sudo");
+    fs.writeFileSync(
+      sudo,
+      `#!/bin/bash
+[ "$1" = mv ] && [ "\${3%/*}" = "${sources}" ] && exit 1
+exec "$@"
+`,
+      { mode: 0o755 },
+    );
+    const r = run("ms-stuck", { CI_PW_APT_SOURCES: sources, CI_PW_SUDO: sudo });
+    expect(r.code).toBe(0);
+    expect(fs.readdirSync(sources)).not.toContain("azure-cli.sources");
+    const kept = /::warning::could not put \S+ back: kept in (\S+)/.exec(
+      r.out,
+    )?.[1];
+    expect(kept).toBeDefined();
+    expect(
+      fs.readFileSync(path.join(kept as string, "azure-cli.sources"), "utf-8"),
+    ).toBe(MS_SOURCE);
+    fs.rmSync(kept as string, { recursive: true, force: true });
+  });
+
   it("the browsers are arguments: chromium and webkit when none are given", () => {
     const r = run("chromium-only", {}, ["chromium"]);
     expect(r.code).toBe(0);
