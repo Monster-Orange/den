@@ -4657,7 +4657,6 @@
     "setd.g.access": "Acceso y seguridad",
     "setd.g.den": "Esta instalación",
     "setd.readOnly": "Inicia sesión para cambiarlos. Este navegador puede mirar, pero no cambiar nada.",
-    "setd.toAccount.notifications": "Tus notificaciones",
     "setd.toAccount.devices": "Tus dispositivos",
     "setd.toAccount.profile": "Cerrar sesión",
     "setd.sub.more": "Más",

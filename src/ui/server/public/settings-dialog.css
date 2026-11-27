@@ -1,10 +1,26 @@
 .setd .dn-body {
   font-size: var(--fs-s);
 }
+.setd.dn .set-row {
+  grid-template-areas: "l c" "d c" "t c" "s s";
+  grid-template-rows: auto auto 1fr auto;
+}
+.setd.dn .set-row:has(.set-custom) {
+  grid-template-areas: "l" "d" "t" "c" "s";
+  grid-template-rows: none;
+}
 .setd .set-row .set-scope {
+  grid-area: t;
   justify-self: start;
-  align-self: start;
   width: max-content;
+  margin-top: var(--space-1);
+}
+.setd .set-row .set-scope[data-scope="user"] {
+  display: none;
+}
+.setd .setd-desc {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
 }
 .setd .setd-link .l {
   color: var(--muted);
@@ -19,4 +35,9 @@
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--muted);
+@media (max-width: 560px) {
+  .setd.dn .set-row {
+    grid-template-areas: "l" "d" "t" "c" "s";
+    grid-template-rows: none;
+  }
 }

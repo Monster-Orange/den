@@ -1195,7 +1195,6 @@
     "setd.g.access": "Access and safety",
     "setd.g.den": "This install",
     "setd.readOnly": "Sign in to change these. This browser can look but change nothing.",
-    "setd.toAccount.notifications": "Your notifications",
     "setd.toAccount.devices": "Your devices",
     "setd.toAccount.profile": "Sign out",
     "setd.sub.more": "More",
