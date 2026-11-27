@@ -714,6 +714,8 @@ never converted to HTML and back).
   that can only page forward: build `href` with `cursorHref(url, target,
 nextCursor)`, which keeps the cursors already visited in the URL
   (`back`), so Previous and the browser's Back step back through them.
+  It keeps the last 20 (`keep`); past that, Previous is off at the oldest
+  one kept, and « First still goes to the start.
 - Between 600 and 900px the per-page choice folds into a ⋯ menu; under
   760px the range goes below the controls. At 600px or less: « ‹ [3 / 17
   ▾] › » ⋯, 44px icon buttons, and ⋯ opens a sheet with the range and the

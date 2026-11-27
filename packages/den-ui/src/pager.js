@@ -4,6 +4,7 @@ import { holdDots } from "./busy.js";
 const MODES = ["pages", "more"];
 const PER = [25, 50, 100, 200];
 const SELECT_MAX = 500;
+const TRAIL_MAX = 20;
 
 function num(v) {
   const n = Number(v);
@@ -505,10 +506,14 @@ export function cursorHref(url, target, next, o = {}) {
   } else if (target === "next") {
     if (!next) return "";
     trail.push(here || "-");
+    const keep = num(o.keep) || TRAIL_MAX;
+    const real = trail.filter((c) => c !== "~");
+    if (real.length > keep)
+      trail.splice(0, trail.length, "~", ...real.slice(-keep));
     q.set(at, String(next));
     q.set(bk, trail.join("."));
   } else if (target === "prev") {
-    if (!here) return "";
+    if (!here || !trail.length || trail.at(-1) === "~") return "";
     const to = trail.pop();
     if (to && to !== "-") q.set(at, to);
     else q.delete(at);

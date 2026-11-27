@@ -86,5 +86,5 @@ export declare function cursorHref(
   url: string,
   target: PagerTarget,
   next?: string | null,
-  opts?: { after?: string; back?: string; per?: string },
+  opts?: { after?: string; back?: string; per?: string; keep?: number },
 ): string;
