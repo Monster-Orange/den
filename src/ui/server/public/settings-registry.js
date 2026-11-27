@@ -1584,8 +1584,8 @@ function drawAppKeys(host, ctx) {
     `<input id="set-appkey-label" type="text" maxlength="80" aria-label="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}" placeholder="${escHtml(L("set.ui.appKeyLabel", "Name (optional)"))}">` +
     `<button type="button" class="den-btn sm" id="set-appkey-make">${escHtml(L("set.ui.appKeyMake", "Make key"))}</button>` +
     `</div>` +
-    `<div id="set-appkey-out" style="flex-basis:100%" aria-live="polite"></div>` +
-    `<div id="set-appkey-list" style="flex-basis:100%"></div>`;
+    `<div id="set-appkey-out" style="flex-basis:100%;margin-top:var(--space-2)" aria-live="polite"></div>` +
+    `<div id="set-appkey-list" style="flex-basis:100%;margin-top:var(--space-2)"></div>`;
   const out = host.querySelector("#set-appkey-out");
   const list = host.querySelector("#set-appkey-list");
   const make = host.querySelector("#set-appkey-make");
