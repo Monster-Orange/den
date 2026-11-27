@@ -715,7 +715,9 @@ never converted to HTML and back).
 nextCursor)`, which keeps the cursors already visited in the URL
   (`back`), so Previous and the browser's Back step back through them.
   It keeps the last 20 (`keep`); past that, Previous is off at the oldest
-  one kept, and « First still goes to the start.
+  one kept, and « First still goes to the start. The first row's offset
+  rides in the URL too (`o`, a plain number the cap doesn't touch):
+  `cursorStart(url)` gives it, so `from` is `cursorStart(url) + 1`.
 - Widths are the row's own (a container query), not the window's. Under
   900px the per-page choice folds into ⋯, a native pop-over; under 760px
   the range goes below the controls. At 600px or less: « ‹ [3 / 17 ▾] › »
