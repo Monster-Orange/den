@@ -36,7 +36,7 @@ import {
   orgHasGithub,
 } from "../../shared/org-sources.js";
 import { listReposWithManifests } from "../../shared/manifest/workspace-manifests.js";
-import { branchPage, firstAsk } from "./github-pages.js";
+import { branchPage, firstAsk, isBranchPath } from "./github-pages.js";
 import type { Page, PageAsk } from "./paging.js";
 
 import { product } from "../../shared/product.js";
@@ -763,7 +763,7 @@ export class ReleaseService {
 
   /** Whether the repo has this branch (one GitHub lookup). */
   async branchExists(repo: string, ref: string): Promise<boolean> {
-    if (!/^[A-Za-z0-9._/-]{1,255}$/.test(ref)) return false;
+    if (!isBranchPath(ref)) return false;
     const path = ref.split("/").map(encodeURIComponent).join("/");
     const name = await ghSafe([
       "api",

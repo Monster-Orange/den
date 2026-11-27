@@ -161,19 +161,20 @@ function loadGh(refresh, q = "") {
     });
 }
 
+let branchSeq = 0;
 function loadBranches(gh, q = "") {
   const dl = $("#add-svc-branch-list");
+  const seq = ++branchSeq;
   const p = new URLSearchParams({ gh, limit: "100" });
   if (q) p.set("q", q);
   fetch(`/api/github/branches?${p}`)
     .then((r) => r.json())
     .catch(() => [])
     .then((r) => {
-      const branches = pageItems(r);
-      if (dl && branches.length)
-        dl.innerHTML = branches
-          .map((b) => `<option value="${esc(b)}">`)
-          .join("");
+      if (seq !== branchSeq || !dl) return;
+      dl.innerHTML = pageItems(r)
+        .map((b) => `<option value="${esc(b)}">`)
+        .join("");
     });
 }
 

@@ -26,8 +26,10 @@ export const firstAsk = (list: string, limit = GH_PAGE_MAX): PageAsk => ({
 export class BadCursor extends Error {}
 export class BadPage extends Error {}
 
-const BRANCH_Q = /^[A-Za-z0-9._/-]{1,100}$/;
-const BRANCH_NAME = /^[A-Za-z0-9._/-]{1,255}$/;
+export const isBranchPath = (s: string, max = 255): boolean =>
+  s.length <= max &&
+  /^[A-Za-z0-9._/-]+$/.test(s) &&
+  s.split("/").every((p) => p !== "" && p !== "." && p !== "..");
 const REPO_Q = /^[A-Za-z0-9._-]{1,100}$/;
 export function readListQ(
   p: URLSearchParams,
@@ -35,7 +37,7 @@ export function readListQ(
 ): string | null {
   const q = (p.get("q") ?? "").trim();
   if (!q) return "";
-  return (kind === "branch" ? BRANCH_Q : REPO_Q).test(q) ? q : null;
+  return (kind === "branch" ? isBranchPath(q, 100) : REPO_Q.test(q)) ? q : null;
 }
 
 function names(raw: string): string[] {
@@ -96,7 +98,7 @@ export async function branchPage(
   ]);
   const got = names(raw);
   const d = def.trim();
-  const pin = BRANCH_NAME.test(d) ? d : "";
+  const pin = isBranchPath(d) ? d : "";
   const rest = got.filter((n) => n !== pin);
   const to = (p: number, dir: "next" | "prev") =>
     encodeCursor(ask.list, { key: [p, per], id: slug }, dir);
