@@ -2401,7 +2401,7 @@
           mountAgents(wsName);
 
           // Pre-fetch GitHub org repos so the Add Service modal loads instantly
-          fetch("/api/github/repos")
+          fetch("/api/github/repos?limit=100")
             .then((r) => r.json())
             .catch(() => [])
             .then((ghRepos) => {

@@ -36,7 +36,8 @@ import {
   orgHasGithub,
 } from "../../shared/org-sources.js";
 import { listReposWithManifests } from "../../shared/manifest/workspace-manifests.js";
-import { defaultBranchArgs, pinDefault } from "./github-service.js";
+import { branchPage, firstAsk, isBranchPath } from "./github-pages.js";
+import type { Page, PageAsk } from "./paging.js";
 
 import { product } from "../../shared/product.js";
 const execFileAsync = promisify(execFile);
@@ -751,32 +752,26 @@ export class ReleaseService {
 
   // ── Dispatch + monitor ──────────────────────────────────────────────────────
 
-  /** List branches for a repo (for the deploy-time branch selector). */
-  async listBranches(repo: string): Promise<string[]> {
-    const ghSlug = this.slug(repo);
-    const [raw, def] = await Promise.all([
-      ghSafe([
-        "api",
-        `repos/${ghSlug}/branches?per_page=100`,
-        "--jq",
-        "[.[].name]",
-      ]),
-      ghSafe(defaultBranchArgs(ghSlug)),
+  /** One page of a repo's branches (the deploy-time branch selector). */
+  async listBranches(
+    repo: string,
+    ask: PageAsk = firstAsk("release.branches"),
+    q = "",
+  ): Promise<Page<string>> {
+    return branchPage((a) => ghSafe(a), this.slug(repo), ask, q);
+  }
+
+  /** Whether the repo has this branch (one GitHub lookup). */
+  async branchExists(repo: string, ref: string): Promise<boolean> {
+    if (!isBranchPath(ref)) return false;
+    const path = ref.split("/").map(encodeURIComponent).join("/");
+    const name = await ghSafe([
+      "api",
+      `repos/${this.slug(repo)}/branches/${path}`,
+      "--jq",
+      ".name",
     ]);
-    if (!raw) return [];
-    const names = raw
-      .split("\n")
-      .filter(Boolean)
-      .flatMap((line) => {
-        try {
-          return JSON.parse(line) as string[];
-        } catch {
-          return [];
-        }
-      });
-    // The default branch first (main when GitHub can't say), then the rest sorted.
-    const first = def || (names.includes("main") ? "main" : "");
-    return pinDefault(names.sort(), first);
+    return name === ref;
   }
 
   /**

@@ -24,6 +24,7 @@ import * as path from "path";
 import { readDenConfig } from "../../../src/shared/den-config.js";
 import { readCatalog } from "../../../src/shared/environment-manager/catalog.js";
 import { GitHubService } from "../../../src/ui/server/github-service.js";
+import { readPageAsk, type PageAsk } from "../../../src/ui/server/paging.js";
 
 const mockExecFile = execFile as unknown as jest.Mock;
 type Reply = string | Error;
@@ -31,6 +32,11 @@ const replies: Reply[] = [];
 let always: Reply | null = null;
 const replyWith = (...r: Reply[]) => replies.push(...r);
 const replyAlways = (r: Reply) => (always = r);
+const gqlPage = (nodes: object[], end: string | null = null) =>
+  JSON.stringify({
+    nodes,
+    pageInfo: { hasNextPage: end !== null, endCursor: end },
+  });
 const ghArgs = () =>
   mockExecFile.mock.calls.map((c) => (c[1] as string[]).join(" "));
 const mockReadDenConfig = readDenConfig as jest.MockedFunction<
@@ -63,18 +69,18 @@ describe("GitHubService", () => {
   describe("listBranches", () => {
     it("returns branch names from gh api", async () => {
       replyAlways('["main","dev","feature-x"]\n');
-      const result = await svc.listBranches("org/repo");
+      const result = (await svc.listBranches("org/repo")).items;
       expect(result).toEqual(["main", "dev", "feature-x"]);
     });
 
     it("returns empty array for invalid slug", async () => {
-      expect(await svc.listBranches("")).toEqual([]);
-      expect(await svc.listBranches("noslash")).toEqual([]);
+      expect((await svc.listBranches("")).items).toEqual([]);
+      expect((await svc.listBranches("noslash")).items).toEqual([]);
     });
 
     it("rejects slugs with shell metacharacters", async () => {
-      expect(await svc.listBranches("org/repo; rm -rf /")).toEqual([]);
-      expect(await svc.listBranches("org/repo$(evil)")).toEqual([]);
+      expect((await svc.listBranches("org/repo; rm -rf /")).items).toEqual([]);
+      expect((await svc.listBranches("org/repo$(evil)")).items).toEqual([]);
     });
 
     it("rejects a . or .. segment (another API path), and asks gh nothing", async () => {
@@ -88,10 +94,10 @@ describe("GitHubService", () => {
         "my.org/repo",
         "-org/repo",
       ])
-        expect(await svc.listBranches(s)).toEqual([]);
+        expect((await svc.listBranches(s)).items).toEqual([]);
       expect(mockExecFile).not.toHaveBeenCalled();
       replyAlways('["main"]\n');
-      expect(await svc.listBranches("my-org/re..po")).toEqual(["main"]);
+      expect((await svc.listBranches("my-org/re..po")).items).toEqual(["main"]);
     });
 
     it("caches results and returns from cache on second call", async () => {
@@ -103,17 +109,17 @@ describe("GitHubService", () => {
 
     it("returns empty array when gh api throws", async () => {
       replyAlways(new Error("gh not found"));
-      expect(await svc.listBranches("org/repo")).toEqual([]);
+      expect((await svc.listBranches("org/repo")).items).toEqual([]);
     });
 
     it("asks GitHub for one page, never --paginate, and puts the default branch first", async () => {
       const page = Array.from({ length: 100 }, (_, i) => `feat/${i}`);
       replyWith(JSON.stringify(page), "main\n");
-      const names = await svc.listBranches("org/repo");
+      const names = (await svc.listBranches("org/repo")).items;
       expect(names.slice(0, 2)).toEqual(["main", "feat/0"]);
       expect(names).toHaveLength(101);
       expect(ghArgs()).toEqual([
-        "api repos/org/repo/branches?per_page=100 --jq [.[].name]",
+        "api repos/org/repo/branches?per_page=100&page=1 --jq [.[].name]",
         "api repos/org/repo --jq .default_branch",
       ]);
     });
@@ -128,7 +134,7 @@ describe("GitHubService", () => {
         github_org: "Globex-Corp",
       });
       replyWith(
-        JSON.stringify([
+        gqlPage([
           {
             name: "shop",
             nameWithOwner: "Globex-Corp/shop",
@@ -143,7 +149,7 @@ describe("GitHubService", () => {
         '["shop"]',
       );
 
-      const result = await svc.listOrgRepos();
+      const result = (await svc.listOrgRepos()).items;
       expect(result).toEqual([
         expect.objectContaining({
           name: "shop",
@@ -169,18 +175,26 @@ describe("GitHubService", () => {
         bad: { gh: "evil$(x)/repo" },
       });
       const repo = (owner: string, name: string) =>
-        JSON.stringify([{ name, nameWithOwner: `${owner}/${name}` }]);
+        gqlPage([{ name, nameWithOwner: `${owner}/${name}` }]);
       replyWith(
         repo("Hooli", "hooli-app"),
-        repo("Initech", "initech-web"),
         "[]",
+        repo("Initech", "initech-web"),
         "[]",
       );
 
-      expect((await svc.listOrgRepos()).map((r) => r.nameWithOwner)).toEqual([
-        "Hooli/hooli-app",
-        "Initech/initech-web",
-      ]);
+      const first = await svc.listOrgRepos();
+      const second = await svc.listOrgRepos(
+        readPageAsk(
+          `?cursor=${first.next}&limit=100`,
+          "github.repos",
+          200,
+        ) as PageAsk,
+      );
+      expect(
+        [...first.items, ...second.items].map((r) => r.nameWithOwner),
+      ).toEqual(["Hooli/hooli-app", "Initech/initech-web"]);
+      expect(second.next).toBeNull();
       expect(mockExecFile).toHaveBeenCalledTimes(4);
       for (const args of ghArgs()) expect(args).not.toContain("evil");
     });
@@ -188,7 +202,7 @@ describe("GitHubService", () => {
     it("github_org unset: GitHub is not configured, and no gh runs (not even for catalog owners)", async () => {
       mockReadDenConfig.mockReturnValue({ environments: ["local"] });
       mockReadCatalog.mockReturnValue({ shop: { gh: "MyOrg/shop" } });
-      expect(await svc.listOrgRepos()).toEqual([]);
+      expect((await svc.listOrgRepos()).items).toEqual([]);
       // No fallback to any checkout's git remote either.
       expect(mockExecFile).not.toHaveBeenCalled();
     });
@@ -201,7 +215,7 @@ describe("GitHubService", () => {
           github_org: org,
         });
         mockReadCatalog.mockReturnValue({ shop: { gh: "MyOrg/shop" } });
-        expect(await svc.listOrgRepos()).toEqual([]);
+        expect((await svc.listOrgRepos()).items).toEqual([]);
         expect(mockExecFile).not.toHaveBeenCalled();
       },
     );
@@ -211,6 +225,7 @@ describe("GitHubService", () => {
         environments: ["local"],
         github_org: "Org",
       });
+      replyAlways(gqlPage([{ name: "shop", nameWithOwner: "Org/shop" }]));
       await svc.listOrgRepos();
       await svc.listOrgRepos();
       // Only 2 gh calls (repo list + den search) for the first call
@@ -222,8 +237,9 @@ describe("GitHubService", () => {
         environments: ["local"],
         github_org: "Org",
       });
+      replyAlways(gqlPage([{ name: "shop", nameWithOwner: "Org/shop" }]));
       await svc.listOrgRepos();
-      await svc.listOrgRepos(true);
+      await svc.listOrgRepos(undefined, "", true);
       expect(mockExecFile).toHaveBeenCalledTimes(4);
     });
 
@@ -233,7 +249,7 @@ describe("GitHubService", () => {
         github_org: "Org",
       });
       replyAlways(new Error("gh auth fail"));
-      expect(await svc.listOrgRepos()).toEqual([]);
+      expect((await svc.listOrgRepos()).items).toEqual([]);
     });
 
     it("excludes the den repo itself", async () => {
@@ -245,14 +261,14 @@ describe("GitHubService", () => {
         github_org: "Org",
       });
       replyWith(
-        JSON.stringify([
+        gqlPage([
           { name: thisRepo, nameWithOwner: `Org/${thisRepo}` },
           { name: "shop", nameWithOwner: "Org/shop" },
         ]),
         "[]",
       );
 
-      const result = await svc.listOrgRepos();
+      const result = (await svc.listOrgRepos()).items;
       expect(result.every((r) => r.name !== thisRepo)).toBe(true);
       expect(result.some((r) => r.name === "shop")).toBe(true);
     });

@@ -21,6 +21,10 @@ config and manifest changes a distribution must make to move to it under
 - Log search pages. `GET /api/logs/search` and the `logs_search` tool return 50 matches by default, all targets merged oldest first by time, then target, then line, with `next` for the page after (`limit` and `cursor`, capped by the install's list page size). Each target's grep stops at the page size, where before it collected up to 200 matches per target, so up to 8000 at once. There's no total, since a log scan can't count cheaply. The route still returns `results` per target, holding this page's matches only. A cursor from another search, or one this route didn't give, is refused (400 `bad_cursor`). The Logs page shows the den-ui pager under the results ("1–50", Previous, Next), keeping the cursors it visited in the page's address, so Previous and the browser's Back step back through them. It pages forward only: `prev` is always null, since the pager keeps the cursors it visited, and a prev cursor, `at=last` or a `page` past 1 is a 400 `bad_page`.
 - The repo picker's list pages. `GET /api/workspaces/available-repos` returns `{ items, next }`, 50 by default (`limit`, `cursor`, capped by the install's list page size), and `?q=` filters by name, path or GitHub slug before the cut. The folder walk sorts each folder by name and stops once it has one more than the page, so later pages start after the cursor's path, and the `git remote` lookups run only for the page shown. `?all=1` keeps the old full array; Local Dev and Services ask for it until they use the pager. A cursor this list didn't give is refused (400 `bad_cursor`).
 
+- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) answer one page, `{ items, next, prev }`, with `?limit`, `?cursor`, `?q`, `?page` and `?at`. The cursor carries GitHub's own page state, and branch page 1 starts with the repo's default branch. `q` runs on GitHub before the cut: branch names that start with it, repo names that contain it. The Add service picker sends `q` as you type, for repos and branches. (issue 1926)
+
+
+
 ## [0.4.92] - unreleased
 
 ### Changed
