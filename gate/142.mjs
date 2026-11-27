@@ -124,7 +124,8 @@ async function pageBadge(ctx) {
  * Den the question it ended on). Not `ctl.stop()`: that stops the agent.
  */
 async function turnEnd(a, answer) {
-  await a.ctl.print(answer);
+  for (const line of answer.split("\n").filter(Boolean))
+    await a.ctl.print(line);
   await a.ctl.hook("Stop", {
     stop_hook_active: false,
     last_assistant_message: answer,
