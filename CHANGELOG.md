@@ -18,6 +18,8 @@ config and manifest changes a distribution must make to move to it under
 
 - In the Settings pop-up, the Agents and Project setup panes group their rows under subheadings. Agents has Approvals and permissions, How many agents, Runtimes, skills and personas, Resume and reconnect, Context and compaction, Issues and GitHub, Waits and hooks, and The Agents page. Project setup has This project, Hub, Agents in this project, and Tools and feeds. The rows and their saves are unchanged. (issue 1926)
 
+- Settings › Project setup, Agents and Hub say each setting in one short sentence, and each pane's intro is one line. The command-line line under each stays as it was. Words in en, es and ja. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed
