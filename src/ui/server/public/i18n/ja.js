@@ -4751,7 +4751,7 @@
     "set.access.owner.d":
       "この Den が属する GitHub アカウントです。リンクすると ID だけが保存され (トークンは破棄されます)、以後そのアカウントはどのデバイスからでもサインインできます。__DEN_CLI__ web owner link でもコマンドラインから同じことができます。", // words-ok: the en string's own word, translated
     "set.access.devices.d":
-      "この Den にサインインしているブラウザです。「取り消す」で 1 つをサインアウトします。",
+      "この Den にサインインしているブラウザです（「取り消す」で 1 つをサインアウト）。",
     "set.access.waiting.d":
       "サインアウト中のページにコードが表示されているコンピューターです。そのコンピューターの画面のコードを入力して承認すると、そのページは自動でサインインします。リクエストの有効期限は 10 分です。__DEN_CLI__ web approve --list で一覧できます。",
     "set.embed.url_max.d":
@@ -4769,7 +4769,7 @@
     "set.access.machine_name.d":
       "サインアウト中のページでのこのマシンの呼び名 (「<name> で動作」) です。ほかのコンピューターの人がどこでコマンドを実行すればよいかわかります。空欄の場合は短いホスト名を使います。",
     "set.access.pair.d":
-      "GitHub を使わないデバイス用の、1 回限りのリンクと QR コードです。",
+      "GitHub を使わないデバイス用の、1 回限りのリンクと QR コードです。 __DEN_CLI__ web login --host <name>",
     "set.access.test_installs_here.d":
       "起動元が知らせている、テスト用の人物を待っているこのコンピューター上のテスト用インストール。「テスト用の人物を設定」で、どのブラウザーからでも、あなた自身の許可でここから設定します。",
     "set.access.test_install.d":

@@ -4900,7 +4900,7 @@
     "set.access.owner.d":
       "La cuenta de GitHub a la que pertenece este Den. Vincularla solo guarda su id (el token se descarta), y desde entonces esa cuenta puede iniciar sesión desde cualquier dispositivo. __DEN_CLI__ web owner link hace lo mismo desde la línea de comandos.", // words-ok: the en string's own word, translated
     "set.access.devices.d":
-      "Los navegadores con la sesión iniciada en este Den. Revocar cierra la sesión de uno.",
+      "Los navegadores con la sesión iniciada en este Den; Revocar cierra la sesión de uno.",
     "set.access.waiting.d":
       "Ordenadores cuya página sin iniciar sesión muestra un código. Escribe el código que muestra la pantalla de ese ordenador para aprobarlo, y su página inicia sesión sola; una solicitud dura 10 minutos. __DEN_CLI__ web approve --list los muestra.",
     "set.embed.url_max.d":
@@ -4918,7 +4918,7 @@
     "set.access.machine_name.d":
       "Cómo llama a esta máquina la página sin iniciar sesión («se ejecuta en <name>»), para que quien esté en otro ordenador sepa dónde ejecutar un comando. Vacío: su nombre de host corto.",
     "set.access.pair.d":
-      "Un enlace de un solo uso y un código QR, para un dispositivo sin GitHub.",
+      "Un enlace de un solo uso y un código QR, para un dispositivo sin GitHub. __DEN_CLI__ web login --host <name>",
     "set.access.test_installs_here.d":
       "Instalaciones de prueba de esta máquina que su lanzador anuncia y que esperan su persona de prueba. Configurar persona de prueba la configura desde aquí, en cualquier navegador, con tu propia autorización.",
     "set.access.test_install.d":

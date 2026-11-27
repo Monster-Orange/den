@@ -1452,7 +1452,7 @@
     "set.access.owner.d":
       "The GitHub account this Den belongs to. Linking stores only its id (the token is thrown away), and from then on that account can sign in from any device. __DEN_CLI__ web owner link does the same from the command line.", // words-ok: the Settings row's text, moved word for word
     "set.access.devices.d":
-      "The browsers signed in to this Den. Revoke signs one out.",
+      "The browsers signed in to this Den; Revoke signs one out.",
     "set.access.waiting.d":
       "Computers whose signed-out page shows a code. Type the code that computer's screen shows to approve it, and its page signs in by itself; a request lasts 10 minutes. __DEN_CLI__ web approve --list lists them.",
     "set.embed.url_max.d":
@@ -1470,7 +1470,7 @@
     "set.access.machine_name.d":
       'What the signed-out page calls this machine ("runs on <name>"), so people on other computers know where to run a command. Empty: its short hostname.',
     "set.access.pair.d":
-      "A one-time link and QR code, for a device without GitHub.",
+      "A one-time link and QR code, for a device without GitHub. __DEN_CLI__ web login --host <name>",
     "set.access.test_installs_here.d":
       "Test installs on this computer whose launcher announces them and that wait for their test person. Set up test person sets it up from here, in any browser, on your own Allow.",
     "set.access.test_install.d":
