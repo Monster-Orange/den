@@ -122,7 +122,7 @@ function pageLink(m, dir, on) {
     `class="den-pager-btn den-pager-${dir}" data-den-pager-go="${dir}"` +
     ` aria-label="${esc(String(sr))}"`;
   const href = on ? m.href(dir) : "";
-  if (!href) return `<a ${attrs} aria-disabled="true">${inner}</a>`;
+  if (!href) return `<a ${attrs} role="link" aria-disabled="true">${inner}</a>`;
   const rel = dir === "prev" || dir === "next" ? ` rel="${dir}"` : "";
   return `<a ${attrs} href="${esc(href)}"${rel}>${inner}</a>`;
 }
