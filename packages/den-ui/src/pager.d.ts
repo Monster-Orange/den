@@ -67,7 +67,7 @@ export interface PagerNav {
 export interface PagerOptions {
   load?: () => Promise<PagerLoad>;
   list?: HTMLElement | string | null;
-  onNavigate?: (ask: PagerNav) => void;
+  onNavigate?: (ask: PagerNav) => void | Promise<unknown>;
   shortcuts?: boolean | (() => boolean);
 }
 
