@@ -29,6 +29,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Peek: a click on an agent's row in the bell opens that agent's live terminal in a panel over the page you are on, so you can answer it without leaving your view. Esc closes it and puts focus back on the row; the row's "Open in Agents" link still goes to the Agents page (issue 791).
 
+- On a personal install, `den doctor` now says whether agents can read the activity trail. If the older trail written before redaction hasn't been set aside, and Den is running, it warns that agents can't read the trail and says to restart Den (Den's log says why if it fails again). Before Den's first start it says the trail is set aside then. A strict install shows no such row, since its agents never read the trail. (issue 1399)
+
 ## [0.4.91] - 2026-11-26
 
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)
