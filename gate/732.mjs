@@ -2,29 +2,31 @@
 // busy for typing; restarts still wait for, or ask about, the job.
 //
 // A stub in the bed's workspace linked to Hub's e2e project ends its turn,
-// then gets the stub's `/bg <secs>` verb (typed in as a message from the
-// page): it forks a detached shell under the stub's own process that
-// sources a file under shell-snapshots/ and sleeps, as Claude Code's
-// background shells look to Den.
+// then gets the stub's `/bg <secs>` verb (typed straight into the stub,
+// as live check 1407 does: the fixture person may not use Den's /say).
+// It forks a detached shell under the stub's own process that sources a
+// file under shell-snapshots/ and sleeps, as Claude Code's background
+// shells look to Den.
 //
 // First, whether Den sees that job at all: a Restart after its turn, as
 // the Agents page asks it, must answer 409 job_running with the job's
-// minutes, and nothing restarts (clause 3). If it doesn't (a bed whose
-// stub has no /bg verb, or a job outside its session), every
-// clause skips (needs-background-job): the restart then goes ahead on
-// this check's own stub, and teardown removes it.
+// minutes, and nothing restarts (clause 3).
 //
 // Clause 1: with the job still running and the turn ended, a Hub comment
 // for it is typed in within seconds. Clause 2: a turn starts (a prompt
 // record appended to its transcript, as the runtime writes one); a second
 // comment waits, with Den's held reason "the agent is busy with a turn";
-// once the turn ends it is typed. A second Restart probe after clause 2
-// shows the job was still running through it.
+// once the turn ends it is typed, and a second Restart still sees the job.
 //
-// Without a Hub on the bed, every clause skips (needs-hub). Names are new
-// each run.
+// Den sees no job: every clause fails if the stub's background shell is
+// running, and skips if it isn't or nobody could look (needs-background-job).
+// No turn started: clause 2 skips (needs-turn). No Hub: every clause skips
+// (needs-hub). Names are new each run.
+
+import { execFileSync } from "node:child_process";
 
 export const issue = 732;
+export const items = [732, 829];
 export const clauses = [
   "an agent whose turn ended, with a background shell still running: a Hub comment for it is typed within seconds",
   "the same agent mid-turn: the comment waits, then is typed once the turn ends",
@@ -77,19 +79,6 @@ function sessionOf(ctx, id) {
   return parse(ctx.readBed(`state:agents/${id}.json`))?.session?.id ?? null;
 }
 
-/** A message from the page (POST …/say): { status, code }. */
-async function say(ctx, id, text) {
-  const r = await ctx.fetch(
-    `/api/workspaces/${encodeURIComponent(WS)}/agents/${encodeURIComponent(id)}/say`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
-    },
-  );
-  return { status: r?.status ?? null, code: parse(r?.body)?.code ?? null };
-}
-
 /** Restart after its turn, as the page asks it: { status, code, job }. */
 async function restartProbe(ctx, id) {
   const r = await ctx.fetch(
@@ -110,12 +99,34 @@ async function restartProbe(ctx, id) {
 
 const line = (o) => JSON.stringify(o).replace(/'/g, "");
 
-/** Appends one record to the stub's transcript, from inside its session. */
 async function append(ctx, a, id, rec) {
   const file = ctx.transcriptPath(id);
-  if (!file) return false;
+  if (!file) return null;
   const r = await a.sh(`printf '%s\\n' '${line(rec)}' >> '${file}'`, 30000);
-  return r?.status === 0;
+  return typeof r?.status === "number" ? r.status : null;
+}
+
+export const jobName = (now = Date.now()) => `g732${now.toString(36)}`;
+
+export async function jobPresent(a, name) {
+  try {
+    const r = await a.sh(
+      `if [ -n "$STUB_HOME" ]; then pgrep -f "$STUB_HOME/shell-snapshots/snapshot-zsh-[0-9]+-${name}\\.sh" >/dev/null && echo yes || echo no; else echo unknown; fi`,
+      10000,
+    );
+    const out = String(r?.out ?? "").trim();
+    if (out === "yes" || out === "no") return out === "yes";
+  } catch {
+    /* the stub's shell gave no answer: look from here */
+  }
+  try {
+    execFileSync("pgrep", ["-f", `snapshot-zsh-[0-9]+-${name}\\.sh`], {
+      stdio: "ignore",
+    });
+    return true;
+  } catch (e) {
+    return e?.status === 1 ? false : null;
+  }
 }
 
 async function endTurn(ctx, a, id, text) {
@@ -165,15 +176,19 @@ export async function run(ctx, s) {
   r.transcript = !!ctx.transcriptPath(s.id);
   await endTurn(ctx, a, s.id, "Watching the build log in the background.");
 
-  // The background shell: the stub's `/bg <secs>` verb, typed in as a
-  // message from the page, forks a detached shell of its own that sources
-  // a file under shell-snapshots/ and sleeps, as Claude Code's background
-  // shells look to Den. Its turn ends at once.
-  const bg = await say(ctx, s.id, `/bg ${JOB_S} g732`);
-  r.bg = { status: bg.status, code: bg.code };
+  // The background shell: the stub's `/bg <secs>` verb, typed into the
+  // stub, forks a detached shell of its own that sources a file under
+  // shell-snapshots/ and sleeps, as Claude Code's background shells look to
+  // Den. Its turn ends at once.
+  if (!a.line) return { ...r, noLine: true };
+  r.job = jobName();
+  a.line(`/bg ${JOB_S} ${r.job}`);
+  r.bg = "line";
   await ctx.sleep(2000);
   await endTurn(ctx, a, s.id, "Started the watcher in the background.");
   await ctx.sleep(2000);
+
+  r.jobPresent = await jobPresent(a, r.job);
 
   // Clause 3, and whether Den sees the job at all.
   r.session = sessionOf(ctx, s.id);
@@ -217,11 +232,13 @@ export async function run(ctx, s) {
   // Clause 2: mid-turn, the same job: it waits, then is typed.
   if (!r.transcript) return r;
   await ctx.sleep(2000);
-  r.turnStarted = await append(ctx, a, s.id, {
+  r.turnWrite = await append(ctx, a, s.id, {
     type: "user",
     timestamp: new Date().toISOString(),
     message: { role: "user", content: "check the log again" },
   });
+  r.turnStarted = r.turnWrite === 0;
+  if (!r.turnStarted) return r;
   a.print("✻ Working…");
   await ctx.sleep(1500);
   const t2 = `g732busy-${Date.now()}`;
@@ -253,7 +270,7 @@ export async function teardown(ctx, s) {
     const a = ctx.agent(s.id, { workspace: WS });
     if (a.state()) {
       // The stub's exit ends its background shells too; /bg-stop first.
-      await say(ctx, s.id, "/bg-stop").catch(() => null);
+      a.line?.("/bg-stop");
       a.remove();
     }
   } catch {
@@ -271,16 +288,27 @@ export function expect(res) {
       "needs-hub",
       "the bed has no Hub, so no comment can reach an agent",
     );
+  if (r.noLine)
+    return skipAll(
+      "needs-stub-line",
+      "the bed's stub has no line to type /bg into, so no background job ran",
+    );
   if (!r.running)
     return clauses.map((clause) => ({
       clause,
       ok: false,
       detail: `the ${r.agent} stub did not run in ${WS} (start ${r.start})`,
     }));
+  if (!r.seen && r.jobPresent === true)
+    return clauses.map((clause) => ({
+      clause,
+      ok: false,
+      detail: `Den saw no job, though the stub's background shell is running under the stub (/bg answered ${JSON.stringify(r.bg ?? null)}; restart after its turn answered ${JSON.stringify(r.probe)})`,
+    }));
   if (!r.seen)
     return skipAll(
       "needs-background-job",
-      `Den saw no job under the stub's session (/bg answered ${JSON.stringify(r.bg ?? null)}; restart after its turn answered ${JSON.stringify(r.probe)}): the bed's stub kept no background shell under it`,
+      `${r.jobPresent === false ? "Den saw no job under the stub's session, and none runs there" : "Den saw no job under the stub's session, and the check couldn't look for one (the stub's shell gave no answer)"} (/bg answered ${JSON.stringify(r.bg ?? null)}; restart after its turn answered ${JSON.stringify(r.probe)})`,
     );
   const c3 =
     r.probe.status === 409 &&
@@ -300,7 +328,21 @@ export function expect(res) {
       : `comment ${r.id1}: typed ${r.typed1Ms} ms (limit ${TYPED_MS}); Hub then ${JSON.stringify(r.delivery1)}`,
   };
   let row2;
-  if (!r.transcript)
+  if (r.postThrew && r.turnStarted !== true)
+    row2 = {
+      clause: clauses[1],
+      ok: null,
+      skip: "needs-hub-comment",
+      detail: `not run: the first comment could not be posted (${r.postThrew})`,
+    };
+  else if (r.transcript && r.turnStarted !== true)
+    row2 = {
+      clause: clauses[1],
+      ok: null,
+      skip: "needs-turn",
+      detail: `the setup couldn't start a turn: the shell write into the conversation answered ${JSON.stringify(r.turnWrite ?? null)}`,
+    };
+  else if (!r.transcript)
     row2 = {
       clause: clauses[1],
       ok: null,
