@@ -16,6 +16,13 @@ import * as path from "path";
 import { execFile, execSync } from "child_process";
 import { singleFlight } from "./single-flight.js";
 import {
+  encodeCursor,
+  isPageError,
+  readPageAsk,
+  sendPageError,
+  type PageError,
+} from "./paging.js";
+import {
   AgentError,
   disposeWorkspaceAgents,
   workspaceAgents,
@@ -200,7 +207,23 @@ function gitOut(cwd: string, args: string[]): Promise<string | null> {
  * The repos Local Dev's "add" picker offers: local checkouts under
  * repos_root with a manifest, managed clones, and catalog-only entries.
  */
-async function buildAvailableRepos(wsOverride: string | null) {
+type RepoPageAsk = { limit: number; after: [number, string] | null; q: string };
+
+const segmentsBefore = (a: string, b: string): number => {
+  const x = a.split("/");
+  const y = b.split("/");
+  for (let i = 0; i < Math.min(x.length, y.length); i++)
+    if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return x.length - y.length;
+};
+
+const byName = (a: { name: string }, b: { name: string }) =>
+  a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+
+async function buildAvailableRepos(
+  wsOverride: string | null,
+  page: RepoPageAsk | null = null,
+) {
   const reposRoot = getReposRoot();
   const wsFile = wsOverride ? readWorkspacesFile() : null;
   const ws =
@@ -232,6 +255,26 @@ async function buildAvailableRepos(wsOverride: string | null) {
   };
   /** Lookups still in flight; each fills in its entry when it lands. */
   const pending: Promise<void>[] = [];
+  const lookups = new Map<object, () => Promise<void>>();
+  const later = (entry: object, run: () => Promise<void>) => {
+    if (page) lookups.set(entry, run);
+    else pending.push(run());
+  };
+  const keys = new Map<object, [number, string]>();
+  const needle = page?.q.toLowerCase() ?? "";
+  const wanted = (...xs: (string | null | undefined)[]) =>
+    !needle || xs.some((x) => !!x && x.toLowerCase().includes(needle));
+  const full = () => !!page && entries.length > page.limit;
+  const afterCursor = (rank: number, key: string) =>
+    !page?.after ||
+    rank > page.after[0] ||
+    (rank === page.after[0] &&
+      (rank === 0
+        ? segmentsBefore(key, page.after[1]) > 0
+        : key > page.after[1]));
+  const keep = (entry: object, rank: number, key: string) => {
+    keys.set(entry, [rank, key]);
+  };
   const isAdded = (relPath: string, gh: string | null): boolean =>
     existingAddresses.has(relPath) ||
     (!!gh && existingGhSlugs.has(gh.toLowerCase()));
@@ -266,19 +309,29 @@ async function buildAvailableRepos(wsOverride: string | null) {
     depth: number,
   ): Promise<void> => {
     if (depth > 4) return; // safety limit
+    if (full()) return;
     let dirents: fs.Dirent[];
     try {
       dirents = await fs.promises.readdir(dir, { withFileTypes: true });
     } catch {
       return;
     }
-    const children = dirents.filter(
-      (d) =>
-        (d.isDirectory() || d.isSymbolicLink()) &&
-        !d.name.startsWith(".") && // .git, .github, .DS_Store, …
-        d.name !== "node_modules" &&
-        path.join(dir, d.name) !== ROOT, // den itself
-    );
+    const children = dirents
+      .filter(
+        (d) =>
+          (d.isDirectory() || d.isSymbolicLink()) &&
+          !d.name.startsWith(".") && // .git, .github, .DS_Store, …
+          d.name !== "node_modules" &&
+          path.join(dir, d.name) !== ROOT, // den itself
+      )
+      .sort(byName)
+      .filter((d) => {
+        const rel = relPrefix ? `${relPrefix}/${d.name}` : d.name;
+        return (
+          afterCursor(0, rel) ||
+          (page?.after?.[0] === 0 && page.after[1].startsWith(`${rel}/`))
+        );
+      });
     // One directory's children are checked together; the descent stays
     // depth-first in readdir order, so the list keeps its old order.
     const checked = await Promise.all(
@@ -292,8 +345,9 @@ async function buildAvailableRepos(wsOverride: string | null) {
       }),
     );
     for (const { d, absPath, hasManifest, isCheckout } of checked) {
+      if (full()) return;
       const relPath = relPrefix ? `${relPrefix}/${d.name}` : d.name;
-      if (hasManifest) {
+      if (hasManifest && afterCursor(0, relPath) && wanted(d.name, relPath)) {
         const known = catalog[relPath]?.gh ?? null;
         // Already added if the exact address is in the workspace, OR if
         // a repo with the same GitHub remote is already present.
@@ -307,21 +361,22 @@ async function buildAvailableRepos(wsOverride: string | null) {
           gh: known,
         };
         entries.push(entry);
+        keep(entry, 0, relPath);
         if (!known)
-          pending.push(
+          later(entry, () =>
             getRemoteGh(absPath).then((gh) => {
               entry.gh = gh;
               entry.alreadyAdded = isAdded(relPath, gh);
             }),
           );
         seenRelPaths.add(relPath);
-      } else if (!isCheckout) {
+      } else if (!hasManifest && !isCheckout) {
         // Not a repo: look for repos in its subdirectories.
         await walkDir(absPath, relPath, depth + 1);
       }
     }
   };
-  await walkDir(reposRoot, "", 0);
+  if (!page?.after || page.after[0] === 0) await walkDir(reposRoot, "", 0);
 
   // Managed clones live at .den-services/<repo>/<branch>/
   // Walk two levels: repo dir → branch dir (each branch dir is a full clone).
@@ -335,7 +390,8 @@ async function buildAvailableRepos(wsOverride: string | null) {
       return []; // the managed-clones dir does not exist yet
     }
   };
-  for (const repoName of await readDirs(DEN_SERVICES_DIR)) {
+  for (const repoName of (await readDirs(DEN_SERVICES_DIR)).sort()) {
+    if (full()) break;
     const repoDirPath = path.join(DEN_SERVICES_DIR, repoName);
     const clones = await Promise.all(
       (await readDirs(repoDirPath)).map(async (branchName) => {
@@ -347,11 +403,17 @@ async function buildAvailableRepos(wsOverride: string | null) {
         return { branchName, absPath, isGit, hasManifest };
       }),
     );
+    clones.sort((a, b) =>
+      a.branchName < b.branchName ? -1 : a.branchName > b.branchName ? 1 : 0,
+    );
     for (const { branchName, absPath, isGit, hasManifest } of clones) {
       // Only treat as a branch clone if it's actually a git repo
       if (!isGit) continue;
       const key = `${repoName}::${branchName}`; // unique per repo+branch
+      seenRelPaths.add(repoName);
       if (seenRelPaths.has(key)) continue;
+      if (full() || !afterCursor(1, key) || !wanted(repoName, branchName))
+        continue;
       const known = catalog[repoName]?.gh ?? null;
       const entry: RepoEntry = {
         name: repoName,
@@ -364,7 +426,8 @@ async function buildAvailableRepos(wsOverride: string | null) {
         currentBranch: branchName,
       };
       entries.push(entry);
-      pending.push(
+      keep(entry, 1, key);
+      later(entry, () =>
         Promise.all([
           known ? known : getRemoteGh(absPath),
           gitOut(absPath, ["rev-parse", "--abbrev-ref", "HEAD"]),
@@ -380,15 +443,24 @@ async function buildAvailableRepos(wsOverride: string | null) {
   }
 
   // Catalog-only entries — repos den knows about but not found locally.
-  for (const [relPath, entry] of Object.entries(catalog)) {
+  const localManifest = (relPath: string) =>
+    exists(path.join(reposRoot, relPath, `${product().manifestYml}`));
+  const catalogOrder = Object.entries(catalog);
+  if (page) catalogOrder.sort(([a], [b]) => segmentsBefore(a, b));
+  for (const [relPath, entry] of catalogOrder) {
     if (seenRelPaths.has(relPath)) continue;
+    if (page) {
+      if (full()) break;
+      if (!afterCursor(2, relPath) || !wanted(relPath, entry.gh)) continue;
+      if (await localManifest(relPath)) continue;
+    }
     const name = relPath.includes("/")
       ? relPath.slice(relPath.lastIndexOf("/") + 1)
       : relPath;
     const alreadyAdded =
       existingAddresses.has(relPath) ||
       (!!entry.gh && existingGhSlugs.has(entry.gh.toLowerCase()));
-    entries.push({
+    const row: RepoEntry = {
       name,
       relPath,
       absPath: null,
@@ -396,14 +468,48 @@ async function buildAvailableRepos(wsOverride: string | null) {
       alreadyAdded,
       source: "catalog",
       gh: entry.gh ?? null,
-    });
+    };
+    entries.push(row);
+    keep(row, 2, relPath);
   }
 
   await Promise.all(pending);
-  return entries;
+  if (!page) return entries;
+  const items = entries.slice(0, page.limit);
+  await Promise.all(items.map((e) => lookups.get(e)?.()));
+  const last = items[items.length - 1];
+  const at = last ? keys.get(last) : undefined;
+  return {
+    items,
+    next:
+      entries.length > page.limit && at
+        ? encodeCursor([at[0], at[1]], at[1])
+        : null,
+  };
 }
 
 type AvailableRepos = Awaited<ReturnType<typeof buildAvailableRepos>>;
+const readRepoPage = (p: URLSearchParams): RepoPageAsk | PageError | null => {
+  if (p.get("all") === "1") return null;
+  const ask = readPageAsk(p);
+  if (isPageError(ask)) return ask;
+  const q = (p.get("q") ?? "").trim().slice(0, 200);
+  if (!ask.after) return { limit: ask.limit, after: null, q };
+  const k = ask.after.key;
+  if (
+    !Array.isArray(k) ||
+    k.length !== 2 ||
+    ![0, 1, 2].includes(k[0] as number) ||
+    typeof k[1] !== "string" ||
+    k[1] !== ask.after.id
+  )
+    return {
+      status: 400,
+      code: "bad_cursor",
+      error: "cursor is not one this list gave: start again without it",
+    };
+  return { limit: ask.limit, after: [k[0] as number, k[1]], q };
+};
 /** Shared by concurrent requests, reused briefly; cleared by any mutation. */
 const availableReposCache = singleFlight<AvailableRepos>(2_000);
 
@@ -1012,12 +1118,14 @@ export async function handleWorkspaceRoutes(
   //   absPath  — absolute filesystem path (stored as linkedPath for dev-managed repos)
   if (pathname === "/api/workspaces/available-repos" && req.method === "GET") {
     const wsOverride = url.searchParams.get("workspace");
+    const page = readRepoPage(url.searchParams);
+    if (page && "code" in page) return sendPageError(res, page);
     // Local Dev calls this on load: concurrent loads share one walk.
     return sendJson(
       res,
       await availableReposCache.get(
-        wsOverride ?? "",
-        () => buildAvailableRepos(wsOverride),
+        JSON.stringify([wsOverride ?? "", page]),
+        () => buildAvailableRepos(wsOverride, page),
         url.searchParams.get("refresh") === "1",
       ),
     );
