@@ -162,6 +162,7 @@ export function configure(o = {}) {
   configureWhatsNew({
     lang,
     changelog: ad.changelog || null,
+    changelogPage: ad.changelogPage || null,
     ...(o.whatsNew || {}),
   });
   const r = o.report || {};

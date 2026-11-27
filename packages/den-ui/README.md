@@ -183,6 +183,7 @@ a missing call turns its feature off rather than failing.
 | call                  | used by                          | returns                                       |
 | --------------------- | -------------------------------- | --------------------------------------------- |
 | `changelog()`         | What's new                       | `[{ version, date, sections }]`, newest first |
+| `changelogPage(ask)`  | What's new › Show all versions, 10 at a time with More (optional; link `pager.css`) | `{ items, next, prev, total?, offset?, page?, pages? }` for `{ limit, cursor?, page?, at? }` |
 | `applyUpdate()`       | the update pill's Reload         | anything; the page reloads after              |
 | `fileReport(payload)` | Report                           | `{ number, url }` or `{ error }`              |
 | `request(id)`         | the working pop-up's Check again | `{ state, result?, error? }`                  |
