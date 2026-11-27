@@ -2503,7 +2503,7 @@ export function helpersBlock(v: unknown): HelperSettings {
   if (v === undefined || v === null) return out;
   if (!isMapping(v))
     throw new Error(
-      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds (got ${JSON.stringify(v)})`,
+      `agents.helpers: must be a mapping of active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds, list_wait_seconds, reader_rest_ms (got ${JSON.stringify(v)})`,
     );
   for (const [k, x] of Object.entries(v)) {
     if (k === "row_max") {
@@ -2520,6 +2520,22 @@ export function helpersBlock(v: unknown): HelperSettings {
           `agents.helpers.refresh_seconds: must be a number of seconds, from 0 to 3600 (got ${JSON.stringify(x)})`,
         );
       out.refreshSeconds = x;
+      continue;
+    }
+    if (k === "list_wait_seconds") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x < 0 || x > 60)
+        throw new Error(
+          `agents.helpers.list_wait_seconds: must be a number of seconds, from 0 to 60 (got ${JSON.stringify(x)})`,
+        );
+      out.listWaitSeconds = x;
+      continue;
+    }
+    if (k === "reader_rest_ms") {
+      if (typeof x !== "number" || !Number.isFinite(x) || x < 0 || x > 1000)
+        throw new Error(
+          `agents.helpers.reader_rest_ms: must be a number of milliseconds, from 0 to 1000 (got ${JSON.stringify(x)})`,
+        );
+      out.readerRestMs = x;
       continue;
     }
     if (k === "facts_cache_mb") {
@@ -2547,7 +2563,7 @@ export function helpersBlock(v: unknown): HelperSettings {
           : null;
     if (!key)
       throw new Error(
-        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds)`,
+        `agents.helpers.${k}: unknown key (agents.helpers takes active_minutes, row_max, read_max_mb, facts_cache_mb, refresh_seconds, list_wait_seconds, reader_rest_ms)`,
       );
     if (typeof x !== "number" || !Number.isFinite(x) || x <= 0 || x > 100_000)
       throw new Error(

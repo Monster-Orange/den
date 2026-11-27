@@ -8,6 +8,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- The agents list no longer waits for every agent's helpers after a restart or a wave of new agents. It answers within `agents.helpers.list_wait_seconds` (0.25 s), shows "Counting helpers…" on agents not read yet, and fills them in on the next look, a second later. While helpers are read, Den's other pages and tools keep answering: the reader pauses `agents.helpers.reader_rest_ms` (2 ms) between agents. Before, the first list over 140 unread agents took about 7 s and slowed the server for about 2.7 s.
+
 - The edge runs with Traefik's API and dashboard off. `edge.args` now takes only the options Den lists: any other entry is refused, with a line naming it. `edge.include` files that sort before Den's own file or reuse its names, and `edge.mounts` into the dynamic folder, are refused too. Den makes a new edge proof at its first start after the update. See docs/distributions.md.
 
 - After you pick an agent, clicking or pressing Tab somewhere else in the moment its terminal becomes ready no longer pulls the keyboard back into that terminal. The move into the terminal waited one screen frame (about 16 ms, longer on a busy page) and didn't check whether you'd gone elsewhere, so keys you typed afterwards went to the agent. It has been there since at least 0.4.40; it's not new in 0.4.91.

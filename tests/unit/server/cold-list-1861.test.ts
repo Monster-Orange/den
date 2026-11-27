@@ -52,7 +52,11 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-function list(rows: HelperRows, compute: typeof rowHelpers) {
+function list(
+  rows: HelperRows,
+  compute: typeof rowHelpers,
+  extra: Record<string, unknown> = {},
+) {
   let body = "";
   const res = {
     statusCode: 200,
@@ -69,20 +73,25 @@ function list(rows: HelperRows, compute: typeof rowHelpers) {
     activeWorkspaces: () => ["north"],
     connectExisting: async () => null,
     hubNow: async () => null,
-    helperSettings: () => helpersBlock({ refresh_seconds: 30 }),
+    helperSettings: () => helpersBlock({ refresh_seconds: 30, ...extra }),
     helperRows: rows,
     rowHelpers: compute,
   }).then(
     () =>
       JSON.parse(body) as {
-        sessions: { agent?: string; helpers?: { total: number } }[];
+        helpersPending?: boolean;
+        sessions: {
+          agent?: string;
+          helpers?: { total: number };
+          helpersPending?: boolean;
+        }[];
       },
   );
 }
 
-function slow(): typeof rowHelpers {
+function slow(spinMs = SPIN_MS): typeof rowHelpers {
   return (rec, ...rest) => {
-    const end = Date.now() + SPIN_MS;
+    const end = Date.now() + spinMs;
     let spins = 0;
     while (Date.now() < end) spins++;
     expect(spins).toBeGreaterThanOrEqual(0);
@@ -98,6 +107,21 @@ async function hops(file: string): Promise<number> {
 
 const counted = (j: Awaited<ReturnType<typeof list>>) =>
   j.sessions.filter((s) => s.agent && s.helpers).length;
+
+describe("issue 1861: agents.helpers.list_wait_seconds and reader_rest_ms", () => {
+  it("default to 0.25 s and 2 ms; a value is read; a bad one names the key", () => {
+    const d = helpersBlock({});
+    expect([d.listWaitSeconds, d.readerRestMs]).toEqual([0.25, 2]);
+    const v = helpersBlock({ list_wait_seconds: 0, reader_rest_ms: 0 });
+    expect([v.listWaitSeconds, v.readerRestMs]).toEqual([0, 0]);
+    expect(() => helpersBlock({ list_wait_seconds: 61 })).toThrow(
+      "agents.helpers.list_wait_seconds",
+    );
+    expect(() => helpersBlock({ reader_rest_ms: -1 })).toThrow(
+      "agents.helpers.reader_rest_ms",
+    );
+  });
+});
 
 describe("issue 1861: the first list over many unread agents never waits for all of them", () => {
   it("answers well before every helper row is read, and the reader fills in the rest", async () => {
@@ -123,14 +147,43 @@ describe("issue 1861: the first list over many unread agents never waits for all
     expect(during).toBeLessThan(Math.max(150, 10 * idle));
   });
 
+  it("rows not read yet say so, the list says so, and the next list has them", async () => {
+    const rows = new HelperRows();
+    const first = await list(rows, slow());
+    const waiting = first.sessions.filter((s) => s.helpersPending);
+    expect(first.helpersPending).toBe(true);
+    expect(waiting.length).toBeGreaterThan(0);
+    for (const s of waiting) expect(s.helpers).toBeUndefined();
+    await rows.idle();
+    const next = await list(rows, slow());
+    expect(next.helpersPending).toBeUndefined();
+    expect(next.sessions.filter((s) => s.helpersPending)).toEqual([]);
+    expect(counted(next)).toBe(AGENTS);
+  });
+
+  it("the rest between rows adds little to the time to read them all", async () => {
+    const fill = async (extra: Record<string, unknown>) => {
+      resetHelperCache();
+      const rows = new HelperRows();
+      const t0 = Date.now();
+      await list(rows, slow(), extra);
+      await rows.idle();
+      return Date.now() - t0;
+    };
+    const none = await fill({ reader_rest_ms: 0 });
+    const rested = await fill({});
+    expect(none).toBeGreaterThanOrEqual(AGENTS * SPIN_MS);
+    expect(rested).toBeLessThan(none * 1.3);
+  });
+
   it("a wave of new records on a warm server doesn't hold the next list", async () => {
     const rows = new HelperRows();
     await list(rows, slow());
     await rows.idle();
     seed(AGENTS, AGENTS + 8);
     const t0 = Date.now();
-    const next = await list(rows, slow());
-    expect(Date.now() - t0).toBeLessThan(8 * SPIN_MS);
+    const next = await list(rows, slow(150));
+    expect(Date.now() - t0).toBeLessThan(600);
     expect(next.sessions.filter((s) => s.agent)).toHaveLength(AGENTS + 8);
     await rows.idle();
   });

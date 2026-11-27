@@ -4742,6 +4742,8 @@ agents:
     read_max_mb: 64 # the most of an agent's transcript read for them
     facts_cache_mb: 256 # what Den keeps of all agents' transcripts between reads
     refresh_seconds: 5 # how old a helper row in the agents list may be
+    list_wait_seconds: 0.25 # how long a list waits for rows not read yet
+    reader_rest_ms: 2 # the pause between agents while rows are read
     collapse_done_minutes: 30 # deprecated (0.4.29): ignored
 ```
 
@@ -4752,6 +4754,8 @@ agents:
 | `read_max_mb`           | MB, above 0 to 4096        | 64      |
 | `facts_cache_mb`        | MB, above 0 to 4096        | 256     |
 | `refresh_seconds`       | seconds, 0 to 3600         | 5       |
+| `list_wait_seconds`     | seconds, 0 to 60           | 0.25    |
+| `reader_rest_ms`        | milliseconds, 0 to 1000    | 2       |
 | `collapse_done_minutes` | deprecated, ignored        | 30      |
 
 `read_max_mb` (0.4.36): a helper's state comes partly from its agent's own
@@ -4772,9 +4776,20 @@ MB for a busy agent, so the default holds thousands of agents.
 one set of helper rows. A row is read again in the background once it is
 older than this, and the list shows the last one meanwhile, so a list
 never waits on transcripts. A new agent, or one whose state changed
-(started, stopped, cleared), is read before the list answers. The
-reading yields between agents, so Den keeps answering while it reads.
-At 0, every list reads its rows, as before 0.4.90.
+(started, stopped, cleared), is read in the background too. At 0, every
+list reads its rows, as before 0.4.90.
+
+`list_wait_seconds` (0.4.92): how long a list waits for rows not read yet
+(after a restart, or a wave of new agents) before it answers with what it
+has. A row not read yet carries `helpersPending: true` and shows
+"Counting helpers…"; the list carries `helpersPending: true` too, and the
+page looks again within a second until every row is in. Before 0.4.92 the
+list waited for every row: with 140 unread agents, about 7 seconds.
+
+`reader_rest_ms` (0.4.92): the pause between agents while rows are read
+in the background, so Den's other requests get through while it reads.
+At 0 it only yields, and a request with many steps waits one agent's read
+per step, as before 0.4.92.
 
 `row_max` no longer does anything (0.4.45): how many helpers show under
 an agent is each person's `agents.helpers_shown` (above).

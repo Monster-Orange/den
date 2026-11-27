@@ -132,6 +132,7 @@ describe("a session list reads helpers from the shared refresher", () => {
     let firedAt = 0;
     setTimeout(() => (firedAt = Date.now() - t0), 0);
     await list(rows, c.fn);
+    await rows.idle();
     const took = Date.now() - t0;
     expect(took).toBeGreaterThanOrEqual(AGENTS * 25);
     expect(firedAt).toBeGreaterThan(0);

@@ -3413,6 +3413,7 @@
     "hp.rowRunning.one": "{n} ayudante en marcha",
     "hp.runningN": "{n} en marcha",
     "hp.chip": "{n} ayudantes",
+    "hp.counting": "Contando ayudantes…",
     "hp.chip.one": "{n} ayudante",
     "hp.groupOf": "Ayudantes de {name}",
     "hp.open": "{what}, {status}: abrir su transcripción",

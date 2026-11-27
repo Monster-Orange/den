@@ -1963,7 +1963,7 @@ function nextRefresh() {
   if (!st.root?.isConnected) return;
   // A pane whose session just ended may have a new one soon (a persona
   // change, a resume): look again every second for a while.
-  const soon = Date.now() < (st.followUntil ?? 0);
+  const soon = Date.now() < (st.followUntil ?? 0) || !!st.data?.helpersPending;
   st.timer = setTimeout(
     () => {
       if (!document.hidden) void refresh();
