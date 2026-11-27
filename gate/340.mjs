@@ -12,7 +12,7 @@ export const clauses = [
 export const timeoutMs = 90000;
 const EMAIL = /[^\s@]+@[^\s@]+\.[a-z]{2,}/i;
 
-// Read only (issue 845): reads each project's `agents list -w <project> --json` and doctor.
+// Read only: reads each project's `agents list -w <project> --json` and doctor.
 export const readOnly = true;
 
 export async function setup() {

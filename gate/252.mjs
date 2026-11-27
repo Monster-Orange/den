@@ -61,6 +61,7 @@ async function modeOf(ctx, ws) {
 }
 
 export const AUDIT_WAIT_MS = 5000;
+const AUDIT_POLL_MS = 250;
 const auditDetails = (ctx) =>
   String(ctx.readBed("state:audit.jsonl") ?? "")
     .split("\n")
@@ -324,7 +325,7 @@ export async function run(ctx, s) {
   for (let t = Date.now(); ; ) {
     r.audit = auditDetails(ctx).slice(s.auditFrom ?? 0);
     if (restarts(r.audit) >= 2 || Date.now() - t >= AUDIT_WAIT_MS) break;
-    await new Promise((res) => setTimeout(res, 250));
+    await new Promise((res) => setTimeout(res, AUDIT_POLL_MS));
   }
   return r;
 }

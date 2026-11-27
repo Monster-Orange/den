@@ -8,7 +8,7 @@
  *   the hand-edit clause by name, and teardown puts the pins and view back;
  * - 0.4.85's rule (a repo in two projects goes to none) fails the
  *   two-project clause;
- * - a pin migrated on save, which doctor no longer lists, still passes it.
+ * - a pin migrated on save, which doctor does not list, still passes it.
  * Invented names only.
  */
 import { describe, expect, it } from "@jest/globals";
