@@ -29,6 +29,7 @@
     "src/shared/web-session.ts",
     "src/shared/web-url-check.ts",
     "src/shared/web-url.ts",
+    "src/ui/cli/proc-lookup.ts",
     "src/ui/server/ui-language.ts"
   ]
 }
