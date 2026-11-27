@@ -83,7 +83,25 @@ function listTests(dir = "tests") {
     .sort();
 }
 
-/** The public files a page or module loads (not shell.js: it is "everything"). */
+export function helpersNaming(name, dir = "tests") {
+  return fs
+    .readdirSync(path.join(ROOT, dir), { withFileTypes: true })
+    .flatMap((e) => {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory())
+        return e.name === "fixtures" || e.name === "node_modules"
+          ? []
+          : helpersNaming(name, p);
+      return p.includes("/helpers/") &&
+        /\.[cm]?[jt]s$/.test(e.name) &&
+        read(p).includes(name)
+        ? [p]
+        : [];
+    })
+    .sort();
+}
+
+/** The public files a page or module loads (not shell.js: it has its own rule). */
 function imports(file) {
   const out = new Set();
   for (const m of read(`${PUB}/${file}`).matchAll(
@@ -385,6 +403,28 @@ export function buildRules(map = readMap()) {
       run: others.filter((t) => /["'`]examples["'`/]/.test(read(t))),
       why: "tests that read examples/",
     },
+    {
+      when: [`${PUB}/shell.js`],
+      run: [...specs, ...others.filter((t) => read(t).includes("shell.js"))],
+      importers: helpersNaming("shell.js"),
+      why: "the shared shell: every spec, and the tests and helpers that read it",
+    },
+    ...fs
+      .readdirSync(path.join(ROOT, "tests"), { withFileTypes: true })
+      .filter((e) => e.isFile() && !/\.[cm]?[jt]s$/.test(e.name))
+      .map((e) => e.name)
+      .sort()
+      .map((f) => ({
+        when: [`tests/${f}`],
+        run: [
+          ...(f === "affected-map.json"
+            ? [SELF, "tests/unit/test-infra/queue-merge-tests.test.ts"]
+            : []),
+          ...others.filter((t) => read(t).includes(f)),
+        ],
+        why: `tests that read tests/${f}`,
+      }))
+      .filter((r) => r.run.length),
     {
       when: ["gate/**"],
       run: tests.filter((t) => t.startsWith("tests/unit/test-infra/gate-")),

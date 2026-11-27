@@ -313,7 +313,6 @@ describe("the map (tests/affected-map.json)", () => {
 
   it("the everything list covers what the issue names", () => {
     for (const f of [
-      "src/ui/server/public/shell.js",
       "packages/den-ui/src/kit.js",
       "src/ui/server/request-guard.ts",
       "src/ui/server/route-classes.ts",
@@ -321,6 +320,8 @@ describe("the map (tests/affected-map.json)", () => {
       "package-lock.json",
       "jest.config.js",
       "tests/setup.ts",
+      "tests/child-servers.ts",
+      "tests/quarantine.cjs",
       "tests/unit/server/helpers/den-auth.ts",
       ".github/workflows/ci.yml",
     ]) {
@@ -541,6 +542,75 @@ describe("tests that start Den as a process (issue 708)", () => {
       `${a11y}: "src/ui/server/no-such-module.ts"`,
       "tests/unit/no-such.test.ts: the test isn't there",
     ]);
+  });
+});
+
+describe("shell.js and the top-level data files run their readers, not everything", () => {
+  const RULES = call<Map["rules"]>(MAP_GEN, "buildRules");
+  const pick = (f: string, importersOf: Record<string, string[]> = {}) =>
+    select({
+      changed: [f],
+      allTests: TESTS,
+      related: [],
+      map: { ...MAP, rules: [...MAP.rules, ...RULES] },
+      importersOf,
+    });
+  const readers = (name: string) =>
+    TESTS.filter(
+      (t) =>
+        !t.endsWith(".browser.test.ts") &&
+        !t.endsWith("affected-tests.test.ts") &&
+        fs.readFileSync(path.join(ROOT, t), "utf-8").includes(name),
+    );
+
+  it("shell.js: every browser spec, every test that names it, the helpers' importers and smoke", () => {
+    const s = pick("src/ui/server/public/shell.js", {
+      "tests/unit/server/helpers/en-catalog.ts": [
+        "tests/unit/server/x.test.ts",
+      ],
+      "tests/unit/server/helpers/kit-shell.ts": ["tests/unit/server/y.test.ts"],
+    });
+    expect(s.all).toBe(false);
+    const files = new Set(Object.keys(s.files));
+    const want = [
+      ...TESTS.filter((t) => t.endsWith(".browser.test.ts")),
+      ...readers("shell.js"),
+      ...MAP.smoke,
+    ];
+    expect(want.filter((t) => !files.has(t))).toEqual([]);
+    expect(files.size).toBeLessThan(TESTS.length / 2);
+  });
+
+  it("a test helper that names shell.js runs its importers", () => {
+    const helpers = call<string[]>(MAP_GEN, "helpersNaming", "shell.js");
+    expect(helpers).toEqual(
+      expect.arrayContaining([
+        "tests/unit/server/helpers/en-catalog.ts",
+        "tests/unit/server/helpers/kit-shell.ts",
+      ]),
+    );
+  });
+
+  it("tests/affected-map.json: the map's own tests and smoke", () => {
+    const s = pick("tests/affected-map.json");
+    expect(s.all).toBe(false);
+    const files = Object.keys(s.files);
+    for (const t of [
+      "tests/unit/test-infra/affected-tests.test.ts",
+      "tests/unit/test-infra/queue-merge-tests.test.ts",
+      ...MAP.smoke,
+    ])
+      expect([t, files.includes(t)]).toEqual([t, true]);
+    expect(files.length).toBeLessThan(TESTS.length / 10);
+  });
+
+  it.each([
+    ["tests/quarantine.json", "tests/unit/test-infra/quarantine.test.ts"],
+    ["tests/shard-times.json", "tests/unit/test-infra/shard-plan.test.ts"],
+  ])("%s runs %s, not everything", (f, t) => {
+    const s = pick(f);
+    expect(s.all).toBe(false);
+    expect(Object.keys(s.files)).toContain(t);
   });
 });
 
@@ -993,9 +1063,8 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
     );
   });
 
-  it("shell.js, ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
+  it("ui-language.ts, ui-assets.ts and the catalog helpers still run everything", () => {
     for (const f of [
-      "src/ui/server/public/shell.js",
       "src/shared/ui-language.ts",
       "src/ui/server/ui-assets.ts",
       "tests/unit/server/helpers/en-catalog.ts",
