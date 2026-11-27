@@ -811,6 +811,10 @@ describe("ci.yml (issue 398)", () => {
   ) as { jobs: Record<string, Job> };
   const runs = (j: Job) => j.steps.map((s) => s.run ?? "").join("\n");
 
+  it("the pr job runs affected-map.mjs --check", () => {
+    expect(runs(ci.jobs.pr)).toMatch(/node scripts\/affected-map\.mjs --check/);
+  });
+
   // Issue 996: a push to main runs the checks only; the full matrix runs by
   // hand (workflow_dispatch). None of it runs on a pull request.
   it("the full matrix runs by hand, the checks on main too; none of it on a pull request", () => {
@@ -1005,5 +1009,32 @@ describe("the UI catalogs (public/i18n/*.js), from a fake diff", () => {
       });
       expect([f, s.all]).toEqual([f, true]);
     }
+  });
+});
+
+describe("the map's one form: the generator writes prettier's form, --check fails on any other", () => {
+  const raw = (m: unknown) => JSON.stringify(m, null, 2) + "\n";
+  it("the generator's text passes prettier --check", async () => {
+    const text = call<string>(MAP_GEN, "mapText", MAP);
+    expect(text).not.toBe(raw(MAP));
+    expect(
+      call<boolean>("prettier", "check", text, { filepath: MAP_FILE }),
+    ).toBe(true);
+    expect(JSON.parse(text)).toEqual(MAP);
+  });
+  it("--check's form test: the old raw form fails, the committed map passes", () => {
+    expect(call<string | null>(MAP_GEN, "formIssue", raw(MAP))).toMatch(
+      /run node scripts\/affected-map\.mjs/,
+    );
+    expect(
+      call<string | null>(
+        MAP_GEN,
+        "formIssue",
+        fs.readFileSync(MAP_FILE, "utf-8"),
+      ),
+    ).toBeNull();
+  });
+  it("its message no longer asks for a prettier step", () => {
+    expect(fs.readFileSync(MAP_GEN, "utf-8")).not.toMatch(/then prettier/);
   });
 });

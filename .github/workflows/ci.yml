@@ -365,6 +365,10 @@ jobs:
       # English-text assert, counted at the merge base and at HEAD (needs
       # the fetch-depth: 0 above). Untouched files are never judged.
       - run: node scripts/brittle-ratchet.mjs --base "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}"
+      # Issue 1561: tests/affected-map.json is what scripts/affected-map.mjs
+      # writes (its rules, its subjects, prettier's form), so no branch
+      # merges a stale map or one in another form.
+      - run: node scripts/affected-map.mjs --check
       # A change to the UI kit (packages/den-ui) bumps its version: with the
       # version already on npm, the release would skip publishing it
       # (CONTRIBUTING › Releasing). Needs the whole history (fetch-depth above).
