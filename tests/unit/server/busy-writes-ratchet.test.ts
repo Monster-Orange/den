@@ -24,8 +24,11 @@ const PUBLIC = path.join(process.cwd(), "src", "ui", "server", "public");
  */
 const LEFT: Record<string, number> = {
   "agent-helpers.js": 1,
-  "agents-page.js": 21,
-  "agents-panes.js": 2,
+  "agents-actions.js": 12,
+  "agents-layout.js": 2,
+  "agents-page.js": 5,
+  "agents-panes.js": 3,
+  "agents-reorder.js": 1,
   "agents-rows.js": 1,
   "agents-section.js": 1,
   "appearance.js": 2,
