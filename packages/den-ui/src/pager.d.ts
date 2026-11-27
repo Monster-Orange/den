@@ -32,6 +32,7 @@ export type PagerTarget =
 
 export interface PagerModel {
   mode?: "pages" | "more";
+  loaded?: boolean;
   from: number;
   to: number;
   total?: number | null;
