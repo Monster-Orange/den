@@ -38,6 +38,7 @@ config and manifest changes a distribution must make to move to it under
 - `GET /api/activity` (a service's or repo's activity list) answers one page, newest first: `?limit`, and one of `?cursor`, `?page` or `?at`, with `next`, `prev`, `total`, `offset`, `page` and `pages` beside `entries`.
 - The bell pages each of its sections (Needs you, waiting, Done, Updates and Older) with the kit's pager under it: "1–50 of 63", First, Previous, the page picker, Next, Last and a per-page choice, in English, Spanish and Japanese. A section with one page shows no pager. Closing the bell goes back to the first pages.
 - `GET /api/changelog` pages when asked: with `?limit`, `?cursor`, `?page` or `?at` it answers `{ items, next, prev, total, offset, page, pages }`, 10 versions by default, newest first. Without them it still answers every version as a bare list. The kit adapter gains `changelogPage(ask)`.
+- A service's or repo's Activity list in its panel shows its newest 20 actions and the kit's More button under them: Show 20 more adds the next 20 (fetched by cursor), until "All N shown".
 
 ## [0.4.92] - unreleased
 
