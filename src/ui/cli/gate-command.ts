@@ -46,10 +46,11 @@
  *            [--class-order <l>] [--class-map <l>] [--class-windows <l>]
  *            [--browser-requires-container 0|1]
  *            [--browser-box-default any|local] [--browser-host-only <l>]
- *            [--route-agents 0|1] [--route-commands <programs>]
+ *            [--route-agents 0|1] [--route-commands <programs>] [--throwaway-sweep 0|1]
  *                            the machine's; a person changes them. Issue
  *                            803: priority classes per project ("" clears)
  */
+import type { Writable } from "stream";
 import { spawn } from "child_process";
 import * as os from "os";
 import * as path from "path";
@@ -201,6 +202,7 @@ export const GATE_HELP = {
     "    [--remote-renew-seconds N] [--remote-lapse-seconds N]",
     "    [--remote-max-slots N] [--remote-max-asks N]",
     "    [--priority-max N] [--priority-pass-limit-minutes N] [--priority-agents 0|1]",
+    "    [--release-pass-other-kind-minutes N]",
     "    [--priority-runners 0|1]   (--priority-max 0 needs --yes: it turns release priority off)",
     "    [--claim-minutes N] [--mcp-renew-minutes N] [--mcp-lapse-minutes N] [--mcp-grace-minutes N]",
     "    [--box-check-timeout-seconds N] [--box-recheck-seconds N]",
@@ -210,6 +212,7 @@ export const GATE_HELP = {
     "    [--browser-box-default any|local]   where a browser run with no --box goes",
     '    [--browser-host-only "<project>, label:<pattern>"]   browser runs kept here ("" clears)',
     "    [--route-agents 0|1]   agents' heavy runs go through the gate (0: run as written, counted)",
+    "    [--throwaway-sweep 0|1]   Den removes throwaway test containers whose run ended (0: never runs docker for them)",
     '    [--route-commands "jest, vitest, tsc, playwright, npm test, npm run test*"]   the programs routed ("" clears)',
     "A CI job in a runner VM takes a slot over HTTP with a gate-only runner",
     "token (an agent asks for one; you allow it): docs/gate-slots.md.",
@@ -234,6 +237,12 @@ export interface GateRun {
    * its own), stopped when the slot ends. Absent: none was made.
    */
   group?: number;
+  /**
+   * Lets the command start. Until then it waits, held, so it
+   * can't exit (or leave workers) before its group is recorded. Absent:
+   * it started at once.
+   */
+  start?: () => void;
 }
 
 export interface GateDeps {
@@ -245,8 +254,13 @@ export interface GateDeps {
   err: (line: string) => void;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
-  /** Starts the command (issue 625: `env` adds to the environment). */
-  exec: (cmd: string, args: string[], env?: Record<string, string>) => GateRun;
+  /** Starts the command; `env` adds to its environment, `held` holds it until `start()`. */
+  exec: (
+    cmd: string,
+    args: string[],
+    env?: Record<string, string>,
+    opts?: { held?: boolean },
+  ) => GateRun;
   /** Runs `fn` every `ms` until the returned stop is called. */
   every: (ms: number, fn: () => void) => () => void;
   /** Calls `h` on each of GATE_RUN_SIGNALS; returns a stop. */
@@ -409,19 +423,44 @@ export const GATE_RUN_SIGNALS: NodeJS.Signals[] = [
   "SIGQUIT",
 ];
 
+/**
+ * The shim a command starts through. It waits for a line on fd
+ * 3, which gate run writes once the group is recorded, then becomes the
+ * command (exec keeps its pid, group and start time, which the record
+ * holds). If gate run is gone first, the pipe closes, and nothing runs.
+ * POSIX sh only: macOS, Linux boxes and WSL all have /bin/sh.
+ */
+export const GATE_HOLD_SHIM =
+  "IFS= read -r go <&3 || exit 125; exec 3<&-; " +
+  // a missing command is 127 on every shell, as spawn's error was
+  'command -v "$1" >/dev/null 2>&1 || { echo "gate run: $1: not found" >&2; exit 127; }; ' +
+  'exec "$@"';
+/** What the shim exits with when gate run never let it start. */
+export const GATE_HOLD_NEVER_STARTED = 125;
+
 const realExec = (
   cmd: string,
   args: string[],
   env?: Record<string, string>,
+  opts?: { held?: boolean },
 ): GateRun => {
   // Issue 1132: in its own process group (it leads it), so what it
   // starts can be stopped with it, and nothing else is. Signals reach it
   // through gate run, which passes them on to the whole group.
-  const k = spawn(cmd, args, {
-    stdio: "inherit",
+  const held = opts?.held === true && process.platform !== "win32";
+  const how = {
     detached: true,
     ...(env ? { env: { ...process.env, ...env } } : {}),
-  });
+  };
+  const k = held
+    ? spawn("/bin/sh", ["-c", GATE_HOLD_SHIM, "den-gate-hold", cmd, ...args], {
+        ...how,
+        stdio: ["inherit", "inherit", "inherit", "pipe"],
+      })
+    : spawn(cmd, args, { ...how, stdio: "inherit" });
+  const go = held ? (k.stdio[3] as Writable | null) : null;
+  // a write after the shim died is no error of gate run's
+  go?.on("error", () => {});
   const running = () => k.exitCode === null && k.signalCode === null;
   const group = process.platform === "win32" ? undefined : k.pid;
   return {
@@ -436,6 +475,14 @@ const realExec = (
         k.kill(s);
       }
     },
+    ...(go
+      ? {
+          start: () => {
+            if (go.writableEnded) return;
+            go.end("go\n");
+          },
+        }
+      : {}),
     ...(process.platform === "linux"
       ? {
           dumping: () => running() && k.pid !== undefined && coreDumping(k.pid),
@@ -555,33 +602,50 @@ function repoTop(dir: string): string {
 }
 
 /**
- * Clause 11, issue 1017: the run's exact Playwright client version, from
- * an installed package.json only. First installed for the run's folder:
- * its node_modules, or one above it up to the repo's top folder (a
- * workspace run with Playwright hoisted to the root). Else installed for
- * the nearest package.json below it that depends on Playwright (a repo
- * whose Playwright lives in web/). Nearest is fewest folders down;
- * node_modules and dot folders are never looked in. A range in a
- * package.json is never read as a version: with nothing installed, the
- * version is unknown (undefined).
+ * The run's exact Playwright version, from an installed package only
+ * (a range is never a version). First for the run's folder: node_modules
+ * there or above, up to the repo's top folder. Else for the nearest
+ * package.json below that depends on Playwright, fewest folders down,
+ * skipping node_modules and dot folders. The look below is bounded: none
+ * from the root folder, home or above home (a launchd job starts in /, and
+ * a mount there can block a listing for good), at most PW_DOWN_DEPTH
+ * levels and PW_DOWN_DIRS listings. Nothing found: unknown (undefined).
  */
-export function playwrightVersion(cwd: string): string | undefined {
+function mayLookBelow(cwd: string, home: string): boolean {
+  const here = path.resolve(cwd);
+  if (path.dirname(here) === here) return false;
+  const h = path.resolve(home);
+  return here !== h && !h.startsWith(here + path.sep);
+}
+
+export const PW_DOWN_DEPTH = 4;
+export const PW_DOWN_DIRS = 500;
+export function playwrightVersion(
+  cwd: string,
+  o: { home?: string; list?: (dir: string) => fs.Dirent[] } = {},
+): string | undefined {
+  const list =
+    o.list ?? ((dir: string) => fs.readdirSync(dir, { withFileTypes: true }));
   const top = repoTop(cwd);
   const here = installedPlaywright(cwd, top);
   if (here) return here;
+  if (!mayLookBelow(cwd, o.home ?? os.homedir())) return undefined;
   let level = [cwd];
-  while (level.length) {
+  let listed = 0;
+  for (let depth = 0; level.length && depth <= PW_DOWN_DEPTH; depth++) {
     for (const dir of level) {
       const range = declaredPlaywright(dir);
       if (typeof range !== "string") continue;
       const v = installedPlaywright(dir, cwd);
       if (v) return v;
     }
+    if (depth === PW_DOWN_DEPTH) break;
     const next: string[] = [];
     for (const dir of level) {
+      if (listed++ >= PW_DOWN_DIRS) return undefined;
       let names: fs.Dirent[] = [];
       try {
-        names = fs.readdirSync(dir, { withFileTypes: true });
+        names = list(dir);
       } catch {
         continue;
       }
@@ -1290,22 +1354,32 @@ async function run(args: string[], d: GateDeps): Promise<number> {
       slotEnv[GATE_WORKERS_ENV] = String(
         gateWorkers(d.cores ?? realCores(), s.settings().cpuSlots),
       );
+    const hold = { held: true };
     child = box
-      ? d.exec(pos[0]!, pos.slice(1), {
-          // Issue 1017: the box's endpoint for this run's version.
-          ...boxEnv(box, e.pwVersion),
-          DEN_GATE_ALLOW: allow.join(","),
-          ...slotEnv,
-        })
+      ? d.exec(
+          pos[0]!,
+          pos.slice(1),
+          {
+            // The box's endpoint for this run's version.
+            ...boxEnv(box, e.pwVersion),
+            DEN_GATE_ALLOW: allow.join(","),
+            ...slotEnv,
+          },
+          hold,
+        )
       : flagEndpoint && flagEndpoint !== "self" && kind === "browser"
         ? // The address given on the command line reaches the run.
-          d.exec(pos[0]!, pos.slice(1), {
-            DEN_PW_WS: flagEndpoint,
-            ...slotEnv,
-          })
-        : d.exec(pos[0]!, pos.slice(1), slotEnv);
+          d.exec(
+            pos[0]!,
+            pos.slice(1),
+            { DEN_PW_WS: flagEndpoint, ...slotEnv },
+            hold,
+          )
+        : d.exec(pos[0]!, pos.slice(1), slotEnv, hold);
     if (child.pid !== undefined)
       s.setRunPid(id, child.pid, { group: child.group, cmd: pos[0] });
+    // Only now, with its group recorded, may the command run.
+    child.start?.();
     // Issue 1132: the group as the store recorded it (with its leader's
     // record and the boot), for a reap after a dump gave the slot back.
     const recorded = s.get(id);
@@ -1766,6 +1840,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--vm-memory-share": true,
     "--priority-max": true,
     "--priority-pass-limit-minutes": true,
+    "--release-pass-other-kind-minutes": true,
     "--priority-agents": true,
     "--priority-runners": true,
     "--claim-minutes": true,
@@ -1782,6 +1857,7 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     "--browser-box-default": true,
     "--browser-host-only": true,
     "--route-agents": true,
+    "--throwaway-sweep": true,
     "--route-commands": true,
     "--yes": false,
     // Issue 1395: an agent's ask says why.
@@ -1810,9 +1886,11 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--remote-max-asks", "remote_max_asks"],
     ["--priority-max", "priority_max"],
     ["--priority-pass-limit-minutes", "priority_pass_limit_minutes"],
+    ["--release-pass-other-kind-minutes", "release_pass_other_kind_minutes"],
     ["--priority-agents", "priority_agents"],
     // Issue 1264: Den's agent hook routes heavy runs; 1 yes, 0 no.
     ["--route-agents", "route_agents"],
+    ["--throwaway-sweep", "throwaway_sweep"],
     ["--priority-runners", "priority_runners"],
     ["--claim-minutes", "claim_minutes"],
     ["--mcp-renew-minutes", "mcp_renew_minutes"],
@@ -1824,7 +1902,8 @@ async function settings(args: string[], d: GateDeps): Promise<number> {
     ["--browser-requires-container", "browser_requires_container"],
   ] as const) {
     const v = f[flag];
-    if (typeof v === "string") raw[key] = Number(v);
+    if (typeof v === "string")
+      raw[key] = key === "route_agents" ? v : Number(v);
   }
   // Issue 803: a line of text each; "" clears it.
   for (const [flag, key] of [
@@ -1945,7 +2024,7 @@ function showSettings(d: GateDeps): number {
     d.out(`  ${k}: ${m} · now ${shown === "" ? "unset" : String(shown)}`);
   }
   d.out(
-    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserContainerStrict ? "yes, strict" : s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
+    `cpu slots ${s.cpuSlots}, ${s.cpuSlotsBesideBrowser ? `${s.cpuSlotsBesideBrowser} beside a browser run` : "none beside a browser run"}, ${s.cpuSlotsBesideReleaseBrowser ? `${s.cpuSlotsBesideReleaseBrowser} beside a release one` : "none beside a release one"} · browser runs at once here ${s.localBrowserSlots} · ${s.cpuHoldLoad ? `cpu runs wait at load ${s.cpuHoldLoad} while a release browser run holds` : "no load hold (cpu_hold_load 0)"} · ${s.loadHoldPerCore ? `new cpu runs wait over a load of ${s.loadHoldPerCore} × the cores while one is going` : "no per-core load hold (load_hold_per_core 0)"} · ${s.maxStartLoad ? `no run starts at a load of ${s.maxStartLoad} or more (starts anyway after ${s.maxStartWaitMinutes ? `${s.maxStartWaitMinutes} min` : "no limit"})` : "no start ceiling (max_start_load 0)"} · leftovers killed ${s.reapGraceSeconds} s after a run ends · flagged ${s.overrunMarginMinutes} min past its estimate, in the bell past ${s.overrunBellMultiple}× it · CI runners renew every ${s.remoteRenewSeconds} s, taken back after ${s.remoteLapseSeconds} s, at most ${s.remoteMaxSlots} slots and ${s.remoteMaxAsks} asks each · ${s.priorityMax === 0 ? "release priority: off (priority_max 0)" : `release priority: ${s.priorityMax} per kind at a time, ${s.priorityPassLimitMinutes ? `never past a marked run waiting ${s.priorityPassLimitMinutes} min` : "never past another marked run"}, ${s.releasePassOtherKindMinutes ? `past the other kind's earlier runs waiting up to ${s.releasePassOtherKindMinutes} min` : "never past the other kind"}, ${s.priorityAgents ? "agents and people" : "people only"} may ask`} · test boxes checked within ${s.boxCheckTimeoutSeconds} s, a held or unreachable one checked again after ${s.boxRecheckSeconds} s · browser runs need a container: ${s.browserContainerStrict ? "yes, strict" : s.browserRequiresContainer ? "yes" : "no"} · a browser run with no --box: ${s.browserBoxDefault === "any" ? "here or a test box" : "here only"}${s.browserHostOnly ? `, kept here: ${s.browserHostOnly}` : ""}${
       s.classes
         ? ` · classes, highest first: ${s.classes.order.join(", ")}${s.classMap ? ` (${s.classMap})` : ""}${s.classWindows ? `, windows ${s.classWindows}` : ""}`
         : ""

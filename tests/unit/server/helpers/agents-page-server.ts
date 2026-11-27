@@ -36,7 +36,7 @@ import {
   type ScriptedPty,
 } from "../../sessions/helpers/fake-pty.js";
 import { denAuth } from "./den-auth.js";
-import { ensureWebSecret } from "../../../../src/shared/web-secret.js";
+import { ensureWebSecret } from "../../../../src/shared/web/web-secret.js";
 import { setupFixturePerson } from "../../../../src/shared/fixture-person.js";
 import { writeCreationRecord } from "../../../../src/shared/test-operator.js";
 import { writeTestEdgeProof } from "./edge-proof.js";
@@ -77,6 +77,7 @@ export interface AgentsPageServer {
   hostClosed(): boolean;
   /** The web server's process group (issue 242: a test pauses it, as a busy Den). */
   serverPid(): number | undefined;
+  attached(sessionId: string): number;
   stop(): Promise<void>;
 }
 
@@ -391,6 +392,7 @@ export async function startAgentsPageServer(
   const { port } = started;
   const base = `http://localhost:${port}`;
   return {
+    attached: (sessionId) => host.attachmentCount(sessionId),
     port,
     base,
     tmp,

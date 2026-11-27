@@ -20,9 +20,9 @@ import {
   setWebOwnerName,
   syncWebOwnerName,
   writeWebOwner,
-} from "../../../src/shared/web-owner.js";
+} from "../../../src/shared/web/web-owner.js";
 import type { UserConfig } from "../../../src/shared/den-config.js";
-import { readWebAuthConfig } from "../../../src/shared/web-session.js";
+import { readWebAuthConfig } from "../../../src/shared/web/web-session.js";
 import {
   PERSON_ONLY_SETTINGS,
   patchCliRows,
@@ -257,7 +257,7 @@ describe("issue 406: an owner linked before names were kept, from GitHub's publi
 
   // Issue 1555: each way the name is not kept says why, so a start that
   // keeps none can be told apart from one that was never asked.
-  it("each way nothing is kept says why, once; a name already known says nothing", async () => {
+  it("each way nothing is kept says why, once; a name already known, or no owner yet, says nothing", async () => {
     const dir = path.join(tmp, "state-public-why");
     writeWebOwner({ id: 4242, login: "octo-lead" }, dir);
     const base = {
@@ -304,9 +304,6 @@ describe("issue 406: an owner linked before names were kept, from GitHub's publi
       "GitHub didn't answer within 0.05 s",
     ]);
     expect(
-      await why({ readOwner: () => null, fetch: fakeFetch(200, {}).f }),
-    ).toEqual(["no linked owner"]);
-    expect(
       await why({
         fake: false,
         env: { CI: "true" },
@@ -321,7 +318,10 @@ describe("issue 406: an owner linked before names were kept, from GitHub's publi
         },
       }),
     ).toEqual(["the name couldn't be saved: disk full"]);
-    // Known already: the usual start, nothing to say.
+    // Known already, or nobody linked yet: a usual start, nothing to say.
+    expect(
+      await why({ readOwner: () => null, fetch: fakeFetch(200, {}).f }),
+    ).toEqual([]);
     expect(
       await why({
         readOwner: () => ({ ...readWebOwner(dir)!, name: "Odette Lead" }),

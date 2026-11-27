@@ -36,8 +36,8 @@ const TEST_INSTALL_KEYS = new Set(["web.test_install", "test_install"]);
 import { product } from "../../shared/product.js";
 import { DEFAULT_PORT } from "../../shared/constants.js";
 import { readWebPort } from "../../shared/edge/config.js";
-import { cliAuthHeaders } from "../../shared/web-secret.js";
-import { denWebBase } from "../../shared/web-dial.js";
+import { cliAuthHeaders } from "../../shared/web/web-secret.js";
+import { denWebBase } from "../../shared/web/web-dial.js";
 type ConfigKey = keyof UserConfig;
 
 const KEY_ALIASES: Record<string, ConfigKey> = {
@@ -90,6 +90,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // den#143: how long `web up` waits for the server.
   "web.ready_probe_seconds": ["web_ready", "probe_seconds"],
   "web.start_wait_seconds": ["web_ready", "start_seconds"],
+  "web.tools_probe_seconds": ["web_ready", "tools_probe_seconds"],
   // Issue 819: new-device requests and wrong codes.
   "web.pair_requests_per_minute": ["web_pairing", "requests_per_minute"],
   "web.approve_attempts": ["web_pairing", "approve_attempts"],
@@ -118,6 +119,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
     "agent_issue_writes",
     "visibility_minutes",
   ],
+  "agents.issue_writes_public": ["agent_issue_writes", "public"],
   "agents_list.refresh_timeout_seconds": [
     "agents_list",
     "refresh_timeout_seconds",
@@ -128,6 +130,8 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   "reports.hub_screenshot_max_mb": ["reports", "hub_screenshot_max_mb"],
   // Issue 707: the server's warning lines on disk, capped.
   "server_log.max_mb": ["server_log", "max_mb"],
+  "server_log.slow_request_ms": ["server_log", "slow_request_ms"],
+  "server_log.event_loop_lag_ms": ["server_log", "event_loop_lag_ms"],
   "reports.hub_timeout_seconds": ["reports", "hub_timeout_seconds"],
   // Issue 278: when an agent counts as stuck compacting; instruction size.
   "agent_context.compaction_loop_count": [
@@ -181,6 +185,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
   // Issue 1022: how often the page polls health, visible and hidden.
   "health_poll.visible_seconds": ["health_poll", "visible_seconds"],
   "health_poll.hidden_seconds": ["health_poll", "hidden_seconds"],
+  "git_reads.at_once": ["git_reads", "at_once"],
 };
 
 /** Issue 532: a terminal limit's effective value (user.yml over den.yml). */

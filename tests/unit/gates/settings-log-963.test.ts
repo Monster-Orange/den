@@ -145,6 +145,7 @@ describe("issue 963: each setting says what it means", () => {
     "remote_max_asks",
     "priority_max",
     "priority_pass_limit_minutes",
+    "release_pass_other_kind_minutes",
     "priority_agents",
     "priority_runners",
     "claim_minutes",
@@ -163,6 +164,7 @@ describe("issue 963: each setting says what it means", () => {
     // Issue 1264.
     "route_agents",
     "route_commands",
+    "throwaway_sweep",
   ];
 
   it.each(["en", "es", "ja"] as UiLanguage[])(

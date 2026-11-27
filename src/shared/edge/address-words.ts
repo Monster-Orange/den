@@ -9,7 +9,7 @@
  * just checked, {wanted} the address Den would rather give, {host} that
  * address's name, {what} what answered, {link} a sign-in link.
  */
-import type { UiLanguage } from "../../ui/server/ui-language.js";
+import type { UiLanguage } from "../ui-language.js";
 
 export type AddressWord =
   | "held"

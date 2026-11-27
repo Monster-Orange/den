@@ -24,6 +24,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let browser: Browser | null = null;
 let s: AgentsPageServer;
@@ -80,13 +81,8 @@ describe("a pane whose terminal code failed to load (issue 128)", () => {
       viewport: { width: 1440, height: 900 },
       reducedMotion: "reduce",
     });
+    await seeWhatsNew(ctx, s.base);
     await ctx.addInitScript(() => {
-      try {
-        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-          localStorage.setItem(k, "9.9.9");
-      } catch {
-        /* none */
-      }
       (window as unknown as { __loaded: number }).__loaded = Date.now();
     });
     // The person's browser, signed in as `web up` does (0.4.71): a pane's
@@ -160,13 +156,8 @@ describe("the server agent's terminal code failed to load (issue 128)", () => {
       viewport: { width: 1440, height: 900 },
       reducedMotion: "reduce",
     });
+    await seeWhatsNew(ctx, s.base);
     await ctx.addInitScript(() => {
-      try {
-        for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-          localStorage.setItem(k, "9.9.9");
-      } catch {
-        /* none */
-      }
       (window as unknown as { __loaded: number }).__loaded = Date.now();
     });
     const p = await ctx.newPage();

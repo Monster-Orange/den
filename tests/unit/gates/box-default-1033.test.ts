@@ -17,6 +17,7 @@ import { type BoxProbe } from "../../../src/shared/gates/boxes.js";
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { gateView } from "../../../src/shared/gates/view.js";
 import { cmdGate, type GateDeps } from "../../../src/ui/cli/gate-command.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const tmps: string[] = [];
 afterEach(() => {
@@ -341,10 +342,7 @@ describe("the two settings: gate settings and the Settings page", () => {
 
   it("have Settings rows in en, es and ja", () => {
     const pub = path.join(process.cwd(), "src/ui/server/public");
-    const reg = fs.readFileSync(
-      path.join(pub, "settings-registry.js"),
-      "utf-8",
-    );
+    const reg = readSettingsSources();
     for (const id of ["gate_box_default", "gate_host_only"]) {
       expect(reg).toContain(`id: "server.${id}"`);
       for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {

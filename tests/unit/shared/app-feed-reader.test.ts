@@ -13,7 +13,7 @@ import {
   type FeedStore,
   type StoredEvent,
 } from "../../../src/shared/app-feed-reader";
-import { SseReader } from "../../../src/shared/hub-delivery";
+import { SseReader } from "../../../src/shared/hub/hub-delivery";
 
 const sse = (id: string | null, data: string, event?: string) =>
   `${event ? `event: ${event}\n` : ""}${id !== null ? `id: ${id}\n` : ""}data: ${data}\n\n`;

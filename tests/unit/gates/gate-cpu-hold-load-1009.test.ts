@@ -22,6 +22,7 @@ import {
 import { GateStore, checkGatePatch } from "../../../src/shared/gates/store.js";
 import { gateView } from "../../../src/shared/gates/view.js";
 import { slotLine } from "../../../src/ui/cli/gate-command.js";
+import { readSettingsSources } from "../server/helpers/settings-sources.js";
 
 const T0 = Date.parse("2026-11-22T17:00:00Z");
 const iso = (min: number) => new Date(T0 + min * 60_000).toISOString();
@@ -219,9 +220,7 @@ describe("the Gate page and the setting's words", () => {
   });
 
   it("the Settings row has its words in en, es and ja", () => {
-    expect(read("settings-registry.js")).toContain(
-      '"gate_slots.cpu_hold_load"',
-    );
+    expect(readSettingsSources()).toContain('"gate_slots.cpu_hold_load"');
     for (const f of ["shell.js", "i18n/es.js", "i18n/ja.js"]) {
       expect(read(f)).toContain('"set.server.gate_cpu_hold_load":');
       expect(read(f)).toContain('"set.server.gate_cpu_hold_load.d":');

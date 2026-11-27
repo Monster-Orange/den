@@ -25,17 +25,26 @@ import * as yaml from "yaml";
 const ROOT = process.cwd();
 const WORKFLOWS = path.join(ROOT, ".github", "workflows");
 
-// Issue 1226: the runner's labels come from DEN_SELF_HOSTED_LABELS (a JSON
-// array, such as ["self-hosted","devbox"]); unset, today's label.
-const LABELS =
-  'fromJSON(vars.DEN_SELF_HOSTED_LABELS || \'["self-hosted","den-wsl"]\')';
+// The runner's labels come from DEN_SELF_HOSTED_LABELS (a JSON
+// array, such as ["self-hosted","devbox"]). There's no default.
+// The box only with the switch on and the labels set; the switch on without
+// them fails each box job's first step, and nothing waits for a runner.
+const LABELS = "fromJSON(vars.DEN_SELF_HOSTED_LABELS)";
 
 const GUARD =
   "${{ (vars.DEN_SELF_HOSTED == 'on' && matrix.node == '22.13.0' && " +
   "(github.event_name == 'push' || " +
-  "github.event.pull_request.head.repo.full_name == github.repository)) && " +
+  "github.event.pull_request.head.repo.full_name == github.repository) && " +
+  "vars.DEN_SELF_HOSTED_LABELS) && " +
   LABELS +
   " || 'ubuntu-latest' }}";
+
+/** The first step of each box job, and of repeat.yml's job. */
+const DAY_NO_LABELS =
+  "vars.DEN_SELF_HOSTED == 'on' && vars.DEN_SELF_HOSTED_LABELS == ''";
+const NIGHT_NO_LABELS =
+  "github.event_name == 'workflow_dispatch' && " +
+  "vars.DEN_SELF_HOSTED_NIGHT == 'on' && vars.DEN_SELF_HOSTED_NIGHT_LABELS == ''";
 
 // The jobs that may use the box in the day (their Node 22 leg only).
 const BOX_JOBS = ["checks", "dist-smoke"];
@@ -45,7 +54,8 @@ const BOX_JOBS = ["checks", "dist-smoke"];
 // GitHub-hosted.
 const PR_GUARD =
   "${{ (vars.DEN_SELF_HOSTED == 'on' && " +
-  "github.event.pull_request.head.repo.full_name == github.repository) && " +
+  "github.event.pull_request.head.repo.full_name == github.repository && " +
+  "vars.DEN_SELF_HOSTED_LABELS) && " +
   LABELS +
   " || 'ubuntu-latest' }}";
 const PR_BOX_JOBS = ["pr", "pr-shards"];
@@ -58,10 +68,12 @@ const guardOf = (job: string) =>
 
 const NIGHT_GUARD =
   "${{ (github.event_name == 'workflow_dispatch' && " +
-  "vars.DEN_SELF_HOSTED_NIGHT == 'on') && " +
-  "fromJSON('[\"self-hosted\",\"den-wsl\"]') || 'ubuntu-latest' }}";
+  "vars.DEN_SELF_HOSTED_NIGHT == 'on' && vars.DEN_SELF_HOSTED_NIGHT_LABELS) && " +
+  "fromJSON(vars.DEN_SELF_HOSTED_NIGHT_LABELS) || 'ubuntu-latest' }}";
 
-const SELF_HOSTED = ["self-hosted", "den-wsl"];
+/** The labels the tests set (no workflow names a box's labels itself). */
+const BOX_LABELS = '["self-hosted","devbox"]';
+const SELF_HOSTED = ["self-hosted", "devbox"];
 const REPO = "owner/den";
 const BY_HAND = {
   event_name: "workflow_dispatch",
@@ -108,9 +120,15 @@ function tokenize(src: string): string[] {
 function lookup(ctx: Record<string, unknown>, ref: string): Value {
   let cur: unknown = ctx;
   for (const key of ref.split(".")) {
-    if (cur === null || typeof cur !== "object") return null;
+    if (cur === null || typeof cur !== "object") {
+      cur = null;
+      break;
+    }
     cur = (cur as Record<string, unknown>)[key];
   }
+  // GitHub: a repository variable that isn't set reads as '' (with no
+  // vars in the context at all, too).
+  if (cur == null && ref.startsWith("vars.")) return "";
   return (cur ?? null) as Value;
 }
 
@@ -224,10 +242,12 @@ const PUSH = { event_name: "push", repository: REPO, event: {} };
 const DRY_COND =
   "vars.DEN_RELEASE_SELF_HOSTED == 'on' && github.event_name == 'push' && " +
   "startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')";
-const DRY_LABELS =
-  'vars.DEN_RELEASE_RUNNER_LABELS || \'["self-hosted","den-wsl"]\'';
-const DRY_RUNS_ON = `\${{ (${DRY_COND}) && fromJSON(${DRY_LABELS}) || 'ubuntu-latest' }}`;
-const DRY_BOX_LABELS = `\${{ (${DRY_COND}) && (${DRY_LABELS}) || '' }}`;
+// No default labels. The box only with the switch on and the
+// labels set; the switch on without them fails the plan, and nothing queues.
+const DRY_BOX = `${DRY_COND} && vars.DEN_RELEASE_RUNNER_LABELS`;
+const DRY_NO_LABELS = `${DRY_COND} && vars.DEN_RELEASE_RUNNER_LABELS == ''`;
+const DRY_RUNS_ON = `\${{ (${DRY_BOX}) && fromJSON(vars.DEN_RELEASE_RUNNER_LABELS) || 'ubuntu-latest' }}`;
+const DRY_BOX_LABELS = `\${{ (${DRY_BOX}) && vars.DEN_RELEASE_RUNNER_LABELS || '' }}`;
 const GATES_RUNS_ON =
   "${{ (inputs.box-labels != '' && github.event_name == 'push' && " +
   "startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-dev.')) && " +
@@ -343,7 +363,7 @@ describe("CI's self-hosted runner guard", () => {
 
   it("only the Node 22 leg goes to the box", () => {
     const push = (node: string) => ({
-      vars: { DEN_SELF_HOSTED: "on" },
+      vars: { DEN_SELF_HOSTED: "on", DEN_SELF_HOSTED_LABELS: BOX_LABELS },
       matrix: { node },
       github: PUSH,
     });
@@ -351,7 +371,7 @@ describe("CI's self-hosted runner guard", () => {
     expect(evaluate(GUARD, push("24.13.0"))).toBe("ubuntu-latest");
   });
 
-  it("the label variable picks the runner; unset, today's label", () => {
+  it("the label variable picks the runner; unset or empty, GitHub-hosted (issue 1581)", () => {
     const push = (labels?: string) => ({
       vars: {
         DEN_SELF_HOSTED: "on",
@@ -360,11 +380,14 @@ describe("CI's self-hosted runner guard", () => {
       matrix: { node: "22.13.0" },
       github: PUSH,
     });
-    expect(evaluate(GUARD, push())).toEqual(SELF_HOSTED);
+    expect(evaluate(GUARD, push())).toBe("ubuntu-latest");
     expect(evaluate(GUARD, push('["self-hosted","devbox"]'))).toEqual([
       "self-hosted",
       "devbox",
     ]);
+    expect(evaluate(PR_GUARD, { ...push(), github: prEvent(REPO) })).toBe(
+      "ubuntu-latest",
+    );
   });
 
   it("pull-request jobs: a same-repo PR goes to the box, any Node; a fork's and the merge queue never", () => {
@@ -428,7 +451,7 @@ describe("CI's self-hosted runner guard", () => {
       DRY_BOX_LABELS,
     );
     const watch = w.jobs["box-watch"] as Record<string, unknown>;
-    expect(watch.if).toBe(DRY_COND);
+    expect(watch.if).toBe(DRY_BOX);
     expect(watch["runs-on"]).toBe("ubuntu-latest");
     expect(watch.permissions).toEqual({ actions: "write", contents: "read" });
     // the fallback is a run by hand on the same tag, in the same group
@@ -463,13 +486,51 @@ describe("CI's self-hosted runner guard", () => {
       github: tag("refs/tags/v0.4.90-dev.1").github,
     };
     expect(evaluate(DRY_RUNS_ON, off)).toBe("ubuntu-latest");
-    // unset labels: the same default as ci.yml's
-    expect(
-      evaluate(DRY_RUNS_ON, {
-        vars: { DEN_RELEASE_SELF_HOSTED: "on" },
-        github: tag("refs/tags/v0.4.90-dev.1").github,
-      }),
-    ).toEqual(SELF_HOSTED);
+  });
+
+  // The switch alone sends nothing to a box. Without labels the
+  // plan fails at once, with the reason, before anything else runs.
+  it("release-dry-run.yml: the switch on without DEN_RELEASE_RUNNER_LABELS fails the plan, and nothing waits for a box", () => {
+    const w = workflow("release-dry-run.yml");
+    expect(text("release-dry-run.yml")).not.toContain("den-wsl");
+    const dev = { ...PUSH, ref: "refs/tags/v0.4.90-dev.1" };
+    const ctx = (vars: Record<string, string>, github = dev) => ({
+      vars,
+      github,
+    });
+    const onNoLabels = ctx({ DEN_RELEASE_SELF_HOSTED: "on" });
+    const onEmpty = ctx({
+      DEN_RELEASE_SELF_HOSTED: "on",
+      DEN_RELEASE_RUNNER_LABELS: "",
+    });
+    for (const c of [onNoLabels, onEmpty]) {
+      expect(evaluate(DRY_RUNS_ON, c)).toBe("ubuntu-latest");
+      expect(evaluate(DRY_BOX_LABELS, c)).toBe("");
+      expect(evaluate(`\${{ ${DRY_BOX} }}`, c)).toBeFalsy();
+    }
+
+    const steps = (w.jobs.plan as { steps: { if?: string; run?: string }[] })
+      .steps;
+    const stop = steps[0];
+    expect(stop.if).toBe(DRY_NO_LABELS);
+    expect(stop.run).toMatch(
+      /DEN_RELEASE_SELF_HOSTED is on but DEN_RELEASE_RUNNER_LABELS is not set/,
+    );
+    expect(stop.run).toMatch(/exit 1\s*$/);
+    const fails = (c: Record<string, unknown>) =>
+      evaluate(`\${{ ${stop.if} }}`, c);
+    expect(fails(onNoLabels)).toBe(true);
+    expect(fails(onEmpty)).toBe(true);
+    // labels set, the switch off or unset, a run by hand, a branch: it passes
+    for (const c of [
+      ctx(RELEASE_ON),
+      ctx({}),
+      ctx({ DEN_RELEASE_RUNNER_LABELS: RELEASE_ON.DEN_RELEASE_RUNNER_LABELS }),
+      ctx({ DEN_RELEASE_SELF_HOSTED: "on" }, { ...BY_HAND, ref: dev.ref }),
+      ctx({ DEN_RELEASE_SELF_HOSTED: "on" }, { ...PUSH, ref: "refs/heads/x" }),
+    ]) {
+      expect(fails(c)).toBe(false);
+    }
   });
 
   it("release-gates.yml: checks and pack take the caller's box labels only on a dev tag's push; the tests stay hosted", () => {
@@ -604,10 +665,20 @@ describe("CI's self-hosted runner guard", () => {
     }
     expect(
       evaluate(NIGHT_GUARD, {
-        vars: { DEN_SELF_HOSTED_NIGHT: "on" },
+        vars: {
+          DEN_SELF_HOSTED_NIGHT: "on",
+          DEN_SELF_HOSTED_NIGHT_LABELS: BOX_LABELS,
+        },
         github: BY_HAND,
       }),
     ).toEqual(SELF_HOSTED);
+    // The switch alone sends nothing to a box.
+    expect(
+      evaluate(NIGHT_GUARD, {
+        vars: { DEN_SELF_HOSTED_NIGHT: "on" },
+        github: BY_HAND,
+      }),
+    ).toBe("ubuntu-latest");
     expect(
       evaluate(NIGHT_GUARD, {
         vars: { DEN_SELF_HOSTED: "on" },
@@ -620,10 +691,73 @@ describe("CI's self-hosted runner guard", () => {
     // Issue 1492: only a run by hand, whatever starts it later
     expect(
       evaluate(NIGHT_GUARD, {
-        vars: { DEN_SELF_HOSTED_NIGHT: "on" },
+        vars: {
+          DEN_SELF_HOSTED_NIGHT: "on",
+          DEN_SELF_HOSTED_NIGHT_LABELS: BOX_LABELS,
+        },
         github: prEvent("fork/den"),
       }),
     ).toBe("ubuntu-latest");
+  });
+
+  // No workflow defaults to a box's labels. With a switch on and
+  // its labels unset, each job that could reach the box stops at its first
+  // step with the reason, on a GitHub-hosted runner: nothing waits.
+  it("ci.yml and repeat.yml: a switch on without its labels stops each box job at once, and nothing waits for a runner", () => {
+    for (const file of ["ci.yml", "repeat.yml"])
+      expect({ file, wsl: text(file).includes("den-wsl") }).toEqual({
+        file,
+        wsl: false,
+      });
+    type Step = { if?: string; run?: string };
+    const firstStep = (file: string, job: string) =>
+      (workflow(file).jobs[job] as unknown as { steps: Step[] }).steps[0];
+    const cases: [string, string, string, RegExp][] = [
+      ...[...BOX_JOBS, ...PR_BOX_JOBS].map(
+        (job) =>
+          [
+            "ci.yml",
+            job,
+            DAY_NO_LABELS,
+            /DEN_SELF_HOSTED is on but DEN_SELF_HOSTED_LABELS is not set/,
+          ] as [string, string, string, RegExp],
+      ),
+      ...Object.keys(workflow("repeat.yml").jobs).map(
+        (job) =>
+          [
+            "repeat.yml",
+            job,
+            NIGHT_NO_LABELS,
+            /DEN_SELF_HOSTED_NIGHT is on but DEN_SELF_HOSTED_NIGHT_LABELS is not set/,
+          ] as [string, string, string, RegExp],
+      ),
+    ];
+    for (const [file, job, cond, says] of cases) {
+      const stop = firstStep(file, job);
+      expect({ file, job, if: stop.if }).toEqual({ file, job, if: cond });
+      expect(stop.run).toMatch(says);
+      expect(stop.run).toMatch(/exit 1\s*$/);
+    }
+    const day = (vars: Record<string, string>) =>
+      evaluate(`\${{ ${DAY_NO_LABELS} }}`, { vars, github: PUSH });
+    expect(day({ DEN_SELF_HOSTED: "on" })).toBe(true);
+    expect(day({ DEN_SELF_HOSTED: "on", DEN_SELF_HOSTED_LABELS: "" })).toBe(
+      true,
+    );
+    expect(
+      day({ DEN_SELF_HOSTED: "on", DEN_SELF_HOSTED_LABELS: BOX_LABELS }),
+    ).toBe(false);
+    expect(day({})).toBe(false);
+    const night = (vars: Record<string, string>, github = BY_HAND) =>
+      evaluate(`\${{ ${NIGHT_NO_LABELS} }}`, { vars, github });
+    expect(night({ DEN_SELF_HOSTED_NIGHT: "on" })).toBe(true);
+    expect(
+      night({
+        DEN_SELF_HOSTED_NIGHT: "on",
+        DEN_SELF_HOSTED_NIGHT_LABELS: BOX_LABELS,
+      }),
+    ).toBe(false);
+    expect(night({})).toBe(false);
   });
 
   it("a fork's pull request with the variable on runs GitHub-hosted", () => {
@@ -645,7 +779,7 @@ describe("CI's self-hosted runner guard", () => {
 
   it("a same-repo pull request with the variable on runs self-hosted", () => {
     const ctx = {
-      vars: { DEN_SELF_HOSTED: "on" },
+      vars: { DEN_SELF_HOSTED: "on", DEN_SELF_HOSTED_LABELS: BOX_LABELS },
       matrix: { node: "22.13.0" },
       github: prEvent(REPO),
     };
@@ -654,7 +788,7 @@ describe("CI's self-hosted runner guard", () => {
 
   it("a push with the variable on runs self-hosted", () => {
     const ctx = {
-      vars: { DEN_SELF_HOSTED: "on" },
+      vars: { DEN_SELF_HOSTED: "on", DEN_SELF_HOSTED_LABELS: BOX_LABELS },
       matrix: { node: "22.13.0" },
       github: PUSH,
     };

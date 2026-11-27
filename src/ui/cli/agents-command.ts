@@ -315,11 +315,15 @@ export const AGENTS_HELP = {
     "    the install's secrets store. status: whether it is there and when it was",
     "    set. clear: removes it from the store, the way set kept it (asks first",
     "    unless --yes). set and clear are a person's only",
-    "{cli} `agents accounts` list | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]",
+    "{cli} `agents accounts` list [--json] | add [--name <n>] | set-token <n> | order <n>... | remove <n> [--yes]   [--runtime <id>]",
     "    Claude accounts for agents (Claude account A, B, ... unless named); each token",
     "    its own item in the install's secrets store; set-token reads it like",
     "    token set. Agents sign in with the first in the order. The token that",
     "    exists today is Claude account A. Changes are a person's only",
+    "{cli} `agents os-login` setup | remove | check",
+    "    agents run under a login of their own (macOS, Linux), so they can't read Den's state",
+    "    or your files. setup shows each step and runs it with sudo once you say",
+    "    yes; remove undoes it and checks nothing is left. A person's only",
     "{cli} agents handoff-check <id|file|-> [--json]",
     "    checks an agent's handoff.md (or a file, or stdin): Objective, State, Open items, How to QA and Next step",
     "    are all there and filled in, and every ID is explained; exit 1 with what",
@@ -2134,7 +2138,29 @@ async function accountsCmd(
       );
     const flag = runtimeId === "den-claude" ? "" : ` --runtime ${runtimeId}`;
     if (sub === "list") {
-      if (rest.length) throw new UsageError(`${where} takes only --runtime`);
+      const json = rest.includes("--json");
+      if (rest.some((a) => a !== "--json"))
+        throw new UsageError(`${where} takes only --runtime and --json`);
+      if (json) {
+        d.out(
+          JSON.stringify(
+            {
+              runtime: { id: runtimeId, name: rt.name },
+              accounts: A.accountsView(stateDir, runtimeId, refOf).map((v) => ({
+                id: v.id,
+                label: v.label,
+                tokenSet: v.configured,
+                setAt: v.setAt,
+                store: v.store,
+                first: v.first,
+              })),
+            },
+            null,
+            2,
+          ),
+        );
+        return 0;
+      }
       d.out(`${rt.name} (${runtimeId}):`);
       for (const v of A.accountsView(stateDir, runtimeId, refOf)) {
         const st = v.configured
@@ -3082,6 +3108,21 @@ export async function cmdAgents(
           return await tokenCmd(rest, d, deps);
         case "accounts":
           return await accountsCmd(rest, d, deps);
+        case "session": {
+          const { runAgentSession, defaultAgentSessionDeps } =
+            await import("../../shared/agents/os-user-session.js");
+          return await runAgentSession(rest, defaultAgentSessionDeps(d.env));
+        }
+        case "os-login": {
+          const { cmdOsUser, defaultOsUserDeps } =
+            await import("./os-user-command.js");
+          return await cmdOsUser(rest, {
+            ...defaultOsUserDeps(d.cli),
+            env: d.env,
+            out: d.out,
+            err: d.err,
+          });
+        }
         default:
           throw new UsageError(`unknown agents command "${sub}"`);
       }

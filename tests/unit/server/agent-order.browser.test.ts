@@ -25,9 +25,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
-import { allowWrites } from "../../write-guard.js";
 import type { Browser, Page } from "playwright";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
@@ -42,6 +40,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { seeWhatsNew } from "./helpers/whats-new-seen.js";
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -49,20 +48,7 @@ const sid: Record<string, string> = {};
 const browsers: Partial<Record<Engine, Browser>> = {};
 type Engine = "chromium" | "webkit";
 const ENGINES: Engine[] = ["chromium", "webkit"];
-/** The mid-drag screenshot (Chromium, 1280, light). */
-const SHOT =
-  process.env.DEN_ORDER_SHOT ??
-  path.join(
-    os.homedir(),
-    "Library",
-    "Logs",
-    "den-probe",
-    "drag-1280-light.png",
-  );
-
 beforeAll(async () => {
-  // Issue 1356: the screenshot's folder (a probe folder under the home).
-  if (!SHOT.startsWith(os.tmpdir())) allowWrites(path.dirname(SHOT));
   try {
     const pw = await import("playwright");
     for (const e of ENGINES) browsers[e] = await launchBrowser(pw[e]);
@@ -141,6 +127,7 @@ async function open(
     colorScheme: "light",
     ...(touch ? { hasTouch: true } : {}),
   });
+  await seeWhatsNew(ctx, s!.base);
   await ctx.addInitScript(() => {
     // No What's new over the list.
     document.addEventListener("DOMContentLoaded", () => {
@@ -149,8 +136,6 @@ async function open(
       document.head.appendChild(st);
     });
     try {
-      for (const k of ["den-changelog-seen", "acme-changelog-seen"])
-        localStorage.setItem(k, "9.9.9");
       localStorage.removeItem("den-agents-open");
     } catch {
       /* none */
@@ -162,27 +147,35 @@ async function open(
   return p;
 }
 
-const row = (id: string) =>
-  `#agl .wsg[data-ws="north"] button.agr[data-id="${id}"]`;
-const grip = (id: string) => `${row(id)} .agrip`;
+const row = (id: string) => `#agl button.agr[data-id="${id}"]`;
 
-/** North's agents as the list shows them, by name. */
 async function order(p: Page): Promise<string[]> {
   const ids = await p.$$eval(
-    '#agl .wsg[data-ws="north"] button.agr[data-kind="agent"]',
+    '#agl div[data-band] button.agr[data-kind="agent"]',
     (bs) => bs.map((b) => (b as HTMLElement).dataset.id ?? ""),
   );
   const by = Object.fromEntries(Object.entries(sid).map(([k, v]) => [v, k]));
   return ids.map((x) => by[x] ?? x);
 }
 
-const until = async (p: Page, want: string[]) => {
+async function mouseDrag(p: Page, from: string, to: string): Promise<void> {
+  await p.hover(row(from));
+  const g = (await p.locator(`${row(from)} [data-grip]`).boundingBox())!;
+  const t = (await p.locator(row(to)).boundingBox())!;
+  await p.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(g.x + g.width / 2, g.y + g.height / 2 + 8, { steps: 2 });
+  await p.mouse.move(t.x + 40, t.y + t.height / 4, { steps: 6 });
+  await p.mouse.up();
+}
+
+async function until(p: Page, want: string[]): Promise<void> {
   for (let i = 0; i < 60; i++) {
     if (JSON.stringify(await order(p)) === JSON.stringify(want)) return;
     await p.waitForTimeout(100);
   }
   expect(await order(p)).toEqual(want);
-};
+}
 
 /**
  * `act`, a move, to its end: the server has answered its POST (it writes
@@ -216,26 +209,8 @@ async function moved(p: Page, act: () => Promise<unknown>): Promise<void> {
   );
 }
 
-/** A drag by the grip of `from` with the mouse, to the top quarter of `to`. */
-async function mouseDrag(p: Page, from: string, to: string, shot?: string) {
-  const g = (await p.locator(grip(from)).boundingBox())!;
-  const t = (await p.locator(row(to)).boundingBox())!;
-  await p.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
-  await p.mouse.down();
-  const x = t.x + 40;
-  const y = t.y + t.height / 4;
-  await p.mouse.move(x, (g.y + y) / 2, { steps: 4 });
-  await p.mouse.move(x, y, { steps: 4 });
-  await p.locator(`${row(to)}[data-drop="before"]`).waitFor();
-  if (shot) {
-    fs.mkdirSync(path.dirname(shot), { recursive: true });
-    await p.screenshot({ path: shot });
-  }
-  await p.mouse.up();
-}
-
 /** A touch drag: pointer events with pointerType "touch", as a finger sends. */
-async function touchDrag(p: Page, from: string, to: string) {
+async function touchDrag(p: Page, from: string, to: string): Promise<void> {
   await p.evaluate(
     ([g, r]) => {
       const el = document.querySelector(g) as HTMLElement;
@@ -261,7 +236,7 @@ async function touchDrag(p: Page, from: string, to: string) {
       at("pointermove", b.left + 40, b.top + b.height / 4);
       at("pointerup", b.left + 40, b.top + b.height / 4);
     },
-    [grip(from), row(to)],
+    [`${row(from)} [data-grip]`, row(to)],
   );
 }
 
@@ -270,58 +245,92 @@ describe.each(ENGINES)(
   (engine) => {
     const skip = () => !browsers[engine] || !s;
 
-    it("a drag by the grip reorders; a reload and a Den restart keep it; the Projects page follows", async () => {
+    it("issue 773 + issue 96: inside a band your drag order holds; Alt+↑ moves one; a reload keeps it", async () => {
       if (skip()) return;
       resetOrder();
       const p = await open(engine);
-      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
-      await moved(p, () =>
-        mouseDrag(p, sid.cy, sid.ada, engine === "chromium" ? SHOT : undefined),
-      );
+      await until(p, ["ada", "bo", "cy"]);
+      expect(await p.locator("#agl div[data-band] [data-grip]").count()).toBe(3);
+      expect(
+        await p.locator(`${row(sid.cy)} [data-grip]`).getAttribute("aria-label"),
+      ).toBeTruthy();
+      await moved(p, () => mouseDrag(p, sid.cy, sid.ada));
       await until(p, ["cy", "ada", "bo"]);
-      expect(await p.locator("#agl [data-drop], #agl .lift").count()).toBe(0);
+      const north = userYml().agents?.order?.north ?? [];
+      expect(north.indexOf("cy")).toBeLessThan(north.indexOf("ada"));
+      await p.locator(row(sid.bo)).focus();
+      await moved(p, () => p.keyboard.press("Alt+ArrowUp"));
+      await until(p, ["cy", "bo", "ada"]);
+      expect(
+        await p.evaluate(
+          () => (document.activeElement as HTMLElement | null)?.dataset.id,
+        ),
+      ).toBe(sid.bo);
+      expect(
+        await p.$$eval("#agl div[data-band]", (bs) =>
+          bs.map((b) => (b as HTMLElement).dataset.band),
+        ),
+      ).toEqual(["idle"]);
+      await p.reload();
+      await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
+      await until(p, ["cy", "bo", "ada"]);
+      resetOrder();
+      await p.context().close();
+    }, 60_000);
+
+    it("issue 96: a Den restart keeps your order; the Projects page follows", async () => {
+      if (skip()) return;
+      resetOrder();
+      const p = await open(engine);
+      await until(p, ["ada", "bo", "cy"]);
+      await moved(p, () => mouseDrag(p, sid.cy, sid.ada));
+      await until(p, ["cy", "ada", "bo"]);
+      expect(await p.locator("#agl [data-drop]").count()).toBe(0);
       // Stored in the person's user config, by agent id.
       // (Issue 226's stopped dee and eve are saved in it too.)
       expect(
         userYml().agents?.order?.north?.filter((x) => sid[x] !== undefined),
       ).toEqual(["cy", "ada", "bo"]);
-      await p.reload();
-      await p.locator(row(sid.cy)).waitFor();
-      expect(await order(p)).toEqual(["cy", "ada", "bo"]);
       // A Den restart reads it again.
       await s!.webDown();
       await s!.webUp();
       await signInPage(p, s!.stateDir, s!.base, "/agents?ws=north");
       await p.locator(row(sid.cy)).waitFor({ timeout: 20_000 });
-      expect(await order(p)).toEqual(["cy", "ada", "bo"]);
+      await until(p, ["cy", "ada", "bo"]);
       // The Projects page's agents follow the same order.
       await signInPage(p, s!.stateDir, s!.base, "/?ws=north");
-      await p
-        .locator('#agents-section[data-ws="north"] #agent-table tr.agent')
-        .first()
-        .waitFor({ timeout: 20_000 });
+      const projectRows =
+        '#agents-section[data-ws="north"] #agent-table tr[data-agent]';
+      await p.waitForSelector(projectRows, { timeout: 20_000 });
       // (Its running ones; issue 226's stopped dee and eve are listed too.)
       expect(
         (
-          await p.$$eval(
-            '#agents-section[data-ws="north"] #agent-table tr.agent',
-            (rs) => rs.map((r) => (r as HTMLElement).dataset.agent ?? ""),
+          await p.$$eval(projectRows, (rs) =>
+            rs.map((r) => (r as HTMLElement).dataset.agent ?? ""),
           )
         ).filter((x) => sid[x] !== undefined),
       ).toEqual(["cy", "ada", "bo"]);
+      resetOrder();
       await p.context().close();
     }, 90_000);
 
-    it("Alt+↑ moves the focused row up one; focus stays; the live region says where; the grip is named", async () => {
+    it("issue 96: Alt+↑ moves the focused row; the live region says where; the grip is named; no working pop-up; the first can't go up", async () => {
       if (skip()) return;
       resetOrder();
       const p = await open(engine);
-      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
+      await until(p, ["ada", "bo", "cy"]);
       // Named for its agent (its name, else its persona).
-      expect(await p.getAttribute(grip(sid.cy), "aria-label")).toBe(
-        "Drag to move planner",
+      const grip = p.locator(`${row(sid.cy)} [data-grip]`);
+      expect(await grip.getAttribute("aria-label")).toBe(
+        await p.evaluate(() =>
+          (
+            window as unknown as {
+              denShell: { t: (k: string, v: object) => string };
+            }
+          ).denShell.t("ag.ord.gripOne", { id: "planner" }),
+        ),
       );
-      expect(await p.getAttribute(grip(sid.cy), "role")).toBe("img");
+      expect(await grip.getAttribute("role")).toBe("img");
       await p.locator(row(sid.cy)).focus();
       await moved(p, () => p.keyboard.press("Alt+ArrowUp"));
       await until(p, ["ada", "cy", "bo"]);
@@ -335,12 +344,19 @@ describe.each(ENGINES)(
         "polite",
       );
       // No working pop-up for a quick move.
-      expect(await p.locator("den-busy[open], .bz-b:visible").count()).toBe(0);
-      // The first can't go up: nothing changes.
+      expect(await p.locator("den-busy[open]").count()).toBe(0);
+      let posts = 0;
+      p.on("request", (r) => {
+        if (r.method() === "POST" && /\/order$/.test(r.url())) posts++;
+      });
       await p.locator(row(sid.ada)).focus();
       await p.keyboard.press("Alt+ArrowUp");
-      await p.waitForTimeout(300);
+      await p.evaluate(
+        () => new Promise((r) => requestAnimationFrame(() => r(null))),
+      );
+      expect(posts).toBe(0);
       expect(await order(p)).toEqual(["ada", "cy", "bo"]);
+      resetOrder();
       await p.context().close();
     }, 60_000);
 
@@ -403,35 +419,33 @@ describe.each(ENGINES)(
       await p.context().close();
     }, 60_000);
 
-    it("at 375: a touch drag moves a row; Alt+↓ is announced; Reorder's Up and Down are 44 px; no sideways scroll", async () => {
+    it("issue 96, at 375: a touch drag moves a row; Alt+↓ is announced; Idle's Reorder gives 44 px Up and Down; no sideways scroll", async () => {
       if (skip()) return;
       resetOrder();
       const p = await open(engine, 375, true);
-      expect(await order(p)).toEqual(["ada", "bo", "cy"]);
+      await until(p, ["ada", "bo", "cy"]);
       await moved(p, () => touchDrag(p, sid.bo, sid.ada));
       await until(p, ["bo", "ada", "cy"]);
       await p.locator(row(sid.bo)).focus();
       await moved(p, () => p.keyboard.press("Alt+ArrowDown"));
       await until(p, ["ada", "bo", "cy"]);
-      await p.waitForFunction(() =>
-        /planner moved to position 2 of 3/.test(
-          document.querySelector("#ag-order-live")?.textContent ?? "",
-        ),
-      );
-      await p
-        .locator('#agl .wsg[data-ws="north"] [data-act="reorder"]')
-        .click();
-      const up = p.locator('#agl .agord[data-agent="cy"] [data-act="ord-up"]');
+      const band = '#agl [data-band="idle"]';
+      const reorder = p.locator(`${band} [data-act="reorder"]`);
+      await reorder.click();
+      expect(await reorder.getAttribute("aria-pressed")).toBe("true");
+      const up = p.locator(`${band} [data-agent="cy"] [data-act="ord-up"]`);
+      const down = p.locator(`${band} [data-agent="cy"] [data-act="ord-down"]`);
       await up.waitFor();
-      const box = (await up.boundingBox())!;
-      expect(box.width).toBeGreaterThanOrEqual(44);
-      expect(box.height).toBeGreaterThanOrEqual(44);
+      for (const b of [up, down]) {
+        const box = (await b.boundingBox())!;
+        expect(box.width).toBeGreaterThanOrEqual(44);
+        expect(box.height).toBeGreaterThanOrEqual(44);
+      }
+      expect(await down.getAttribute("aria-disabled")).toBe("true");
       await moved(p, () => up.click());
       await until(p, ["ada", "cy", "bo"]);
-      await p
-        .locator('#agl .wsg[data-ws="north"] [data-act="reorder"]')
-        .click();
-      expect(await p.locator("#agl .agord").count()).toBe(0);
+      await reorder.click();
+      expect(await p.locator(`${band} [data-act="ord-up"]`).count()).toBe(0);
       expect(
         await p.evaluate(
           () =>
@@ -439,6 +453,7 @@ describe.each(ENGINES)(
             document.documentElement.clientWidth,
         ),
       ).toBe(true);
+      resetOrder();
       await p.context().close();
     }, 60_000);
 

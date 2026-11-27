@@ -70,6 +70,7 @@ describe("readHubConfig", () => {
       deliveryHeldBellMinutes: 5,
       deliveryAnswerMinutes: 30,
       deliveryAlertMinutes: 15,
+      deliveryStaleHours: 6,
       deliveryStreamSilenceSeconds: 75,
       inboxWatch: true,
       inboxPollSeconds: 30,
@@ -77,6 +78,10 @@ describe("readHubConfig", () => {
       inboxReadsPerSecond: 2,
       toolsCheckSeconds: 300,
       toolsRestart: true,
+      agentTokens: true,
+      agentTokenRetrySeconds: 600,
+      agentTokenRevokeRetrySeconds: 600,
+      agentTokenMaxAgeDays: 30,
       groupsCacheSeconds: 30,
       groups: "auto",
     });

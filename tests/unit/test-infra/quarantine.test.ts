@@ -155,13 +155,32 @@ describe("the switch", () => {
     const ex = config({ DEN_TEST_QUARANTINE: "exclude" });
     expect(ex.testEnvironment).toBe("<rootDir>/tests/quarantine-env.cjs");
     expect(ex.testPathIgnorePatterns).toBeUndefined();
-    const only = config({ DEN_TEST_QUARANTINE: "only" });
-    const pat = (only.testPathIgnorePatterns as string[]).map(
-      (p) => new RegExp(p),
-    );
-    const ignored = (f: string) => pat.some((p) => p.test(path.join(ROOT, f)));
-    expect(ignored(q.loadQuarantine().entries[0].file)).toBe(false);
-    expect(ignored("tests/unit/test-infra/quarantine.test.ts")).toBe(true);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-q-only-"));
+    const ignoredBy = (entries: Entry[]) => {
+      const list = path.join(dir, `${entries.length}.json`);
+      fs.writeFileSync(list, JSON.stringify({ entries }));
+      const only = config({
+        DEN_TEST_QUARANTINE: "only",
+        DEN_TEST_QUARANTINE_FILE: list,
+      });
+      const pat = (only.testPathIgnorePatterns as string[]).map(
+        (p) => new RegExp(p),
+      );
+      return (f: string) => pat.some((p) => p.test(path.join(ROOT, f)));
+    };
+    const one = ignoredBy([
+      {
+        file: FIXTURE,
+        test: FLAKY,
+        issue: 397,
+        added: "2026-11-17",
+        evidence: ev,
+      },
+    ]);
+    expect(one(FIXTURE)).toBe(false);
+    expect(one("tests/unit/test-infra/quarantine.test.ts")).toBe(true);
+    expect(ignoredBy([])(FIXTURE)).toBe(true);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });
 
@@ -338,6 +357,37 @@ describe("in CI", () => {
       "--shard=${{ matrix.shard }}/${{ needs.pr.outputs.shard_count }}",
     );
     expect(jobs["pr-shards"]["timeout-minutes"]).toBeGreaterThanOrEqual(30);
+  });
+  it("every quarantined test still runs in the full runs: main's tests job, the nightly and the release gates", () => {
+    const full: [string, string][] = [
+      ["ci.yml", "tests"],
+      ["ci.yml", "nightly-node22"],
+      ["release-gates.yml", "tests"],
+    ];
+    for (const [f, name] of full) {
+      const j = wf(f).jobs[name];
+      expect([f, name, !!j]).toEqual([f, name, true]);
+      expect([f, name, j.env?.DEN_TEST_QUARANTINE]).toEqual([
+        f,
+        name,
+        undefined,
+      ]);
+      expect(
+        j.steps.filter((s) => s.env?.DEN_TEST_QUARANTINE !== undefined),
+      ).toEqual([]);
+      expect(
+        j.steps.some((s) =>
+          /^npm test -- --shard=\$\{\{ matrix\.shard \}\}\/\d+$/.test(
+            s.run ?? "",
+          ),
+        ),
+      ).toBe(true);
+    }
+    for (const e of q.loadQuarantine({}).entries)
+      expect([e.file, fs.existsSync(path.join(ROOT, e.file))]).toEqual([
+        e.file,
+        true,
+      ]);
   });
   it("the release never sets it", () => {
     for (const f of ["release.yml", "release-gates.yml", "release-dry-run.yml"])

@@ -15,7 +15,7 @@ import * as path from "path";
 let tmp = "";
 let state = "";
 const saved = { root: process.env.DEN_ROOT, home: process.env.DEN_HOME };
-type Mod = typeof import("../../../src/shared/hub-project-link.js");
+type Mod = typeof import("../../../src/shared/hub/hub-project-link.js");
 let m: Mod;
 const file = () => path.join(tmp, "config", "local", "workspaces.yml");
 const bind = (v: unknown) => {
@@ -38,7 +38,7 @@ beforeAll(async () => {
   process.env.DEN_ROOT = tmp;
   process.env.DEN_HOME = state;
   jest.resetModules();
-  m = await import("../../../src/shared/hub-project-link.js");
+  m = await import("../../../src/shared/hub/hub-project-link.js");
 });
 
 afterAll(() => {

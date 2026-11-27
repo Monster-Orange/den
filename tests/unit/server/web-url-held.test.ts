@@ -20,7 +20,7 @@ import {
   readWebUrl,
   setWebUrl,
   type WebUrlChange,
-} from "../../../src/shared/web-url.js";
+} from "../../../src/shared/web/web-url.js";
 import { setConfigAuditSink } from "../../../src/shared/config-audit.js";
 import { HELD_WRITE_RISK } from "../../../src/shared/approval-policy.js";
 import { mintActorToken } from "../../../src/shared/actor-token.js";

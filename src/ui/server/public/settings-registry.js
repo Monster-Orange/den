@@ -40,7 +40,12 @@ import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
 import { restartDen } from "./restart-den.js";
-import { restartResultHtml, wireRestartNow } from "./restart-result.js";
+import {
+  followRestarts,
+  mergeLive,
+  restartResultHtml,
+  wireRestartNow,
+} from "./restart-result.js";
 
 export { restartResultHtml };
 import { dialogHtml, mountDialog } from "./dialog-den.js";
@@ -3040,6 +3045,32 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ server_log: { max_mb: v } }),
   },
   {
+    id: "server.slow_request_ms",
+    category: "server",
+    label: "Slow request, log after",
+    description:
+      "When a request takes longer than this, __DEN_TITLE__'s log gets one line with its route, who asked, and how long it took. Never its address, query, headers or body. __DEN_CLI__ config server_log.slow_request_ms=3000",
+    keywords: ["log", "slow", "request", "server", "time"],
+    scope: "user",
+    keys: ["server_log.slow_request_ms"],
+    control: { type: "number", min: 100, max: 600000, step: 50, unit: "ms" },
+    read: (ctx) => ctx.data.server_log?.slow_request_ms ?? 3000,
+    write: (v, ctx) => ctx.post({ server_log: { slow_request_ms: v } }),
+  },
+  {
+    id: "server.event_loop_lag_ms",
+    category: "server",
+    label: "Stall, log after",
+    description:
+      "When __DEN_TITLE__ is busy and runs nothing else for longer than this, its log gets one line saying how long. __DEN_CLI__ config server_log.event_loop_lag_ms=1000",
+    keywords: ["log", "blocked", "lag", "server", "stall"],
+    scope: "user",
+    keys: ["server_log.event_loop_lag_ms"],
+    control: { type: "number", min: 50, max: 600000, step: 50, unit: "ms" },
+    read: (ctx) => ctx.data.server_log?.event_loop_lag_ms ?? 1000,
+    write: (v, ctx) => ctx.post({ server_log: { event_loop_lag_ms: v } }),
+  },
+  {
     // Issue 403: the largest report screenshot kept here (reports.*).
     id: "server.report_screenshot_max",
     category: "server",
@@ -3447,6 +3478,26 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ web_ready: { start_seconds: v } }),
   },
   {
+    id: "server.tools_probe",
+    category: "server",
+    label: "Den tools' check of this install, in seconds",
+    description:
+      "How long an agent's Den tools wait for __DEN_TITLE__ to say it is this install before a call is refused. A busy __DEN_TITLE__ answers late; a late answer still counts. The next call checks again. __DEN_CLI__ config web.tools_probe_seconds=30",
+    keywords: [
+      "agent",
+      "tools",
+      "mcp",
+      "timeout",
+      "server-info",
+      "web.tools_probe_seconds",
+    ],
+    scope: "user",
+    keys: ["web_ready.tools_probe_seconds"],
+    control: { type: "number", min: 1, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.web_ready?.toolsProbeSeconds ?? 30,
+    write: (v, ctx) => ctx.post({ web_ready: { tools_probe_seconds: v } }),
+  },
+  {
     // Issue 144: the machine's gate slots (gates/store.ts settings.json),
     // shared by every install here. A person's only.
     id: "server.gate_cpu",
@@ -3795,6 +3846,21 @@ export const DEN_SETTINGS = [
       ctx.post({ gate_slots: { priority_pass_limit_minutes: v } }),
   },
   {
+    id: "server.gate_release_pass_other",
+    category: "server",
+    label:
+      "A waiting release run goes ahead of earlier runs of the other kind that have waited up to this long, in minutes",
+    description:
+      "While a release run with priority waits, a cpu or browser run of the other kind asked before it doesn't start in a slot it needs, unless it has waited longer than this. It never stops a running one. 0: it passes none of them. __DEN_CLI__ gate settings --release-pass-other-kind-minutes 30",
+    keywords: ["gate", "slot", "priority", "release", "cpu", "browser", "wait"],
+    scope: "user",
+    keys: ["gate_slots.release_pass_other_kind_minutes"],
+    control: { type: "number", min: 0, max: 1440, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.releasePassOtherKindMinutes ?? 30,
+    write: (v, ctx) =>
+      ctx.post({ gate_slots: { release_pass_other_kind_minutes: v } }),
+  },
+  {
     id: "server.gate_priority_agents",
     category: "server",
     label: "Agents may ask for release priority",
@@ -4122,6 +4188,19 @@ export const DEN_SETTINGS = [
       }),
   },
   {
+    id: "server.gate_throwaway_sweep",
+    category: "server",
+    label: "Remove throwaway test containers",
+    description:
+      "On, Den removes throwaway test containers whose gate run has ended, and stops idle kept ones. Off, Den never runs docker for them: they stay until you remove them, and Doctor says the sweep is off. __DEN_CLI__ gate settings --throwaway-sweep 1",
+    keywords: ["gate", "docker", "container", "throwaway", "sweep", "cleanup"],
+    scope: "user",
+    keys: ["gate_slots.throwaway_sweep"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.gate_slots?.throwawaySweep !== false,
+    write: (v, ctx) => ctx.post({ gate_slots: { throwaway_sweep: v ? 1 : 0 } }),
+  },
+  {
     // Issue 1264: today's runs outside the gate, per agent.
     id: "server.gate_outside",
     category: "server",
@@ -4203,6 +4282,46 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
     read: (ctx) => ctx.data.sessions?.close_grace_seconds ?? 5,
     write: (v, ctx) => ctx.post({ sessions: { close_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_size_claim_grace",
+    category: "server",
+    label: "Terminal size hold",
+    description:
+      "How long the window that last set a terminal's size keeps it after its connection drops, so a brief drop or a reload does not hand the size to another window. 0 hands it on at once. __DEN_CLI__ config sessions.size_claim_grace_seconds=30",
+    keywords: [
+      "terminal",
+      "size",
+      "resize",
+      "window",
+      "ipad",
+      "size_claim_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_claim_grace_seconds"],
+    control: { type: "number", min: 0, max: 3600, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_claim_grace_seconds ?? 30,
+    write: (v, ctx) => ctx.post({ sessions: { size_claim_grace_seconds: v } }),
+  },
+  {
+    id: "server.sessions_size_leave_grace",
+    category: "server",
+    label: "Terminal size hold after a page closes",
+    description:
+      "How long the window that last set a terminal's size keeps it after its page closes or reloads, so a reload keeps the size while a closed page hands it to another window. Within the terminal size hold, that window takes the size back when it returns, unless someone typed or took over in another window meanwhile. 0 hands it on at once. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
+    keywords: [
+      "terminal",
+      "size",
+      "reload",
+      "close",
+      "window",
+      "size_leave_grace_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.size_leave_grace_seconds"],
+    control: { type: "number", min: 0, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.size_leave_grace_seconds ?? 3,
+    write: (v, ctx) => ctx.post({ sessions: { size_leave_grace_seconds: v } }),
   },
   {
     id: "server.sessions_pty_close",
@@ -4767,6 +4886,21 @@ export const DEN_SETTINGS = [
   },
 
   {
+    id: "workspace.agents_max_per_project",
+    category: "workspace",
+    label: "Agents per project: this project",
+    description:
+      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
+    keywords: ["agents", "limit", "max_per_project", "project", "cap"],
+    scope: "workspace",
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.wsSettings?.agents_max_per_project ?? 0,
+    write: (v, ctx) =>
+      ctx.saveWorkspace({
+        agents_max_per_project: Number(v) > 0 ? Number(v) : null,
+      }),
+  },
+  {
     // Issue 225: the project's mode, and each agent's actual mode with
     // where it comes from; agents with their own setting can follow it.
     // Issue 268: named as the override of the Den-wide default.
@@ -5186,6 +5320,19 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ health_poll: { hidden_seconds: v } }),
   },
   {
+    id: "server.git_reads",
+    category: "server",
+    label: "Git reads at once",
+    description:
+      "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
+    keywords: ["git", "repos", "processes", "parallel", "concurrency", "tests"],
+    scope: "user",
+    keys: ["git_reads.at_once"],
+    control: { type: "number", min: 1, max: 64, step: 1 },
+    read: (ctx) => ctx.data.git_reads?.at_once ?? 16,
+    write: (v, ctx) => ctx.post({ git_reads: { at_once: v } }),
+  },
+  {
     // issue_write: which persona roles write GitHub issues in their
     // project's repos (user.yml agents.issue_writes). A person's only.
     id: "agents.issue_writes",
@@ -5259,6 +5406,26 @@ export const DEN_SETTINGS = [
     read: (ctx) => ctx.data.agent_issue_writes?.visibility_minutes ?? 10,
     write: (v, ctx) =>
       ctx.post({ agent_issue_writes: { visibility_minutes: v } }),
+  },
+  {
+    id: "agents.issue_writes_public",
+    category: "agents",
+    label: "Agents write issues in public repos",
+    description:
+      "On, agents may create issues and comments in public repos. Their text is first checked for listed names, and the footer names no agent or install. Off, a write to a public repo is refused. Turning it on needs your Allow. __DEN_CLI__ config agents.issue_writes_public=false",
+    keywords: [
+      "issue",
+      "github",
+      "public",
+      "names",
+      "footer",
+      "agents.issue_writes",
+    ],
+    scope: "user",
+    keys: ["agent_issue_writes.public"],
+    control: { type: "toggle" },
+    read: (ctx) => ctx.data.agent_issue_writes?.public !== false,
+    write: (v, ctx) => ctx.post({ agent_issue_writes: { public: !!v } }),
   },
   {
     // 0.4.46 MODE-UI: one mode for every agent, set once. Issue 268:
@@ -5348,6 +5515,19 @@ export const DEN_SETTINGS = [
     control: { type: "number", min: 1, max: 1000, step: 1 },
     read: (ctx) => ctx.data.agents_limits?.max_concurrent ?? 4,
     write: (v, ctx) => ctx.post({ agents_limits: { max_concurrent: v } }),
+  },
+  {
+    id: "agents.max_per_project",
+    category: "agents",
+    label: "Agents per project",
+    description:
+      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
+    keywords: ["agents", "limit", "max_per_project", "project", "cap"],
+    scope: "user",
+    keys: ["agents_limits.max_per_project"],
+    control: { type: "number", min: 0, max: 1000, step: 1 },
+    read: (ctx) => ctx.data.agents_limits?.max_per_project ?? 0,
+    write: (v, ctx) => ctx.post({ agents_limits: { max_per_project: v } }),
   },
   {
     // den#156: the Agents list's waits (user.yml agents_list.*).
@@ -6768,8 +6948,16 @@ export function hubHtml(b, flash, t = (k) => k) {
         : "") +
       `</div>${acts}</div>`
     : "";
+  const sw =
+    b.switching && typeof b.switching.to === "string"
+      ? `<p class="set-note set-warn" role="status" data-hub-switching>${escR(t("hub.switching", { to: b.switching.to, from: b.url || "" }))} ` +
+        `<button type="button" class="den-btn sm primary" data-hub-action="connect" data-hub-switch-signin>${escR(t("hub.switchSignin"))}</button></p>`
+      : b.switchEnded && typeof b.switchEnded.to === "string"
+        ? `<p class="set-note" role="status" data-hub-switch-ended>${escR(t("hub.switchEnded", { to: b.switchEnded.to, from: b.url || "" }))}</p>`
+        : "";
   return (
     (just || flashHtml) +
+    sw +
     head +
     (first
       ? `<div data-hub-addr-wrap hidden>${hubAddressHtml(b)}</div>`
@@ -6912,6 +7100,31 @@ function wireRestartResult(box, ctx) {
   });
 }
 
+/**
+ * The answer box follows its agents live (restarted,
+ * a wait that ran out, failed) and goes once they are all done.
+ */
+function followRestartResult(box, ctx, plan) {
+  let shown = Array.isArray(plan) ? plan : [];
+  if (!shown.length) return;
+  const f = followRestarts({
+    api: (...a) => ctx.shell.api(...a),
+    onRows: (rows) => {
+      if (!box.isConnected) return f.stop();
+      const next = mergeLive(shown, rows);
+      if (JSON.stringify(next) === JSON.stringify(shown)) return;
+      shown = next;
+      if (!shown.length) {
+        f.stop();
+        box.remove();
+        return;
+      }
+      box.innerHTML = restartResultHtml(shown, (k, v) => ctx.shell.t(k, v));
+      wireRestartResult(box, ctx);
+    },
+  });
+}
+
 function offerRestart(host, ctx, fresh) {
   return ctx.shell
     .api("GET", `/api/agents/stale${fresh ? "?fresh=1" : ""}`)
@@ -6933,6 +7146,7 @@ function offerRestart(host, ctx, fresh) {
               ctx.shell.t(k, v),
             );
             wireRestartResult(box, ctx);
+            followRestartResult(box, ctx, x?.agents);
           })
           .catch((e) => {
             box.insertAdjacentHTML(
@@ -8576,6 +8790,7 @@ function drawHub(host, ctx, back, flash) {
       else if (!f && back && HUB_FLASH[back])
         f = { ok: HUB_FLASH[back][0], message: HUB_FLASH[back][1] };
       host.innerHTML = hubHtml(b, f, (k, v) => ctx.shell.t(k, v));
+      if (b && b.connectNext) host.dataset.hubConnectNext = b.connectNext;
       wireHub(host, ctx);
       // Issue 646: connected: Connect's review, a row per project.
       if (
@@ -8624,28 +8839,64 @@ function wireHub(host, ctx) {
   };
   const busy = (on) =>
     host.querySelectorAll("button, input").forEach((x) => (x.disabled = on));
-  const connect = (button) => {
+  const offerOwnFolder = (hub) => {
+    const t = (k, v) => ctx.shell.t(k, v);
+    err(t("hub.sf.shared"));
+    const e = host.querySelector(".rt-err");
+    if (!e) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "den-btn sm";
+    btn.dataset.hubAction = "own-folder";
+    btn.textContent = t("hub.sf.offer");
+    btn.addEventListener("click", () =>
+      ctx.shell
+        .busyAction(
+          "ask-allow",
+          (headers) =>
+            ctx.shell.api(
+              "POST",
+              "/api/approvals",
+              { action: "state_folder_own", args: hub ? { hub } : {} },
+              { headers },
+            ),
+          { button: btn, onFail: (x) => err(x?.message || t("busy.connF")) },
+        )
+        .then((b) => {
+          if (!b) return;
+          err(t("hub.sf.allow"));
+          window.dispatchEvent(new CustomEvent("den:approvals-poll"));
+        }),
+    );
+    e.append(" ", btn);
+  };
+  const connect = (button, next) => {
     const typed = host.querySelector("#hub-url");
     busy(true);
     err("");
     // BUSY-1: the working pop-up while Den asks Hub.
     const t = (k, v) => ctx.shell.t(k, v);
+    const body = next
+      ? { url: next }
+      : button?.dataset.hubSwitchSignin !== undefined
+        ? { switch: true }
+        : typed
+          ? { url: typed.value }
+          : {};
     ctx.shell
       .busyAction(
         "connect",
         (headers) =>
-          ctx.shell.api(
-            "POST",
-            "/api/hub/connect",
-            typed ? { url: typed.value } : {},
-            { headers },
-          ),
+          ctx.shell.api("POST", "/api/hub/connect", body, { headers }),
         {
           button:
             button || host.querySelector('button[data-hub-action="connect"]'),
           // Off to Hub: sign in and approve there; Hub sends the person back.
           onDone: (r) => location.assign(r.location),
-          onFail: (e) => err(e?.message || t("busy.connF")),
+          onFail: (e) =>
+            e?.code === "state_folder_shared"
+              ? offerOwnFolder(e.data?.hub)
+              : err(e?.message || t("busy.connF")),
         },
       )
       .then((r) => {
@@ -8674,6 +8925,11 @@ function wireHub(host, ctx) {
       connect();
     });
   wireHubAddress(host, ctx, err, busy);
+  const next = host.dataset.hubConnectNext;
+  if (next) {
+    delete host.dataset.hubConnectNext;
+    connect(undefined, next);
+  }
   // Issue 646 (mock v2, 1b): Hub address… shows the address form.
   const addrBtn = host.querySelector('[data-hub-action="address"]');
   const addrWrap = host.querySelector("[data-hub-addr-wrap]");

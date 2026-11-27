@@ -20,15 +20,19 @@ export function throwawayLines(
   tag?: string,
   /** Issue 1289: the checkouts with a live slot. */
   liveCheckouts: Set<string> = new Set(),
+  sweep = true,
 ): { lines: string[]; check: OnboardCheck } {
   const id = "gate_throwaway_containers";
+  const off = sweep
+    ? ""
+    : "the sweep is off (gate.throwaway_sweep 0), so Den removes none; ";
   if (list === null)
     return {
       lines: [],
       check: {
         id,
         status: "ok",
-        detail: "docker didn't answer: throwaway containers not checked",
+        detail: `${off}docker didn't answer: throwaway containers not checked`,
       },
     };
   const mine = (b: Throwaway) => !tag || !b.store || b.store === tag;
@@ -64,8 +68,10 @@ export function throwawayLines(
       check: {
         id,
         status: "warn",
-        detail: `${left.length} left over from ended gate runs${keptNote}`,
-        fix: "start Den (it removes left-over ones and stops idle kept ones within minutes), or docker rm -f the left-over ids and docker stop the kept ones",
+        detail: `${off}${left.length} left over from ended gate runs${keptNote}`,
+        fix: sweep
+          ? "start Den (it removes left-over ones and stops idle kept ones within minutes), or docker rm -f the left-over ids and docker stop the kept ones"
+          : "turn the sweep on (gate settings --throwaway-sweep 1, or gate.throwaway_sweep in Settings), or docker rm -f the left-over ids and docker stop the kept ones",
       },
     };
   return {
@@ -74,6 +80,7 @@ export function throwawayLines(
       id,
       status: "ok",
       detail:
+        off +
         (idle.length
           ? `${idle.length} kept and running outside a gate run; `
           : "") +

@@ -22,6 +22,7 @@
  */
 import { createPrivateKey, createSign, type KeyObject } from "crypto";
 import type { SecretRef, SecretsProvider } from "../secrets/types.js";
+import { parseRepoName } from "../repo-name.js";
 
 /** The project's `box_runner_app` setting: where the App's secrets are. */
 export interface BoxRunnerAppSetting {
@@ -80,10 +81,6 @@ export interface BoxRunnerTokenDeps {
 
 const NAME = /^[^\0\n\r]{1,200}$/;
 const FIELD = /^[A-Za-z0-9_.-]{1,64}$/;
-// The name may hold dots but is never "." or "..", which GitHub refuses
-// too: the URL parser would fold them into another endpoint (review).
-const REPO =
-  /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/((?!\.{1,2}$)[A-Za-z0-9._-]{1,100})$/;
 const APP_ID = /^[0-9]{1,12}$/;
 
 /** The API root without a trailing "/", or null when it won't do. */
@@ -163,9 +160,10 @@ export async function mintBoxRunnerToken(
   refs: BoxRunnerAppRefs,
   deps: BoxRunnerTokenDeps,
 ): Promise<BoxRunnerTokenResult> {
-  const m = REPO.exec(repo);
+  // The shared check; never "." or "..", which a URL folds.
+  const m = parseRepoName(repo);
   if (!m) return fail("repo", `"${repo.slice(0, 80)}" is not owner/name`);
-  const [, owner, name] = m;
+  const { owner, name } = m;
   const api = apiRoot(deps.api);
   if (!api)
     return fail("api", "GitHub's API root must be an https address, no login");

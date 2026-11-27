@@ -46,7 +46,7 @@ import {
   type SettingCategory,
 } from "../../shared/approval-policy.js";
 import { patchHubAllowTools, patchHubUrl } from "../../shared/hub.js";
-import { patchHubDeliveryLoop } from "../../shared/hub-loop.js";
+import { patchHubDeliveryLoop } from "../../shared/hub/hub-loop.js";
 import { patchAlerts } from "../../shared/alerts.js";
 import { checkIntent } from "../../shared/agents/permissions.js";
 import { parseMachineName } from "../../shared/cli-command.js";
@@ -66,7 +66,7 @@ import {
 } from "../../shared/review-lines.js";
 import { configKeyNames, patchConfigKey } from "./config-command.js";
 import { patchCliRows } from "../../shared/settings-cli-rows.js";
-import { GATE_DEFAULTS } from "../../shared/gates/rules.js";
+import { GATE_DEFAULTS, onOff } from "../../shared/gates/rules.js";
 
 export const SETTING_CHANGE_ACTION = "setting_change";
 /** The longest reason an ask may give (one line). */
@@ -115,6 +115,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "web.owner_name_timeout_seconds",
   "web.ready_probe_seconds",
   "web.start_wait_seconds",
+  "web.tools_probe_seconds",
   "web.sessions_lock_wait_ms",
   "web.address_check_timeout_seconds",
   "web.address_check_retries",
@@ -134,6 +135,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agents_list.host_timeout_seconds",
   "agents_list.refresh_timeout_seconds",
   "agents.max_concurrent",
+  "agents.max_per_project",
   // Issue 1417: every agent limit has an agent ask path.
   "agents.token_peer_wait_ms",
   "agents.turn_read_max_mb",
@@ -152,6 +154,8 @@ export const NARROW_SETTINGS: readonly string[] = [
   "reports.screenshot_max_mb",
   "reports.hub_timeout_seconds",
   "server_log.max_mb",
+  "server_log.slow_request_ms",
+  "server_log.event_loop_lag_ms",
   "agent_context.compaction_loop_count",
   "agent_context.compaction_loop_minutes",
   "agent_context.pause_after_loop",
@@ -167,11 +171,14 @@ export const NARROW_SETTINGS: readonly string[] = [
   "agent_hooks.backoff_seconds",
   "sessions.max_concurrent",
   "sessions.close_grace_seconds",
+  "sessions.size_claim_grace_seconds",
+  "sessions.size_leave_grace_seconds",
   "sessions.pty_close_seconds",
   "sessions.pty_warn_above",
   "sessions.pty_machine_warn_percent",
   "health_poll.visible_seconds",
   "health_poll.hidden_seconds",
+  "git_reads.at_once",
   "hub.groups_cache_seconds",
   // Vision's ruling (issue 1391): Settings' own fields, each named.
   "hub.delivery_loop",
@@ -234,6 +241,7 @@ export const WIDENING_SETTINGS: readonly string[] = [
   "agents.issue_writes_per_hour",
   // Issue 1127: a longer wait keeps a repo made public treated as private.
   "agents.issue_writes_visibility_minutes",
+  "agents.issue_writes_public",
   "agents.keep_running_after_logout",
   "services.restore_on_boot",
   "held_writes.wait_minutes",
@@ -270,6 +278,7 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "install_mode",
       "agents.sandbox",
       "agents.sandbox_sockets",
+      "agents.os_login",
       "agents.*.sandbox",
       "agents.*.grants",
       "approvals",
@@ -279,6 +288,7 @@ const CATEGORY_OF: readonly [SettingCategory, readonly string[]][] = [
       "held_writes.**",
       "agents.issue_writes",
       "agents.issue_writes_per_hour",
+      "agents.issue_writes_public",
       "agents.keep_running_after_logout",
       "services.restore_on_boot",
       "local_dev",
@@ -383,6 +393,11 @@ const WIDENS_AT: readonly [
   widens: (v: unknown, before?: unknown) => boolean,
   modes: readonly InstallMode[],
 ][] = [
+  [
+    "agents.issue_writes_public",
+    (v) => onOff(v) !== false,
+    ["personal", "strict"],
+  ],
   // Issue 1395 (Vision; Reviewer C): judged by old and new together, any
   // lowering of the container requirement widens on strict; with no old
   // value known, off (0) does.
@@ -405,6 +420,17 @@ const WIDENS_AT: readonly [
   [
     "gate.route_agents",
     (v, before) => {
+      const to = onOff(v);
+      return to === null || (!to && onOff(before) !== false);
+    },
+    ["personal", "strict"],
+  ],
+  // A program in effect now and missing after
+  // runs outside the gate: widens. Adding one, or reordering, doesn't.
+  // With no old value known, judged against the default list.
+  [
+    "gate.throwaway_sweep",
+    (v, before) => {
       const to = level(v);
       const from = level(before);
       if (to === null) return true;
@@ -412,9 +438,6 @@ const WIDENS_AT: readonly [
     },
     ["personal", "strict"],
   ],
-  // Issue 1264 (Reviewer A): a program in effect now and missing after
-  // runs outside the gate: widens. Adding one, or reordering, doesn't.
-  // With no old value known, judged against the default list.
   [
     "gate.route_commands",
     (v, before) => {
@@ -1165,6 +1188,7 @@ function readDoc(file: string): yaml.Document {
  */
 export const CAP_KEYS = [
   "agents.max_concurrent",
+  "agents.max_per_project",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
   // Issue 1417 (Builder 2): every agent limit setting_change takes. Past
@@ -1200,6 +1224,7 @@ const SAFE_AT_ZERO: readonly string[] = ["agents.unasked_exit_window_minutes"];
 
 const ZERO_IS_UNLIMITED: readonly string[] = [
   "agents.max_concurrent",
+  "agents.max_per_project",
   "sessions.max_concurrent",
   "agents.resume.load_ceiling",
   "agents.exited_shell_minutes",
