@@ -1,47 +1,34 @@
 /**
- * The kit's popover: a small non-modal box anchored to what opened it (a
- * button, a link, or a node in an SVG map), for a card or a short set of
- * actions. Framework-free; the product gives it its content and words.
+ * The kit's pop-over (DS component #4): a small non-modal panel that opens
+ * from one trigger and belongs to it, for a card, a short menu or a set of
+ * filters. Framework-free; the product gives it its content and words.
  *
  *   const pop = openPopover(anchor, {
- *     content,      a Node, or an HTML string the product has escaped
- *     label,        its name (aria-label), or
- *     labelledBy,   the id of an element inside it that names it
- *     placement,    "below" (the default) or "above"; it flips when the
- *                   side asked for has no room
- *     onClose,      called once, when it closes for any reason
+ *     content, footer   Nodes, or HTML strings the product has escaped
+ *     title             the phone sheet's heading (default: the trigger's text)
+ *     label, labelledBy its name, when nothing inside names it
+ *     menu              true: ↑ ↓ Home End move, choosing an item closes it
+ *     placement, align  "below" or "above"; "end" (default) or "start"
+ *     onClose           called once, when it closes for any reason
  *   });
- *   pop.el          the popover's element (div.den-pop.den-popover)
- *   pop.close(refocus)  close it; refocus puts focus back on the anchor
- *   pop.place()     place it again (after its content changed size)
  *
- * It is role="dialog" and never aria-modal: the page behind it stays live,
- * so there is no focus trap (only the kit's modal dialogs trap focus).
- * Focus moves to its first control, or to the box itself. Esc, a press
- * outside it, or Tab out of it closes it; Esc and a press on nothing
- * focusable put focus back on the anchor, and a press on a control leaves
- * focus there. Tab past its last control goes on to what follows the
- * anchor, and Shift+Tab before its first goes back to the anchor, as if it
- * sat right after the anchor. A press on the open anchor closes it, and
- * that press's click never reaches the anchor, so a page that opens it on
- * click doesn't open it again (nor follows a link anchor's href). An
- * anchor that is a button (an HTML button, or anything with role="button",
- * an SVG node too) says aria-haspopup="dialog", and aria-expanded and
- * aria-controls while it is open. Only one is open at a time: opening
- * another closes the first.
- *
- * It is placed with position: fixed beside the anchor's box, kept 8px
- * inside the viewport, and placed again on scroll and resize.
+ * Wider than 600px it sits 4px from the trigger, its end edge on the
+ * trigger's, flipping and shifting to stay 16px inside the window; its body
+ * scrolls and its footer stays. At 600px or less it is a bottom sheet over a
+ * scrim. Esc, a press outside, Tab out or the trigger again close it; focus
+ * goes back to the trigger. One is open at a time.
  */
+import { dialogWord } from "./dialog.js";
 
-const GAP = 6;
-const EDGE = 8;
+const GAP = 4;
+const EDGE = 16;
+const PHONE = "(max-width: 600px)";
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const ITEM = '[role^="menuitem"]:not([aria-disabled="true"])';
 
 let current = null;
 let seq = 0;
-/** The anchor whose press just closed its popover: that press's click is held back. */
 let held = null;
 let listening = false;
 
@@ -52,7 +39,6 @@ function isButton(el) {
   );
 }
 
-/** Once per page: a new press forgets the held anchor, and the held anchor's click is stopped. */
 function listen() {
   if (listening) return;
   listening = true;
@@ -70,7 +56,6 @@ function listen() {
   );
 }
 
-/** What can take focus, in document order, outside `box`. */
 function tabbables(box) {
   return [...document.querySelectorAll(FOCUSABLE)].filter(
     (n) =>
@@ -81,8 +66,14 @@ function tabbables(box) {
   );
 }
 
-/** Where the box goes: below or above the anchor, inside the viewport. */
-export function placeBox(a, w, h, vw, vh, want = "below") {
+function fill(node, what) {
+  if (typeof what === "string") node.innerHTML = what;
+  else if (what instanceof Node) node.append(what);
+}
+
+/** Where a w×h box goes beside anchor box `a`: side, top, left and the
+    height it may use. `align` "end" lines its right edge on the anchor's. */
+export function placeBox(a, w, h, vw, vh, want = "below", align = "start") {
   const roomBelow = vh - a.bottom - GAP - EDGE;
   const roomAbove = a.top - GAP - EDGE;
   let side = want;
@@ -90,45 +81,113 @@ export function placeBox(a, w, h, vw, vh, want = "below") {
     side = "above";
   else if (side === "above" && h > roomAbove && roomBelow > roomAbove)
     side = "below";
-  let top = side === "below" ? a.bottom + GAP : a.top - GAP - h;
-  top = Math.max(EDGE, Math.min(top, vh - EDGE - h));
-  let left = a.left;
+  const room = Math.max(0, side === "below" ? roomBelow : roomAbove);
+  const tall = Math.min(h, room);
+  let top = side === "below" ? a.bottom + GAP : a.top - GAP - tall;
+  top = Math.max(EDGE, Math.min(top, vh - EDGE - tall));
+  const right = a.right ?? a.left + w;
+  const fits = (x) => x >= EDGE && x + w <= vw - EDGE;
+  const tries = align === "end" ? [right - w, a.left] : [a.left, right - w];
+  let left = tries.find(fits) ?? tries[0];
   left = Math.max(EDGE, Math.min(left, vw - EDGE - w));
-  return { top: Math.round(top), left: Math.round(left), side };
+  return {
+    top: Math.round(top),
+    left: Math.round(left),
+    side,
+    maxHeight: Math.floor(room),
+  };
 }
 
 export function openPopover(anchor, o = {}) {
   listen();
   if (current) current.close(false);
+  const phone = globalThis.matchMedia?.(PHONE).matches ?? false;
   const el = document.createElement("div");
   el.className = "den-pop den-popover";
   el.id = `den-popover-${++seq}`;
-  el.setAttribute("role", "dialog");
   el.tabIndex = -1;
-  if (o.labelledBy) el.setAttribute("aria-labelledby", o.labelledBy);
-  else if (o.label) el.setAttribute("aria-label", o.label);
-  if (typeof o.content === "string") el.innerHTML = o.content;
-  else if (o.content instanceof Node) el.append(o.content);
+  const head = document.createElement("div");
+  head.className = "den-popover-head";
+  const title = document.createElement("h2");
+  title.className = "den-popover-t";
+  title.id = `${el.id}-t`;
+  title.textContent = (o.title ?? anchor.textContent ?? "")
+    .replace(/[▾▴]/g, "")
+    .trim();
+  const shut = document.createElement("button");
+  shut.type = "button";
+  shut.className = "den-btn ghost sm den-popover-x";
+  shut.textContent = dialogWord("close");
+  head.append(title, shut);
+  const body = document.createElement("div");
+  body.className = "den-popover-body";
+  fill(body, o.content);
+  el.append(head, body);
+  if (o.footer != null) {
+    const foot = document.createElement("div");
+    foot.className = "den-popover-foot";
+    fill(foot, o.footer);
+    el.append(foot);
+  }
+  const named = (n) => {
+    if (o.labelledBy) n.setAttribute("aria-labelledby", o.labelledBy);
+    else if (o.label) n.setAttribute("aria-label", o.label);
+    else if (phone && title.textContent)
+      n.setAttribute("aria-labelledby", title.id);
+  };
+  if (o.menu) {
+    body.setAttribute("role", "menu");
+    named(body);
+    for (const n of body.querySelectorAll("a[href], button"))
+      if (!n.hasAttribute("role")) n.setAttribute("role", "menuitem");
+  } else {
+    el.setAttribute("role", "dialog");
+    named(el);
+  }
+  let scrim = null;
+  if (phone) {
+    el.dataset.sheet = "";
+    scrim = document.createElement("div");
+    scrim.className = "den-popover-scrim";
+    document.body.append(scrim);
+  }
   document.body.append(el);
+  const top = (n) => {
+    if (typeof n.showPopover !== "function") return;
+    n.popover = "manual";
+    n.showPopover();
+  };
+  if (scrim) top(scrim);
+  top(el);
 
   const button = isButton(anchor);
   if (button) {
-    anchor.setAttribute("aria-haspopup", "dialog");
+    anchor.setAttribute("aria-haspopup", o.menu ? "menu" : "dialog");
     anchor.setAttribute("aria-expanded", "true");
     anchor.setAttribute("aria-controls", el.id);
   }
+  const rtl = () => globalThis.getComputedStyle(anchor).direction === "rtl";
 
   const place = () => {
-    if (!el.isConnected) return;
+    if (!el.isConnected || phone) return;
     const r = anchor.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw)
+      return close(false);
+    el.style.setProperty("--den-pop-min", `${Math.ceil(r.width)}px`);
+    el.style.maxHeight = "none";
+    const align = (o.align ?? "end") === "end" ? !rtl() : rtl();
     const p = placeBox(
       r,
       el.offsetWidth,
       el.offsetHeight,
-      window.innerWidth,
-      window.innerHeight,
+      vw,
+      vh,
       o.placement,
+      align ? "end" : "start",
     );
+    el.style.maxHeight = `${p.maxHeight}px`;
     el.style.top = `${p.top}px`;
     el.style.left = `${p.left}px`;
     el.dataset.side = p.side;
@@ -145,6 +204,7 @@ export function openPopover(anchor, o = {}) {
     window.removeEventListener("scroll", place, true);
     window.removeEventListener("resize", place);
     el.remove();
+    scrim?.remove();
     if (button) {
       anchor.setAttribute("aria-expanded", "false");
       anchor.removeAttribute("aria-controls");
@@ -154,9 +214,6 @@ export function openPopover(anchor, o = {}) {
     o.onClose?.();
   };
 
-  // A press moves focus itself once its own events are done (to a control,
-  // or to nothing, or in WebKit away from a pressed button), so the anchor
-  // takes focus back after that when nothing else has it.
   const refocusLater = () =>
     setTimeout(() => {
       const now = document.activeElement;
@@ -178,7 +235,9 @@ export function openPopover(anchor, o = {}) {
   function tab(e) {
     const a = document.activeElement;
     if (!el.contains(a)) return;
-    const inside = [...el.querySelectorAll(FOCUSABLE)];
+    const inside = [...el.querySelectorAll(FOCUSABLE)].filter(
+      (n) => n.getClientRects().length > 0,
+    );
     if (e.shiftKey) {
       if (a !== el && a !== inside[0]) return;
       e.preventDefault();
@@ -196,9 +255,25 @@ export function openPopover(anchor, o = {}) {
     close(false);
     after.focus();
   }
+  function step(e) {
+    const items = [...body.querySelectorAll(ITEM)];
+    const at = items.indexOf(document.activeElement);
+    if (!items.length || at < 0) return false;
+    const to = {
+      ArrowDown: (at + 1) % items.length,
+      ArrowUp: (at - 1 + items.length) % items.length,
+      Home: 0,
+      End: items.length - 1,
+    }[e.key];
+    if (to == null) return false;
+    e.preventDefault();
+    items[to].focus();
+    return true;
+  }
   function key(e) {
     if (e.defaultPrevented) return;
     if (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey) return tab(e);
+    if (o.menu && step(e)) return;
     if (e.key !== "Escape") return;
     const a = document.activeElement;
     if (a !== anchor && !el.contains(a) && a !== document.body) return;
@@ -211,6 +286,10 @@ export function openPopover(anchor, o = {}) {
     if (to instanceof Node && el.contains(to)) return;
     close(false);
   }
+  el.addEventListener("click", (e) => {
+    if (shut.contains(e.target)) return close(true);
+    if (o.menu && e.target.closest?.(ITEM)) setTimeout(() => close(true), 0);
+  });
 
   const pop = { el, close, place };
   current = pop;
@@ -220,9 +299,15 @@ export function openPopover(anchor, o = {}) {
   el.addEventListener("focusout", out);
   window.addEventListener("scroll", place, true);
   window.addEventListener("resize", place);
-  const first = el.querySelector(FOCUSABLE);
-  (first instanceof HTMLElement || first instanceof SVGElement
-    ? first
+  const chosen = o.menu
+    ? (body.querySelector(
+        `${ITEM}:is([aria-checked="true"], [aria-current]:not([aria-current="false"]), [aria-selected="true"])`,
+      ) ?? body.querySelector(ITEM))
+    : [...el.querySelectorAll(FOCUSABLE)].find(
+        (n) => n !== shut && n.getClientRects().length > 0,
+      );
+  (chosen instanceof HTMLElement || chosen instanceof SVGElement
+    ? chosen
     : el
   ).focus();
   return pop;

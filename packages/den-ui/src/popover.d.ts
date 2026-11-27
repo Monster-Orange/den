@@ -4,6 +4,10 @@ export type PopoverPlacement = "below" | "above";
 export interface PopoverOptions {
   /** What it shows: a Node, or an HTML string the product has escaped. */
   content?: Node | string;
+  footer?: Node | string;
+  title?: string;
+  menu?: boolean;
+  align?: "end" | "start";
   /** Its name (aria-label), when nothing inside it names it. */
   label?: string;
   /** The id of an element inside it that names it (aria-labelledby). */
@@ -15,7 +19,7 @@ export interface PopoverOptions {
 }
 
 export interface Popover {
-  /** The popover's element: div.den-pop.den-popover, role="dialog". */
+  /** The popover's element: div.den-pop.den-popover. */
   el: HTMLElement;
   /** Close it; refocus (default true) puts focus back on the anchor. */
   close(refocus?: boolean): void;
@@ -31,10 +35,11 @@ export function openPopover(anchor: Element, opts?: PopoverOptions): Popover;
 
 /** Where a w×h box goes beside anchor box `a` in a vw×vh viewport. */
 export function placeBox(
-  a: { top: number; bottom: number; left: number },
+  a: { top: number; bottom: number; left: number; right?: number },
   w: number,
   h: number,
   vw: number,
   vh: number,
   want?: PopoverPlacement,
-): { top: number; left: number; side: PopoverPlacement };
+  align?: "end" | "start",
+): { top: number; left: number; side: PopoverPlacement; maxHeight: number };

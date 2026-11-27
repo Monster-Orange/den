@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Added
+
+- UI kit 0.23.0: the pop-over (`popover.js`, DS component #4) never runs wider than min(360px, 100vw − 32px) or taller than the window. It lines up on the trigger's end edge, flips and shifts to stay 16px inside, scrolls its body under a fixed footer, closes when its trigger scrolls away, and on a phone is a bottom sheet with a title, Close and a scrim. A menu mode moves with ↑ ↓ Home End and closes on a choice. It uses the top layer where the browser has it.
+
 ## [0.4.92] - unreleased
 
 ### Changed

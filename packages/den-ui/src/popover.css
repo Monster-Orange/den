@@ -1,26 +1,131 @@
-/* The kit's popover (popover.js): the menus' look (.den-pop in shell.css),
-   value for value, so a card and a menu read as one family. A page that
-   doesn't link shell.css gets the same look from here. */
+/* The kit's pop-over (DS component #4, popover.js). Tokens only. Never
+   wider than min(360px, 100vw - 32px); at 600px or less, a bottom sheet. */
 .den-popover {
   position: fixed;
-  z-index: 45;
-  background: var(--raised);
-  border: 1px var(--edge-style, solid) var(--border-strong);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  padding: 12px;
-  min-width: 220px;
-  max-width: min(360px, calc(100vw - 16px));
-  max-height: calc(100vh - 16px);
-  overflow-y: auto;
+  inset: auto;
+  z-index: var(--z-menu);
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
-  font: 14px/1.45 var(--sans);
+  width: max-content;
+  min-width: min(max(200px, var(--den-pop-min, 0px)), calc(100vw - 32px));
+  max-width: min(360px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  margin: 0;
+  padding: var(--space-2);
+  overflow: hidden;
+  background: var(--raised);
+  border: 1px var(--edge-style, solid) var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-menu);
   color: var(--text);
+  font: var(--fs-s) / 1.45 var(--sans);
+  overflow-wrap: anywhere;
 }
 .den-popover:focus {
   outline: none;
 }
 .den-popover :focus-visible {
   outline: 2px solid var(--focus-ring, var(--accent));
-  outline-offset: var(--focus-offset, 2px);
+  outline-offset: -2px;
+}
+.den-popover-head {
+  display: none;
+}
+.den-popover-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.den-popover-foot {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px var(--edge-style, solid) var(--border);
+}
+.den-popover-body :is([role^="menuitem"], .den-popover-row) {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--tap-min);
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+.den-popover-body
+  :is([role^="menuitem"], .den-popover-row):is(:hover, :focus-visible) {
+  background: var(--sunken);
+}
+.den-popover-body [aria-disabled="true"] {
+  color: var(--faint);
+  cursor: default;
+}
+.den-popover-body :is(small, .den-popover-sub) {
+  color: var(--muted);
+}
+.den-popover-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-menu);
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--kit-backdrop);
+}
+.den-popover[data-sheet] {
+  inset: auto 0 0 0;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  max-height: 85vh;
+  padding: 0 var(--space-3)
+    calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  border-width: 1px 0 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  animation: den-pop-rise var(--dur) var(--ease);
+}
+.den-popover[data-sheet] .den-popover-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 56px;
+  border-bottom: 1px var(--edge-style, solid) var(--border);
+  margin-bottom: var(--space-2);
+}
+.den-popover-t {
+  margin: 0;
+  font-size: var(--fs-m);
+  font-weight: 600;
+}
+.den-popover[data-sheet]
+  .den-popover-body
+  :is([role^="menuitem"], .den-popover-row) {
+  min-height: var(--tap);
+}
+@keyframes den-pop-rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-popover[data-sheet] {
+    animation: none;
+  }
 }
