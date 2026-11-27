@@ -799,6 +799,8 @@ async function loadGroups(fresh = false) {
     });
     const b = r.ok ? await r.json() : null;
     st.groupsRead = b?.state ? b : { state: "unreachable" };
+    if (st.by === "group" && groupsOffered(st.groupsRead) && !st.data?.groups)
+      void refreshOnce();
   } catch {
     st.groupsRead = { state: "unreachable" };
   }
