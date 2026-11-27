@@ -194,6 +194,7 @@ function renderGhPager() {
       pg.reply,
       st.gh?.length ?? 0,
       pg.per,
+      { url: false },
     );
 }
 
@@ -458,7 +459,7 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
     words: { more: t("combo.narrow"), none: t("combo.none") },
   });
   pg.stop?.();
-  pg.stop = watchPagers(d, ghNavigate);
+  pg.stop = watchPagers(d, ghNavigate, { url: false });
   d.addEventListener("input", (e) => {
     if (e.target.id !== "add-svc-global-search") return;
     clearTimeout(ghTimer);
