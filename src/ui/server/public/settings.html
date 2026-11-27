@@ -311,6 +311,7 @@
         } from "/appearance.js";
         import { registerDenSettings } from "/settings-registry.js";
         import { mountSettings } from "/settings-page.js";
+        import { settingsRedirect } from "/settings-dialog.js";
         void Promise.all([
           initHealth(),
           initWorkspacePill(),
@@ -327,7 +328,12 @@
         if (typeof ResizeObserver === "function")
           new ResizeObserver(setTop).observe(ph);
         registerDenSettings(window.denShell);
-        void mountSettings({
+        if (window.denShell.configInvalid?.() !== true)
+          location.replace(
+            settingsRedirect(location, window.denShell.settings()),
+          );
+        else
+          void mountSettings({
           shell: window.denShell,
           appearance: { appearanceState, ensureAppearance, setAppearance },
         });

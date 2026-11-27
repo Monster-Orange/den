@@ -37,7 +37,7 @@ export const ACCOUNT_LINKS = {
   cli: { pane: "profile", text: "setd.toAccount.profile" },
 };
 
-const SUBS = {
+export const SUBS = {
   workspace: {
     project: ["name", "colour", "editor"],
     hub: ["hub", "hub_delivery_loop", "hub_delivery_loop_extra"],
@@ -236,7 +236,7 @@ export function subsOf(pane, rows) {
   return out.filter((g) => g.rows.length);
 }
 
-function drawSubs(host, pane, rows, ctx, shell) {
+export function drawSubs(host, pane, rows, ctx, shell) {
   for (const g of subsOf(pane, rows)) {
     const box = document.createElement("div");
     box.className = "setd-sub";
@@ -268,6 +268,21 @@ export function paneOf(hash, rows) {
     return { pane: null, at: null, account: "notifications" };
   const cat = h.split(".")[0];
   return PANES[cat] ? { pane: cat, at: null } : { pane: null, at: null };
+}
+
+export function settingsRedirect(loc, rows) {
+  const q = new URLSearchParams(loc.search || "");
+  const to = paneOf(loc.hash, rows);
+  const search = q.get("q");
+  q.delete("q");
+  if (to.account) {
+    q.set("account", to.account);
+    return `/?${q}`;
+  }
+  q.set("settings", to.pane ?? "");
+  if (to.at) q.set("at", to.at);
+  if (search) q.set("sq", search);
+  return `/?${q}`;
 }
 
 const esc = (s) =>
@@ -392,6 +407,7 @@ async function build(shell) {
       subtree: true,
     });
     if (PANE_DRAW[pane]) PANE_DRAW[pane](host, own, ctx, shell);
+    else if (SUBS[pane]) drawSubs(host, pane, own, ctx, shell);
     else drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
     mark();
   };
@@ -420,6 +436,12 @@ export async function openSettings(
     ({ pane, at } = to);
   }
   nav.open(pane, at);
+  const sq = new URLSearchParams(location.search).get("sq");
+  const box = sq && nav.element.querySelector("[data-dn-search]");
+  if (box) {
+    box.value = sq;
+    box.dispatchEvent(new Event("input"));
+  }
   nav.element
     .querySelector('a.dn-row[aria-current="true"]')
     ?.scrollIntoView({ block: "nearest" });

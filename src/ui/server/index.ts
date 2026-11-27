@@ -1850,7 +1850,6 @@ import {
   sendPageError,
 } from "./paging.js";
 import { CHANGELOG_PAGE } from "../../shared/list-page.js";
-import { settingsLink } from "../../shared/settings-links.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
   try {
@@ -7591,9 +7590,9 @@ async function handleRequest(
   }
   if (
     (pathname === "/local-dev" || pathname === "/local-dev.html") &&
-    url.searchParams.has("settings")
+    url.searchParams.get("settings") === "1"
   ) {
-    res.writeHead(302, { Location: settingsLink("editor") });
+    res.writeHead(302, { Location: "/local-dev?settings=editor" });
     res.end();
     return;
   }
@@ -7604,7 +7603,7 @@ async function handleRequest(
     pathname === "/local-dev.html"
   ) {
     if (!isLocalEnabled()) {
-      res.writeHead(302, { Location: "/verify" });
+      res.writeHead(302, { Location: `/verify${url.search}` });
       res.end();
       return;
     }
