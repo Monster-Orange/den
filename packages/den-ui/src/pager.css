@@ -1,0 +1,93 @@
+.den-pager {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  font-family: var(--sans);
+  --den-pager-h: var(--tap-min);
+}
+.den-pager-range {
+  margin: 0;
+  font-size: var(--fs-s);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.den-pager-ctl {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.den-pager-err {
+  margin: 0;
+  font-size: var(--fs-s);
+  color: var(--bad);
+}
+.den-pager-err[hidden] {
+  display: none;
+}
+.den-pager-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  height: var(--den-pager-h);
+  padding: 0 var(--space-3);
+  border: 1px var(--edge-style, solid) var(--border);
+  border-radius: var(--radius-button);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-s);
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.den-pager-btn:not([aria-disabled="true"]):hover {
+  border-color: var(--border-strong);
+  background: var(--sunken);
+}
+.den-pager-btn:focus {
+  outline: none;
+}
+.den-pager-btn:focus-visible,
+.den-pager-btn[data-den-force~="focus"] {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+.den-pager-btn[aria-disabled="true"] {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .den-pager {
+    --den-pager-h: var(--tap);
+  }
+}
+@media (max-width: 600px) {
+  .den-pager {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .den-pager-ctl {
+    flex-wrap: wrap;
+  }
+  .den-pager-ctl > .den-pager-btn {
+    flex: 1 1 0;
+  }
+  .den-pager-err {
+    flex-basis: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-pager-btn {
+    transition: none;
+  }
+}

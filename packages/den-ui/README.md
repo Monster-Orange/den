@@ -688,6 +688,46 @@ never converted to HTML and back).
   motion. A transparent border shows the track in forced colours.
 - Under `style-src 'self'`: no inline styles, nothing injected.
 
+## Pagination
+
+- `src/pager.js`, `src/pager.css` (exports `./pager`, `./pager.css`): one
+  row under a long list, the range line on the left ("1–50 of 809") and
+  the controls on the right (DS component #2). Link `pager.css` after
+  `tokens.css`; more mode also uses `busy.css`.
+
+      import { pagerHtml, hydratePager } from "@monster-orange/den-ui/pager";
+      foot.innerHTML = pagerHtml({ mode: "pages", from: 51, to: 100,
+        total: 809, prevHref: "?page=1#docs", nextHref: "?page=3#docs",
+        lang: "en", words });
+      hydratePager(foot.querySelector(".den-pager"), {
+        list: "docs", load: async () => ({ html, to: 150, moreHref }),
+      });
+
+- The model: `mode` (`"pages"` or `"more"`), `from`, `to` and `total`
+  (the rows shown and how many there are), `step` (how many more rows a
+  press adds; default `to - from + 1`), `prevHref`, `nextHref` and
+  `moreHref` (the host's links, with its filters, sort and `#list` kept),
+  `lang` (numbers in the locale's format) and `words`. One page only, or
+  none: nothing is drawn.
+- `words` are the host's, in its language: `range` ("{from}–{to} of
+  {total}"), `label` (the nav's name), `prev`, `next`, `more` ("Show {n}
+  more"), `last` ("Show the last {n}"), `all` ("All {total} shown") and
+  `moreErr`. The kit adds none.
+- Pages mode: a `<nav>` with "← Previous" and "Next →" links in the
+  button look; an end with no link is shown but `aria-disabled`, so the
+  controls never move. No page numbers.
+- More mode: one "Show 50 more" link that works with no script. With
+  `hydratePager(el, { load, list })` a press (or Space) holds it with the
+  kit's dots, calls `load()` for `{ html, to, moreHref? }`, adds the rows
+  to `list` (an element or its id; default the element before the
+  pager), moves focus to the first new row and updates the range, which
+  is a polite live region. On the last chunk it says `last`; once every
+  row is shown the button goes and the range says `all`. A failed load
+  shows `moreErr` beside the button, and a press tries again.
+- 36px tall, 44px at 600px wide or less or with a coarse pointer. Under
+  600px the range sits above the controls, which take the full width.
+  Tokens only.
+
 ## A list's filter bar and bulk bar
 
 Two parts for a list of things (issues 552 and 553). Both are data-only:
