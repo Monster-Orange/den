@@ -65,6 +65,7 @@ import {
   addressBriefLine,
   addressNotSetNote,
   agentLinks,
+  agentPagePath,
   peopleAddress,
   peopleWebUrl,
   type AgentLinks,
@@ -10220,7 +10221,7 @@ export async function trustTick(d: AgentsResolved): Promise<TrustEvent[]> {
       const s = sessionOf(sessions, rec);
       const name = rec.displayName || rec.persona || rec.id;
       const who = { agent: rec.id, workspace: rec.workspace };
-      const link = `/agents?project=${encodeURIComponent(rec.workspace)}&agent=${encodeURIComponent(rec.id)}`;
+      const link = agentPagePath(rec.workspace, rec.id);
       try {
         if (s && !s.exited) {
           // Only before its conversation exists, or while it was asked.

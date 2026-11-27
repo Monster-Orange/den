@@ -31,6 +31,7 @@
  * page to say in its own language.
  * Agent state and output come from `deps` (tests use fakes).
  */
+import { agentPagePath } from "../../shared/agent-links.js";
 import type {
   NoteMsg,
   Notification,
@@ -395,7 +396,7 @@ export class Attention {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
-    const link = `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
+    const link = agentPagePath(workspace, agent);
     const seq = ++this.seq;
     try {
       if (ev.event !== "resumed") this.d.activity?.(agent, false);
@@ -844,7 +845,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : agentPagePath(workspace, agent),
     });
   }
 
@@ -872,7 +873,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : agentPagePath(workspace, agent),
     });
   }
 
