@@ -56,7 +56,6 @@ export function setGhRepos(list) {
   if (items.length) st.gh = items;
 }
 
-// A GitHub list route answers one page, { items, next }; q runs on GitHub.
 const pageItems = (r) =>
   Array.isArray(r) ? r : Array.isArray(r?.items) ? r.items : [];
 const ghQ = (v, re) => (re.test(v) ? v : "");

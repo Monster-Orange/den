@@ -35,7 +35,6 @@ import type { Page, PageAsk } from "./paging.js";
 // (basename + origin remote) must not depend on where the server was started.
 const ROOT = getDistRoot();
 
-// gh with its args as an array (no shell), off the event loop, with a timeout.
 function gh(args: string[], timeout: number): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(
@@ -76,7 +75,6 @@ export class GitHubService {
   private denRepos = new Map<string, { names: Set<string>; at: number }>();
   private warnedNotConfigured = false;
 
-  /** gh, with each answer (or the call in flight) kept for ttl ms, by its args. */
   private cachedGh(ttl: number): GhRun {
     return (args) => {
       const k = args.join("\0");
@@ -171,7 +169,6 @@ export class GitHubService {
     return { items, next: page.next };
   }
 
-  /** The org's repos that hold a Den manifest (one code search, cached). */
   private async denReposOf(org: string): Promise<Set<string>> {
     const hit = this.denRepos.get(org);
     if (hit && Date.now() - hit.at < REPO_CACHE_TTL_MS) return hit.names;

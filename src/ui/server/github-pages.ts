@@ -1,11 +1,3 @@
-/**
- * One page of a GitHub list, fetched from GitHub one page at a time.
- *
- * The cursor carries GitHub's own page state: the REST page number for
- * branches, the GraphQL endCursor for repos. A ?q runs on GitHub before
- * the cut: branch names that start with q, repo names that contain it.
- * Branch page 1 starts with the repo's default branch; later pages skip it.
- */
 import type * as http from "http";
 import { sendJson } from "./http-helpers.js";
 import {
@@ -19,8 +11,6 @@ import {
 } from "./paging.js";
 
 export type GhRun = (args: string[]) => Promise<string>;
-
-/** GitHub's largest per_page and GraphQL first. */
 export const GH_PAGE_MAX = 100;
 
 export class BadCursor extends Error {}
@@ -28,8 +18,6 @@ export class BadCursor extends Error {}
 const BRANCH_Q = /^[A-Za-z0-9._/-]{1,100}$/;
 const BRANCH_NAME = /^[A-Za-z0-9._/-]{1,255}$/;
 const REPO_Q = /^[A-Za-z0-9._-]{1,100}$/;
-
-/** q from the query string: "" for none, null when it can't be a name. */
 export function readListQ(
   p: URLSearchParams,
   kind: "branch" | "repo",
@@ -153,15 +141,10 @@ function parseGql(raw: string): GqlPage {
 
 export interface RepoPageOf {
   nodes: GhRepoNode[];
-  /** The owner whose page this was ("" for a q search across all of them). */
   owner: string;
   next: string | null;
 }
 
-/**
- * One page of repos: owner by owner in the given order, or one GitHub
- * search across every owner when q is set.
- */
 export async function repoPage(
   run: GhRun,
   owners: string[],
@@ -228,8 +211,6 @@ export async function repoPage(
     next,
   };
 }
-
-/** Answer a paged GitHub list route: ?limit, ?cursor and ?q, then the page. */
 export async function sendGhPage<T>(
   res: http.ServerResponse,
   params: URLSearchParams,
