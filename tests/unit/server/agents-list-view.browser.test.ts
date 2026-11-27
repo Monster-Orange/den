@@ -458,8 +458,9 @@ describe("the agents page's list", () => {
         // never at a row in the shut Stopped (n), and is never negative.
         const m = await p.evaluate(() => {
           const el = document.getElementById("agl")!;
-          const top = el.getBoundingClientRect().top - el.scrollTop;
-          const border = el.offsetHeight - el.clientHeight;
+          const card = document.getElementById("aglc")!;
+          const top = card.getBoundingClientRect().top - el.scrollTop;
+          const border = card.offsetHeight - card.clientHeight;
           const running = Array.from(
             el.querySelectorAll('button[data-kind][data-state="running"]'),
           );

@@ -388,3 +388,28 @@ describe("the agents page fits its window", () => {
     });
   }, 120_000);
 });
+
+const offCentre = (p: Page) =>
+  p.evaluate(() => {
+    const list = document.getElementById("agl")!;
+    list.style.setProperty("padding-right", "15px", "important");
+    const by = document
+      .querySelector("[data-by-switch]")!
+      .getBoundingClientRect();
+    const box = list.getBoundingClientRect();
+    return Math.abs((by.left + by.right - box.left - box.right) / 2);
+  });
+
+describe("the view switch is centred over the list when the list keeps room for a scrollbar", () => {
+  for (const engine of ENGINES)
+    for (const width of WIDTHS)
+      for (const layout of ["none", "focus"] as const)
+        it(`${engine}, ${width} wide, ${layout === "none" ? "no agent open" : "an agent open"}: the switch's middle is the list's middle`, async () => {
+          if (skip()) return;
+          await settled();
+          const p = await open(engine, width, "group", layout);
+          await caseOn([p], async () => {
+            expect(await offCentre(p)).toBeLessThanOrEqual(1);
+          });
+        }, 120_000);
+});

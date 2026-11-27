@@ -356,7 +356,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
           await eventually(async () => {
             const [d, l, r] = await Promise.all([
               rect(p, "#den-dock"),
-              rect(p, "#agl"),
+              rect(p, "#aglc"),
               rect(p, "#agr"),
             ]);
             return (
@@ -365,7 +365,7 @@ describe("the Agents tab's layouts (AG-4b)", () => {
           });
           const [d, l, r] = await Promise.all([
             rect(p, "#den-dock"),
-            rect(p, "#agl"),
+            rect(p, "#aglc"),
             rect(p, "#agr"),
           ]);
           // Measured, not eyeballed (getBoundingClientRect).

@@ -409,6 +409,19 @@ function setList(el, html) {
   if (had) focusBack(had, key);
 }
 
+function paintBySwitch() {
+  const el = st.root.querySelector("#agby");
+  if (!el) return;
+  const html = viewSwitchHtml(st.groupsRead, st.by, t);
+  if (el.denHtml === html) return;
+  el.denHtml = html;
+  const had = el.contains(document.activeElement)
+    ? document.activeElement.dataset.by
+    : "";
+  el.innerHTML = html;
+  if (had) el.querySelector(`button[data-by="${CSS.escape(had)}"]`)?.focus();
+}
+
 function paintList() {
   const el = st.root.querySelector("#agl");
   el.removeAttribute("aria-busy");
@@ -575,10 +588,10 @@ function paintList() {
   setList(
     el,
     notes.join("") +
-      viewSwitchHtml(st.groupsRead, st.by, t) +
       body +
       `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
   );
+  paintBySwitch();
   const clear = st.root.querySelector("#ag-clear");
   if (clear)
     clear.hidden = PAGE === "terminal" || !visibleRows().some(inStopped);
@@ -623,9 +636,12 @@ function fitListFloor() {
     return;
   }
   const top = el.getBoundingClientRect().top - el.scrollTop;
-  const border = el.offsetHeight - el.clientHeight;
+  const card = el.parentElement;
+  const border = card.offsetHeight - card.clientHeight;
+  const above =
+    el.getBoundingClientRect().top - card.getBoundingClientRect().top;
   const upTo = (r) =>
-    Math.ceil(r.getBoundingClientRect().bottom - top + border);
+    Math.ceil(r.getBoundingClientRect().bottom - top + above + border);
   let px = upTo(rows[Math.min(LIST_FLOOR_ROWS, rows.length) - 1]);
   const right = agx.querySelector("#agr");
   const pane = right?.querySelector(".pane:not([hidden])");
@@ -5461,6 +5477,10 @@ export async function mountAgentsPage(root) {
     () => refresh(),
   );
   wireOrder(root.querySelector("#agl"));
+  root.querySelector("#agby").addEventListener("click", (e) => {
+    const by = e.target.closest("[data-by-switch] button[data-by]");
+    if (by) setBy(by.dataset.by);
+  });
   root.querySelector("#agl").addEventListener("click", (e) => {
     // D37: a person's open or closed "Stopped (n)" is kept.
     const sum = e.target.closest("details[data-stopped] > summary");
@@ -5468,9 +5488,6 @@ export async function mountAgentsPage(root) {
       saveStoppedOpen(!sum.parentElement.open);
       return;
     }
-    // Issue 750: By project or By group.
-    const by = e.target.closest("[data-by-switch] button[data-by]");
-    if (by) return void setBy(by.dataset.by);
     // Issue 1407: Restart now (one agent's), and Restart all now.
     const now = e.target.closest("button[data-rs-now]");
     if (now) return void restartNowFor([now]);

@@ -1233,16 +1233,33 @@
         font-size: 12.5px;
         color: var(--muted);
       }
-      /* Issue 750: By project | By group, at the top of the list: centred,
-         at the layout switch's size (.seg). */
-      .agl .agby {
+      /* Need | Project | Group, at the top of the list's card, outside its
+         scroller: centred on the card, at the layout switch's size (.seg). */
+      .aglc {
         display: flex;
+        flex-direction: column;
+        min-height: 0;
+        min-width: 0;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
+      .aglc > .agl {
+        flex: 1 1 auto;
+        border: 0;
+        border-radius: 0;
+        background: none;
+      }
+      .aglc .agby {
+        display: flex;
+        flex: none;
         width: fit-content;
         max-width: calc(100% - 24px);
         margin: 8px auto 2px;
       }
       @media (pointer: coarse) {
-        .agl .agby button {
+        .aglc .agby button {
           min-height: 44px;
         }
       }
@@ -1476,7 +1493,7 @@
         .pane .term {
           contain: size;
         }
-        .agl {
+        .aglc {
           max-height: 60vh;
         }
       }
@@ -1542,13 +1559,16 @@
         </div>
       </div>
       <div class="agx" id="agx">
-        <div
-          class="agl"
-          id="agl"
-          role="region"
-          aria-labelledby="ag-h"
-          aria-busy="true"
-        ></div>
+        <div class="aglc" id="aglc">
+          <div id="agby"></div>
+          <div
+            class="agl"
+            id="agl"
+            role="region"
+            aria-labelledby="ag-h"
+            aria-busy="true"
+          ></div>
+        </div>
         <div id="agr" class="agempty"></div>
       </div>
       <div class="ag-live" id="ag-order-live" aria-live="polite"></div>

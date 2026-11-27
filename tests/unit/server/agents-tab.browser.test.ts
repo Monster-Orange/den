@@ -192,7 +192,7 @@ describe("the Agents tab", () => {
     const p = await page("/agents");
     const [agx, agl, agr, dock] = await Promise.all([
       box(p, "#agx"),
-      box(p, "#agl"),
+      box(p, "#aglc"),
       box(p, "#agr"),
       box(p, "#den-dock"),
     ]);
