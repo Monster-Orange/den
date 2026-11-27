@@ -6822,6 +6822,7 @@ function cliRowSettings(user: ReturnType<typeof readUserConfig>) {
           pty_machine_warn_percent: c.ptyMachineWarnPercent,
           size_claim_grace_seconds: c.sizeClaimGraceSeconds,
           size_leave_grace_seconds: c.sizeLeaveGraceSeconds,
+          io_ping_seconds: c.ioPingSeconds,
         };
       } catch {
         return null;

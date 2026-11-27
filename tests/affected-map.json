@@ -38,6 +38,11 @@
       "src/shared/den-config.ts",
       "src/ui/server/public/settings-registry.js"
     ],
+    "tests/unit/server/silent-view-1913.integration.test.ts": [
+      "src/ui/server/session-routes.ts",
+      "src/ui/server/websocket.ts",
+      "src/ui/server/term-size-lead.ts"
+    ],
     "tests/unit/server/size-claim-1724.integration.test.ts": [
       "src/ui/server/session-routes.ts",
       "src/ui/server/term-size-lead.ts"
@@ -4813,6 +4818,15 @@
     {
       "when": ["src/shared/agents/signin-token.ts"],
       "run": ["tests/unit/server/signin-token.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/session-routes.ts",
+        "src/ui/server/term-size-lead.ts",
+        "src/ui/server/websocket.ts"
+      ],
+      "run": ["tests/unit/server/silent-view-1913.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

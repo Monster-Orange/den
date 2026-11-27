@@ -188,6 +188,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "sessions.close_grace_seconds",
   "sessions.size_claim_grace_seconds",
   "sessions.size_leave_grace_seconds",
+  "sessions.io_ping_seconds",
   "sessions.pty_close_seconds",
   "sessions.pty_warn_above",
   "sessions.pty_machine_warn_percent",

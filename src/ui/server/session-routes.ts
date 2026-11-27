@@ -229,6 +229,7 @@ export interface SessionRouteDeps {
   closeGrace?: () => number;
   sizeClaimGraceMs?: () => number;
   sizeLeaveGraceMs?: () => number;
+  ioPingMs?: () => number;
   /** D65 v2: workspace `ws`'s repo names (null: it can't be read). */
   repoNames?: (ws: string) => ReadonlySet<string> | null;
   now?: () => Date;
@@ -267,6 +268,7 @@ interface Resolved {
   closeGrace: () => number;
   sizeClaimGraceMs: () => number;
   sizeLeaveGraceMs: () => number;
+  ioPingMs: () => number;
   repoNames: (ws: string) => ReadonlySet<string> | null;
   now: () => Date;
   listWaits: () => ListWaits;
@@ -338,6 +340,7 @@ function resolve(d: SessionRouteDeps = {}): Resolved {
     sizeLeaveGraceMs:
       d.sizeLeaveGraceMs ??
       (() => readSessionsConfig().sizeLeaveGraceSeconds * 1000),
+    ioPingMs: d.ioPingMs ?? (() => readSessionsConfig().ioPingSeconds * 1000),
     uploadSettings:
       d.uploadSettings ??
       (() => readAgentsConfig().uploads ?? { ...UPLOAD_DEFAULTS }),
@@ -1704,7 +1707,10 @@ export async function handleSessionUpgrade(
   const principal = principalOf(req);
   const audit = (detail: string) =>
     recordAction(actor, { verb: "sessions", detail }, principal);
-  const ws = acceptWebSocket(req, socket, head, { protocol: IO_PROTOCOL });
+  const ws = acceptWebSocket(req, socket, head, {
+    protocol: IO_PROTOCOL,
+    pingMs: d.ioPingMs(),
+  });
   const since = Date.now();
   audit(`attach ${s.name} (browser)`);
   const p = parseSessionName(s.name, d.dist())!;

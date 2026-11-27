@@ -2711,6 +2711,9 @@
       "Terminal size hold after a page closes",
     "set.server.sessions_size_leave_grace.d":
       "How long the window that last set a terminal's size keeps it after its page closes or reloads, so a reload keeps the size while a closed page hands it to another window. Within the terminal size hold, that window takes the size back when it returns, unless someone typed or took over in another window meanwhile. 0 hands it on at once. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
+    "set.server.sessions_io_ping": "Terminal connection check",
+    "set.server.sessions_io_ping.d":
+      "How often Den checks that each open terminal window still answers. A window that misses a check is counted as gone by the next one, so a tab that vanished without closing (a crash, a sleeping laptop, a lost network) stops holding the terminal's size within twice this time. Applies to windows that connect after the change. __DEN_CLI__ config sessions.io_ping_seconds=10",
     "set.server.sessions_pty_close": "Terminal close after exit",
     "set.server.sessions_pty_close.d":
       "How long after a terminal's program ends its terminal is closed. 0 closes it at once. Its scrollback stays readable either way. Applies when the terminal host next starts. __DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -3316,7 +3319,8 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
-    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Set project {project}'s agent cap: {from} → {to}",
     "ap.det.project_agent_cap.now": "Now: {v}",
     "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",

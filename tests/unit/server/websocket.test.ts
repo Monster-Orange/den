@@ -28,7 +28,7 @@ beforeAll(async () => {
     const ws = acceptWebSocket(req, socket, head, {
       protocol: "den.io",
       maxMessageBytes: 64 * 1024,
-      pingMs: 0,
+      pingMs: req.url === "/ping" ? 100 : 0,
     });
     conns.push(ws);
     ws.on("message", (d: Buffer, binary: boolean) => {
@@ -140,5 +140,28 @@ describe("frames", () => {
       ws.raw(f);
       expect(await ws.closed).toBe(1002);
     }
+  });
+});
+
+describe("the ping", () => {
+  const opened = async () => {
+    const r = await wsConnect(port, "/ping");
+    if (!r.ok) throw new Error(`refused ${r.status}`);
+    const ws = conns[conns.length - 1];
+    const closed = new Promise<[number, string]>((res) =>
+      ws.on("close", (c: number, why: string) => res([c, why])),
+    );
+    return { c: r.ws, closed };
+  };
+
+  it("a peer that stops answering closes as going away; one that answers stays", async () => {
+    const quiet = await opened();
+    const live = await opened();
+    quiet.c.silence();
+    expect(await quiet.closed).toEqual([1001, "no answer to ping"]);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(conns[conns.length - 1].open).toBe(true);
+    live.c.close();
+    await live.closed;
   });
 });

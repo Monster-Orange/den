@@ -1437,6 +1437,9 @@
       "ページを閉じたときのターミナルのサイズの保持",
     "set.server.sessions_size_leave_grace.d":
       "ターミナルのサイズを最後に決めたウィンドウが、そのページを閉じたり再読み込みしたりしたあとも、そのサイズを保つ時間です。再読み込みではサイズが保たれ、閉じたページのサイズはほかのウィンドウに移ります。ターミナルのサイズの保持の時間内に戻ると、そのウィンドウはサイズを取り戻します。その間にほかのウィンドウで入力や引き継ぎがあった場合は取り戻しません。0 にするとすぐに移ります。__DEN_CLI__ config sessions.size_leave_grace_seconds=3",
+    "set.server.sessions_io_ping": "ターミナルの接続確認",
+    "set.server.sessions_io_ping.d":
+      "開いている各ターミナルのウィンドウがまだ応答するかを Den が確認する間隔です。確認に応答しなかったウィンドウは次の確認でなくなったものとみなされます。そのため、閉じずに消えたタブ（クラッシュ、スリープ中のノートパソコン、切れたネットワーク）は、この時間の 2 倍以内にターミナルのサイズを保たなくなります。変更後に接続したウィンドウに適用されます。__DEN_CLI__ config sessions.io_ping_seconds=10",
     "set.server.sessions_pty_close": "終了後にターミナルを閉じるまで",
     "set.server.sessions_pty_close.d":
       "ターミナルのプログラムが終了してから、そのターミナルを閉じるまでの時間です。0 ならすぐに閉じます。どちらの場合もスクロールバックは読めます。ターミナルホストが次に起動したときに反映されます。__DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -1833,7 +1836,8 @@
     "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
     "set.workspace.hub_delivery_loop.o.on": "オン",
     "set.workspace.hub_delivery_loop.o.off": "オフ",
-    "set.workspace.agents_max_per_project": "プロジェクトごとのエージェント数: このプロジェクト",
+    "set.workspace.agents_max_per_project":
+      "プロジェクトごとのエージェント数: このプロジェクト",
     "set.workspace.agents_max_per_project.d":
       "このプロジェクトのエージェントを同時に動かせる数です。空か 0 なら「プロジェクトごとのエージェント数」を使います。それより低い値だけ設定できます。これを超える起動は拒否され、どの上限で止まったかが表示されます。",
     "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
@@ -2295,7 +2299,8 @@
     "ap.det.den_sandbox_on.off":
       "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
-    "ap.do.project_agent_cap": "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
     "ap.det.project_agent_cap.now": "現在: {v}",
     "ap.det.project_agent_cap.then": "変更後: {v}",
     "ap.do.project_mode":
