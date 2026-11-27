@@ -496,7 +496,12 @@
         } from "/header.js";
         import { isServerLog, logStreamUrl } from "/log-source.js";
         import { currentTimeZone, formatTime, formatTitle } from "/kit/time.js";
-        import { cursorHref, hydratePager, pagerHtml } from "/kit/pager.js";
+        import {
+          cursorHref,
+          cursorStart,
+          hydratePager,
+          pagerHtml,
+        } from "/kit/pager.js";
         // issue 206: a log line's clock in the person's own zone (24 hours,
         // so the column stays even). The stored stamp stays UTC.
         function logClock(iso) {
@@ -1232,7 +1237,12 @@
         // (addStoredLog only runs through toggleLog).
         const SEARCH_KEY = "search/results";
 
-        const SEARCH_URL = { after: "lsAfter", back: "lsBack", per: "lsPer" };
+        const SEARCH_URL = {
+          after: "lsAfter",
+          back: "lsBack",
+          per: "lsPer",
+          offset: "lsO",
+        };
         const searchPer = () => {
           const n = Number(new URL(location.href).searchParams.get("lsPer"));
           return Number.isInteger(n) && n > 0 ? n : 50;
@@ -1257,6 +1267,7 @@
             const u = new URL(location.href);
             u.searchParams.delete("lsAfter");
             u.searchParams.delete("lsBack");
+            u.searchParams.delete("lsO");
             u.searchParams.set("lsQ", input.value.trim());
             history.replaceState(history.state, "", u);
           }
@@ -1373,13 +1384,7 @@
             if (total === 0) line(t("lg.search.none", { q }), "log-done");
             pane.paneEl.querySelector(".log-search-pager")?.remove();
             const shown = (data.items ?? []).length;
-            const trail = here.get("lsBack")
-              ? here
-                  .get("lsBack")
-                  .split(".")
-                  .filter((c) => c !== "~").length
-              : 0;
-            const from = trail * per + 1;
+            const from = cursorStart(location.href, SEARCH_URL) + 1;
             const foot = document.createElement("div");
             foot.className = "log-search-pager";
             foot.innerHTML = pagerHtml({
