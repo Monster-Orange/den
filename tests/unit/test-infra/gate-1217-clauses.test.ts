@@ -8,7 +8,7 @@
  *   the hand-edit clause by name, and teardown puts the pins and view back;
  * - 0.4.85's rule (a repo in two projects goes to none) fails the
  *   two-project clause;
- * - a doctor that lists no kept pin fails the no-project clause.
+ * - a pin migrated on save, which doctor no longer lists, still passes it.
  * Invented names only.
  */
 import { describe, expect, it } from "@jest/globals";
@@ -64,7 +64,9 @@ describe("gate/1217.mjs: an old-format pin never vanishes", () => {
     const r = runGate("good");
     expect(r.clauses).toHaveLength(5);
     expect(r.clauses.join(" ")).toMatch(/two or more projects/);
-    expect(r.clauses.join(" ")).toMatch(/doctor lists it as kept/);
+    expect(r.clauses.join(" ")).toMatch(
+      /kept with no project and shown under All/,
+    );
   });
 
   it("a Den that keeps 1217's rule passes every clause it reaches, skips the hand-edit one by name, and puts the pins and view back", () => {
@@ -84,10 +86,11 @@ describe("gate/1217.mjs: an old-format pin never vanishes", () => {
     expect(row(r, 0)?.ok).toBe(true);
   });
 
-  it("a doctor that lists no kept pin fails the no-project clause", () => {
+  it("a pin migrated on save, which doctor no longer lists as kept, passes the no-project clause", () => {
     const r = runGate("no-doctor");
     expect(r.error).toBeNull();
-    expect(row(r, 2)?.ok).toBe(false);
+    expect(row(r, 2)?.ok).toBe(true);
+    expect(row(r, 2)?.detail).toMatch(/a migrated pin needn't be listed/);
     expect(row(r, 0)?.ok).toBe(true);
   });
 });
