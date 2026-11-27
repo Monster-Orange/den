@@ -4646,6 +4646,13 @@
     "setc.server": "Servidor", // words-ok: the en string's own word, translated
     "setc.server.d":
       "El servidor web de Den con el que habla esta página. Un reinicio mantiene en marcha los agentes y los servicios.", // words-ok: the en string's own word, translated
+    "setd.part.server.restarts": "Instalación, reinicios y actualizaciones",
+    "setd.part.server.address": "Dirección y alcance",
+    "setd.part.server.terminals": "Terminales",
+    "setd.part.server.logs": "Registros e informes",
+    "setd.part.server.checks": "Esperas y comprobaciones",
+    "setd.part.server.github": "GitHub",
+    "setd.part.server.gate": "Ejecuciones de pruebas",
     "setc.cli": "Línea de comandos",
     "setc.cli.d":
       "También son tuyos (config/local/user.yml) y se definen desde la línea de comandos: __DEN_CLI__ config <key>=<value>.",

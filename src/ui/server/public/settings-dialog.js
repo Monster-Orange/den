@@ -38,6 +38,44 @@ export const ACCOUNT_LINKS = {
   cli: { pane: "profile", text: "setd.toAccount.profile" },
 };
 
+const SERVER_PARTS = [
+  ["restarts", /^server\.(crash_loop|restart$|install_mode|restore_services|self_update|update_check)/],
+  ["address", /^server\.(address|bridge_)/],
+  ["terminals", /^server\.sessions_/],
+  ["logs", /^server\.(server_log|slow_request|event_loop_lag|report_)/],
+  ["checks", /^server\.(lookup_|menu_load|owner_name|ready_probe|start_wait|tools_probe|health_poll|git_reads)/],
+  ["github", /^server\.github_/],
+  ["gate", /^server\.gate_/],
+];
+
+function drawParts(pane, parts, host, rows, ctx, { idPrefix, t }) {
+  const taken = new Set();
+  const groups = parts.map(([id, test]) => {
+    const own = rows.filter((r) => !taken.has(r.id) && test.test(r.id));
+    for (const r of own) taken.add(r.id);
+    return { id, own };
+  });
+  groups.push({ id: "", own: rows.filter((r) => !taken.has(r.id)) });
+  host.innerHTML = groups
+    .filter((g) => g.own.length)
+    .map(
+      (g) =>
+        (g.id
+          ? `<h4 class="setd-part">${esc(t(`setd.part.${pane}.${g.id}`))}</h4>`
+          : "") + `<div class="setd-part-rows" data-part="${esc(g.id)}"></div>`,
+    )
+    .join("");
+  for (const g of groups.filter((x) => x.own.length))
+    drawRows(host.querySelector(`[data-part="${g.id}"]`), g.own, ctx, {
+      idPrefix: `${idPrefix}${g.id || "rest"}-`,
+    });
+}
+
+export const PANE_DRAW = {
+  server: (host, rows, ctx, o) =>
+    drawParts("server", SERVER_PARTS, host, rows, ctx, o),
+};
+
 export function paneOf(hash, rows) {
   const h = decodeURIComponent(String(hash || "").replace(/^#/, ""));
   if (!h) return { pane: null, at: null };
@@ -161,8 +199,13 @@ async function build(shell) {
         label.tabIndex = -1;
       }
     };
-    new MutationObserver(mark).observe(host, { childList: true });
-    drawRows(host, own, ctx, { idPrefix: `setd-${pane}-` });
+    new MutationObserver(mark).observe(host, {
+      childList: true,
+      subtree: true,
+    });
+    const o = { idPrefix: `setd-${pane}-`, t: (k) => shell.t(k) };
+    if (PANE_DRAW[pane]) PANE_DRAW[pane](host, own, ctx, o);
+    else drawRows(host, own, ctx, o);
     mark();
   };
   const nav = hydrateDialogNav(dialog, {
