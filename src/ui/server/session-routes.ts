@@ -1141,6 +1141,7 @@ export async function handleSessionList(
     });
     return true;
   }
+  const only = rowsAsked(params);
   const also = wanted?.known ? wanted.workspace : undefined;
   const hubUrl = sessions.length
     ? await d.hubNow().catch(() => undefined)
@@ -1211,6 +1212,7 @@ export async function handleSessionList(
   } else if (!ask) {
     rows = withStates(await listWithHelpers(sessions, d, also, hubUrl));
     if (keep) rows = rows.filter((r) => keep(r.workspace));
+    if (only) rows = rows.filter(only);
   } else {
     const first = withStates(
       await listWithHelpers(sessions, d, also, hubUrl, new Set()),
@@ -1218,7 +1220,12 @@ export async function handleSessionList(
     page = pageOf(first, ask, {
       key: (r) => [r.workspace, r.name],
       id: (r) => r.id,
-      ...(keep ? { filter: (r: ListedSession) => keep(r.workspace) } : {}),
+      ...(keep || only
+        ? {
+            filter: (r: ListedSession) =>
+              (!keep || keep(r.workspace)) && (!only || only(r)),
+          }
+        : {}),
       total: true,
     });
     const ids = new Set(
@@ -1257,6 +1264,53 @@ export async function handleSessionList(
 }
 
 export const SESSIONS_LIST = "sessions";
+
+const ASK_MAX = 20;
+const listOf = (v: string | null) =>
+  (v ?? "")
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .slice(0, ASK_MAX);
+
+export function rowsAsked(
+  q: URLSearchParams,
+): ((r: ListedSession) => boolean) | null {
+  const tests: ((r: ListedSession) => boolean)[] = [];
+  const agents = listOf(q.get("agents"));
+  if (agents.length) {
+    const want = new Set(agents);
+    tests.push(
+      (r) =>
+        r.kind === "agent" &&
+        !!r.agent &&
+        want.has(`${r.workspace}/${r.agent}`),
+    );
+  }
+  const kind = q.get("kind");
+  if (kind === "agent" || kind === "session")
+    tests.push((r) => r.kind === kind && !r.server);
+  const projects = listOf(q.get("projects"));
+  if (projects.length) {
+    const want = new Set(projects);
+    tests.push((r) => want.has(r.project || r.workspace));
+  }
+  const repo = q.get("repo");
+  if (repo) tests.push((r) => !r.repo || r.repo === repo);
+  const text = (q.get("q") ?? "").trim().toLowerCase().slice(0, 100);
+  if (text)
+    tests.push((r) =>
+      [
+        r.agent,
+        r.displayName,
+        r.persona,
+        r.label,
+        r.workspace,
+        r.sessionTitle,
+      ].some((v) => typeof v === "string" && v.toLowerCase().includes(text)),
+    );
+  return tests.length ? (r) => tests.every((f) => f(r)) : null;
+}
 
 type GroupMember = { kind?: unknown; agentId?: unknown; here?: unknown };
 
