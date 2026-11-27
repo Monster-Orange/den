@@ -1748,6 +1748,9 @@
     "busy.restartS": "{name} restarted.",
     "busy.restartF": "Couldn't restart {name}.",
     "busy.modeW": "Setting {name}'s mode…",
+    "busy.packsW": "Setting {name}'s skill packs…",
+    "busy.packsS": "{name}'s skill packs are set.",
+    "busy.packsF": "Couldn't set {name}'s skill packs. Nothing changed.",
     "busy.modeS": "{name}'s mode is set.",
     "busy.modeF": "Couldn't set {name}'s mode. Nothing changed.",
     "keep.label": "Keep agents running after logout",
@@ -2640,6 +2643,26 @@
     "set.agents.draft_hold_max": "Draft hold before the bell",
     "set.agents.draft_hold_max.d":
       "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+    "set.agents.max_subagents": "Subagents at once",
+    "set.agents.max_subagents.d":
+      "How many subagents the agents on this machine may run at once, all together. A start past this is refused, and the agent is told this setting's name. Unset, twice Agents at once. __DEN_CLI__ config agents.max_subagents=8",
+    "set.agents.subagents_respect_load_hold": "No new subagents under load",
+    "set.agents.subagents_respect_load_hold.d":
+      "On, while the machine's load is over the agents' load ceiling, a new subagent is refused, and the agent is told this setting's name. Off, subagents start whatever the load. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "Skill packs",
+    "set.agents.skill_packs.d":
+      "Skill packs Den gives its agents. Each is vendored in Den at a pinned version and never fetched. __DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "Open-source skills for coding agents. Choose which of them Den's agents get. __DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "On",
+    "set.ui.skillPackLicence": "Licence",
+    "set.ui.skillPackPin": "pinned at",
+    "set.ui.skillPackOnCount": "{n} skills on",
+    "set.ui.skillPackCost": "Adds about {n} tokens to each agent's start",
+    "set.ui.skillPackSkills": "Skills",
+    "set.ui.skillPackAll": "All",
+    "set.ui.skillPackNone": "None",
     "set.agents.max_concurrent": "Agents at once",
     "set.agents.max_concurrent.d":
       "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
@@ -3649,6 +3672,13 @@
     "ag.mode.src.default": "Den's built-in default",
     "ag.mode.item": "Mode: {m}",
     "ag.mode.menu": "{id}'s mode",
+    "ag.packs.item": "Skill packs: {v}",
+    "ag.packs.menu": "{id}'s skill packs",
+    "ag.packs.default": "Install's default",
+    "ag.packs.off": "Off",
+    "ag.packs.on": "On",
+    "ag.packs.set":
+      "{id}'s skill packs are set. It restarts after its turn, on the same conversation.",
     "ag.mode.pick": "Change {id}'s mode",
     "ag.mode.follow": "Follow project",
     "ag.mode.setS":
@@ -3833,6 +3863,8 @@
     "pe.runtime": "Default runtime",
     "pe.model": "Model",
     "pe.ver": "Version",
+    "pe.packs": "Skill packs",
+    "pe.packsList": "Its file's list: {list}",
     "pe.rtDefault": "the runtime's default",
     "pe.perms": "Permission mode",
     "pe.noneCmd": "none",
