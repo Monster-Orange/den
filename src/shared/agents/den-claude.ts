@@ -72,9 +72,13 @@ import {
   guardrailHooks,
   hookCommands,
   mergeHooks,
+  envGuardHooks,
+  withEnvMask,
+  withoutEnvGuard,
   sandboxRefusalHooks,
   type GateRouteArgs,
 } from "./guardrails.js";
+import { ENV_HOLD_FILE, envHoldScript } from "./env-hold.js";
 import { DEFAULT_ROTATE } from "./rotation.js";
 import { idsInNames } from "./handback.js";
 import { isServerScope } from "./server-agent.js";
@@ -839,10 +843,18 @@ function common(input: LaunchInput): {
           inbox && { ...inbox, files: input.filesDir },
         )
       : null;
+  const envGuard = input.envHold?.guard;
+  const guarded =
+    envGuard === true && !baseHooks?.PreToolUse
+      ? mergeHooks(baseHooks, envGuardHooks(GUARDRAILS_DIR, process.execPath))
+      : baseHooks;
+  if (envGuard === false && guarded) withoutEnvGuard(guarded);
+  else if (guarded && input.envHold?.mask?.length)
+    withEnvMask(guarded, input.envHold.mask);
   // NT-1: every agent tells Den when it waits for its person.
-  if (inbox && baseHooks)
+  if (inbox && guarded)
     widenHookTimeouts(
-      baseHooks,
+      guarded,
       "Stop",
       hookCallBudgetSeconds(call ?? HOOK_CALL_DEFAULT),
     );
@@ -850,8 +862,8 @@ function common(input: LaunchInput): {
     // Issue 936: a refused write in the sandbox says why, with Den's hooks
     // (a persona with den_hooks: false gets none of them).
     input.persona.guardrails?.hooks
-      ? mergeHooks(baseHooks, sandboxRefusalHooks())
-      : baseHooks,
+      ? mergeHooks(guarded, sandboxRefusalHooks())
+      : guarded,
     input.attention
       ? attentionHooks(
           input.attention.base,
@@ -1089,6 +1101,19 @@ export function transcriptFile(
   return null;
 }
 
+function envHold(input: LaunchInput): {
+  env: Record<string, string>;
+  files: Record<string, string>;
+} {
+  if (!input.envHold) return { env: {}, files: {} };
+  const file = path.join(input.filesDir, ENV_HOLD_FILE);
+  const h = input.envHold;
+  return {
+    env: { CLAUDE_ENV_FILE: file },
+    files: { [file]: envHoldScript(h.hold, h.allow, h.own, {}) },
+  };
+}
+
 const stampFiles = new Map<string, string>();
 
 function stampedTranscript(
@@ -1137,8 +1162,8 @@ export const denClaude: Runtime = {
         ...c.argv,
         ...firstPromptArg(input.firstPrompt),
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       resumeToken: id,
       warnings: [...c.warnings, ...modeWarnings],
     };
@@ -1156,8 +1181,8 @@ export const denClaude: Runtime = {
         ...nameArg(input.sessionLabel),
         ...c.argv,
       ],
-      env: subagentEnv(input),
-      files: c.files,
+      env: { ...subagentEnv(input), ...envHold(input).env },
+      files: { ...c.files, ...envHold(input).files },
       warnings: [...c.warnings, ...modeWarnings],
     };
   },
