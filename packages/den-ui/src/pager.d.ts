@@ -1,5 +1,6 @@
 export interface PagerWords {
   range?: string;
+  rangeOpen?: string;
   label?: string;
   prev?: string;
   next?: string;
@@ -13,11 +14,12 @@ export interface PagerModel {
   mode?: "pages" | "more";
   from: number;
   to: number;
-  total: number;
+  total?: number | null;
   step?: number;
   prevHref?: string;
   nextHref?: string;
   moreHref?: string;
+  hasNext?: boolean;
   lang?: string;
   words: PagerWords;
 }
@@ -26,6 +28,7 @@ export interface PagerLoad {
   html: string;
   to: number;
   moreHref?: string;
+  hasNext?: boolean;
 }
 
 export interface PagerOptions {

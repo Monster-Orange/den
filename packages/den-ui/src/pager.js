@@ -23,31 +23,42 @@ function fill(tpl, lang, vars) {
 }
 
 function modelOf(o) {
-  const total = num(o.total);
+  const known = o.total != null && o.total !== "";
+  const total = known ? num(o.total) : null;
   const from = Math.max(1, num(o.from) || 1);
-  const to = Math.min(total, Math.max(from, num(o.to)));
+  const to = Math.max(from, num(o.to));
   return {
     mode: MODES.includes(o.mode) ? o.mode : "pages",
     from,
-    to,
+    to: known ? Math.min(total, to) : to,
     total,
     step: num(o.step) || Math.max(1, to - from + 1),
     prevHref: o.prevHref == null ? "" : String(o.prevHref),
-    nextHref: o.nextHref == null ? "" : String(o.nextHref),
-    moreHref: o.moreHref == null ? "" : String(o.moreHref),
+    nextHref:
+      o.nextHref == null || o.hasNext === false ? "" : String(o.nextHref),
+    moreHref:
+      o.moreHref == null || o.hasNext === false ? "" : String(o.moreHref),
     lang: o.lang == null ? "en" : String(o.lang),
     words: o.words && typeof o.words === "object" ? o.words : {},
   };
 }
 
+const done = (m) => m.total != null && m.to >= m.total;
+
 function rangeText(m) {
   const w = m.words;
-  if (m.mode === "more" && m.from === 1 && m.to >= m.total)
+  if (m.mode === "more" && m.from === 1 && done(m))
     return fill(w.all, m.lang, { total: m.total });
+  if (m.total == null)
+    return fill(w.rangeOpen ?? "{from}–{to}", m.lang, {
+      from: m.from,
+      to: m.to,
+    });
   return fill(w.range, m.lang, { from: m.from, to: m.to, total: m.total });
 }
 
 function moreText(m) {
+  if (m.total == null) return fill(m.words.more, m.lang, { n: m.step });
   const left = m.total - m.to;
   return left <= m.step
     ? fill(m.words.last, m.lang, { n: left })
@@ -66,7 +77,11 @@ function pageLink(cls, href, arrow, word, before) {
 
 export function pagerHtml(o = {}) {
   const m = modelOf(o);
-  if (m.total === 0 || (m.from <= 1 && m.to >= m.total)) return "";
+  const onePage =
+    m.total == null
+      ? m.from <= 1 && !(m.mode === "more" ? m.moreHref : m.nextHref)
+      : m.from <= 1 && m.to >= m.total;
+  if (m.total === 0 || onePage) return "";
   const w = m.words;
   const open =
     `<nav class="den-pager" data-den-pager="${m.mode}"` +
@@ -119,7 +134,7 @@ export function hydratePager(el, opts = {}) {
 
   function show() {
     range.textContent = rangeText(m);
-    if (m.to >= m.total) {
+    if (done(m)) {
       btn.remove();
       err?.remove();
       return;
@@ -138,7 +153,11 @@ export function hydratePager(el, opts = {}) {
       const last = list.lastElementChild;
       list.insertAdjacentHTML("beforeend", String(res?.html ?? ""));
       const first = last ? last.nextElementSibling : list.firstElementChild;
-      m = { ...m, to: Math.min(m.total, Math.max(m.to, num(res?.to))) };
+      const to = Math.max(m.to, num(res?.to));
+      m =
+        m.total == null
+          ? { ...m, to, total: res?.hasNext === false ? to : null }
+          : { ...m, to: Math.min(m.total, to) };
       if (res?.moreHref) btn.setAttribute("href", String(res.moreHref));
       show();
       if (first) {

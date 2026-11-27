@@ -708,9 +708,14 @@ never converted to HTML and back).
   press adds; default `to - from + 1`), `prevHref`, `nextHref` and
   `moreHref` (the host's links, with its filters, sort and `#list` kept),
   `lang` (numbers in the locale's format) and `words`. One page only, or
-  none: nothing is drawn.
+  none: nothing is drawn. `total` is optional: a list paged by a cursor
+  needn't count. With no total the range says `rangeOpen` ("{from}–{to}"),
+  `hasNext` (the server's next cursor) says
+  whether there is a next page, in the model and in each `load()` answer,
+  More always says `more`, and at the end the range says `all` with the
+  count it then knows.
 - `words` are the host's, in its language: `range` ("{from}–{to} of
-  {total}"), `label` (the nav's name), `prev`, `next`, `more` ("Show {n}
+  {total}"), `rangeOpen` ("{from}–{to}", with no total), `label` (the nav's name), `prev`, `next`, `more` ("Show {n}
   more"), `last` ("Show the last {n}"), `all` ("All {total} shown") and
   `moreErr`. The kit adds none.
 - Pages mode: a `<nav>` with "← Previous" and "Next →" links in the
