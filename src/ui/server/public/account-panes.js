@@ -9,6 +9,13 @@
  * The owner's link/unlink flow and the sign-in policy stay in Settings.
  */
 import { DEN_SETTINGS, seenAgo } from "/settings-registry.js";
+import { drawRows, settingsCtx } from "/settings-rows.js";
+import { localizeRow } from "/settings-page.js";
+import {
+  appearanceState,
+  ensureAppearance,
+  setAppearance,
+} from "/appearance.js";
 
 export const ACCOUNT_PANES = ["profile", "access", "devices", "notifications"];
 
@@ -88,31 +95,30 @@ function profileHtml({ session, account }, t) {
         : esc(t("account.ghNone")),
     ) +
     (owner ? kv(t("account.role"), esc(t("acct.roleOwner"))) : "") +
-    `<div data-acct-row="cli.signin"></div>`
+    `<div data-acct-rows></div>`
   );
 }
 
-/**
- * A registry row in a pane: its words (set.<id>, set.<id>.d) and its own
- * control. `draw` is the Settings dialog's drawRows when the host has it.
- */
-function mountRows(body, ctx, t, draw) {
-  for (const host of body.querySelectorAll("[data-acct-row]")) {
-    const row = registryRow(host.dataset.acctRow);
-    if (!row) continue;
-    if (draw) {
-      draw(host, [row], ctx);
-      continue;
-    }
-    host.innerHTML = kv(t(`set.${row.id}`), "<span></span>");
-    const d = t(`set.${row.id}.d`);
-    if (d && d !== `set.${row.id}.d`)
-      host.insertAdjacentHTML(
-        "beforeend",
-        `<p class="dn-pane-d">${esc(d)}</p>`,
-      );
-    row.control?.render?.(host.querySelector(".dn-kv > :last-child"), ctx);
-  }
+/** The registry's rows by id, in the person's language. */
+const localRows = (ids, shell) =>
+  ids
+    .map(registryRow)
+    .filter(Boolean)
+    .map((r) => localizeRow(r, shell.tr));
+
+/** The Settings dialog's ctx (GET /api/settings, saves, the Saved line). */
+const rowsCtx = (shell) =>
+  settingsCtx({
+    shell,
+    appearance: { appearanceState, ensureAppearance, setAppearance },
+  });
+
+/** Draw rows `ids` under `host` as Settings draws them; false if unread. */
+async function mountRows(host, ids, shell) {
+  const ctx = await rowsCtx(shell);
+  if (!ctx) return false;
+  drawRows(host, localRows(ids, shell), ctx);
+  return true;
 }
 
 /** Account › Notifications: the bell's kinds (Hub's too) and the alerts. */
@@ -126,8 +132,7 @@ export const registryRow = (id) =>
   DEN_SETTINGS.find((r) => r.id === id) ?? null;
 
 /**
- * Fill `body` with pane `pane`. `deps`: { t, shell, drawRows?, settingsCtx? } (the last two from
- * settings-rows.js, the Settings dialog's row drawing). A failed read says so
+ * Fill `body` with pane `pane`. `deps`: { t, shell } (window.denShell). A failed read says so
  * in the pane, with Try again; nothing is shown as empty that wasn't read.
  */
 export async function loadAccountPane(pane, body, deps) {
@@ -139,7 +144,8 @@ export async function loadAccountPane(pane, body, deps) {
         getJson("/api/account"),
       ]);
       body.innerHTML = profileHtml({ session, account }, t);
-      mountRows(body, { shell: deps.shell, data: {} }, t, deps.drawRows);
+      const rows = body.querySelector("[data-acct-rows]");
+      if (!(await mountRows(rows, ["cli.signin"], deps.shell))) throw 0;
       return;
     }
     if (pane === "access") {
@@ -152,20 +158,17 @@ export async function loadAccountPane(pane, body, deps) {
       return;
     }
     if (pane === "devices") {
-      body.innerHTML =
-        `<div data-acct-row="access.devices"></div>` +
-        `<div data-acct-row="access.pair"></div>`;
-      mountRows(body, { shell: deps.shell, data: {} }, t, deps.drawRows);
+      body.innerHTML = "";
+      if (
+        !(await mountRows(body, ["access.devices", "access.pair"], deps.shell))
+      )
+        throw 0;
       return;
     }
     if (pane === "notifications") {
-      if (!deps.drawRows || !deps.settingsCtx) {
-        body.innerHTML = `<p class="dn-pane-d">${esc(t("account.soon"))}</p>`;
-        return;
-      }
-      const ctx = await deps.settingsCtx({ shell: deps.shell });
       body.innerHTML = "";
-      deps.drawRows(body, notificationRows(), ctx);
+      const ids = notificationRows().map((r) => r.id);
+      if (!(await mountRows(body, ids, deps.shell))) throw 0;
       return;
     }
     body.innerHTML = `<p class="dn-pane-d">${esc(t("account.soon"))}</p>`;
