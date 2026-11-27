@@ -936,6 +936,7 @@ function drawOwner(host, ctx) {
     if (b) b.disabled = false;
   };
   const poll = (id) =>
+    host.isConnected &&
     fetch(`/api/web/owner/link/${encodeURIComponent(id)}`, {
       cache: "no-store",
     })
@@ -1667,9 +1668,11 @@ function drawAppKeys(host, ctx) {
     });
   });
   // The shell's Allow says what ran; a new key is in it once (never again).
-  window.addEventListener("den:approval-done", (ev) => {
+  window.addEventListener("den:approval-done", function done(ev) {
+    if (!host.isConnected)
+      return window.removeEventListener("den:approval-done", done);
     const d = ev.detail || {};
-    if (!asked || d.id !== asked || !host.isConnected) return;
+    if (!asked || d.id !== asked) return;
     asked = null;
     const key = d.result && d.result.once && d.result.once.key;
     if (key) {
