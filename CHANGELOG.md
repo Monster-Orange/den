@@ -21,7 +21,7 @@ config and manifest changes a distribution must make to move to it under
 - Every link Den gives to the server agent (a bell row, its question, a notification, the link in its own replies, its held write's Allow) opens the server agent's page. Before, each opened an Agents page for a project nobody can see, with nothing to answer (issue 1811)
 - The Agents list's switch now says Need, Project and Group, without "By" (es: Urgencia, Proyecto, Grupo; ja: プロジェクト, グループ), so it takes less room.
 
-- A test stack's fixture person can now reach an agent through Hub on a test install. Den reads a Hub comment whose author is marked `verified: "fixture"` only when this install is a test install, and drops it on any other install as before. The agent sees `from: <login> (test fixture, not verified)`, never "your person" or a Hub session or token, and a fixture author never counts as the install's person: its comment is never an edit request or an approval, and it answers no question the agent asked. (issue 1816)
+- A test stack's fixture person can now reach an agent through Hub on a test install. Den reads a Hub comment whose author is marked `verified: "fixture"` only when this install is a test install, and drops it on any other install as before. The agent sees `from: test fixture, not verified: <login>`, never "your person" or a Hub session or token, and a fixture author never counts as the install's person: its comment is never an edit request or an approval, and it answers no question the agent asked. (issue 1816)
 
 ## [0.4.91] - 2026-11-26
 

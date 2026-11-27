@@ -467,7 +467,7 @@ const via = (v: Verified) =>
 
 function byLine(a: DeliveryAuthor, o: DeliveryOwner): string {
   if (a.verified === "fixture")
-    return `${a.login || a.name} (test fixture, not verified)`;
+    return `test fixture, not verified: ${a.login || a.name}`;
   return `${a.name} (${who(a, o)} · verified by ${via(a.verified)})`;
 }
 
