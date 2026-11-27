@@ -1280,6 +1280,7 @@ body.den-has-shell .den-upd {
   box-shadow: var(--shadow);
   padding: 6px;
   min-width: 220px;
+  max-width: calc(100vw - 16px);
   max-height: calc(100vh - 72px);
   overflow-y: auto;
   box-sizing: border-box;

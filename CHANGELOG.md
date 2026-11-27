@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Fixed
+
+- A menu (the top bar's project drop-down among them) is never wider than the screen. A name too long for it is cut short with an ellipsis on one line, its ✓ still at the end, instead of running off the screen. It showed with long names in wide characters, such as Japanese, on an iPad. UI kit 0.23.0. (issue 1917)
+
 ## [0.4.92] - unreleased
 
 ### Changed
