@@ -3304,6 +3304,18 @@ function sendToNamedAddress(
       ? LOCAL_NAMED.address()
       : null);
   if (!there || onTheAddress(req, there)) return false;
+  // QA only: on the address's own name without the edge's proof, a 303
+  // there would loop; answer once and start no session.
+  if (hostNameOf(req).replace(/\.$/, "") === new URL(there).hostname) {
+    sendSignedOut(req, res, {
+      pathname: url.pathname,
+      search: "",
+      scope: "den",
+      requestId: "",
+      message: `This address reached ${product().title} without its edge's proof, so sign-in can't finish here yet.`,
+    });
+    return true;
+  }
   if (page) {
     res.writeHead(303, {
       Location: `${there}${url.pathname}${url.search}`,
@@ -12725,6 +12737,12 @@ async function edgeAtStart(): Promise<void> {
     return;
   }
   const dir = cfg.stateDir;
+  // QA only: an edge another install runs (marker in its state folder):
+  // nothing to start or sync here, and trust isn't held for it.
+  if (fs.existsSync(path.join(dir, "edge-not-ours"))) {
+    EDGE_TRUST.starting = false;
+    return;
+  }
   const out = await edgeStartRetrying(
     {
       servesApi: () => runningEdgeServesApi(cfg),
