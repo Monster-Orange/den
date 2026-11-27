@@ -82,7 +82,7 @@ function numberHref(k, reply, target, url) {
 export function pageHref(name, reply, target, per, url = here()) {
   const k = keys(name);
   if (byNumber(reply)) return numberHref(k, reply, target, url);
-  if (!reply || !("prev" in reply))
+  if (!reply || !("prev" in reply) || reply.forwardOnly === true)
     return (
       cursorHref(url, target, reply?.next, {
         after: k.c,
@@ -140,9 +140,14 @@ export function listPagerHtml(name, p, shown, per, { url = true } = {}) {
     typeof p.offset === "number"
       ? p.offset
       : cursorStart(url ? here() : "", { offset: keys(name).o });
+  const back = p.forwardOnly
+    ? !!new URL(url ? here() : "http://localhost/").searchParams.get(
+        keys(name).b,
+      )
+    : hasPrev(p);
   const on = {
-    first: hasPrev(p),
-    prev: hasPrev(p),
+    first: back,
+    prev: back,
     next: hasNext(p),
     last: hasNext(p) && !!p.pages,
   };
