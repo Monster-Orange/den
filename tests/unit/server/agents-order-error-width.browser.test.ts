@@ -220,15 +220,47 @@ async function open(
 const FOLLOW_GONE =
   "a pane still follows the size of a view that has gone (D54: alone, it sizes its own terminal)";
 
-async function viewsAtMost(n: number, ms = 10_000): Promise<void> {
+async function viewsAtMost(
+  n: number,
+  ms = 10_000,
+  what = "a closed page's view is still attached",
+): Promise<void> {
   const end = Date.now() + ms;
   while (sids.some((id) => s!.attached(id) > n)) {
     if (Date.now() > end)
       throw new Error(
-        `a closed page's view is still attached: ${sids.map((id) => s!.attached(id)).join(", ")}`,
+        `${what}: ${sids.map((id) => s!.attached(id)).join(", ")}`,
       );
     await new Promise((r) => setTimeout(r, 50));
   }
+}
+
+const EARLIER = "an earlier case's page is still attached";
+
+const settled = () => viewsAtMost(0, 50_000, EARLIER);
+
+async function leave(...pages: Page[]): Promise<void> {
+  for (const p of pages) {
+    await p.goto("about:blank").catch(() => undefined);
+    await p.context().close();
+  }
+}
+
+async function caseOn(pages: Page[], body: () => Promise<void>): Promise<void> {
+  const failed = await body().then(
+    () => null,
+    (e: unknown) => e,
+  );
+  const left = await leave(...pages)
+    .then(() => viewsAtMost(0))
+    .then(
+      () => null,
+      (e: unknown) => e,
+    );
+  if (failed instanceof Error && left instanceof Error)
+    failed.message += `\nThen: ${left.message}`;
+  if (failed) throw failed;
+  if (left) throw left;
 }
 
 const spills = async (p: Page, followMs = 5_000) => {
@@ -323,32 +355,27 @@ describe("the agents page fits its window", () => {
         for (const layout of LAYOUTS)
           it(`${engine}, ${width} wide, By ${by}, ${layout === "none" ? "no agent open" : `agents open in ${layout}`}: no sideways scroll, the switch centred`, async () => {
             if (skip()) return;
+            await settled();
             const p = await open(engine, width, by, layout);
-            try {
+            await caseOn([p], async () => {
               const m = await spills(p);
               expect(m).toEqual([]);
               const sw = await switchAt(p);
               expect(Math.abs(sw.left - sw.right)).toBeLessThanOrEqual(1);
               expect(sw.labels).toEqual(["Need", "Project", "Group"]);
-            } finally {
-              await p.context().close();
-              await viewsAtMost(0);
-            }
-          }, 60_000);
+            });
+          }, 120_000);
 
   it("chromium, a tile opened while a wider view of the same agents is still open: no sideways scroll once that view goes", async () => {
     if (skip()) return;
+    await settled();
     const wide = await open("chromium", 1280, "group", "focus");
     const p = await open("chromium", 1280, "group", "tile");
-    try {
+    await caseOn([wide, p], async () => {
       await expect(spills(p, 1_000)).rejects.toThrow(FOLLOW_GONE);
-      await wide.context().close();
+      await leave(wide);
       await viewsAtMost(1);
       expect(await spills(p)).toEqual([]);
-    } finally {
-      await wide.context().close();
-      await p.context().close();
-      await viewsAtMost(0);
-    }
-  }, 60_000);
+    });
+  }, 120_000);
 });
