@@ -48,6 +48,8 @@
     "./switch.css": "./src/switch.css",
     "./tabs": "./src/tabs.js",
     "./tabs.css": "./src/tabs.css",
+    "./pager": "./src/pager.js",
+    "./pager.css": "./src/pager.css",
     "./preview": "./src/preview.js",
     "./preview-frame": "./src/preview-frame.js",
     "./filter-bar": "./src/filter-bar.js",
