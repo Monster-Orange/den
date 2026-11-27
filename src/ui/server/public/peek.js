@@ -207,9 +207,26 @@ function cssLink() {
   document.head.append(l);
 }
 
-async function sessions() {
+function askedAgents(st) {
+  const want = [st.target];
+  for (const g of (st.lastBell ?? st.bell?.() ?? null)?.groups ?? [])
+    for (const sub of g.subjects ?? [])
+      for (const n of sub.items ?? [])
+        if (n.kind === "waiting") want.push(peekTarget(n));
+  return [
+    ...new Set(
+      want.filter((t) => t?.agent).map((t) => `${t.workspace}/${t.agent}`),
+    ),
+  ].slice(0, 20);
+}
+
+async function sessions(st) {
   try {
-    const r = await fetch("/api/sessions", {
+    const q = new URLSearchParams({
+      agents: askedAgents(st).join(","),
+      limit: "20",
+    });
+    const r = await fetch(`/api/sessions?${q}`, {
       headers: { accept: "application/json" },
       credentials: "same-origin",
     });
@@ -343,7 +360,7 @@ function view(st) {
 }
 
 async function load(st, first) {
-  const rows = await sessions();
+  const rows = await sessions(st);
   if (st.closed || cur !== st) return;
   if (rows) {
     st.rows = rows;

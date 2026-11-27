@@ -123,10 +123,12 @@ export function tagHtml(r, { all = false, name, pc } = {}) {
   return `<span class="ptag" data-ptag="project"${at}>${esc(n)}</span>`;
 }
 
-export function attnSub(rows, scope, seenNow) {
+export function attnSub(rows, scope, seenNow, whole = null) {
   const list = rows ?? [];
-  const agents = list.filter((r) => r.kind === "agent").length;
-  const shells = list.length - agents;
+  const agents = whole
+    ? whole.needs + whole.done + whole.working + whole.idle
+    : list.filter((r) => r.kind === "agent").length;
+  const shells = whole ? 0 : list.length - agents;
   const parts = [];
   if (agents || !shells)
     parts.push(
@@ -136,7 +138,9 @@ export function attnSub(rows, scope, seenNow) {
     parts.push(
       t(shells === 1 ? "ag.sub.shell" : "ag.sub.shells", { n: shells }),
     );
-  const c = attentionCounts(list.map((r) => ({ state: rowState(r, seenNow) })));
+  const c =
+    whole ??
+    attentionCounts(list.map((r) => ({ state: rowState(r, seenNow) })));
   for (const s of ATTENTION_STATES)
     if (c[s] > 0)
       parts.push(

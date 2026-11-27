@@ -26,6 +26,7 @@
 // A bed without the stub's start modes skips clauses 2 and 3
 // (needs-stub-start-modes). Without ctx.stub.trust, the answers (and so
 // clause 3) skip as the person's.
+import { allSessions } from "./lib/sessions.mjs";
 export const issue = 659;
 export const clauses = [
   "Den never answers the folder-trust question: a message to an agent showing it answers 409 dialog_open and types nothing, not even Enter",
@@ -103,9 +104,10 @@ function answer(ctx, id, yes) {
 
 /** The agent's row, and its bell items' words. */
 async function seen(ctx, id, ws) {
-  const d = await ctx
-    .api(`/api/sessions?ws=${encodeURIComponent(ws)}`)
-    .catch(() => null);
+  const d = await allSessions(
+    (u) => ctx.api(u),
+    `ws=${encodeURIComponent(ws)}`,
+  ).catch(() => null);
   const r = (d?.sessions ?? []).find(
     (s) => s?.kind === "agent" && s?.agent === id,
   );
