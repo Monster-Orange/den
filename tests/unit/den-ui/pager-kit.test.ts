@@ -1,21 +1,3 @@
-/**
- * den-ui: the pager (pager.js, DS component #2), the checks that need no
- * browser. pagerHtml, cursorHref and cursorStart are pure: they run in Node.
- *
- *   - pages with a total: the range, the four ends as icon buttons (no
- *     visible word; aria-label is the *Sr word, title the word), the page
- *     picker, the per-page choice; ends off on page 1 and the last page
- *   - no total: Previous and Next, First from page 2, no Last or picker
- *   - over 500 pages: a number field with Go
- *   - one page: nothing, unless the person chose a size other than
- *     perDefault
- *   - compact: Previous, a page field and Next, plus First and Last
- *   - number runs isolated left to right; es and ja words; escaping
- *   - more mode: Show 50 more, the last chunk, All N shown with loaded
- *   - cursorHref and cursorStart: the trail, the cap, the offset
- *
- * The browser half is pager-kit.browser.test.ts.
- */
 import { describe, expect, it } from "@jest/globals";
 import {
   cursorHref,

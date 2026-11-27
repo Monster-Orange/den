@@ -1,21 +1,3 @@
-/**
- * den-ui: the pager (pager.js, pager.css) in a browser, with no product
- * around it: a bare page loads tokens.css, base.css and pager.css and
- * draws pagers with invented words and links.
- *
- *   - sizes: the ends are square icon buttons, 32px with a mouse, 44px on
- *     touch and at 390; the icons mirror right to left
- *   - keys: ← and → from the page body, the list or the pager, never from
- *     a field; Home and End on the pager; off for compact unless asked
- *   - the selects and the number field (clamped) move at once; each move
- *     fires den-pager-nav and calls onNavigate
- *   - a 600px row folds to ⋯, which opens a sheet with the per-page choice
- *   - compact: First and Last only on a row wider than 600px; Enter in the
- *     page field moves
- *   - with no script, a select's GET form keeps the filters and #list
- *
- * The checks with no browser are pager-kit.test.ts.
- */
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import * as fs from "fs";
 import * as path from "path";
@@ -129,6 +111,12 @@ const shown = (p: Page, sel: string) =>
   p.evaluate(
     `[...document.querySelectorAll(${JSON.stringify(sel)})].filter((x) => x.getBoundingClientRect().width > 0).length`,
   ) as Promise<number>;
+const role = (
+  p: Page,
+  host: string,
+  r: "link" | "button" | "combobox" | "spinbutton",
+  name: string,
+) => p.locator(host).getByRole(r, { name, exact: true });
 const navs = (p: Page) => p.evaluate("window.navs") as Promise<string[][]>;
 
 describe("pager in a browser", () => {
@@ -180,7 +168,7 @@ describe("pager in a browser", () => {
   it("goes to the first and last page with Home and End on the pager", async () => {
     if (skip()) return;
     const p = await open();
-    await p.focus("#a .den-pager-next");
+    await role(p, "#a", "link", "Next page").focus();
     await p.keyboard.press("Home");
     await p.keyboard.press("End");
     expect((await navs(p)).map((x) => x[3])).toEqual([
@@ -193,9 +181,9 @@ describe("pager in a browser", () => {
   it("follows a select at once and fires den-pager-nav", async () => {
     if (skip()) return;
     const p = await open();
-    await p.selectOption("#a .den-pager-wide select", "9");
-    await p.selectOption("#a .den-pager-side select", "100");
-    await p.click("#a .den-pager-next");
+    await role(p, "#a", "combobox", "Page 3 of 17").selectOption("9");
+    await role(p, "#a", "combobox", "50 per page").selectOption("100");
+    await role(p, "#a", "link", "Next page").click();
     expect((await navs(p)).map((x) => [x[1], x[2]])).toEqual([
       ["page", '{"page":9}'],
       ["per", '{"per":100}'],
@@ -213,11 +201,13 @@ describe("pager in a browser", () => {
   it("does nothing on an end that is off", async () => {
     if (skip()) return;
     const p = await open();
-    await p.click("#one .den-pager-prev", { force: true });
-    await p.focus("#one .den-pager-next");
+    await role(p, "#one", "link", "Previous page").click({ force: true });
+    await role(p, "#one", "link", "Next page").focus();
     await p.keyboard.press("Home");
     expect(await navs(p)).toEqual([]);
-    expect(await p.getAttribute("#one .den-pager-prev", "role")).toBe("link");
+    await expect(
+      role(p, "#one", "link", "Previous page").getAttribute("aria-disabled"),
+    ).resolves.toBe("true");
     expect(p.url()).toBe(`${ORIGIN}/`);
     await p.context().close();
   });
@@ -226,7 +216,7 @@ describe("pager in a browser", () => {
     if (skip()) return;
     const p = await open({ width: 390, touch: true });
     expect(await shown(p, "#a .den-pager-side")).toBe(0);
-    await p.click("#a .den-pager-opts");
+    await role(p, "#a", "button", "More").click();
     await p.waitForFunction(
       "document.querySelector('#a .den-pager-menu').matches(':popover-open')",
     );
@@ -251,8 +241,8 @@ describe("pager in a browser", () => {
   it("compact: Enter in the page field moves, clamped to the last page", async () => {
     if (skip()) return;
     const p = await open();
-    await p.fill("#k1 .den-pager-num", "99");
-    await p.press("#k1 .den-pager-num", "Enter");
+    await role(p, "#k1", "spinbutton", "Page 2 of 25").fill("99");
+    await role(p, "#k1", "spinbutton", "Page 2 of 25").press("Enter");
     expect((await navs(p)).map((x) => [x[0], x[2], x[3]])).toEqual([
       ["k1", '{"page":25}', "/list?state=open&page=25#list"],
     ]);
@@ -267,10 +257,13 @@ describe("pager in a browser", () => {
         "getComputedStyle(document.querySelector('#a .den-pager-wide .den-pager-submit')).display",
       ),
     ).not.toBe("none");
-    await p.selectOption("#a .den-pager-wide select", "7");
+    await role(p, "#a", "combobox", "Page 3 of 17").selectOption("7");
     await Promise.all([
       p.waitForURL(/page=7/),
-      p.click("#a .den-pager-wide .den-pager-submit"),
+      p
+        .locator('#a [data-den-pager-form="page"]')
+        .getByRole("button", { name: "Go", exact: true })
+        .click(),
     ]);
     expect(p.url()).toBe(`${ORIGIN}/list?state=open&page=7#list`);
     await p.context().close();
