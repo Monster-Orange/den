@@ -157,6 +157,19 @@
         "sha": "96e15c12d5abd4ecb9cc0d6f6ac3219c03dff366",
         "note": "A repeat run on Chromium with the quarantine off: it failed in round 5 of 6 (Expected - 3, Received + 1), the same keyboard-focus family as the D40 cases. No passed_run on that sha is named, since a red is never re-run."
       }
+    },
+    {
+      "file": "tests/unit/server/bell-allow-review.browser.test.ts",
+      "test": "the bell keeps the keyboard across a refresh that drops the row (issue 1332) the window losing and getting focus back meanwhile isn't moving on: Review still gets the keyboard",
+      "issue": 1332,
+      "added": "2026-11-26",
+      "evidence": {
+        "failed_run": 45922370620,
+        "failed_job": 140256986973,
+        "job": "pr-shards (24.13.0, 12)",
+        "sha": "021463e6caf5cfbd7ad7f328ed5f526b352c2060",
+        "note": "No CI run on this sha passed it (a red is never re-run). The change on that sha touched only label and help strings, not the bell. Review didn't have the keyboard before the row dropped: the page had focus, the panel was open and the same Review button was connected, but the active element was the body. Two other cases in this file are quarantined under the same issue."
+      }
     }
   ]
 }
