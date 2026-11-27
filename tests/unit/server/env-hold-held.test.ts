@@ -1,3 +1,5 @@
+import * as fs from "fs";
+import * as path from "path";
 import { describe, expect, it } from "@jest/globals";
 import { policyFor } from "../../../src/shared/approval-policy.js";
 import { CRITICAL_HELD_ACTIONS } from "../../../src/ui/server/held-actions.js";
@@ -41,5 +43,16 @@ describe("the Keep list never offers a person's credential", () => {
       expect(c.ok).toBe(false);
       expect(!c.ok && c.error).toMatch(/a person's credential/);
     }
+  });
+});
+
+describe("the server starts the env-hold ask", () => {
+  it("index.ts calls startEnvHoldAsk() beside the held-writes bell", () => {
+    const src = fs.readFileSync(path.resolve("src/ui/server/index.ts"), "utf8");
+    const calls = src
+      .split("\n")
+      .filter((l) => /^\s*startEnvHoldAsk\(\);\s*$/.test(l));
+    expect(calls).toHaveLength(1);
+    expect(src).toMatch(/startHeldWritesBell\(\);\s*\n\s*startEnvHoldAsk\(\);/);
   });
 });

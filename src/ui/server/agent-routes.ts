@@ -3222,7 +3222,8 @@ async function restartStatusRoute(
     );
     return true;
   }
-  sendJson(res, { agents: (await restartLive()).list() });
+  const live = await restartLive();
+  sendJson(res, { agents: live.list(), run: live.progress() });
   return true;
 }
 
@@ -3245,6 +3246,7 @@ async function idleRoute(
       },
       principalOf(req),
     );
+  let claimed: { id: string; workspace: string }[] = [];
   try {
     if (notAPersonOf(req))
       throw new AgentError("only a person can restart agents", {
@@ -3268,22 +3270,32 @@ async function idleRoute(
         });
       what = `${what} in ${ws}`;
     }
-    const list = await runningAgents(d, ws);
+    const live = await restartLive();
+    const list = live.claim(await runningAgents(d, ws));
+    claimed = list;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
     const one = (id: string, w: string) =>
       `restart ${id} in ${w} (at its next idle), same conversation`;
-    const plan = await restartFollowed(d, list, {
-      ...(deps.personaWait ?? {}),
-      onDone: (o) =>
-        o.outcome === "restarted"
-          ? audit(one(o.id, o.workspace))
-          : audit(one(o.id, o.workspace), `not restarted (${o.outcome})`),
-    });
-    sendJson(res, { ok: true, agents: plan }, 202);
+    const plan = await restartFollowed(
+      d,
+      list,
+      {
+        ...(deps.personaWait ?? {}),
+        onDone: (o) =>
+          o.outcome === "restarted"
+            ? audit(one(o.id, o.workspace))
+            : audit(one(o.id, o.workspace), `not restarted (${o.outcome})`),
+      },
+      live,
+      "idle",
+    );
+    sendJson(res, { ok: true, agents: plan, run: live.progress() }, 202);
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
+  } finally {
+    (await restartLive()).release(claimed);
   }
   return true;
 }
@@ -3332,6 +3344,7 @@ async function staleRoute(
       },
       principalOf(req),
     );
+  let claimed: { id: string; workspace: string }[] = [];
   try {
     // Issue 1407: the test operator too, for the bed's own agents only.
     const operator = operatorActOf(req) === "agents-restart-stale";
@@ -3354,6 +3367,7 @@ async function staleRoute(
         `only: "hub" or nothing (got ${JSON.stringify(body.only)})`,
         { usage: true },
       );
+    const live = await restartLive();
     const all = (await staleAgents(d, { fresh: true })).filter(
       (a) =>
         body.only !== "hub" ||
@@ -3361,15 +3375,18 @@ async function staleRoute(
         a.stale.drops.length > 0,
     );
     // Before anything is restarted, checked or audited by name.
-    const list = operator
-      ? testBedOnly(all, (a) => {
-          try {
-            return agentRecord(d, a.id, a.workspace).testBed === true;
-          } catch {
-            return false;
-          }
-        })
-      : all;
+    const list = live.claim(
+      operator
+        ? testBedOnly(all, (a) => {
+            try {
+              return agentRecord(d, a.id, a.workspace).testBed === true;
+            } catch {
+              return false;
+            }
+          })
+        : all,
+    );
+    claimed = list;
     what = `${what}: ${list.map((a) => `${a.id} (${a.workspace})`).join(", ") || "none"}`;
     audit(what);
     // Issue 1407: each agent is checked first and answered for: restarting
@@ -3384,6 +3401,11 @@ async function staleRoute(
       list.map((a) => ({ id: a.id, workspace: a.workspace })),
       {
         ...(deps.personaWait ?? {}),
+        slot: async (id) => {
+          const { restartQueue } = await import("./restart-queue-service.js");
+          await restartQueue().add({ id, why: "tools", run: async () => true });
+          return () => undefined;
+        },
         onDone: (o) => {
           if (o.outcome === "restarted") audit(one(o.id, o.workspace));
           else
@@ -3406,10 +3428,16 @@ async function staleRoute(
             ? `waits for the person: a background job is running (${p.job?.command ?? "?"}, ${p.job?.minutes ?? 0} min)`
             : "waits for the person: Den can't tell when its turn ends",
         );
-    sendJson(res, { ok: true, pending: list, agents: plan }, 202);
+    sendJson(
+      res,
+      { ok: true, pending: list, agents: plan, run: live.progress() },
+      202,
+    );
   } catch (e) {
     audit(what, e instanceof Error ? e.message : String(e));
     sendError(res, e);
+  } finally {
+    (await restartLive()).release(claimed);
   }
   return true;
 }

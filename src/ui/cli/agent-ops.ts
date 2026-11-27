@@ -7934,24 +7934,30 @@ export async function restartMany(
     pollMs?: number;
     maxMs?: number;
     onDone?: (r: RestartOutcome) => void;
+    slot?: (id: string, workspace: string) => Promise<() => void>;
+    stateOf?: typeof restartStateOf;
+    restart?: typeof restartAgent;
   } = {},
 ): Promise<RestartPlan[]> {
   const plan: RestartPlan[] = [];
   const waited = o.maxMs ?? restartWaitOf(d);
+  const stateOf = o.stateOf ?? restartStateOf;
+  const restart = o.restart ?? restartAgent;
   for (const a of agents) {
     let p: RestartPlan;
     try {
-      p = await restartStateOf(d, a.id, a.workspace);
+      p = await stateOf(d, a.id, a.workspace);
     } catch {
       p = { id: a.id, workspace: a.workspace, state: "unknown" };
     }
     plan.push(p);
     if (p.state !== "now" && p.state !== "turn") continue;
     const base = { id: p.id, workspace: p.workspace };
-    void restartAgent(d, p.id, p.workspace, "after-turn", {
+    void restart(d, p.id, p.workspace, "after-turn", {
       ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}),
       ...(o.maxMs !== undefined ? { maxMs: o.maxMs } : {}),
       jobStops: true,
+      ...(o.slot ? { slot: () => o.slot!(p.id, p.workspace) } : {}),
     }).then(
       () => o.onDone?.({ ...base, outcome: "restarted" }),
       (e: unknown) =>
@@ -8206,6 +8212,7 @@ export async function restartAgent(
      * (job_running, with what it runs), never waited out silently.
      */
     jobStops?: boolean;
+    slot?: () => Promise<() => void>;
   } = {},
 ): Promise<Resumed> {
   const where = "agents restart";
@@ -8249,7 +8256,9 @@ export async function restartAgent(
   }
   // Review M1: stop and resume as one change (not the wait above, so a
   // person can still stop it while it waits).
-  return lockAgent(d, rec.id, async () => {
+  const release = opts.slot ? await opts.slot() : undefined;
+  try {
+    return await lockAgent(d, rec.id, async () => {
     const cur = agentRecord(d, rec.id, rec.workspace);
     const now = await withClient(d, async (c) =>
       sessionOf(await c.list(), cur),
@@ -8335,7 +8344,10 @@ export async function restartAgent(
         `exited at once${out.early.exitCode === undefined ? "" : ` (code ${out.early.exitCode})`}`,
       );
     return out;
-  });
+    });
+  } finally {
+    release?.();
+  }
 }
 
 /** Issue 193: whether host session `ref` has ended, waiting up to `maxMs`. */

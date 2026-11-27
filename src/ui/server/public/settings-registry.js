@@ -5844,7 +5844,7 @@ export const DEN_SETTINGS = [
     category: "hub",
     label: "Groups from Hub",
     description:
-      "Whether the Agents page shows your Hub's groups (By group, beside By project). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+      "Whether the Agents page shows your Hub's groups (Group, beside Project in the list's switch). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
     keywords: ["hub", "groups", "group", "lead", "agents", "by group"],
     scope: "user",
     keys: ["hub_groups.mode"],

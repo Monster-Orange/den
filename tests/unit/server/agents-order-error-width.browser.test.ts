@@ -32,7 +32,7 @@ const ENGINES: BrowserEngine[] = ["chromium", "webkit"];
 /** No agent open, or the running ones open in each layout. */
 type Layout = "none" | "focus" | "tabs" | "tile";
 const LAYOUTS: Layout[] = ["none", "focus", "tabs", "tile"];
-const WIDTHS = [1280, 390];
+const WIDTHS = [1280, 1024, 768, 390];
 
 let s: AgentsPageServer | null = null;
 let host: HostClient | null = null;
@@ -235,7 +235,10 @@ const spills = async (p: Page, followMs = 5_000) => {
   await p.waitForFunction(
     () =>
       Array.from(document.querySelectorAll<HTMLElement>(".pane"))
-        .filter((e) => e.offsetWidth > 0)
+        .filter(
+          (e) =>
+            e.offsetWidth > 0 && e.getBoundingClientRect().top < innerHeight,
+        )
         .every((e) => /ready/.test(e.textContent ?? "")),
     null,
     { timeout: 10_000 },
@@ -295,6 +298,21 @@ const spills = async (p: Page, followMs = 5_000) => {
   });
 };
 
+const switchAt = (p: Page) =>
+  p.$eval("[data-by-switch]", (by) => {
+    const col = by.parentElement!;
+    const b = by.getBoundingClientRect();
+    const c = col.getBoundingClientRect();
+    const cs = getComputedStyle(col);
+    return {
+      left: Math.round(b.left - c.left - parseFloat(cs.borderLeftWidth)),
+      right: Math.round(c.right - parseFloat(cs.borderRightWidth) - b.right),
+      labels: Array.from(by.querySelectorAll("button")).map(
+        (x) => x.textContent,
+      ),
+    };
+  });
+
 const skip = () =>
   !Object.keys(browsers).length && process.env.DEN_SKIP_BROWSER_TESTS === "1";
 
@@ -303,12 +321,15 @@ describe("the agents page fits its window", () => {
     for (const width of WIDTHS)
       for (const by of ["project", "group"] as const)
         for (const layout of LAYOUTS)
-          it(`${engine}, ${width} wide, By ${by}, ${layout === "none" ? "no agent open" : `agents open in ${layout}`}: no sideways scroll`, async () => {
+          it(`${engine}, ${width} wide, By ${by}, ${layout === "none" ? "no agent open" : `agents open in ${layout}`}: no sideways scroll, the switch centred`, async () => {
             if (skip()) return;
             const p = await open(engine, width, by, layout);
             try {
               const m = await spills(p);
               expect(m).toEqual([]);
+              const sw = await switchAt(p);
+              expect(Math.abs(sw.left - sw.right)).toBeLessThanOrEqual(1);
+              expect(sw.labels).toEqual(["Need", "Project", "Group"]);
             } finally {
               await p.context().close();
               await viewsAtMost(0);

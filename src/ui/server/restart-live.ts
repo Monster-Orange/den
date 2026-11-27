@@ -10,6 +10,7 @@
 import type { NoteMsg, NotificationStore } from "../../shared/notifications.js";
 import { jobCommandOf } from "../../shared/process/jobs.js";
 import { redactSecrets } from "../../shared/redact.js";
+import type { RestartWhy } from "../../shared/agents/restart-queue.js";
 import {
   restartMany,
   type AgentsResolved,
@@ -70,8 +71,17 @@ const jobShown = (j: { command: string; minutes: number }) => ({
   minutes: Number(j.minutes) || 0,
 });
 
+const WAITING: ReadonlySet<LiveState> = new Set(["now", "turn"]);
+
+export interface RestartRun {
+  total: number;
+  done: number;
+}
+
 export class RestartLive {
   private readonly rows = new Map<string, LiveRow>();
+  private run: RestartRun = { total: 0, done: 0 };
+  private readonly claimed = new Set<string>();
   private readonly keepDoneMs: number;
   private readonly now: () => number;
   private readonly store: Pick<NotificationStore, "add" | "remove"> | null;
@@ -88,8 +98,22 @@ export class RestartLive {
     this.store = o.store ?? null;
   }
 
-  /** A new run: each agent of `plan` in its state (replacing an older row). */
+  /** Before any await: the agents no other press has, now this press's. */
+  claim<T extends { id: string; workspace: string }>(
+    agents: readonly T[],
+  ): T[] {
+    const mine = agents.filter((a) => !this.inProgress(a.workspace, a.id));
+    for (const a of mine) this.claimed.add(key(a.workspace, a.id));
+    return mine;
+  }
+
+  release(agents: readonly { id: string; workspace: string }[]): void {
+    for (const a of agents) this.claimed.delete(key(a.workspace, a.id));
+  }
+
   begin(plan: readonly RestartPlan[]): void {
+    if (!this.restarting()) this.run = { total: 0, done: 0 };
+    this.run.total += plan.filter((p) => WAITING.has(p.state)).length;
     for (const p of plan)
       this.rows.set(key(p.workspace, p.id), {
         id: p.id,
@@ -103,7 +127,9 @@ export class RestartLive {
   /** How one agent's restart ended (restartMany's onDone, or Restart now). */
   done(o: RestartOutcome): void {
     const k = key(o.workspace, o.id);
-    if (!this.rows.has(k)) return;
+    const was = this.rows.get(k);
+    if (!was) return;
+    if (WAITING.has(was.state)) this.run.done++;
     const row: LiveRow = {
       id: o.id,
       workspace: o.workspace,
@@ -115,6 +141,21 @@ export class RestartLive {
     };
     this.rows.set(k, row);
     this.bell(row);
+  }
+
+  inProgress(ws: string, id: string): boolean {
+    if (this.claimed.has(key(ws, id))) return true;
+    const r = this.rows.get(key(ws, id));
+    return !!r && WAITING.has(r.state);
+  }
+
+  restarting(): boolean {
+    for (const r of this.rows.values()) if (WAITING.has(r.state)) return true;
+    return false;
+  }
+
+  progress(): RestartRun | null {
+    return this.restarting() ? { ...this.run } : null;
   }
 
   /** The rows now, oldest run first; restarted ones clear after a moment. */
@@ -194,11 +235,17 @@ export async function restartFollowed(
   agents: readonly { id: string; workspace: string }[],
   o: Parameters<typeof restartMany>[2] = {},
   live?: RestartLive,
+  why: RestartWhy = "tools",
 ): Promise<RestartPlan[]> {
   const l = live ?? (await restartLive());
   const early: RestartOutcome[] = [];
   let begun = false;
   const plan = await restartMany(d, agents, {
+    slot: async (id) => {
+      const { restartQueue } = await import("./restart-queue-service.js");
+      await restartQueue().add({ id, why, run: async () => true });
+      return () => undefined;
+    },
     ...o,
     onDone: (x) => {
       if (begun) l.done(x);

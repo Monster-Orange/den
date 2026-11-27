@@ -1853,7 +1853,7 @@
       "Activado, cada agente que Den inicia en un proyecto conectado a Hub recibe el ciclo de entrega en sus instrucciones: documentos de requisitos en Hub, issues enlazados completos, revisión y comentarios en los hilos de Hub, estado desde git. Desactivado para todos los proyectos de aquí, salvo que un proyecto lo active. Llega a un agente en su próximo inicio.",
     "set.agents.hub_groups": "Grupos de Hub",
     "set.agents.hub_groups.d":
-      "Si la página Agentes muestra los grupos de tu Hub (Por grupo, junto a Por proyecto). Automático: cuando tu Den Hub admite grupos. Desactivado: Den nunca se los pide a Hub. __DEN_CLI__ config hub.groups=auto",
+      "Si la página Agentes muestra los grupos de tu Hub (Grupo, junto a Proyecto en el selector de la lista). Automático: cuando tu Den Hub admite grupos. Desactivado: Den nunca se los pide a Hub. __DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "Automático",
     "set.agents.hub_groups.o.on": "Activado",
     "set.agents.hub_groups.o.off": "Desactivado",
@@ -2240,9 +2240,9 @@
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.by.label": "Mostrar la lista",
-    "ag.by.need": "Por urgencia",
-    "ag.by.project": "Por proyecto",
-    "ag.by.group": "Por grupo",
+    "ag.by.need": "Urgencia",
+    "ag.by.project": "Proyecto",
+    "ag.by.group": "Grupo",
     "ag.grp.noHub": "Los grupos vienen con Den Hub.",
     "ag.grp.connect": "Conectar Den Hub",
     "ag.grp.notInPlan":
@@ -3218,6 +3218,7 @@
     "rs.none": "Ningún agente necesita reiniciarse.",
     "rs.bar": "{n} agentes necesitan reiniciarse para cargar sus herramientas.",
     "rs.barBtn": "Reiniciar los {n} en su próxima pausa",
+    "rs.barBusy": "Reiniciando {done} de {total}…",
     "rs.allName": "los agentes",
     "rs.done": "{id}: reiniciado, en la misma conversación.",
     "rs.timedOut":

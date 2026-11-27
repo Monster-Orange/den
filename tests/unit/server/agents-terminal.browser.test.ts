@@ -610,16 +610,24 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
 
   describe("D40: picking an agent puts the keyboard in its terminal", () => {
     const row = (id: string) => `#agl .agr[data-id="${sid[id]}"]`;
-    /** Type `text` where the keyboard is, and say which pty got it. */
-    async function typedInto(p: Page, text: string): Promise<string[]> {
+    /** Type `text` where the keyboard is, and say which pty got it: in 400 ms, or (landedIn) once one has. */
+    async function typeAt(p: Page, text: string): Promise<() => string[]> {
       const from = Object.fromEntries(
         Object.keys(sid).map((id) => [id, pty(id).writes.length]),
       );
       await p.keyboard.type(text);
+      return () =>
+        Object.keys(sid).filter((id) => typed(id, from[id]).includes(text));
+    }
+    async function typedInto(p: Page, text: string): Promise<string[]> {
+      const got = await typeAt(p, text);
       await new Promise((r) => setTimeout(r, 400));
-      return Object.keys(sid).filter((id) =>
-        typed(id, from[id]).includes(text),
-      );
+      return got();
+    }
+    async function landedIn(p: Page, text: string): Promise<string[]> {
+      const got = await typeAt(p, text);
+      await eventually(() => got().length > 0, 5_000).catch(() => undefined);
+      return got();
     }
 
     /**
@@ -695,7 +703,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await eventually(async () =>
         (await typedInto(p, "d1")).includes("coder"),
       );
-      expect(await typedInto(p, "d2")).toEqual(["coder"]);
+      expect(await landedIn(p, "d2")).toEqual(["coder"]);
       await p.context().close();
     }, 60_000);
 
@@ -718,7 +726,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await eventually(async () =>
         (await typedInto(p, "t2")).includes("planner"),
       );
-      expect(await typedInto(p, "t2b")).toEqual(["planner"]);
+      expect(await landedIn(p, "t2b")).toEqual(["planner"]);
       // The keyboard on the tabs: Enter picks, and the keyboard stays.
       await p.focus(tab("coder"));
       await p.keyboard.press("Enter");
@@ -746,7 +754,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await eventually(async () =>
         (await typedInto(p, "b2")).includes("coder"),
       );
-      expect(await typedInto(p, "b3")).toEqual(["coder"]);
+      expect(await landedIn(p, "b3")).toEqual(["coder"]);
       await p.context().close();
     }, 60_000);
 
@@ -757,7 +765,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await eventually(async () =>
         (await typedInto(p, "l1")).includes("planner"),
       );
-      expect(await typedInto(p, "l2")).toEqual(["planner"]);
+      expect(await landedIn(p, "l2")).toEqual(["planner"]);
       const q = new URL(p.url()).searchParams;
       expect(q.has("agent")).toBe(false);
       expect(q.get("open")).toBe(sid.planner);
@@ -770,7 +778,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await p.click(row("planner"));
       await p.waitForSelector(`.pane[data-id="${sid.planner}"] .xterm-rows`);
       await eventually(async () => (await typedInto(p, "q1")).length > 0);
-      expect(await typedInto(p, "q2")).toEqual(["planner"]);
+      expect(await landedIn(p, "q2")).toEqual(["planner"]);
       await p.context().close();
     }, 60_000);
 
@@ -791,7 +799,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await eventually(async () =>
         (await typedInto(p, "p1")).includes("planner"),
       );
-      expect(await typedInto(p, "p2")).toEqual(["planner"]);
+      expect(await landedIn(p, "p2")).toEqual(["planner"]);
       await p.context().close();
     }, 60_000);
 
@@ -806,11 +814,11 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
       await p.click(row("coder"), { modifiers: ["Shift"] });
       await p.waitForSelector(`.pane[data-id="${sid.coder}"] .xterm-rows`);
       await new Promise((r) => setTimeout(r, 300));
-      expect(await typedInto(p, "a2")).toEqual(["planner"]);
+      expect(await landedIn(p, "a2")).toEqual(["planner"]);
       // Its pane already open: the same.
       await p.click(row("coder"), { modifiers: ["Shift"] });
       await new Promise((r) => setTimeout(r, 300));
-      expect(await typedInto(p, "a3")).toEqual(["planner"]);
+      expect(await landedIn(p, "a3")).toEqual(["planner"]);
       await p.context().close();
     }, 60_000);
 
@@ -905,7 +913,7 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
         await eventually(async () =>
           (await typedInto(p, "n2")).includes("coder"),
         );
-        expect(await typedInto(p, "n3")).toEqual(["coder"]);
+        expect(await landedIn(p, "n3")).toEqual(["coder"]);
         await p.context().close();
       }, 60_000);
 
@@ -1164,6 +1172,78 @@ describe("an agent's pane as a terminal (AG-4b)", () => {
     await p.waitForFunction(() =>
       /restarts at its next idle/.test(document.body.textContent ?? ""),
     );
+    await p.context().close();
+  }, 60_000);
+
+  it("PR 1819: Restart all for tools stays disabled with its progress, and after a reload too", async () => {
+    if (skip()) return;
+    const p = await page(`/agents`);
+    await p.route("**/api/sessions*", async (r) => {
+      try {
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions: { agent?: string; mcpStale?: unknown }[];
+        };
+        for (const x of body.sessions)
+          if (x.agent === "planner" || x.agent === "coder")
+            x.mcpStale = {
+              adds: [],
+              drops: [],
+              den: { from: "0.0.1-old", to: "0.0.2-new" },
+            };
+        await r.fulfill({ response: res, json: body });
+      } catch {
+        await r.abort().catch(() => undefined);
+      }
+    });
+    let run: { total: number; done: number } | null = null;
+    const rows = () =>
+      ["planner", "coder"].map((id) => ({
+        id,
+        workspace: "north",
+        state: "turn",
+      }));
+    await p.route("**/api/agents/restart-status*", (r) =>
+      r.fulfill({
+        contentType: "application/json",
+        json: { agents: run ? rows() : [], run },
+      }),
+    );
+    let posts = 0;
+    await p.route("**/api/agents/restart-stale", (r) => {
+      posts++;
+      run = { total: 2, done: 0 };
+      return r.fulfill({
+        status: 202,
+        contentType: "application/json",
+        json: { ok: true, pending: rows(), agents: rows(), run },
+      });
+    });
+    await p.reload();
+    const btn = `[data-note="tools-stale"] [data-act="tools-restart-all"]`;
+    await p.waitForSelector(`${btn}:not([disabled])`, { timeout: 15_000 });
+    const busy = (done: number) =>
+      p.evaluate(
+        (d) =>
+          (
+            window as unknown as {
+              denShell: { t: (k: string, v: object) => string };
+            }
+          ).denShell.t("rs.barBusy", { done: d, total: 2 }),
+        done,
+      );
+    await p.click(btn);
+    await p.waitForSelector(`${btn}[disabled][aria-busy="true"]`);
+    expect((await p.textContent(btn))?.trim()).toBe(await busy(0));
+    expect(posts).toBe(1);
+    run = { total: 2, done: 1 };
+    await p.reload();
+    await p.waitForSelector(`${btn}[disabled][aria-busy="true"]`, {
+      timeout: 15_000,
+    });
+    expect((await p.textContent(btn))?.trim()).toBe(await busy(1));
+    await p.click(btn, { force: true }).catch(() => undefined);
+    expect(posts).toBe(1);
     await p.context().close();
   }, 60_000);
 
