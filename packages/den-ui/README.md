@@ -716,15 +716,16 @@ nextCursor)`, which keeps the cursors already visited in the URL
   (`back`), so Previous and the browser's Back step back through them.
   It keeps the last 20 (`keep`); past that, Previous is off at the oldest
   one kept, and « First still goes to the start.
-- Between 600 and 900px the per-page choice folds into a ⋯ menu; under
-  760px the range goes below the controls. At 600px or less: « ‹ [3 / 17
-  ▾] › » ⋯, 44px icon buttons, and ⋯ opens a sheet with the range and the
+- Widths are the row's own (a container query), not the window's. Under
+  900px the per-page choice folds into ⋯, a native pop-over; under 760px
+  the range goes below the controls. At 600px or less: « ‹ [3 / 17 ▾] › »
+  ⋯, 44px icon buttons, and ⋯ opens a bottom sheet with the range and the
   per-page choice. With no total the middle is the range ("‹ 1–50 ›").
 - With no script every control is a link, and each select sits in a GET
   form with Go (its action and other values come from two of `href`'s
   own links). `hydratePager(el, { list, onNavigate?, shortcuts? })` hides
-  Go, follows a select at once, closes the ⋯ menu on Esc or a click
-  outside, and adds keys: ← and → go back and forward while focus is on
+  Go, follows a select at once, places the ⋯ pop-over (a sheet on a
+  narrow row), and adds keys: ← and → go back and forward while focus is on
   the page body, the list or the pager (never in a field, select,
   editable area, dialog or `role="application"`), and Home and End on the
   pager go to the first and last page. `shortcuts` (a boolean or a
