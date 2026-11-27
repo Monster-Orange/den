@@ -105,6 +105,64 @@ ${FAKE}`;
     );
   });
 
+  it("output sent to a log file: a port clash there is still seen, and tried again on another port", async () => {
+    const root = tmpRoot();
+    const log = path.join(root, "web.log");
+    const fd = fs.openSync(log, "a");
+    cleanup.push(async () => fs.closeSync(fd));
+    const once = path.join(root, "said-taken");
+    const script = `
+const fs = require("fs");
+if (!fs.existsSync(${JSON.stringify(once)})) {
+  fs.writeFileSync(${JSON.stringify(once)}, process.env.PORT);
+  console.error("  ✗ Port " + process.env.PORT + " is already in use.");
+  process.exit(1);
+}
+${FAKE}`;
+    const started = await startDenServer(
+      process.execPath,
+      ["-e", script],
+      {
+        cwd: root,
+        stdio: ["ignore", fd, fd],
+        env: { ...process.env, DEN_ROOT: root },
+      },
+      { timeoutMs: 10_000, logFile: log },
+    );
+    cleanup.push(() => stopServer(started.server));
+    expect(String(started.port)).not.toBe(fs.readFileSync(once, "utf-8"));
+  });
+
+  it("output sent to a log file: any other exit fails at once, with the log's last 40 lines", async () => {
+    const root = tmpRoot();
+    const log = path.join(root, "web.log");
+    fs.writeFileSync(log, "an earlier run's line\n");
+    const fd = fs.openSync(log, "a");
+    cleanup.push(async () => fs.closeSync(fd));
+    const script =
+      'for (let i = 1; i <= 50; i++) console.error("line " + i); console.error("bad config"); process.exit(1)';
+    const err = await startDenServer(
+      process.execPath,
+      ["-e", script],
+      {
+        cwd: root,
+        stdio: ["ignore", fd, fd],
+        env: { ...process.env, DEN_ROOT: root },
+      },
+      { timeoutMs: 10_000, logFile: log },
+    ).then(
+      () => null,
+      (e: Error) => e,
+    );
+    expect(err?.message).toMatch(
+      /try 1 on port \d+: it exited \(exit code 1\)\n/,
+    );
+    expect(err?.message).toMatch(/line 12\n[^]*line 50\nbad config/);
+    expect(err?.message).not.toMatch(/line 11\n/);
+    expect(err?.message).not.toMatch(/an earlier run's line/);
+    expect(err?.message).not.toMatch(/try 2/);
+  });
+
   it("a server that never answers is named as timed out, never as exited (the stop is ours)", async () => {
     const root = tmpRoot();
     await expect(
