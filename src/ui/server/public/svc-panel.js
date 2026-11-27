@@ -210,6 +210,13 @@ const running = (s) =>
  * its project on no one repo. Stopped ones too (dimmed, with Start). A
  * project is its workspace until H5's projects.
  */
+function agentsAsk(s) {
+  const q = new URLSearchParams({ kind: "agent", limit: "50" });
+  if (s.workspaces.length) q.set("projects", s.workspaces.join(","));
+  if (s.repo) q.set("repo", s.repo);
+  return q;
+}
+
 export function agentsOf(s, sessions = S.sessions) {
   const inProject = (a) =>
     !s.workspaces.length || s.workspaces.includes(a.project || a.workspace);
@@ -279,6 +286,8 @@ const project = (s) => s.workspaces[0] || "—";
 export function panelHtml(s) {
   const st = stateOf(s);
   const ags = agentsOf(s);
+  const shownAgents = ags.here.length + ags.also.length;
+  const allAgents = Math.max(shownAgents, S.agentsTotal ?? 0);
   const pinned = window.denShell?.isPinned?.(s.id);
   const testing = S.testing.has(s.id) || S.lastRuns[s.repo]?.running;
   return (
@@ -300,7 +309,7 @@ export function panelHtml(s) {
     `<button type="button" class="den-btn" data-svx="logs">${esc(t("svp.logs"))}</button></div>` +
     `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.tests"))}</div>` +
     `<div class="den-svp-line">${testsHtml(s)}<button type="button" class="den-btn sm den-svp-sp" data-svx="tests"${testing ? " disabled" : ""}>${esc(t("svp.runTests"))}</button></div></div>` +
-    `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.agents"))}${ags.here.length + ags.also.length ? ` · ${ags.here.length + ags.also.length}` : ""}</div>` +
+    `<div class="den-svp-sec"><div class="den-svp-k">${esc(t("svp.agents"))}${allAgents ? ` · ${allAgents}` : ""}</div>` +
     `<div class="den-svp-sub" id="den-svp-here">${esc(t("svp.onRepo"))}</div>` +
     (ags.here.length
       ? ags.here.map(agRow).join("")
@@ -309,6 +318,9 @@ export function panelHtml(s) {
       ? `<details class="den-svp-also" id="den-svp-also"><summary>${esc(t("svp.alsoIn", { p: project(s), n: ags.also.length }))}</summary>` +
         ags.also.map(agRow).join("") +
         `</details>`
+      : "") +
+    (allAgents > shownAgents
+      ? `<a class="den-lnk" href="/agents?project=${encodeURIComponent(project(s))}">${esc(t("svp.moreAgents", { n: allAgents - shownAgents }))}</a>`
       : "") +
     `<div><button type="button" class="den-btn sm" data-svx="startag">+ ${esc(t("svp.startHere"))}</button></div></div>` +
     // den#143: Report drawn in its own row, so a refresh doesn't wipe it.
@@ -413,10 +425,11 @@ async function refresh() {
     fetch(u, { headers: { accept: "application/json" } })
       .then((r) => (r.ok ? r.json() : d))
       .catch(() => d);
+  const svc = S.open ? serviceOf(S.open.id) : null;
   const [last, daemons, sess] = await Promise.all([
     get("/api/runs/last", null),
     get("/api/service/daemons", []),
-    get("/api/sessions?all=1", null),
+    svc ? get(`/api/sessions?${agentsAsk(svc)}`, null) : null,
   ]);
   S.lastRuns = last?.repos ?? S.lastRuns;
   if (Array.isArray(daemons)) {
@@ -428,7 +441,11 @@ async function refresh() {
       if (cur === undefined || at < cur) S.upSince.set(d.repoName, at);
     }
   }
-  if (Array.isArray(sess?.sessions)) S.sessions = sess.sessions;
+  if (Array.isArray(sess?.sessions)) {
+    S.sessions = sess.sessions;
+    S.agentsTotal =
+      typeof sess.total === "number" ? sess.total : sess.sessions.length;
+  }
   sync();
 }
 

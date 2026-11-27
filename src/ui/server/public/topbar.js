@@ -824,11 +824,17 @@ function openLogs(svc) {
  * the Agents page (AG-4a-term).
  */
 let palSessions = [];
-function askPaletteSessions(redraw) {
+let palAsk = 0;
+let palWait = null;
+function askPaletteSessions(redraw, text = "") {
   if (sh()?.apiOff?.()) return;
-  fetch("/api/sessions?all=1")
+  const run = ++palAsk;
+  const q = new URLSearchParams({ limit: "20" });
+  if (text.trim()) q.set("q", text.trim().slice(0, 100));
+  fetch(`/api/sessions?${q}`)
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => {
+      if (run !== palAsk) return;
       palSessions = Array.isArray(d?.sessions) ? d.sessions : [];
       redraw();
     })
@@ -1080,6 +1086,14 @@ function openPalette() {
   input.addEventListener("input", () => {
     sel = 0;
     draw();
+    clearTimeout(palWait);
+    palWait = setTimeout(
+      () =>
+        askPaletteSessions(() => {
+          if (overlay?.kind === "palette") draw();
+        }, input.value),
+      150,
+    );
   });
   input.addEventListener("keydown", (e) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {

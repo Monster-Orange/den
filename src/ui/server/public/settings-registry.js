@@ -1574,7 +1574,8 @@ function drawAppKeys(host, ctx) {
       });
   host.innerHTML =
     `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex-basis:100%">` +
-    `<select id="set-appkey-agent" aria-label="${escHtml(L("set.ui.appKeyAgent", "Agent"))}"></select>` +
+    `<input id="set-appkey-agent" type="search" list="set-appkey-agents" autocomplete="off" aria-label="${escHtml(L("set.ui.appKeyAgent", "Agent"))}" placeholder="${escHtml(L("set.ui.appKeyAgentFind", "Find an agent"))}">` +
+    `<datalist id="set-appkey-agents"></datalist>` +
     `<select id="set-appkey-origin" aria-label="${escHtml(L("set.ui.appKeyOrigin", "Web app"))}">` +
     origins
       .map((o) => `<option value="${escHtml(o)}">${escHtml(o)}</option>`)
@@ -1592,21 +1593,36 @@ function drawAppKeys(host, ctx) {
     make.disabled = true;
     out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyNoOrigin", "Add the web app to the list above first."))}</span>`;
   }
-  shell
-    .api("GET", "/api/sessions?all=1")
-    .then((b) => {
-      const agents = ((b && b.sessions) || []).filter(
-        (r) => r.kind === "agent" && !r.server,
-      );
-      host.querySelector("#set-appkey-agent").innerHTML = agents
-        .map(
-          (r) =>
-            `<option value="${escHtml(r.workspace + "/" + r.agent)}">${escHtml(r.workspace + " / " + (r.displayName || r.agent))}</option>`,
-        )
-        .join("");
-      if (!agents.length) make.disabled = true;
-    })
-    .catch(() => {});
+  const agentIn = host.querySelector("#set-appkey-agent");
+  const offered = new Set();
+  let findRun = 0;
+  let findWait = null;
+  const findAgents = (text) => {
+    const run = ++findRun;
+    const q = new URLSearchParams({ kind: "agent", limit: "20" });
+    if (text.trim()) q.set("q", text.trim().slice(0, 100));
+    shell
+      .api("GET", `/api/sessions?${q}`)
+      .then((b) => {
+        if (run !== findRun) return;
+        const agents = (b && b.sessions) || [];
+        offered.clear();
+        for (const r of agents) offered.add(r.workspace + "/" + r.agent);
+        host.querySelector("#set-appkey-agents").innerHTML = agents
+          .map(
+            (r) =>
+              `<option value="${escHtml(r.workspace + "/" + r.agent)}">${escHtml(r.workspace + " / " + (r.displayName || r.agent))}</option>`,
+          )
+          .join("");
+        if (!text.trim() && !agents.length) make.disabled = true;
+      })
+      .catch(() => {});
+  };
+  agentIn.addEventListener("input", () => {
+    clearTimeout(findWait);
+    findWait = setTimeout(() => findAgents(agentIn.value), 150);
+  });
+  findAgents("");
   const draw = () =>
     shell
       .api("GET", "/api/embed/app-keys")
@@ -1652,7 +1668,11 @@ function drawAppKeys(host, ctx) {
       })
       .catch(() => {});
   make.addEventListener("click", () => {
-    const pick = host.querySelector("#set-appkey-agent").value.split("/");
+    if (!offered.has(agentIn.value)) {
+      out.innerHTML = `<span class="set-note">${escHtml(L("set.ui.appKeyAgentPick", "Pick an agent from the list."))}</span>`;
+      return;
+    }
+    const pick = agentIn.value.split("/");
     void ask(
       "embed_key_create",
       {
