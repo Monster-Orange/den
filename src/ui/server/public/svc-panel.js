@@ -416,7 +416,7 @@ async function refresh() {
   const [last, daemons, sess] = await Promise.all([
     get("/api/runs/last", null),
     get("/api/service/daemons", []),
-    get("/api/sessions", null),
+    get("/api/sessions?all=1", null),
   ]);
   S.lastRuns = last?.repos ?? S.lastRuns;
   if (Array.isArray(daemons)) {
