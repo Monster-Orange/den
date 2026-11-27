@@ -30,6 +30,7 @@ export interface ViewPage {
   pages: number;
   bands: Record<ViewBand, number>;
   projects?: Record<string, Record<ViewBand, number>>;
+  continues: boolean;
 }
 
 export function parseSeen(v: string | null): Map<string, string> {
@@ -137,7 +138,12 @@ export function viewPage(
     ];
   } else ordered = inBandOrder(rows, seen);
   const pinned = ordered.filter((x) => x.band === "needs").map((x) => x.r);
-  const rest = ordered.filter((x) => x.band !== "needs").map((x) => x.r);
+  const restAt = ordered.filter((x) => x.band !== "needs");
+  const rest = restAt.map((x) => x.r);
+  const groupOf = (x: { band: ViewBand; r: ListedSession }) =>
+    ask.by === "project" && x.band !== "stopped"
+      ? `p:${x.r.workspace}`
+      : `b:${x.band}`;
   const pages = Math.max(1, Math.ceil(rest.length / ask.limit));
   const page = ask.page === "last" ? pages : Math.min(ask.page, pages);
   const offset = (page - 1) * ask.limit;
@@ -149,6 +155,10 @@ export function viewPage(
     page,
     pages,
     bands,
+    continues:
+      offset > 0 &&
+      offset < restAt.length &&
+      groupOf(restAt[offset - 1]) === groupOf(restAt[offset]),
     ...(perProject ? { projects: perProject } : {}),
   };
 }
