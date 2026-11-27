@@ -19,12 +19,15 @@ afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 
-function agentFiles(name: string, opts: { hook?: boolean } = {}): string {
+function agentFiles(
+  name: string,
+  opts: { hook?: boolean; allow?: string[] } = {},
+): string {
   const dir = path.join(tmp, name);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(
     path.join(dir, "env-hold.sh"),
-    envHoldScript(DEFAULT_ENV_HOLD),
+    envHoldScript(DEFAULT_ENV_HOLD, opts.allow ?? []),
   );
   const args = envMaskArgs(
     readAgentsConfig(
@@ -78,6 +81,7 @@ type Run = {
 function runGate(
   dir: string,
   mode: "stub" | "silent" | "cut" | "noprofile" = "stub",
+  bed: { userYml?: string; allowDir?: string } = {},
 ): Run {
   const js = `
     import { spawnSync } from "node:child_process";
@@ -87,13 +91,14 @@ function runGate(
     const mode = ${JSON.stringify(mode)};
     const sent = [];
     const refused = [];
-    const env = {
+    const bed = ${JSON.stringify(bed)};
+    const envOf = (d) => ({
       PATH: "/usr/bin:/bin",
-      HOME: dir,
-      TMPDIR: dir,
-      CLAUDE_ENV_FILE: dir + "/env-hold.sh",
-    };
-    const sh = async (cmd) => {
+      HOME: d,
+      TMPDIR: d,
+      CLAUDE_ENV_FILE: d + "/env-hold.sh",
+    });
+    const shFor = (env) => async (cmd) => {
       sent.push(cmd);
       if (mode === "silent") return { status: null, out: "", err: "no /sh result" };
       if (mode === "noprofile" && cmd.includes("g974-profile")) return { status: null, out: "", err: "no /sh result" };
@@ -105,14 +110,14 @@ function runGate(
       const res = { status: r.status, out: (r.stdout || "").slice(0, 1500), err: (r.stderr || "").slice(0, 1500) };
       return mode === "cut" ? { ...res, cut: { out: 99999 } } : res;
     };
-    const agent = () => ({
+    const agent = (id) => ({
       start: () => ({ code: 0 }),
       running: async () => 1,
-      sh,
+      sh: shFor(envOf(id === g.ALLOW_ID && bed.allowDir ? bed.allowDir : dir)),
       state: () => null,
       remove: () => {},
     });
-    const ctx = { agent };
+    const ctx = { agent, ...(bed.userYml === undefined ? {} : { readBed: () => bed.userYml }) };
     process.env.PATH = "/usr/bin:/bin";
     const r = await runLikeBed("974.mjs", g, ctx);
     process.stdout.write(JSON.stringify({ ...r, sent, refused }));
@@ -172,6 +177,75 @@ describe("issue 974's live check against the stub's limits", () => {
     const r = runGate(agentFiles("silent"), "silent");
     expect(r.rows).toBeUndefined();
     expect(r.error).toMatch(/974 not measured: CLAUDE_ENV_FILE/);
+  });
+});
+
+// den-bed#108: the bed's module config names gate-974-allow and GATE974_ALLOW_TOKEN in agents.env_allow_agents.
+const ALLOWED_YML = [
+  "agents:",
+  '  env_allow_agents: {"gate-974-allow": ["GATE974_ALLOW_TOKEN"]}',
+  '  env_hold: ["*_TOKEN", "*_SECRET", "*_KEY", "*_PASSWORD", "OP_SESSION_*"]',
+  "",
+].join("\n");
+
+describe("the env_allow clause: a name the bed allows for one agent reaches it, and not a plain agent", () => {
+  it("with the bed's allow, the named agent keeps the name and the plain agent loses it: PASS", () => {
+    const r = runGate(agentFiles("allow-plain"), "stub", {
+      userYml: ALLOWED_YML,
+      allowDir: agentFiles("allow-named", { allow: ["GATE974_ALLOW_TOKEN"] }),
+    });
+    expect(r.error).toBeUndefined();
+    expect(row(r, 1)).toMatchObject({ ok: true });
+    expect(row(r, 1)?.detail).toMatch(
+      /gate-974-allow \(named in agents.env_allow_agents\) kept it; a plain agent lost it/,
+    );
+  });
+
+  it("the name isn't allowed for the named agent (Den ignored the setting): FAIL, lost it", () => {
+    const r = runGate(agentFiles("deny-plain"), "stub", {
+      userYml: ALLOWED_YML,
+      allowDir: agentFiles("deny-named"),
+    });
+    expect(row(r, 1)).toMatchObject({ ok: false });
+    expect(row(r, 1)?.detail).toMatch(/gate-974-allow .* lost it/);
+  });
+
+  it("the plain agent keeps the name too (allowed for every agent): FAIL, kept it", () => {
+    const r = runGate(
+      agentFiles("wide-plain", { allow: ["GATE974_ALLOW_TOKEN"] }),
+      "stub",
+      {
+        userYml: ALLOWED_YML,
+        allowDir: agentFiles("wide-named", { allow: ["GATE974_ALLOW_TOKEN"] }),
+      },
+    );
+    expect(row(r, 1)).toMatchObject({ ok: false });
+    expect(row(r, 1)?.detail).toMatch(/a plain agent kept it/);
+  });
+
+  it("a user.yml without the allow, or no readBed at all: NOT_RUN needs-config-change, as before", () => {
+    for (const bed of [{ userYml: "agents:\n  layout: tabs\n" }, {}]) {
+      const r = runGate(agentFiles("noallow"), "stub", bed);
+      expect(row(r, 1)).toMatchObject({
+        ok: null,
+        skip: "needs-config-change",
+      });
+    }
+  });
+
+  it("reads the line den-bed's module config writes, and only that agent with that name", () => {
+    const cases = [
+      ALLOWED_YML,
+      'agents:\n  env_allow_agents: {"gate-974-other": ["GATE974_ALLOW_TOKEN"]}\n',
+      'agents:\n  env_allow: ["GATE974_ALLOW_TOKEN"]\n',
+      null,
+    ];
+    const js = `const g = await import("./gate/974.mjs"); process.stdout.write(JSON.stringify(${JSON.stringify(cases)}.map(g.allowConfigured)));`;
+    const p = spawnSync(process.execPath, ["--input-type=module", "-e", js], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    expect(JSON.parse(p.stdout)).toEqual([true, false, false, false]);
   });
 });
 

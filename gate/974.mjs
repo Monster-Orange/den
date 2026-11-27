@@ -14,6 +14,16 @@ export const clauses = [
 export const timeoutMs = 240000;
 
 const CANARY = "canary-974-not-a-real-secret";
+// den-bed#108: the bed's module config (lib/module-config.json) names one fixed agent and one fake name in
+// agents.env_allow_agents for this check; Den writes each agent's hold script from it at that agent's start.
+export const ALLOW_ID = "gate-974-allow";
+export const ALLOW_NAME = "GATE974_ALLOW_TOKEN";
+const ALLOW_VALUE = "allow-974-not-a-real-secret";
+export const allowConfigured = (yml) =>
+  typeof yml === "string" &&
+  new RegExp(`^\\s+env_allow_agents:.*${ALLOW_ID}.*${ALLOW_NAME}`, "m").test(
+    yml,
+  );
 const HELD =
   /^(.*_TOKEN|.*_SECRET|.*_KEY|.*_PASSWORD|OP_SESSION_.*)(_[0-9].*)?$/i;
 const OWN =
@@ -27,7 +37,37 @@ export async function setup(ctx) {
   const a = ctx.agent(id);
   const start = a.start("tester");
   const runMs = await a.running(20000);
-  return { id, startCode: start?.code ?? null, runMs };
+  const allow = {
+    configured: allowConfigured(ctx.readBed?.("config/local/user.yml") ?? null),
+  };
+  if (allow.configured) {
+    const b = ctx.agent(ALLOW_ID);
+    if (b.state()) b.remove();
+    allow.startCode = b.start("tester")?.code ?? null;
+    allow.runMs = await b.running(20000);
+  }
+  return { id, startCode: start?.code ?? null, runMs, allow };
+}
+
+// The fake name in a profile, then the agent's own env file sourced: does the name survive it?
+async function keptAfterHold(a, name) {
+  const env = await oneLine(a, "printenv CLAUDE_ENV_FILE", 15000);
+  const file = env.status === 0 && !env.cut ? env.out.trim() : "";
+  if (!file || !fs.existsSync(file)) return { file: null, kept: null };
+  const t = await probe(a, path.dirname(file), `allow-${name}`, [
+    "d=$(mktemp -d)",
+    `printf 'export ${ALLOW_NAME}=%s\\n' '${ALLOW_VALUE}' > "$d/.zshenv"`,
+    'cp "$d/.zshenv" "$d/profile.sh"',
+    "if command -v zsh >/dev/null 2>&1; then",
+    `  w=$(ZDOTDIR="$d" zsh -c '. "$CLAUDE_ENV_FILE"; printenv ${ALLOW_NAME}')`,
+    "else",
+    `  w=$(sh -c '. "$1/profile.sh"; . "$CLAUDE_ENV_FILE"; printenv ${ALLOW_NAME}' _ "$d")`,
+    "fi",
+    'rm -rf "$d"',
+    'echo "kept=[$w]"',
+  ]);
+  const m = /kept=\[(.*)\]/.exec(t ?? "");
+  return { file, kept: m ? m[1] : null };
 }
 
 const hookInput = (command) =>
@@ -154,6 +194,13 @@ export async function run(ctx, s) {
         name: /name=1/.test(t),
       };
     }
+  if (s.allow?.configured) {
+    const named = await keptAfterHold(ctx.agent(ALLOW_ID), "named");
+    const plain = await keptAfterHold(a, "plain");
+    if (named.kept === null) miss(`${ALLOW_ID}'s ${ALLOW_NAME} probe`);
+    if (plain.kept === null) miss(`the plain agent's ${ALLOW_NAME} probe`);
+    out.allow = { configured: true, named: named.kept, plain: plain.kept };
+  } else out.allow = { configured: false };
   out.turn = out.emptyList
     ? { ran: false, why: "a personal install holds nothing back" }
     : await realTurn(out.envFile);
@@ -249,6 +296,8 @@ async function realTurn(envFile) {
 
 export async function teardown(ctx, s) {
   if (s?.id && ctx.agent(s.id).state()) ctx.agent(s.id).remove();
+  if (s?.allow?.configured && ctx.agent(ALLOW_ID).state())
+    ctx.agent(ALLOW_ID).remove();
 }
 
 export function expect(cells) {
@@ -289,13 +338,20 @@ export function expect(cells) {
             `CLAUDE_ENV_FILE ${fileOk ? "names env-hold.sh" : `is "${r.envFile}"`}; ` +
             `profile canary without the file: ${r.withoutFile === CANARY ? "seen" : "not seen"}, with it: ${r.withFile === "" ? "gone" : `still there ("${r.withFile}")`}`,
         },
-    {
-      clause: clauses[1],
-      ok: null,
-      skip: "needs-config-change",
-      detail:
-        "a check never sets agents.env_allow on the bed; tests/unit/agents/env-hold.test.ts proves it",
-    },
+    open
+      ? strictOnly(clauses[1])
+      : r.allow?.configured
+        ? {
+            clause: clauses[1],
+            ok: r.allow.named === ALLOW_VALUE && r.allow.plain === "",
+            detail: `${ALLOW_NAME} after each agent's env file: ${ALLOW_ID} (named in agents.env_allow_agents) ${r.allow.named === ALLOW_VALUE ? "kept it" : "lost it"}; a plain agent ${r.allow.plain === "" ? "lost it" : "kept it"}`,
+          }
+        : {
+            clause: clauses[1],
+            ok: null,
+            skip: "needs-config-change",
+            detail: `the bed's config/local/user.yml doesn't name ${ALLOW_ID} in agents.env_allow_agents (den-bed's lib/module-config.json); tests/unit/agents/env-hold.test.ts proves it`,
+          },
     {
       clause: clauses[2],
       ok: guardOk,
