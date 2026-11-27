@@ -3,7 +3,7 @@
  * Den's side of the kit is here and only here: its words' language, its
  * name, and the adapter the kit's components call, Den's routes behind it.
  *
- *   changelog()    What's new: GET /api/changelog
+ *   changelog()    What's new: GET /api/changelog (changelogPage: a page)
  *   Report:        info, diagnostics, preview, send, githubSend and
  *                  githubPoll (the device flow), saveDraft (Finish later):
  *                  /api/report/*; the working pop-up for its slow calls;
@@ -42,6 +42,10 @@ DenUI.configure({
   product: { name: "__DEN_TITLE__" },
   adapter: {
     changelog: () => fetch("/api/changelog").then((r) => r.json()),
+    changelogPage: (ask = {}) =>
+      fetch(
+        `/api/changelog?${new URLSearchParams({ limit: "10", ...ask })}`,
+      ).then((r) => r.json()),
     info: () => api("GET", "/api/report").then((r) => r.data || {}),
     diagnostics: () =>
       api("GET", "/api/report/diagnostics").then((r) => r.data || {}),
