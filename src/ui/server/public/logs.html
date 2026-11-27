@@ -630,6 +630,11 @@
             applyDenConfig(),
             initChangelog(),
           ]);
+          const askedSearch = new URLSearchParams(location.search).get("lsQ");
+          if (askedSearch) {
+            document.getElementById("hist-search").value = askedSearch;
+            void runHistorySearch(true);
+          }
 
           // Re-open streams from localStorage. __DEN_CLI__/server is env-agnostic so
           // it reopens regardless of the stored env value.
@@ -1247,13 +1252,14 @@
         });
 
         async function runHistorySearch(fromUrl = false) {
+          const input = document.getElementById("hist-search");
           if (!fromUrl) {
             const u = new URL(location.href);
             u.searchParams.delete("lsAfter");
             u.searchParams.delete("lsBack");
+            u.searchParams.set("lsQ", input.value.trim());
             history.replaceState(history.state, "", u);
           }
-          const input = document.getElementById("hist-search");
           const btn = document.getElementById("hist-search-btn");
           const q = input.value.trim();
           if (q.length < 2) {
@@ -1412,7 +1418,10 @@
             if (e.key === "Enter") runHistorySearch();
           });
         window.addEventListener("popstate", () => {
-          if (logStreams.has(SEARCH_KEY)) runHistorySearch(true);
+          const asked = new URLSearchParams(location.search).get("lsQ");
+          if (!asked) return;
+          document.getElementById("hist-search").value = asked;
+          runHistorySearch(true);
         });
 
         function showAwsReauthPrompt(paneEl, outputEl, repo, service, env) {
