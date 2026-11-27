@@ -987,6 +987,7 @@ function paintSub() {
             rows.filter((r) => !inStopped(r)),
             st.scopeLabel,
             seenMap(),
+            Array.isArray(st.data?.items) ? st.data.bands : null,
           );
   const url = st.root.querySelector("#ag-url");
   if (url) url.textContent = location.pathname + location.search;
