@@ -463,7 +463,7 @@ function hydratePages(root, opts) {
     const field = form.querySelector("input[type=number]");
     const kind = form.dataset.denPagerForm;
     if (field) {
-      const max = num(field.max) || 1;
+      const max = field.max ? num(field.max) || 1 : Infinity;
       field.value = String(Math.min(max, Math.max(1, num(field.value))));
     }
     const v = num((field ?? form.querySelector("select"))?.value);
