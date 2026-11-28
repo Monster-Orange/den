@@ -344,8 +344,13 @@ den gate settings --class-order "release, lane, other" \
 - `class_map`: each project's class. `<project>=<class>` names a project
   (a `gate run`'s repo folder, or an agent's Den project over MCP).
   `label:<pattern>=<class>` matches a run's label (`*` is any text), and
-  wins over the project. `*=<class>` is every other project. Without `*`,
-  the last class.
+  wins over the project. `<project> label:<pattern>=<class>` does the same
+  for one project only, so a project's runs can have a sub-order: with
+  `platform label:release*=p0-release, platform=p0, product=p1, *=p2` and
+  the order `p0-release, p0, p1, p2`, the platform's release checks go
+  before its lane tests, and both before any product run (the product's
+  own release checks stay P1). `*=<class>` is every other project.
+  Without `*`, the last class.
 - `class_windows` (optional): `<class>=HH:MM-HH:MM/<minutes>`, in the
   machine's local time. Outside its window, a run of that class estimated
   at least that many minutes waits while a run of a higher class holds or

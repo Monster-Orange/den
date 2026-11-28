@@ -2575,7 +2575,7 @@
       "Comma-separated, for example release, lane, other. A waiting run of a higher class starts first; within a class, first come. A run that holds its slot is never stopped. Empty: first come for all. __DEN_CLI__ gate settings --class-order release,lane,other",
     "set.server.gate_class_map": "Gate class of each project",
     "set.server.gate_class_map.d":
-      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), <project> label:<pattern>=<class> for one project only, and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
     "set.server.gate_class_windows": "Gate class windows",
     "set.server.gate_class_windows.d":
       "Comma-separated: <class>=HH:MM-HH:MM/<minutes>, in this machine's time. Outside its window, a run of that class estimated at least that many minutes waits while a higher-class run holds or waits; with none, it runs at once. __DEN_CLI__ gate settings --class-windows other=22:00-06:00/30",

@@ -4196,7 +4196,7 @@ export const DEN_SETTINGS = [
     category: "server",
     label: "Gate class of each project",
     description:
-      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
+      "Comma-separated: <project>=<class>, label:<pattern>=<class> (* matches any text), <project> label:<pattern>=<class> for one project only, and *=<class> for every other project. Without *, the last class. __DEN_CLI__ gate settings --class-map den=lane,label:release*=release,*=other",
     keywords: ["gate", "slot", "class", "project", "label", "priority"],
     scope: "user",
     keys: ["gate_slots.class_map"],
