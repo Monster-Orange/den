@@ -5,6 +5,15 @@ const KINDS = ["page", "switch", "panel"];
 const EDGE_W = 24;
 const FADE_W = 16;
 const EDGE_PAD = EDGE_W + FADE_W;
+const DOTS = ["run", "ok", "bad", "off"];
+
+function dotOf(d) {
+  if (!d || !String(d.text ?? "").trim()) return null;
+  return {
+    state: DOTS.includes(d.state) ? d.state : "off",
+    text: String(d.text),
+  };
+}
 
 function itemsOf(o) {
   return (Array.isArray(o.items) ? o.items : [])
@@ -17,6 +26,8 @@ function itemsOf(o) {
       disabled: Boolean(it.disabled),
       alert: Boolean(it.alert),
       panel: it.panel == null ? String(it.id) : String(it.panel),
+      close: it.close == null ? "" : String(it.close),
+      dot: dotOf(it.dot),
     }));
 }
 
@@ -26,13 +37,30 @@ function chosenOf(items, chosen) {
   return (hit ?? items.find((it) => !it.disabled))?.id ?? "";
 }
 
-const tabIdOf = (it) => `den-tab-${it.panel}`;
+const tabIdOf = (it) =>
+  it.shared ? `den-tab-${it.panel}-${it.id}` : `den-tab-${it.panel}`;
 
 function segment(kind, it, on) {
-  const name = it.count
-    ? ` aria-label="${esc(`${it.text}, ${it.count}`)}"`
-    : "";
+  const tab = tabOf(kind, it, on);
+  if (!it.close) return tab;
+  return (
+    `<span class="den-tab-w">${tab}` +
+    `<button type="button" class="den-tab-x" data-den-tab-close="${esc(it.id)}"` +
+    ` tabindex="-1" aria-label="${esc(it.close)}" title="${esc(it.close)}">` +
+    `<span aria-hidden="true">×</span></button></span>`
+  );
+}
+
+function tabOf(kind, it, on) {
+  const said = [it.text, it.count, it.dot?.text].filter(Boolean);
+  const name =
+    (said.length > 1 ? ` aria-label="${esc(said.join(", "))}"` : "") +
+    (it.dot ? ` title="${esc(it.dot.text)}"` : "") +
+    (it.close ? ' aria-keyshortcuts="Delete"' : "");
   const inner =
+    (it.dot
+      ? `<span class="den-dot ${it.dot.state}" aria-hidden="true"></span>`
+      : "") +
     `<span class="den-tab-t">${esc(it.text)}</span>` +
     (it.count
       ? `<span class="den-tab-n" aria-hidden="true">${esc(it.count)}</span>`
@@ -77,7 +105,11 @@ export function tabsHtml(o = {}) {
   const kind = KINDS.includes(o.kind) ? o.kind : "switch";
   const label = o.label == null ? "" : String(o.label);
   const items = itemsOf(o);
-  if (!label.trim() || items.length < 2) return "";
+  const per = new Map();
+  for (const it of items) per.set(it.panel, (per.get(it.panel) ?? 0) + 1);
+  for (const it of items) it.shared = per.get(it.panel) > 1;
+  const min = o.min === 1 ? 1 : 2;
+  if (!label.trim() || items.length < min) return "";
   const chosen = chosenOf(items, o.chosen);
   const size = o.size === "m" || o.size === "l" ? o.size : "auto";
   const edge = (side, glyph) =>
@@ -155,9 +187,8 @@ export function hydrateTabs(el, opts = {}) {
       }
       b.setAttribute(ON_ATTR[kind], on ? "true" : "false");
       b.tabIndex = on ? 0 : -1;
-      const panel = panelOf(b);
-      if (panel) panel.hidden = !on;
     }
+    panelsNow();
     if (select) select.value = id;
     keep();
   }
@@ -168,16 +199,58 @@ export function hydrateTabs(el, opts = {}) {
     return opts.onChange?.(id);
   }
 
+  function panelsNow() {
+    const shown = new Map();
+    for (const b of segs()) {
+      const panel = panelOf(b);
+      if (!panel) continue;
+      const on = isOn(b);
+      if (on || !shown.has(panel)) shown.set(panel, on ? b : null);
+    }
+    for (const [panel, b] of shown) {
+      panel.hidden = !b;
+      if (b) panel.setAttribute("aria-labelledby", b.id);
+    }
+  }
+
   for (const b of segs()) {
     const panel = panelOf(b);
     if (!panel) continue;
     panel.setAttribute("role", "tabpanel");
     panel.setAttribute("aria-labelledby", b.id);
     if (!panel.hasAttribute("tabindex")) panel.tabIndex = 0;
-    panel.hidden = !isOn(b);
+  }
+  panelsNow();
+
+  function close(id) {
+    const b = segs().find((s) => idOf(s) === id);
+    if (!b || opts.onClose?.(id) === false) return;
+    const all = segs().filter(usable);
+    const at = all.indexOf(b);
+    const next = all[at + 1] ?? all[at - 1] ?? null;
+    const hadFocus = root.contains(root.ownerDocument.activeElement);
+    const wasOn = id === current;
+    (b.closest(".den-tab-w") ?? b).remove();
+    select?.querySelector(`option[value="${CSS.escape(id)}"]`)?.remove();
+    if (wasOn) {
+      if (next) show(idOf(next));
+      else {
+        current = undefined;
+        panelsNow();
+      }
+      if (next) opts.onChange?.(idOf(next));
+    }
+    if (hadFocus && next) next.focus({ preventScroll: scroller });
+    measure();
   }
 
   const onClick = (e) => {
+    const x = e.target.closest?.("[data-den-tab-close]");
+    if (x && row.contains(x)) {
+      e.preventDefault();
+      close(x.dataset.denTabClose);
+      return;
+    }
     const b = e.target.closest?.(".den-tab");
     if (!b || !row.contains(b)) return;
     if (!usable(b)) {
@@ -196,6 +269,11 @@ export function hydrateTabs(el, opts = {}) {
     if (kind === "page" || e.isComposing) return;
     if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const b = e.target.closest?.(".den-tab");
+    if (e.key === "Delete" && b?.hasAttribute("aria-keyshortcuts")) {
+      e.preventDefault();
+      close(idOf(b));
+      return;
+    }
     if (kind === "panel" && e.key === " " && b && usable(b)) {
       e.preventDefault();
       choose(idOf(b));

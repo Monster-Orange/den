@@ -714,6 +714,25 @@ button.den-gh > .den-bdg {
 .den-dot.off {
   background: var(--faint);
 }
+.den-dot.run {
+  background: var(--accent);
+  animation: den-pulse 1.2s infinite;
+}
+.den-dot.pending {
+  background: var(--faint);
+  animation: den-pulse 1.2s infinite;
+}
+@keyframes den-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .den-dot.run,
+  .den-dot.pending {
+    animation: none;
+  }
+}
 .den-pin-row {
   display: flex;
   align-items: center;

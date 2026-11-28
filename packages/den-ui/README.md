@@ -738,6 +738,22 @@ panel }`: `id` names it, `text` is its words, `href` its page, `count`
   looks as it always did.
 - In a grid cell or a flex item, give the cell `min-width: 0`: else the
   cell grows to the row's full width and the row never scrolls.
+- A tab can be closed: `close` is the × button's name and tooltip (the
+  host's words, naming the tab). The × sits inside the tab's outline, out
+  of the tab order, 20px wide (32px on a touch screen), and a press on it
+  never chooses the tab. Delete on a focused closable tab closes it too.
+  `onClose(id)` runs first, and returning `false` keeps the tab. Focus
+  goes to the next tab, else the one before. Closing the chosen tab
+  chooses that neighbour (`onChange`). Closing another tab keeps the
+  choice.
+- A tab can show a status dot: `dot: { state, text }`, where `state` is
+  `run` (accent, pulsing, still under reduced motion), `ok`, `bad` or
+  `off` (faint). It is the kit's `.den-dot` (shell.css) before the words,
+  6px from them. `text` is read with the tab's name and is its tooltip.
+- `min: 1` draws a row of one tab, for a list that grows and shrinks (the
+  default is 2).
+- Several tabs may control one panel: it shows while any of them is
+  chosen, labelled by that tab.
 - When even that can't help (narrower than its widest tab plus both
   arrows and fades), it folds into one native `<select>` with the same
   choices (counts in brackets) after the visible label, and goes back a

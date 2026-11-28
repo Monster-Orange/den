@@ -112,6 +112,61 @@
 .den-tab[aria-disabled="true"] .den-tab-n {
   color: var(--faint);
 }
+.den-tabs {
+  --den-tab-x-w: 20px;
+}
+@media (pointer: coarse) {
+  .den-tabs {
+    --den-tab-x-w: 32px;
+  }
+}
+.den-tab-w {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  border-inline-start: 1px var(--edge-style, solid) var(--border);
+}
+.den-tab-w:first-child {
+  border-inline-start: 0;
+}
+.den-tab-w > .den-tab {
+  border-inline-start: 0;
+  padding-inline-end: calc(var(--space-1) + var(--den-tab-x-w));
+}
+.den-tab-w:not(:first-child) > .den-tab {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+.den-tab-w:last-child > .den-tab {
+  border-start-end-radius: calc(var(--radius-button) - 1px);
+  border-end-end-radius: calc(var(--radius-button) - 1px);
+}
+.den-tab-x {
+  position: absolute;
+  z-index: 3;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: var(--den-tab-x-w);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: var(--fs-s);
+  cursor: pointer;
+}
+.den-tab-x:hover {
+  color: var(--bad);
+}
+.den-tab[aria-pressed="true"] + .den-tab-x,
+.den-tab[aria-current="page"] + .den-tab-x,
+.den-tab[aria-selected="true"] + .den-tab-x {
+  color: var(--on-accent);
+}
+.den-tab .den-dot {
+  margin: 0 calc(6px - var(--space-1)) 0 0;
+}
 /* Folded: one select with the host's label before it, the field look. */
 .den-tabs-fold {
   position: static;

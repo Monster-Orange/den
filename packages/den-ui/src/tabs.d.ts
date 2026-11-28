@@ -6,6 +6,8 @@ export interface TabsItem {
   disabled?: boolean;
   alert?: boolean;
   panel?: string;
+  close?: string;
+  dot?: { state: "run" | "ok" | "bad" | "off"; text: string };
 }
 
 export interface TabsModel {
@@ -14,10 +16,12 @@ export interface TabsModel {
   items: TabsItem[];
   chosen?: string;
   size?: "auto" | "m" | "l";
+  min?: 1 | 2;
 }
 
 export interface TabsOptions {
   onChange?: (id: string) => boolean | void;
+  onClose?: (id: string) => boolean | void;
 }
 
 export interface Tabs {
