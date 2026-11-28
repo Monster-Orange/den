@@ -276,6 +276,33 @@ describe("isLocalEnabled", () => {
   });
 });
 
+// ── release.unreadablePolls (issue 129) ───────────────────────────────────────
+
+describe("release.unreadablePolls", () => {
+  it("is 40 when no layer sets it", () => {
+    mockFiles({ "config/den.yml": "release:\n  environments: [dev]\n" });
+    expect(readReleaseConfig().unreadablePolls).toBe(40);
+  });
+
+  it("takes a whole number from 1 up, from either layer", () => {
+    mockFiles({
+      "config/den.yml": "release:\n  unreadablePolls: 12\n",
+      "config/local/user.yml": "release:\n  unreadablePolls: 1\n",
+    });
+    expect(readReleaseConfig().unreadablePolls).toBe(1);
+  });
+
+  it("keeps the value under it for 0, a fraction or text", () => {
+    for (const bad of ["0", "-3", "2.5", "lots"]) {
+      mockFiles({
+        "config/den.yml": "release:\n  unreadablePolls: 12\n",
+        "config/local/user.yml": `release:\n  unreadablePolls: ${bad}\n`,
+      });
+      expect(readReleaseConfig().unreadablePolls).toBe(12);
+    }
+  });
+});
+
 // ── release.deploy (read-only Releases) ───────────────────────────────────────
 
 describe("release.deploy", () => {

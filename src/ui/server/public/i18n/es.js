@@ -5384,6 +5384,7 @@
     "rel.deploy": "Desplegar →",
     "rel.run.success": "correcto",
     "rel.run.failed": "fallido",
+    "rel.run.unreadable": "no se puede leer",
     "rel.run.skipped": "omitido",
     "rel.run.dispatching": "lanzando…",
     "rel.run.queued": "en cola",

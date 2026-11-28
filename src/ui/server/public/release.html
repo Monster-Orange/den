@@ -1073,7 +1073,10 @@
               label = `✓ ${t("rel.run.success")}`;
             } else {
               cls = "err";
-              label = `✗ ${c || t("rel.run.failed")}`;
+              label =
+                c === "unreadable"
+                  ? `✗ ${t("rel.run.unreadable")}`
+                  : `✗ ${c || t("rel.run.failed")}`;
             }
           } else if (s === "skipped") {
             cls = "";

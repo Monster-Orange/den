@@ -196,6 +196,12 @@ export interface ReleaseConfig {
   staggerSeconds: number;
   /** Seconds between monitor polls while waiting on runs (release-all.sh default: 15). */
   pollSeconds: number;
+  /**
+   * Issue 129: polls in a row that gh can't read a run (auth gone, run
+   * deleted) before that run counts as failed. A whole number, at least 1;
+   * unset, DEFAULT_UNREADABLE_POLLS.
+   */
+  unreadablePolls?: number;
   /** Deployable repos and their wave assignment. */
   repos: ReleaseRepo[];
   /** Shared per-env targets, by name; a repo opts in with `profile:`. */
@@ -3814,12 +3820,16 @@ export function readWebServiceConfig(
  * config's `release:` layers over this, personal edits via
  * config/local/user.yml.
  */
+/** Issue 129: 40 unreadable polls in a row, 10 minutes at the default poll. */
+export const DEFAULT_UNREADABLE_POLLS = 40;
+
 export const DEFAULT_RELEASE_CONFIG: ReleaseConfig = {
   deploy: false,
   // No built-in environments or repos: each instance lists its own.
   environments: [],
   staggerSeconds: 20,
   pollSeconds: 15,
+  unreadablePolls: DEFAULT_UNREADABLE_POLLS,
   repos: [],
 };
 
@@ -3843,6 +3853,11 @@ function mergeReleaseLayer(
       typeof layer?.pollSeconds === "number"
         ? layer.pollSeconds
         : base.pollSeconds,
+    unreadablePolls:
+      Number.isInteger(layer?.unreadablePolls) &&
+      (layer?.unreadablePolls as number) >= 1
+        ? layer?.unreadablePolls
+        : base.unreadablePolls,
     repos: base.repos.map((r) => ({ ...r })),
     ...(base.profiles || layer?.profiles
       ? { profiles: { ...base.profiles, ...layer?.profiles } }
