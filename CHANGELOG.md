@@ -21,6 +21,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Removing an agent whose Hub token was never made (Hub refused it) now clears its row in `den doctor`. Before, the row stayed after the agent was gone. `den doctor` also skips such a row for an agent that no longer exists. (issue 1907)
 
+- When Peek loses its connection to an agent's terminal, it now says it's connecting until it's back, and stops saying that typing goes to the agent. Before, it kept looking live for the second before it reconnected, and a key typed then was lost with no sign. (issue 1902)
+
 ## [0.4.92] - unreleased
 
 ### Changed
