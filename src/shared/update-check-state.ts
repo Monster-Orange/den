@@ -6,6 +6,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "./atomic-write.js";
+import { readStateJson } from "./state-backup.js";
 
 /** What one update-check pass did. */
 export type UpdateTick =
@@ -52,9 +53,9 @@ export function writeCheckState(stateDir: string, s: CheckState): void {
 
 export function readCheckState(stateDir: string): CheckState | null {
   try {
-    const s = JSON.parse(
-      fs.readFileSync(updateCheckFile(stateDir), "utf8"),
-    ) as Partial<CheckState>;
+    const r = readStateJson(stateDir, updateCheckFile(stateDir));
+    if (!r.ok) return null;
+    const s = (r.value ?? {}) as Partial<CheckState>;
     if (typeof s.everyMinutes !== "number") return null;
     return {
       everyMinutes: s.everyMinutes,

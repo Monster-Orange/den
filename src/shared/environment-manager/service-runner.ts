@@ -87,6 +87,7 @@ import {
   type RecordedProcessGroup,
 } from "../process/process-group.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 // Re-export so existing callers don't need to change their import path.
 export type { ServiceHealthResult };
 export { checkServiceHealth, checkCatalogHealth };
@@ -249,10 +250,9 @@ function toDaemonRecord(json: DaemonRecordJSON): DaemonRecord {
 function readDaemonsFile(filePath: string): Map<string, DaemonRecord> {
   const map = new Map<string, DaemonRecord>();
   try {
-    if (!fs.existsSync(filePath)) return map;
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as
-      | DaemonsFile
-      | DaemonRecordJSON[];
+    const r = readStateJson(getStateDir(), filePath);
+    if (!r.ok) return map;
+    const parsed = r.value as DaemonsFile | DaemonRecordJSON[];
     const records = Array.isArray(parsed) ? parsed : (parsed.daemons ?? []);
     for (const record of records) {
       if (!record.address) continue;

@@ -27,6 +27,7 @@ import { EMBED_PREFIX } from "./hub-delivery.js";
 import type { WorkspacesFile } from "../types/index.js";
 import { WORKSPACE_NAME_MAX } from "../workspace-name.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 /** The hub/* files that belong to one Hub (archived on a change). */
 export const HUB_STATE_FILES = [
@@ -91,12 +92,9 @@ function writeJson(file: string, v: unknown): void {
   writeFileAtomic(file, JSON.stringify(v, null, 1) + "\n", { mode: 0o600 });
 }
 
-function readJson(file: string): unknown {
-  try {
-    return JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
-  } catch {
-    return null;
-  }
+function readJson(stateDir: string, file: string): unknown {
+  const r = readStateJson(stateDir, file);
+  return r.ok ? r.value : null;
 }
 
 function parseBinding(v: unknown): HubBinding | null {
@@ -115,7 +113,7 @@ function parseBinding(v: unknown): HubBinding | null {
 
 /** The Hub this install's state belongs to, or null (none yet). */
 export function readHubBinding(stateDir: string): HubBinding | null {
-  return parseBinding(readJson(boundFile(stateDir)));
+  return parseBinding(readJson(stateDir, boundFile(stateDir)));
 }
 
 /**
@@ -179,7 +177,7 @@ function archiveFiles(stateDir: string, dir: string): void {
     if (!fs.existsSync(from)) continue;
     fs.renameSync(from, path.join(dir, f));
   }
-  const seen = readJson(path.join(dir, "deliveries-seen.json")) as {
+  const seen = readJson(stateDir, path.join(dir, "deliveries-seen.json")) as {
     held?: unknown;
   } | null;
   const held = ownHeld(seen?.held);
@@ -275,7 +273,7 @@ export function listPreviousHubs(stateDir: string): ArchivedHub[] {
   const out: ArchivedHub[] = [];
   for (const stamp of names) {
     const dir = path.join(previousDir(stateDir), stamp);
-    const v = readJson(path.join(dir, "from.json")) as Record<
+    const v = readJson(stateDir, path.join(dir, "from.json")) as Record<
       string,
       unknown
     > | null;
@@ -303,7 +301,7 @@ export function previousLinkOf(
 ): { name: string; origin: string; company?: string } | null {
   for (const a of listPreviousHubs(stateDir).reverse()) {
     if (!a.projects.includes(ws) || !a.from) continue;
-    const v = readJson(path.join(a.dir, "from.json")) as {
+    const v = readJson(stateDir, path.join(a.dir, "from.json")) as {
       links?: Record<string, { name?: unknown; slug?: unknown }>;
     } | null;
     const l = v?.links?.[ws];
@@ -364,7 +362,7 @@ export function readUnrevoked(stateDir: string): UnrevokedToken[] {
   }
   return names
     .filter((n) => n.endsWith(".json"))
-    .map((n) => readJson(path.join(unrevokedDir(stateDir), n)))
+    .map((n) => readJson(stateDir, path.join(unrevokedDir(stateDir), n)))
     .filter(
       (v): v is UnrevokedToken =>
         !!v &&

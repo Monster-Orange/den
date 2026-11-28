@@ -44,6 +44,7 @@ import {
   type TokenStoreDeps,
 } from "./signin-token.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 /** The list, per runtime (never a token): `<stateDir>/<this>`. */
 export const ACCOUNTS_FILE = "agent-signin-accounts.json";
@@ -111,7 +112,9 @@ function file(stateDir: string): string {
 
 function readFile(stateDir: string): AccountsFile {
   try {
-    const j = JSON.parse(fs.readFileSync(file(stateDir), "utf-8")) as {
+    const r = readStateJson(stateDir, file(stateDir));
+    if (!r.ok) return { runtimes: {} };
+    const j = (r.value ?? {}) as {
       runtimes?: unknown;
     };
     const out: AccountsFile = { runtimes: {} };

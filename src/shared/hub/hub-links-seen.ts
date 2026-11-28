@@ -12,6 +12,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getStateDir } from "../paths.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 export interface LinkSeen {
   id: string;
@@ -23,7 +24,8 @@ const file = () => path.join(getStateDir(), "hub", "links-seen.json");
 
 export function readLinksSeen(): Record<string, LinkSeen> {
   try {
-    const v = JSON.parse(fs.readFileSync(file(), "utf8")) as unknown;
+    const r = readStateJson(getStateDir(), file());
+    const v = r.ok ? r.value : null;
     return v && typeof v === "object" ? (v as Record<string, LinkSeen>) : {};
   } catch {
     return {};

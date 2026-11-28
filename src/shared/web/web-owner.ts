@@ -12,6 +12,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { getStateDir } from "../paths.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 export const WEB_OWNER_FILE = "web-owner.json";
 
@@ -52,7 +53,9 @@ export function readWebOwner(
 ): WebOwner | null {
   let raw: unknown;
   try {
-    raw = JSON.parse(fs.readFileSync(webOwnerPath(stateDir), "utf-8"));
+    const r = readStateJson(stateDir, webOwnerPath(stateDir));
+    if (!r.ok) return null;
+    raw = r.value;
   } catch {
     return null;
   }

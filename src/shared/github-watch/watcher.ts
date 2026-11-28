@@ -53,6 +53,8 @@ import { embedDelivery, type Delivery } from "../hub/hub-delivery.js";
 import { GITHUB_WATCH_LIMITS, type GithubWatchSettings } from "./settings.js";
 import type { GhGet, GhResponse } from "./gh-http.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { getStateDir } from "../paths.js";
+import { readStateJson } from "../state-backup.js";
 import { isRepoName } from "../repo-name.js";
 
 export interface GithubWatchDeps {
@@ -65,6 +67,7 @@ export interface GithubWatchDeps {
   now?: () => number;
   /** Where the watches are kept across a restart. */
   file?: string;
+  stateDir?: string;
   /** Where doctor reads the status line from. */
   statusFile?: string;
   log?: (line: string) => void;
@@ -1360,7 +1363,9 @@ export class GithubWatcher {
   private load(): void {
     if (!this.d.file) return;
     try {
-      const j = JSON.parse(fs.readFileSync(this.d.file, "utf-8")) as {
+      const r = readStateJson(this.d.stateDir ?? getStateDir(), this.d.file);
+      if (!r.ok) return;
+      const j = (r.value ?? {}) as {
         watches?: unknown;
       };
       if (Array.isArray(j.watches))

@@ -21,6 +21,8 @@ import * as path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Principal } from "./request-guard.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
+import { readStateJson } from "../../shared/state-backup.js";
+import { getStateDir } from "../../shared/paths.js";
 
 export interface LedgerAnswer {
   status: number;
@@ -155,6 +157,7 @@ export function createRequestLedger(opts: {
   maxAnswerBytes?: () => number;
   /** Where finished requests are kept across restarts (0600). */
   file?: string;
+  stateDir?: string;
   /** One line per finished write: req=<id>, the action, the outcome. */
   log?: (line: string) => void;
   now?: () => number;
@@ -214,9 +217,9 @@ export function createRequestLedger(opts: {
     if (!opts.file) return;
     let rows: unknown;
     try {
-      rows = (
-        JSON.parse(fs.readFileSync(opts.file, "utf8")) as { rows?: unknown }
-      ).rows;
+      const r = readStateJson(opts.stateDir ?? getStateDir(), opts.file);
+      if (!r.ok) return;
+      rows = ((r.value ?? {}) as { rows?: unknown }).rows;
     } catch {
       return;
     }

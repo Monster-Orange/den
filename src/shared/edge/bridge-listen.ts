@@ -20,10 +20,10 @@
  * a wait: the probe runs after Den listens, within its timeout.
  */
 import { execFile } from "child_process";
-import * as fs from "fs";
 import * as path from "path";
 import { isDockerBridgeAddress } from "./docker-bridge.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 export type BridgeListen = "auto" | "off";
 
@@ -142,9 +142,9 @@ export function readBridgeState(
   stateDir: string,
 ): (BridgeOutcome & { at?: string }) | null {
   try {
-    const v = JSON.parse(
-      fs.readFileSync(bridgeStateFile(stateDir), "utf-8"),
-    ) as Record<string, unknown>;
+    const r = readStateJson(stateDir, bridgeStateFile(stateDir));
+    if (!r.ok) return null;
+    const v = (r.value ?? {}) as Record<string, unknown>;
     if (v.state === "listening" && typeof v.address === "string")
       return {
         state: "listening",

@@ -122,6 +122,31 @@ describe("a state file that can't be read", () => {
     expect(backup(d)).toHaveLength(KEEP_PER_FILE);
   });
 
+  it("x.json and x.json.bak each keep their own copies", () => {
+    const d = stateDir();
+    const f = path.join(d, "x.json");
+    const g = path.join(d, "x.json.bak");
+    for (let i = 0; i < KEEP_PER_FILE; i++) {
+      fs.writeFileSync(g, `bak ${i}`);
+      keepUnreadable(d, g, "bad", new Date(Date.UTC(2026, 10, 22, 9, i)));
+    }
+    for (let i = 0; i < KEEP_PER_FILE; i++) {
+      fs.writeFileSync(f, `x ${i}`);
+      keepUnreadable(d, f, "bad", new Date(Date.UTC(2026, 10, 22, 10, i)));
+    }
+    const left = backup(d).map((n) =>
+      fs.readFileSync(path.join(d, "backup", n), "utf8"),
+    );
+    expect(left.sort()).toEqual([
+      "bak 0",
+      "bak 1",
+      "bak 2",
+      "x 0",
+      "x 1",
+      "x 2",
+    ]);
+  });
+
   it("copies kept in the same millisecond: the newest stay", () => {
     const d = stateDir();
     const f = path.join(d, "notifications.json");

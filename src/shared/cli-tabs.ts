@@ -3,6 +3,7 @@ import * as path from "path";
 import { tabExists, type TerminalApp } from "./terminal/tabs.js";
 import { getStateDir } from "./paths.js";
 import { writeFileAtomic } from "./atomic-write.js";
+import { readStateJson } from "./state-backup.js";
 
 export interface CliTabRecord {
   address: string;
@@ -36,8 +37,9 @@ function toRecord(json: CliTabRecordJSON): CliTabRecord {
 function readTabsFile(filePath: string): Map<string, CliTabRecord> {
   const map = new Map<string, CliTabRecord>();
   try {
-    if (!fs.existsSync(filePath)) return map;
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8")) as
+    const r = readStateJson(getStateDir(), filePath);
+    if (!r.ok) return map;
+    const parsed = r.value as
       | Record<string, CliTabRecordJSON>
       | CliTabRecordJSON[];
     const records = Array.isArray(parsed) ? parsed : Object.values(parsed);

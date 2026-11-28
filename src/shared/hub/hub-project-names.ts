@@ -12,6 +12,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { HubProjectLink } from "./hub-project-link.js";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 export interface HubNamesDeps {
   /** Every project linked to Hub, with its stored link. */
@@ -83,9 +84,12 @@ const iso = (v: unknown): string | undefined =>
 
 export function readHubNamesCheck(stateDir: string): HubNamesCheck {
   try {
-    const v = JSON.parse(
-      fs.readFileSync(path.join(stateDir, HUB_NAMES_CHECK_FILE), "utf-8"),
-    ) as Record<string, unknown>;
+    const r = readStateJson(
+      stateDir,
+      path.join(stateDir, HUB_NAMES_CHECK_FILE),
+    );
+    if (!r.ok) return {};
+    const v = (r.value ?? {}) as Record<string, unknown>;
     const okAt = iso(v.okAt);
     const failAt = iso(v.failAt);
     return { ...(okAt ? { okAt } : {}), ...(failAt ? { failAt } : {}) };

@@ -13,6 +13,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 export type HostRefreshPhase =
   | "waiting"
@@ -91,7 +92,9 @@ export function readHostRefreshState(
 ): HostRefreshState | null {
   let v: Partial<HostRefreshState>;
   try {
-    v = JSON.parse(fs.readFileSync(hostRefreshFile(stateDir), "utf8"));
+    const r = readStateJson(stateDir, hostRefreshFile(stateDir));
+    if (!r.ok) return null;
+    v = r.value as Partial<HostRefreshState>;
   } catch {
     return null;
   }

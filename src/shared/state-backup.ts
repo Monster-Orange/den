@@ -31,6 +31,8 @@ function flatName(rel: string): string {
   return rel.split(/[\\/]+/).join("__");
 }
 
+const COPY_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z(?:-\d+)?\.bad$/;
+
 function stamp(d: Date): string {
   return d.toISOString().replace(/[:.]/g, "-");
 }
@@ -96,8 +98,10 @@ function prune(dir: string, base: string): void {
   try {
     names = fs
       .readdirSync(dir)
-      .filter((n) => n.startsWith(`${base}.`) && n.endsWith(".bad"))
-      .filter((n) => !n.slice(base.length + 1).includes("__"));
+      .filter(
+        (n) =>
+          n.startsWith(`${base}.`) && COPY_STAMP.test(n.slice(base.length + 1)),
+      );
   } catch {
     return;
   }

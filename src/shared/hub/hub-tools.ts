@@ -34,6 +34,8 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { getStateDir } from "../paths.js";
+import { readStateJson } from "../state-backup.js";
 
 /** Each Hub tool's parameters and the required ones, sorted. */
 export type ToolShape = Record<
@@ -271,6 +273,7 @@ export interface HubToolsWatchDeps {
   restartOn?(id: string): boolean;
   /** The state file (mode 0600). */
   file: string;
+  stateDir?: string;
   log?: (line: string) => void;
 }
 
@@ -328,7 +331,9 @@ export class HubToolsWatch {
 
   constructor(private readonly d: HubToolsWatchDeps) {
     try {
-      const raw = JSON.parse(fs.readFileSync(d.file, "utf8")) as {
+      const r = readStateJson(d.stateDir ?? getStateDir(), d.file);
+      if (!r.ok) throw new Error("unreadable");
+      const raw = r.value as {
         v?: unknown;
         agents?: Record<string, Seen>;
         launches?: Record<string, Launch>;

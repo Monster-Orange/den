@@ -3,8 +3,8 @@
  * (<state>/server-agent/update/pin.json). Written by the running Den
  * (src/ui/server/pin-commit.ts), read by it and by doctor (the CLI).
  */
-import * as fs from "fs";
 import * as path from "path";
+import { readStateJson } from "./state-backup.js";
 
 /**
  * Issue 1189: why a pin set to push went to a pull request: the branch's
@@ -41,9 +41,9 @@ export const pinRecordFile = (stateDir: string): string =>
 
 export function readPinRecord(stateDir: string): PinRecord | null {
   try {
-    const r = JSON.parse(
-      fs.readFileSync(pinRecordFile(stateDir), "utf8"),
-    ) as PinRecord;
+    const read = readStateJson(stateDir, pinRecordFile(stateDir));
+    if (!read.ok) return null;
+    const r = read.value as PinRecord;
     return typeof r?.version === "string" && typeof r.state === "string"
       ? r
       : null;

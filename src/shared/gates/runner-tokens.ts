@@ -18,6 +18,7 @@ import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { writeFileAtomic } from "../atomic-write.js";
+import { readStateJson } from "../state-backup.js";
 
 export const RUNNER_TOKEN_PREFIX = "den_gr_";
 const TOKEN_RE = /^den_gr_([0-9a-f]{16})_[A-Za-z0-9_-]{43}$/;
@@ -86,22 +87,25 @@ export type RunnerCheck =
   | { ok: false; code: "bad_token" | "token_revoked" };
 
 export class RunnerTokens {
+  private readonly file: string;
+
   constructor(
-    private readonly file: string,
+    private readonly stateDir: string,
     private readonly now: () => number = Date.now,
-  ) {}
+  ) {
+    this.file = path.join(stateDir, "gate", "runner-tokens.json");
+  }
 
   /** The store under a state dir. */
   static at(stateDir: string, now?: () => number): RunnerTokens {
-    return new RunnerTokens(
-      path.join(stateDir, "gate", "runner-tokens.json"),
-      now,
-    );
+    return new RunnerTokens(stateDir, now);
   }
 
   private read(): Stored[] {
     try {
-      const v = JSON.parse(fs.readFileSync(this.file, "utf-8")) as {
+      const r = readStateJson(this.stateDir, this.file);
+      if (!r.ok) return [];
+      const v = (r.value ?? {}) as {
         tokens?: unknown;
       };
       return Array.isArray(v.tokens)
