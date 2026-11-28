@@ -375,6 +375,15 @@ globalThis.window?.addEventListener?.(
  * goes into .bz-lbl (hidden, so the size stays) and three dots go over it;
  * the accessible name stays the label.
  */
+const shownText = (n) =>
+  n.nodeType === 3
+    ? (n.textContent ?? "")
+    : n.getAttribute?.("aria-hidden") === "true"
+      ? ""
+      : n.childNodes?.length
+        ? [...n.childNodes].map(shownText).join("")
+        : String(n.textContent ?? "");
+
 function holdButton(b, on, dots) {
   if (!b) return;
   if (!on) {
@@ -409,9 +418,7 @@ function holdButton(b, on, dots) {
   if (!dots || held.has(b)) return;
   ensureCss();
   const name = b.getAttribute("aria-label");
-  const text = String(b.textContent ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = shownText(b).replace(/\s+/g, " ").trim();
   const lbl = document.createElement("span");
   lbl.className = "bz-lbl";
   while (b.firstChild) lbl.append(b.firstChild);

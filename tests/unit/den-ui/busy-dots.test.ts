@@ -479,6 +479,17 @@ describe("issue 699, 3: the label stays; the name stays the label", () => {
     expect(b.textContent).toBe("Working…");
     expect(b.disabled).toBe(false);
   });
+  it("an aria-hidden icon or arrow stays out of the name while held", async () => {
+    const b = button("More");
+    const arrow = new El("span");
+    arrow.setAttribute("aria-hidden", "true");
+    arrow.append(" ▾");
+    b.append(arrow);
+    void kit.pending(b, () => answer(100));
+    expect(b.getAttribute("aria-label")).toBe("More");
+    await tick(100);
+    expect(b.getAttribute("aria-label")).toBeNull();
+  });
   it("a button's own aria-label is kept as it was", async () => {
     const b = button();
     b.setAttribute("aria-label", "Save the plan");
