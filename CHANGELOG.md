@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Added
+
+- UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps. Every word is the host's. A row that doesn't fit scrolls sideways, with « and » at its ends shown only while tabs are hidden on that side (a red dot when a hidden tab has an alert), and keeps the chosen and focused tab in view; only when even one tab can't fit between the arrows does it fold into one select with the same choices and a visible label.
+
 ### Fixed
 
 - Report works on an iPad (UI kit). The first step's Next, Finish later and Cancel now stay on screen: the button row sticks to the dialog's bottom at every width, and the dialog's height follows the visible window, so Safari's own toolbar and the on-screen keyboard no longer hide them. With the keyboard up, the dialog moves to the visible top. On a touch screen, a swipe on the screenshot scrolls the dialog; to black out an area, pick "Mask an area" first. The screenshot is capped at 45% of the window's height, and every control is at least 44px tall.

@@ -908,6 +908,9 @@
     "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
       "src/ui/server/public/agents-*.js"
+    ],
+    "tests/unit/server/report-ipad.browser.test.ts": [
+      "src/ui/server/public/report-den.js"
     ]
   },
   "subjectless": [],
@@ -1138,6 +1141,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/tabs-kit.browser.test.ts",
         "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
@@ -1541,6 +1545,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/tabs-kit.browser.test.ts",
         "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
@@ -1839,6 +1844,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/tabs-kit.browser.test.ts",
         "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
@@ -1981,6 +1987,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/tabs-kit.browser.test.ts",
         "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/server/a11y.browser.test.ts",
@@ -2381,6 +2388,7 @@
         "tests/unit/den-ui/report-visibility.browser.test.ts",
         "tests/unit/den-ui/savestate-kit.browser.test.ts",
         "tests/unit/den-ui/shell-kit-parity.browser.test.ts",
+        "tests/unit/den-ui/tabs-kit.browser.test.ts",
         "tests/unit/den-ui/whatsnew-confirm-864.browser.test.ts",
         "tests/unit/gates/box-guard-991.browser.test.ts",
         "tests/unit/scripts/doc-shots-guard.browser.test.ts",
@@ -4437,6 +4445,11 @@
         "src/ui/server/public/report-den.js"
       ],
       "run": ["tests/unit/server/report-everywhere.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/server/public/report-den.js"],
+      "run": ["tests/unit/server/report-ipad.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
