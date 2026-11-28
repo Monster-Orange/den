@@ -11,6 +11,6 @@
     "acme": "./bin/acme"
   },
   "dependencies": {
-    "@monster-orange/den": "0.4.93"
+    "@monster-orange/den": "0.4.94-dev.0"
   }
 }
