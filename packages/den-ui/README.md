@@ -52,7 +52,12 @@ own copy, so a page never mixes two versions.
   turns the pill into a card. Knobs, set on `.den-upd`: `--upd-pad-y`
   (default 8px) and `--upd-top` (default: a 50px pill centred on a 48px
   bar, top -1px; for a 56px bar,
-  `calc(env(safe-area-inset-top, 0px) + 3px)`). It reads `--surface`,
+  `calc(env(safe-area-inset-top, 0px) + 3px)`). In the shell, with no top
+  bar (`--den-top-h: 0px`) the pill sits 8px down, and a bar shorter than
+  the pill never puts it above the window. A host places kit overlays
+  below its own bars with `--den-overlay-top` on `body` or `:root`, no kit
+  selector needed: the pill's top is then the safe area plus that (say
+  `body.focus { --den-overlay-top: calc(44px + 8px); }`). It reads `--surface`,
   `--text`, `--muted`, `--border-strong`, `--accent`, `--accent-text` and
   `--upd-shadow`.
 
@@ -687,6 +692,146 @@ never converted to HTML and back).
   `--surface` and slides over `--dur-fast`, not at all under reduced
   motion. A transparent border shows the track in forced colours.
 - Under `style-src 'self'`: no inline styles, nothing injected.
+- `src/tabs.js`, `src/tabs.css` (exports `./tabs`, `./tabs.css`): tabs,
+  the segmented control (DS component #1): one row of two to six choices,
+  exactly one chosen.
+
+      import { tabsHtml, hydrateTabs } from "@monster-orange/den-ui/tabs";
+      box.innerHTML = tabsHtml({ kind: "switch", label: "Tier",
+        items: [{ id: "p", text: "Primitive colours", count: 92 },
+                { id: "all", text: "All" }], chosen: "all", size: "auto" });
+      const tabs = hydrateTabs(box.querySelector(".den-tabs"), {
+        onChange: (id) => show(id),
+      });
+      tabs.set("p"); tabs.chosen(); tabs.destroy();
+
+- The model: `kind` (`"page"`, `"switch"` or `"panel"`), `label` (the
+  group's name), `items` (each `{ id, text, href, count, disabled,
+panel }`: `id` names it, `text` is its words, `href` its page, `count`
+  a number after it, `disabled` greys it, `panel` the id of the panel it
+  shows), `chosen` (the chosen item's `id`) and `size` (`"auto"`, `"m"`
+  or `"l"`).
+- `kind: "page"` is a `<nav>` of links, the chosen one
+  `aria-current="page"`, each its own Tab stop, working with no script.
+  `kind: "switch"` is a `role="group"` of buttons, the chosen one
+  `aria-pressed="true"`: one Tab stop, ← and → move and choose, Home and
+  End go to the ends. `kind: "panel"` is a `role="tablist"`: each tab has
+  `aria-selected` and `aria-controls` its `panel` (the host's element,
+  which becomes a `role="tabpanel"` shown only while its tab is chosen),
+  with the same keys, and Tab goes on into the panel. With no script each
+  panel tab is a link, its `href` or `?tab=<id>`. A tab's id is
+  `den-tab-<panel>`, so every `panel` id must be unique on the page, as
+  any id must, even across two tablists. The `label` names the group, and each item's
+  `text` is the host's own words; the kit adds none. A `count` follows
+  the label and is read with it. A `disabled` item is faint and read out,
+  but can't be chosen. No label, or fewer than two items: nothing is drawn.
+- It never wraps and never breaks a label. A row that doesn't fit the
+  width it is given scrolls sideways (no scrollbar), with « and » at its
+  ends: each shows only while tabs are hidden on its side
+  (`data-den-tabs-over`: `none`, `start`, `end` or `both`). They are 24px
+  wide on a 16px fade (`--den-tabs-edge-bg`, default `--surface`),
+  `aria-hidden` and never Tab stops; a press scrolls a row-width less one
+  tab, so the tab at the edge stays as the anchor. An item with
+  `alert: true` (open comments, a failed check) has its count in `--bad`,
+  and an arrow with such a tab hidden behind it shows a 6px `--bad` dot.
+  The chosen tab and a focused tab are kept in view. A row that fits
+  looks as it always did.
+- In a grid cell or a flex item, give the cell `min-width: 0`: else the
+  cell grows to the row's full width and the row never scrolls.
+- When even that can't help (narrower than its widest tab plus both
+  arrows and fades), it folds into one native `<select>` with the same
+  choices (counts in brackets) after the visible label, and goes back a
+  few px after they fit again. Both are measured with a ResizeObserver,
+  not a breakpoint. With no script the row scrolls and never folds.
+  Folded page tabs follow the chosen link, unless `onChange` returns
+  false.
+- 36px tall, or 44px (`--tap`) at 600px wide or less or with a coarse
+  pointer (`size: "auto"`; `"m"` and `"l"` fix it). Each segment is at
+  least 72px wide. The chosen one is `--accent-fill` with `--on-accent`
+  words; hover is `--sunken`; the focus ring is 2px `--accent` outside
+  the segment. `data-den-force="hover"` or `"focus"` on a segment shows
+  that state without the pointer or keys, for a page of its states.
+  Tokens only; under `style-src 'self'`, nothing injected.
+
+## Pagination
+
+- `src/pager.js`, `src/pager.css` (exports `./pager`, `./pager.css`): one
+  row under a long list (DS component #2, v6). Link `pager.css` after
+  `tokens.css`; more mode also uses `busy.css`.
+
+      import { pagerHtml, hydratePager } from "@monster-orange/den-ui/pager";
+      foot.innerHTML = pagerHtml({ from: 101, to: 150, total: 809,
+        page: 3, per: 50, href: (t) => listUrl(t), lang: "en", words });
+      hydratePager(foot.querySelector(".den-pager"), { list: "docs" });
+
+- The model: `mode` (`"pages"`, the default, or `"more"`), `from`, `to`,
+  `total?`, `hasNext`, `page?`, `pages?` (else from `total` and `per`),
+  `per`, `perOptions` (default 25, 50, 100, 200), `href(target)`, `lang`
+  and `words`. `href` is the host's: it returns the URL, filters, sort and
+  `#list` kept, for `"first"`, `"prev"`, `"next"`, `"last"`, `{ page }` or
+  `{ per }`. One page only, or none: nothing is drawn, unless the person
+  chose a page size other than `perDefault`; then the row stays, so the
+  per-page choice can go back.
+- With a total: "1–50 of 809", then |< ‹ "Page [3 ▾] of 17" › >|, then
+  "[50 ▾] per page". First, Previous, Next and Last are icons only
+  (mirrored right to left), square: 32px, 44px on touch or at 600px or
+  less. Each word is the button's `aria-label` (the `*Sr` word, else the
+  word) and its `title` tooltip. The page picker is a select
+  of every page, or a number field with Go over 500 pages. An end with no
+  link is shown but `aria-disabled`, so nothing moves.
+- With no total (a cursor list): "1–50", Previous and Next
+  (`hasNext`), First from page 2 on, no Last and no picker. A server
+  that can only page forward: build `href` with `cursorHref(url, target,
+nextCursor)`, which keeps the cursors already visited in the URL
+  (`back`), so Previous and the browser's Back step back through them.
+  It keeps the last 20 (`keep`); past that, Previous is off at the oldest
+  one kept, and First still goes to the start. The first row's offset
+  rides in the URL too (`o`, a plain number the cap doesn't touch):
+  `cursorStart(url)` gives it, so `from` is `cursorStart(url) + 1`.
+- The layout follows the row's own width (a container query). Above
+  600px the full row shows, never a ⋯; under 760px the range and the
+  per-page choice go below the controls. At 600px or less it is the
+  folded form only: |< ‹ [3 / 17 ▾] › >| ⋯, where ⋯ opens a pop-over (a
+  bottom sheet on a narrow row) with the range and the per-page choice.
+  With no total the middle is the range ("‹ 1–50 ›"). The two forms never
+  show together. Other buttons are 36px, and 44px only in a window 600px wide
+  or less or with a coarse pointer.
+- `compact: true`, for a list inside a card: ‹ [1] / 25 › only, a small
+  page field between Previous and Next (Enter goes there), with |< and >|
+  added when the row is wider than 600px. No range, per-page or ⋯. ← and
+  → stay off unless `shortcuts` is passed, since a page may have several.
+- More mode with `loaded: true` keeps its row once every row is shown
+  ("All 70 shown", no button), for a list redrawn whole after its last
+  chunk. A press calls `load()`, or `onNavigate({ kind: "more" })` when
+  there is no `load`, holding the button with dots until it settles.
+- With no script every control is a link, and each select sits in a GET
+  form with Go (its action and other values come from two of `href`'s
+  own links). `hydratePager(el, { list, onNavigate?, shortcuts? })` hides
+  Go, follows a select at once, places the ⋯ pop-over (a sheet on a
+  narrow row), and adds keys: ← and → go back and forward while focus is on
+  the page body, the list or the pager (never in a field, select,
+  editable area, dialog or `role="application"`), and Home and End on the
+  pager go to the first and last page. `shortcuts` (a boolean or a
+  function) follows the person's single-key shortcuts choice. Each move
+  fires a cancelable `den-pager-nav` event (`{ kind, target, href }`);
+  with `onNavigate` the host moves itself (a client-side list).
+- `words` are the host's: `range`, `rangeOpen`, `label`, `first`,
+  `firstSr`, `prev`, `prevSr`, `next`, `nextSr`, `last`, `lastSr`,
+  `pageOf` ("Page {select} of {n}"), `pageShort` ("{p} / {n}"), `pageSr`,
+  `go`, `perPage` ("{select} per page"), `more` (the ⋯ menu's name), and
+  for more mode `moreN` ("Show {n} more"), `lastN` ("Show the last {n}"),
+  `all` and `moreErr`. `{select}` places the select in the sentence. The
+  kit adds none.
+- More mode: one "Show 50 more" link that works with no script. With
+  `hydratePager(el, { load, list })` a press (or Space) holds it with the
+  kit's dots, calls `load()` for `{ html, to, moreHref?, hasNext? }`, adds
+  the rows to `list` (an element or its id; default the element before
+  the pager), moves focus to the first new row and updates the range,
+  which is a polite live region. On the last chunk it says `lastN`; once
+  every row is shown the button goes and the range says `all`. A failed
+  load shows `moreErr` beside the button, and a press tries again.
+- 36px tall, 44px at 600px wide or less or with a coarse pointer. Tokens
+  only.
 
 ## A list's filter bar and bulk bar
 
