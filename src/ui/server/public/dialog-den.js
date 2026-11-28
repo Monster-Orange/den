@@ -22,11 +22,12 @@ import {
   askText as kitText,
   configureDialog,
   dialogHtml,
+  holdOpen,
   mountDialog as kitMount,
   tell as kitTell,
 } from "/kit/dialog.js";
 
-export { dialogHtml };
+export { dialogHtml, holdOpen };
 
 const sh = () => window.denShell;
 const t = (key, vars) => sh()?.t?.(key, vars) ?? key;

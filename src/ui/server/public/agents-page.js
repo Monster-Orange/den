@@ -114,7 +114,7 @@ import { startGateChip } from "/gate-chip.js";
 import { latestShell } from "/shell-pick.js";
 import { belongsOn, newTerminalChoices } from "/terminals-list.js";
 import { startFailTail, startFailText } from "/pty-refusal.js";
-import { askConfirm } from "/dialog-den.js";
+import { askConfirm, holdOpen } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
 
 import { makeComposer } from "/agent-composer.js";
@@ -2288,9 +2288,11 @@ function paintStartsAs() {
   if (match) {
     el.append(
       t("ag.new.isStopped", { id: match.agent }) + " · ",
-      act(t("ag.new.resumeIt"), () => {
-        $d("#ag-dlg").close?.();
-        void restartRow(match, "resume", null);
+      act(t("ag.new.resumeIt"), (e) => {
+        const b = e.currentTarget;
+        void holdOpen($d("#ag-dlg"), restartRow(match, "resume", b), {
+          button: b,
+        });
       }),
       " " + t("ag.new.orNext", { id: nextFree(slug) }),
     );
