@@ -109,6 +109,56 @@ const release = (t: string) =>
     "## [0.4.92] - unreleased\n\n- A queue line in 0.4.92.\n\n## [0.4.91] - 2026-11-26",
   );
 
+const opened = (line: string) => (t: string) =>
+  t.replace(
+    "## [0.4.91] - unreleased\n\n",
+    `## [0.4.91] - unreleased\n\n### Changed\n\n${line}\n\n`,
+  );
+
+describe("changelog-line --placed: a heading added twice in one release", () => {
+  it("fails when the merge leaves the top section with the same ### heading twice", () => {
+    const d = repo();
+    const r = merge(d, opened("- A queue line."), opened("- A PR line."), (t) =>
+      t.replace(
+        /<<<<<<< [^\n]*\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> [^\n]*\n/,
+        "$1$2",
+      ),
+    );
+    expect(r.out).toContain('"### Changed" twice');
+    expect(r.out).toContain("## [0.4.91] - unreleased");
+    expect(r.code).toBe(1);
+  });
+
+  it("passes one ### heading with both sides' lines under it", () => {
+    const d = repo();
+    const r = merge(d, opened("- A queue line."), opened("- A PR line."), (t) =>
+      t.replace(
+        /<<<<<<< [^\n]*\n([\s\S]*?)=======\n### Changed\n\n([\s\S]*?)>>>>>>> [^\n]*\n/,
+        "$1$2",
+      ),
+    );
+    expect(r.code).toBe(0);
+  });
+
+  it("passes a heading that a released section repeats: only the top section is checked", () => {
+    const d = repo();
+    setLog(
+      d,
+      log(d).replace(
+        "## [0.4.90] - 2026-11-25\n\n",
+        "## [0.4.90] - 2026-11-25\n\n### Fixed\n\n- One.\n\n### Fixed\n\n",
+      ),
+    );
+    commit(d, "old repeat");
+    const r = merge(
+      d,
+      (t) => t,
+      after("- A fourth unreleased line.", "- A PR line."),
+    );
+    expect(r.code).toBe(0);
+  });
+});
+
 describe("changelog-line --placed <base>..<head> (issue 1769)", () => {
   it("fails a stale branch whose line merges cleanly under a heading the queue has since released", () => {
     const d = repo();
