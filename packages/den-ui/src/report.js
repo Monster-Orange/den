@@ -282,8 +282,8 @@ export async function openReport(opts = {}) {
     title: d.title || "",
     description: d.description || "",
     sections: d.sections || prefs?.sections || null,
-    redact:
-      d.redact !== undefined ? d.redact !== false : prefs?.redact !== false,
+    redact: true,
+    redactTouched: false,
     remember: !!prefs,
     repo: d.repo || null,
     draftId: d.id && d.by === "person" ? d.id : null,
@@ -406,6 +406,19 @@ export async function openReport(opts = {}) {
   document.body.append(dlg);
   st.diag = diag?.sections || diag || {};
   st.repo = st.repo || st.info.repos?.[0]?.repo || "";
+  const draftRepo = st.repo;
+  function redactFor(repo) {
+    const r = (st.info.repos || []).find((x) => x.repo === repo) || {};
+    const closed = ["private", "internal"].includes(
+      reportVisibility(r).visibility,
+    );
+    const draft = repo === draftRepo && typeof d.redact === "boolean";
+    if (!closed) return !(draft && d.by === "person" && d.redact === false);
+    if (draft) return d.redact;
+    if (typeof prefs?.redact === "boolean") return prefs.redact;
+    return r.redact !== false;
+  }
+  st.redact = redactFor(st.repo);
   if (!st.sections) {
     st.sections = {};
     for (const k of Object.keys(allSections())) st.sections[k] = true;
@@ -1008,7 +1021,10 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     const sec = el.getAttribute?.("data-sec");
     if (sec) st.sections[sec] = el.checked;
     const f = el.getAttribute?.("data-f");
-    if (f === "redact") st.redact = el.checked;
+    if (f === "redact") {
+      st.redact = el.checked;
+      st.redactTouched = true;
+    }
     if (f === "shareshot") st.shareShot = el.checked;
     if (f === "remember") st.remember = el.checked;
     if (f === "noshot") {
@@ -1017,6 +1033,8 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     }
     if (f === "repo") {
       st.repo = el.value;
+      st.redact = redactFor(st.repo);
+      st.redactTouched = false;
       st.share = null;
       render('[data-f="repo"]');
       void preview();
@@ -1100,8 +1118,14 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     }
     if (act === "review") {
       st.backToReview = false;
+      const keep = st.redactTouched ? st.redact : prefs?.redact;
       savePrefs(
-        st.remember ? { sections: st.sections, redact: st.redact } : null,
+        st.remember
+          ? {
+              sections: st.sections,
+              ...(typeof keep === "boolean" ? { redact: keep } : {}),
+            }
+          : null,
       );
       st.preview = null;
       go("review");

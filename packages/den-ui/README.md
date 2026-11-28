@@ -200,6 +200,20 @@ and the "visible to everyone" warning above Send. A private or internal
 one gets its own pill, the audience, and a quiet line instead of the
 warning. Both follow the repo chosen in Review.
 
+Each repo may also give `redact`, the host's default for the "Redact
+names" box. Only `false` means off, and only for a private or internal
+repo. The box starts this way:
+
+- Public or unknown: on. A saved choice never turns it off, and nor does
+  an agent's draft. The person's own draft for that repo can.
+- Private or internal: the draft's choice, then the person's saved choice,
+  then the host's default, then on.
+
+Changing the repo in Review works the box out again, drops an earlier
+tick, and refreshes the preview. Remember my choices saves the box only if
+the person changed it, and a saved choice is read for private and
+internal repos only.
+
 ### Strings
 
 `src/strings.js` (export `./strings`) exports `en`, `es` and `ja`: every

@@ -9,6 +9,7 @@ config and manifest changes a distribution must make to move to it under
 ### Added
 
 - UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps. Every word is the host's. A row that doesn't fit scrolls sideways, with « and » at its ends shown only while tabs are hidden on that side (a red dot when a hidden tab has an alert), and keeps the chosen and focused tab in view; only when even one tab can't fit between the arrows does it fold into one select with the same choices and a visible label.
+- Report's "Redact names" box can start from a host default (UI kit). Each of the host's repos may give `redact`; only `false` turns it off, and only for a private or internal repo. A public or unknown repo always starts on: a saved choice or an agent's draft never turns it off, and only a tick in the form or the person's own draft for that repo does. Changing the repo in Review works the box out again and refreshes the preview. Remember my choices saves the box only when the person changed it.
 
 ### Fixed
 
