@@ -86,6 +86,10 @@ beforeAll(async () => {
     path.join(dist, "config", "local", "workspaces.yml"),
     "active: [default]\nfocus: default\nworkspaces:\n  default:\n    services:\n      shop:\n        mode: dev-managed\n        path: /nowhere/shop\n",
   );
+  fs.writeFileSync(
+    path.join(dist, "config", "local", "service-catalog.yml"),
+    "shop:\n  gh: acme/shop\n",
+  );
   addTheme(dist, "webfont", (m) => {
     m.type = {
       sans: 'Rubik, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -386,6 +390,23 @@ describe("issue 793: every pop-up draws in the page's font, on every theme", () 
       await p.locator(WHATS_NEW).waitFor({ state: "detached" });
       await p.locator("[data-add-svc]").click();
       const pop = "dialog#add-svc-dlg[open]";
+      await p.locator(pop).waitFor();
+      expect(problems(await fontsOf(p, pop), strict)).toEqual([]);
+      await p.keyboard.press("Escape");
+      await p.context().close();
+    }, 60_000);
+
+    it("the graph's popped-out details", async () => {
+      if (!browser) return;
+      const p = await pageOn(theme, "/graph?ws=default");
+      await p.locator(WHATS_NEW).waitFor({ timeout: 20_000 });
+      await p.keyboard.press("Escape");
+      await p.locator(WHATS_NEW).waitFor({ state: "detached" });
+      await p
+        .locator('[role="group"][data-id], [role="group"][data-repo]')
+        .click({ timeout: 30_000 });
+      await p.locator("[data-popout]:visible").click();
+      const pop = "dialog#dg-pop[open]";
       await p.locator(pop).waitFor();
       expect(problems(await fontsOf(p, pop), strict)).toEqual([]);
       await p.keyboard.press("Escape");

@@ -18,6 +18,7 @@ const ROOT = path.resolve(__dirname, "../../..");
 const HELD =
   "a held write waiting on the person's Allow counts, and its item goes when it is withdrawn";
 const UPDATE = "Den's Allow-the-update ask counts";
+const IDLE = "a plain idle agent's finished turn shows once, in Done (no badge)";
 
 interface Row {
   clause: string;
@@ -52,6 +53,7 @@ function runGate(opts: Record<string, unknown> = {}) {
 
 const row = (r: ReturnType<typeof runGate>, clause: string) =>
   (r.rows ?? []).find((x) => x.clause === clause);
+const idle = (r: ReturnType<typeof runGate>) => r.rows?.[2];
 
 describe("gate/142.mjs as the bed runs it", () => {
   it("a Den that counts a held write and lets its asker withdraw it: the clause passes, nothing is left waiting", () => {
@@ -105,5 +107,21 @@ describe("gate/142.mjs as the bed runs it", () => {
   it("the update ask on the bed counts", () => {
     const r = runGate({ update: "pending" });
     expect(row(r, UPDATE)?.ok).toBe(true);
+  }, 120_000);
+
+  it("a Den that shows a plain idle agent's finished turn once, in Done: the clause passes", () => {
+    const r = runGate();
+    expect(r.error).toBeUndefined();
+    expect(idle(r)?.ok).toBe(true);
+    expect(idle(r)?.clause).toBe(IDLE);
+  }, 120_000);
+
+  it("a Den that lists it under Updates, or in both places, fails the clause", () => {
+    for (const finished of ["updates", "both"])
+      expect(idle(runGate({ finished }))?.ok).toBe(false);
+  }, 240_000);
+
+  it("a Den that shows it nowhere fails the clause", () => {
+    expect(idle(runGate({ finished: "none" }))?.ok).toBe(false);
   }, 120_000);
 });

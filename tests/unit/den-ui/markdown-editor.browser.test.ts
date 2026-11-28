@@ -81,12 +81,12 @@ function importMap(): Record<string, string> {
   return map;
 }
 
-const PAGE = (lang: string) => `<!doctype html>
+const PAGE = (lang: string, style = "") => `<!doctype html>
 <html lang="${lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script type="importmap" nonce="${NONCE}">${JSON.stringify({ imports: importMap() })}</script>
 <link rel="stylesheet" href="/tokens.css">
-<link rel="stylesheet" href="/markdown-editor.css"></head>
+<link rel="stylesheet" href="/markdown-editor.css">${style ? `<style nonce="${NONCE}">${style}</style>` : ""}</head>
 <body><button id="away">Away</button><div id="host"></div>
 <script type="module" src="/page.js" nonce="${NONCE}"></script></body></html>`;
 
@@ -113,7 +113,13 @@ interface Opened {
 
 /** A page; `hold` keeps CodeMirror's view module back until release(). */
 async function open(
-  o: { lang?: string; hold?: boolean; csp?: boolean; width?: number } = {},
+  o: {
+    lang?: string;
+    hold?: boolean;
+    csp?: boolean;
+    width?: number;
+    style?: string;
+  } = {},
 ): Promise<Opened> {
   const ctx = await browser!.newContext({
     viewport: { width: o.width ?? 1000, height: 700 },
@@ -146,7 +152,7 @@ async function open(
       return r.fulfill({
         contentType: "text/html",
         headers,
-        body: PAGE(o.lang ?? "en"),
+        body: PAGE(o.lang ?? "en", o.style),
       });
     if (u.pathname === "/page.js")
       return r.fulfill({
@@ -448,6 +454,60 @@ describe("den-ui Markdown editor in a browser", () => {
       standIn: "15px",
       editor: "15px",
     });
+  }, 60_000);
+
+  it("a host sizes the editor with variables on an ancestor: min and max height, filling its column, font", async () => {
+    if (skip()) return;
+    const measure = async (style: string) => {
+      const { p, release } = await open({ hold: true, style });
+      await mount(p, { rows: 3 });
+      const box = p.locator("#host [data-markdown-field]");
+      const text = box.getByRole("textbox");
+      const standIn = await text.evaluate((e) => {
+        const c = getComputedStyle(e);
+        return {
+          h: Math.round(e.getBoundingClientRect().height),
+          font: `${c.fontSize} ${c.lineHeight}`,
+        };
+      });
+      release();
+      await ready(p);
+      const fieldH = await box.evaluate((f) =>
+        Math.round(f.getBoundingClientRect().height),
+      );
+      const after = await text.evaluate((content) => {
+        const scroller = content.parentElement!;
+        const editor = scroller.parentElement!;
+        const field = editor.closest("[data-markdown-field]")!;
+        const c = getComputedStyle(content);
+        return {
+          editorToBottom: Math.round(
+            field.getBoundingClientRect().bottom -
+              editor.getBoundingClientRect().bottom,
+          ),
+          scrollerMax: getComputedStyle(scroller).maxHeight,
+          font: `${c.fontSize} ${c.lineHeight}`,
+        };
+      });
+      await p.context().close();
+      return { standIn, field: fieldH, ...after };
+    };
+    const tall = await measure(
+      "#host { --md-editor-min-height: 420px; --md-editor-max-height: none; }",
+    );
+    expect(tall.standIn.h).toBe(420);
+    expect(tall.field).toBeGreaterThanOrEqual(420);
+    expect(tall.scrollerMax).toBe("none");
+    const fill = await measure(
+      "#host { display: flex; flex-direction: column; height: 600px; --md-editor-grow: 1; }",
+    );
+    expect(fill.field).toBe(600);
+    expect(fill.editorToBottom).toBeLessThanOrEqual(1);
+    const font = await measure(
+      "#host { --md-font-size: 14px; --md-line-height: 1.6; }",
+    );
+    expect(font.standIn.font).toBe("14px 22.4px");
+    expect(font.font).toBe("14px 22.4px");
   }, 60_000);
 
   it("speaks the page's language, and runs under a strict CSP with a nonce", async () => {

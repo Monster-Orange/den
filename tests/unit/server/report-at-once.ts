@@ -16,7 +16,7 @@ import type { BrowserContext, Page } from "playwright";
 export const OWN_REPORT = [
   "#den-bell-pop",
   ".den-svp",
-  ".dg-panel[role=dialog]",
+  "dialog#dg-pop",
   "#den-lock-pop",
   ".den-agd",
 ];

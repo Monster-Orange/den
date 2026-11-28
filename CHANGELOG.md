@@ -17,9 +17,29 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- A `den` command that outlives its folder, such as a terminal host whose state folder was removed, no longer creates the folder again when it records its run in `.dev-metrics/events.jsonl`. Den's tests also stop their server's terminal host, and wait for it to end, before they remove its folder. (issue 1892)
+
+- UI kit: the save-state line's Copy text is a 44px target on touch and at 480px wide or less, so a product no longer sizes `.den-savestate button` itself (issue 1976).
+- On the Graph page, a service's details popped out are now a dialog like Den's other pop-ups: named by the service, with Close, Esc, Report, and the keyboard back on the card when it shuts. Dock puts them back at the side.
+- UI kit: the Markdown editor takes size hooks a host sets on any ancestor: `--md-editor-min-height`, `--md-editor-max-height`, `--md-editor-grow` (fill a flex column) and `--md-font-size` and `--md-line-height`, so a product stops styling `.md-field` and `.cm-editor` itself (issue 1975).
+- UI kit badge: `.den-bdg.warn.soft` (a solid warn tint, `--warn-tint`; a rail entry's `badge.soft`, at regular weight) and `.count` for a count inside a tab (`.count.bad`, `.count.corner` on an icon tab), sized by a host with `--den-bdg-fs`, `--den-bdg-lh`, `--den-bdg-pad` and `--den-bdg-min`, so a product stops restyling `.den-bdg` (issue 1973).
 - UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
 
 - The approval dialog no longer brings back a request you just denied or allowed. A check of what waits that was already under way when you answered could open it again with that request. (issue 1898)
+
+- After Change persona, the agent's pane keeps its "Switched to …" and "started fresh" lines when its connection drops and comes back. Before, the reconnect cleared them. (issue 1903)
+
+### Changed
+
+- Den's other pages and tools no longer stall just after the server starts on an install with agents from before the project link. The one-time link migration now gives other requests a turn after each record it writes. Before, with 140 agents to link, `/api/server-info` waited about 0.7 s.
+
+- A browser tab that goes away without closing its terminal (a crash, a sleeping laptop, a lost network) no longer keeps an agent's terminal at its size for up to a minute and a half. Den now checks every 10 s that each terminal window still answers. A window that misses a check is gone by the next one, and it hands the size on as a closed page does. The interval is a new Setting, Terminal connection check (`sessions.io_ping_seconds`). (issue 1913)
+
+- Removing an agent whose Hub token was never made (Hub refused it) now clears its row in `den doctor`. Before, the row stayed after the agent was gone. `den doctor` also skips such a row for an agent that no longer exists. (issue 1907)
+
+- When Peek loses its connection to an agent's terminal, it now says it's connecting until it's back, and stops saying that typing goes to the agent. Before, it kept looking live for the second before it reconnected, and a key typed then was lost with no sign. (issue 1902)
+
+- The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
 ## [0.4.92] - unreleased
 

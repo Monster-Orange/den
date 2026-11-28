@@ -268,6 +268,24 @@ describe("session host", () => {
     ]);
   });
 
+  it("resizes the PTY only to a size it doesn't have: a view saying the size in use again never reaches it", async () => {
+    const dir = stateDir();
+    const { made } = await host(dir);
+    const c = await client(dir);
+    const { ref } = await c.start(spec("acme-north:planner"));
+    await c.attach(ref.id, { onData: () => undefined }).ready;
+    c.resize(ref.id, 80, 24);
+    c.resize(ref.id, 113, 37);
+    c.resize(ref.id, 113, 37);
+    c.resize(ref.id, 90, 30);
+    c.write(ref.id, Buffer.from("x"));
+    await until(() => made[0].writes.length > 0);
+    expect(made[0].resizes).toEqual([
+      [113, 37],
+      [90, 30],
+    ]);
+  });
+
   it("tells an attachment that asks the PTY's size on attach and each change; one that doesn't ask gets no size event", async () => {
     const dir = stateDir();
     await host(dir);
