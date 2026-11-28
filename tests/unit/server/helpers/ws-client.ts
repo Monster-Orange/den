@@ -31,6 +31,7 @@ export interface TestWs {
   close(code?: number): void;
   /** Drop the socket with no closing handshake. */
   destroy(): void;
+  silence(): void;
   /** Resolves with the close code once the socket ends. */
   closed: Promise<number>;
   /** Wait until `pred` holds over what arrived (or time out). */
@@ -77,6 +78,7 @@ function wrap(
 ): TestWs {
   const messages: WsMessage[] = [];
   const pongs: Buffer[] = [];
+  let silent = false;
   let buf = head;
   let parts: Buffer[] = [];
   let partBinary = false;
@@ -114,8 +116,9 @@ function wrap(
           /* gone */
         }
         socket.end();
-      } else if (op === 0x9) socket.write(clientFrame(0xa, payload));
-      else if (op === 0xa) pongs.push(payload);
+      } else if (op === 0x9) {
+        if (!silent) socket.write(clientFrame(0xa, payload));
+      } else if (op === 0xa) pongs.push(payload);
       else if (op === 0x1 || op === 0x2 || op === 0x0) {
         if (op !== 0x0) partBinary = op === 0x2;
         parts.push(payload);
@@ -164,6 +167,7 @@ function wrap(
       socket.write(clientFrame(0x8, b));
     },
     destroy: () => void socket.destroy(),
+    silence: () => void (silent = true),
     closed,
     until(pred, ms = 5000) {
       return new Promise<void>((resolve, reject) => {

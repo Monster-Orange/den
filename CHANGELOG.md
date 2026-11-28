@@ -15,6 +15,8 @@ config and manifest changes a distribution must make to move to it under
 
 - Den's other pages and tools no longer stall just after the server starts on an install with agents from before the project link. The one-time link migration now gives other requests a turn after each record it writes. Before, with 140 agents to link, `/api/server-info` waited about 0.7 s.
 
+- A browser tab that goes away without closing its terminal (a crash, a sleeping laptop, a lost network) no longer keeps an agent's terminal at its size for up to a minute and a half. Den now checks every 10 s that each terminal window still answers. A window that misses a check is gone by the next one, and it hands the size on as a closed page does. The interval is a new Setting, Terminal connection check (`sessions.io_ping_seconds`). (issue 1913)
+
 ### Fixed
 
 - UI kit: the save-state line's Copy text is a 44px target on touch and at 480px wide or less, so a product no longer sizes `.den-savestate button` itself (issue 1976).
