@@ -89,6 +89,7 @@ describe("search", () => {
           "server.sessions_close_grace",
           "server.sessions_size_claim_grace",
           "server.sessions_size_leave_grace",
+          "server.sessions_io_ping",
           "server.sessions_pty_close",
           "server.sessions_pty_warn",
           "server.sessions_pty_machine",

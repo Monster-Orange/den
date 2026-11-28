@@ -3296,11 +3296,13 @@ export interface SessionsConfig {
   host_restart_check_seconds?: number;
   size_claim_grace_seconds?: number;
   size_leave_grace_seconds?: number;
+  io_ping_seconds?: number;
 }
 
 export const DEFAULT_SESSIONS_MAX_CONCURRENT = 8;
 export const DEFAULT_SIZE_CLAIM_GRACE_SECONDS = 30;
 export const DEFAULT_SIZE_LEAVE_GRACE_SECONDS = 3;
+export const DEFAULT_IO_PING_SECONDS = 10;
 export const DEFAULT_HOST_RESTART_WAIT_SECONDS = 900;
 export const DEFAULT_HOST_RESTART_CHECK_SECONDS = 30;
 export const DEFAULT_PTY_WARN_ABOVE = 400;
@@ -3318,6 +3320,7 @@ export interface ResolvedSessionsConfig {
   hostRestartCheckSeconds: number;
   sizeClaimGraceSeconds: number;
   sizeLeaveGraceSeconds: number;
+  ioPingSeconds: number;
 }
 
 const SESSIONS_KEYS = [
@@ -3331,6 +3334,7 @@ const SESSIONS_KEYS = [
   "host_restart_check_seconds",
   "size_claim_grace_seconds",
   "size_leave_grace_seconds",
+  "io_ping_seconds",
 ];
 
 /**
@@ -3370,6 +3374,7 @@ export const SESSIONS_SETTINGS_KEYS = [
   "pty_machine_warn_percent",
   "size_claim_grace_seconds",
   "size_leave_grace_seconds",
+  "io_ping_seconds",
 ] as const;
 
 /** What is wrong with one sessions.<key> value, in den-config's words; null: fine. */
@@ -3402,6 +3407,7 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
     hostRestartCheckSeconds: DEFAULT_HOST_RESTART_CHECK_SECONDS,
     sizeClaimGraceSeconds: DEFAULT_SIZE_CLAIM_GRACE_SECONDS,
     sizeLeaveGraceSeconds: DEFAULT_SIZE_LEAVE_GRACE_SECONDS,
+    ioPingSeconds: DEFAULT_IO_PING_SECONDS,
   };
   const check = raw.host_restart_check_seconds;
   if (check !== undefined) {
@@ -3509,6 +3515,19 @@ function parseSessionsConfig(config: DenConfig): ResolvedSessionsConfig {
         `sessions.size_leave_grace_seconds: must be a number of seconds, 0 to 300 (got ${JSON.stringify(leave)})`,
       );
     out.sizeLeaveGraceSeconds = leave;
+  }
+  const ping = raw.io_ping_seconds;
+  if (ping !== undefined) {
+    if (
+      typeof ping !== "number" ||
+      !Number.isInteger(ping) ||
+      ping < 1 ||
+      ping > 300
+    )
+      throw new Error(
+        `sessions.io_ping_seconds: must be a whole number of seconds, 1 to 300 (got ${JSON.stringify(ping)})`,
+      );
+    out.ioPingSeconds = ping;
   }
   const max = raw.max_concurrent;
   if (max !== undefined) {

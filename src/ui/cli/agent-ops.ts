@@ -7189,17 +7189,38 @@ export function migrateAgentLinks(d: AgentsResolved): {
 } {
   const linked: string[] = [];
   const unlinked: string[] = [];
-  for (const rec of listRecords(d.stateDir())) {
-    if (rec.project !== undefined || isServerScope(rec.workspace)) continue;
+  for (const { id, repo } of linkSteps(d)) (repo ? linked : unlinked).push(id);
+  return { linked, unlinked };
+}
+
+export async function migrateAgentLinksPaced(
+  d: AgentsResolved,
+  pause: () => Promise<void> = () => new Promise((r) => setImmediate(r)),
+): Promise<{ linked: string[]; unlinked: string[] }> {
+  const linked: string[] = [];
+  const unlinked: string[] = [];
+  for (const { id, repo } of linkSteps(d)) {
+    (repo ? linked : unlinked).push(id);
+    await pause();
+  }
+  return { linked, unlinked };
+}
+
+function* linkSteps(
+  d: AgentsResolved,
+): Generator<{ id: string; repo?: string }> {
+  for (const { id } of listRecords(d.stateDir())) {
+    const rec = readRecord(d.stateDir(), id);
+    if (!rec || rec.project !== undefined || isServerScope(rec.workspace))
+      continue;
     const repo = proposeRepo(d, rec.workspace, rec.cwd);
     writeRecord(d.stateDir(), {
       ...rec,
       project: rec.workspace,
       ...(repo ? { repo } : {}),
     });
-    (repo ? linked : unlinked).push(rec.id);
+    yield { id: rec.id, ...(repo ? { repo } : {}) };
   }
-  return { linked, unlinked };
 }
 
 export interface Stopped {

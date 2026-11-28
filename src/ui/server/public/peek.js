@@ -573,6 +573,9 @@ async function attach(st) {
     onText: (msg) => onText(st, msg),
     onClose: () => {
       st.sock = null;
+      if (st.closed || st.conn !== "live") return;
+      st.conn = "connecting";
+      paint(st);
     },
   });
   void st.pane.connect();

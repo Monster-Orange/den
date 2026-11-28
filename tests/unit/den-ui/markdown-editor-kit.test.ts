@@ -500,7 +500,7 @@ describe("accessible, tokens only, the kit's words", () => {
       /width: 28px;[\s\S]*height: 28px;/,
     );
     expect(rule(".md-editor-host,\n.md-fallback", desktop)).toMatch(
-      /font-size: 15px;/,
+      /font-size: var\(--md-font-size, 15px\);/,
     );
     expect(tokensHave("--tap")).toBe(true);
   });

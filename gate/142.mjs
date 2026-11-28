@@ -13,9 +13,9 @@ export const issue = 142;
 export const clauses = [
   "a permission prompt counts in the badge",
   "an agent that called ask_human, or ended its turn with a question to the person, counts",
-  "a plain idle agent goes to Updates (no badge)",
+  "a plain idle agent's finished turn shows once, in Done (no badge)",
   "Den's Allow-the-update ask counts",
-  "opening the agent removes its Updates items and the count drops",
+  "opening the agent moves it out of Done, into the seen rows",
   "a held write waiting on the person's Allow counts, and its item goes when it is withdrawn",
 ];
 export const matrix = { browsers: ["chromium"], widths: [1280] };
@@ -75,7 +75,10 @@ async function bellFor(ctx, a) {
   const needs = itemsOf(b.groups).filter((n) => is(n.subject));
   const updates = itemsOf(b.updates?.groups).filter((n) => is(n.subject));
   const waiting = (b.waiting ?? []).filter((w) => is(`agent:${w.agent}`));
+  const rowOf = (d) => is(`agent:${d.agent}`);
   return {
+    done: (b.done ?? []).filter(rowOf),
+    seenDone: (b.seenDone ?? []).filter(rowOf),
     unread: b.unread ?? 0,
     updatesCount: b.updates?.count ?? 0,
     needs,
@@ -294,14 +297,14 @@ export async function run(ctx, state) {
     await done(a);
   }
 
-  // 3. A plain idle agent: its turn's end under Updates, nothing counted.
+  // 3. A plain idle agent: its turn's end in Done, nothing counted.
   {
     const a = await stub(ctx, state, "idle");
     state.idle = a;
     const before = (await bellFor(ctx, a)).unread;
     await turnEnd(a, "Built it. All checks pass.");
     await a.ctl.idlePrompt();
-    const v = await until(ctx, a, (v) => v.updates.length > 0);
+    const v = await until(ctx, a, (v) => v.done.length > 0);
     // The idle notice comes after the turn's end; give it time to land.
     await sleep(2000);
     const w = await bellFor(ctx, a);
@@ -309,9 +312,10 @@ export async function run(ctx, state) {
       before,
       after: w.unread,
       needs: w.needs.length,
+      done: w.done.length,
       updates: w.updates.length,
       waiting: w.waiting.map((x) => x.why),
-      sawUpdate: v.updates.length > 0,
+      sawDone: v.done.length > 0,
     };
   }
 
@@ -340,17 +344,15 @@ export async function run(ctx, state) {
   // its asker (never a person's decision), its item goes.
   seen.held = await heldWrite(ctx, state);
 
-  // 5. Open the idle agent: its Updates items go, and the count drops.
+  // 5. Open the idle agent from its Done row: it leaves Done, seen.
   {
     const a = state.idle;
     const before = await bellFor(ctx, a);
-    const link = before.updates.find((n) => n.link)?.link;
+    const link = before.done.find((d) => d.link)?.link;
     let how = "none";
     if (ctx.page && link) {
-      // The person's way in: the bell's row for it, under Updates.
       await ctx.page.goto(new URL("/services", ctx.url).href);
       await ctx.page.click("#den-bell");
-      await ctx.page.locator('#den-bell-pop [data-bell="updates"]').click();
       const row = ctx.page
         .locator(`#den-bell-pop .den-bell-row a[href="${link}"]`)
         .first();
@@ -363,14 +365,14 @@ export async function run(ctx, state) {
       }
       await ctx.page.bringToFront?.();
     }
-    const after = await until(ctx, a, (v) => v.updates.length === 0);
+    const after = await until(ctx, a, (v) => v.done.length === 0);
     seen.opened = {
       how,
       link: link ?? null,
-      beforeItems: before.updates.length,
-      beforeCount: before.updatesCount,
-      afterItems: after.updates.length,
-      afterCount: after.updatesCount,
+      beforeDone: before.done.length,
+      afterDone: after.done.length,
+      afterSeen: after.seenDone.length,
+      afterUpdates: after.updates.length,
     };
   }
   return seen;
@@ -428,7 +430,8 @@ function rows(s) {
       !!i &&
       i.needs === 0 &&
       i.waiting.length === 0 &&
-      i.updates > 0 &&
+      i.done === 1 &&
+      i.updates === 0 &&
       i.after <= i.before,
     detail: JSON.stringify(i ?? null),
   });
@@ -453,9 +456,10 @@ function rows(s) {
     clause: clauses[4],
     ok:
       !!o &&
-      o.beforeItems > 0 &&
-      o.afterItems === 0 &&
-      o.afterCount < o.beforeCount,
+      o.beforeDone > 0 &&
+      o.afterDone === 0 &&
+      o.afterSeen > 0 &&
+      o.afterUpdates === 0,
     detail: JSON.stringify(o ?? null),
   });
   const h = s?.held;

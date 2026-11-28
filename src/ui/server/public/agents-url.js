@@ -1,4 +1,5 @@
-import { LAYOUTS, MAX_PANES, PHONE, st } from "/agents-core.js";
+import { paintSub } from "/agents-list.js";
+import { LAYOUTS, MAX_PANES, PHONE, rowOf, st } from "/agents-core.js";
 
 /** ?layout=, when it names one; else null. */
 export function layoutFromUrl(search) {
@@ -122,17 +123,54 @@ function pickedWorkspace() {
   return null;
 }
 
-export {
-  OPEN_KEY,
-  PAGE,
-  SHELL_USED_KEY,
-  linkedAgentAsked,
-  phone,
-  pickedWorkspace,
-  rememberedOpen,
-  shellUsed,
-  shownLayout,
-  urlWorkspace,
-  viewWorkspaces,
-  visibleIds,
-};
+
+function markShellUsed(id) {
+  const r = rowOf(id);
+  if (r?.kind !== "session") return;
+  const was = shellUsed();
+  // Every key calls here: once a second is enough.
+  if (typeof was[id] === "number" && Date.now() - was[id] < 1000) return;
+  const live = new Set((st.data?.sessions ?? []).map((x) => x.id));
+  const used = {};
+  for (const [k, v] of Object.entries(was))
+    if (live.has(k) && typeof v === "number") used[k] = v;
+  used[id] = Date.now();
+  try {
+    localStorage.setItem(SHELL_USED_KEY, JSON.stringify(used));
+  } catch {
+    /* none: the newest shell instead */
+  }
+}
+
+function writeUrl() {
+  try {
+    // #80: the browser's tabs, every project's: a project's view only
+    // leaves the others out (st.hiddenOpen), so a Terminal link brings
+    // them back in All active.
+    localStorage.setItem(
+      OPEN_KEY,
+      [...new Set([...st.hiddenOpen, ...st.open])].join(","),
+    );
+  } catch {
+    /* none: the URL alone */
+  }
+  const u = new URL(location.href);
+  if (st.open.length) u.searchParams.set("open", st.open.join(","));
+  else u.searchParams.delete("open");
+  // #80: the tab in front, so a reload keeps the pane the keyboard was in.
+  if (st.open.length > 1 && st.open.includes(st.cur))
+    u.searchParams.set("front", st.cur);
+  else u.searchParams.delete("front");
+  u.searchParams.set("layout", st.layout);
+  u.searchParams.delete("start");
+  u.searchParams.delete("folder");
+  u.searchParams.delete("service");
+  u.searchParams.delete("agent");
+  u.searchParams.delete("terminal");
+  u.searchParams.delete("fresh");
+  const s = u.searchParams.toString().replace(/%2C/gi, ",");
+  history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
+  paintSub();
+}
+
+export { OPEN_KEY, PAGE, SHELL_USED_KEY, linkedAgentAsked, markShellUsed, phone, pickedWorkspace, rememberedOpen, shellUsed, shownLayout, urlWorkspace, viewWorkspaces, visibleIds, writeUrl };

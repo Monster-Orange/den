@@ -220,6 +220,54 @@ describe("the approval dialog (ON-3)", () => {
     await p.context().close();
   }, 90_000);
 
+  it("issue 1898: a list read before a Deny answered never brings the denied request back", async () => {
+    if (skip()) return;
+    const p = await page(true);
+    const id = await ask("workspace_create", { name: "stale" });
+    const want = 'Create the project "stale"';
+    for (let i = 0; i < 5; i++) {
+      await p.waitForSelector("#den-ap-dlg[open]", { timeout: 15_000 });
+      if ((await p.textContent("#den-ap-what")) === want) break;
+      await p.click("#den-ap-deny");
+      await closed(p);
+    }
+    expect(await p.textContent("#den-ap-what")).toBe(want);
+    const list = (u: URL) => u.pathname === "/api/approvals";
+    let release = () => {};
+    const released = new Promise<void>((ok) => (release = ok));
+    let read = () => {};
+    const readIt = new Promise<void>((ok) => (read = ok));
+    await p.route(list, async (r) => {
+      if (r.request().method() !== "GET") return r.fallback();
+      const res = await r.fetch();
+      read();
+      await released;
+      await r.fulfill({ response: res });
+    });
+    await readIt;
+    const decided = p.waitForResponse((x) =>
+      x.url().endsWith(`/api/approvals/${id}/decide`),
+    );
+    await p.click("#den-ap-deny");
+    expect((await decided).status()).toBe(200);
+    await closed(p);
+    const stale = p.waitForResponse((x) => list(new URL(x.url())));
+    release();
+    await stale;
+    await expect(
+      p.waitForFunction(
+        (w) =>
+          !!(document.getElementById("den-ap-dlg") as HTMLDialogElement | null)
+            ?.open && document.getElementById("den-ap-what")?.textContent === w,
+        want,
+        { timeout: 3_000 },
+      ),
+    ).rejects.toThrow(/Timeout/);
+    expect(await stateOf(id)).toBe("denied");
+    await p.unroute(list);
+    await p.context().close();
+  }, 90_000);
+
   it("a browser that isn't signed in sees no request, only a banner to sign in; nothing runs", async () => {
     if (skip()) return;
     const p = await page(false);
