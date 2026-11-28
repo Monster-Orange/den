@@ -678,6 +678,13 @@ describe("Bring in (AG-17.1)", () => {
     await p.getByRole("menuitem", { name: "Change persona" }).click();
     await p.waitForSelector("#ag-dlg[open]");
     await p.click('#ag-persona [data-pid="planner"]');
+    await p.evaluate(() => {
+      const w = window as unknown as { paneGone?: boolean };
+      w.paneGone = false;
+      new MutationObserver(() => {
+        if (!document.querySelector("section[data-id]")) w.paneGone = true;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     const done = p.waitForResponse(
       (r) =>
         r.request().method() === "POST" &&
@@ -707,7 +714,12 @@ describe("Bring in (AG-17.1)", () => {
       sid,
       { timeout: browserWaitMs() },
     );
-    expect(between).toBeGreaterThan(0);
+    expect(between).toBe(2);
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { paneGone?: boolean }).paneGone,
+      ),
+    ).toBe(false);
     await p.context().close();
     expect(errors).toEqual([]);
   }, 90_000);
