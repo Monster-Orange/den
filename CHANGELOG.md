@@ -10,6 +10,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- The UI kit (den-ui 0.23.1): a button that waits keeps its own name. An icon or arrow hidden from screen readers (aria-hidden) no longer joins it, so More ▾ is still named More.
 - Change persona no longer closes the agent's pane now and then. A list read in the moment the old session still ran but no longer belonged to the agent showed it as a plain terminal, and the Agents page closed its pane before the new session was listed. The pane now waits for its agent's new session, for up to 15 s. (issue 1903)
 
 ### Changed
