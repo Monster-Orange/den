@@ -11,12 +11,6 @@ config and manifest changes a distribution must make to move to it under
 - UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", icon buttons for First, Previous, Next and Last (each word is the button's name and tooltip, and the icons mirror right to left), a page picker ("Page 3 of 17") and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's. More mode can hand its press to `onNavigate` (a list that redraws itself whole), and the 44px size follows a phone-width window or a touch screen, never the width of the box the pager sits in. The ⋯ menu and the short "3 / 17" picker appear only when the pager's box is 600px wide or less, in place of the full controls; above that the full row shows, in two lines when it must. A More list redrawn whole after its last chunk can keep its row with "All N shown" (`loaded: true`). A compact kind for a list inside a card (`compact: true`): ‹ [2] / 25 ›, with First and Last on a row wider than 600px. With `perDefault`, a list that fits one page keeps its row when the person chose another page size, so they can switch back.
 - UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps. Every word is the host's. A row that doesn't fit scrolls sideways, with « and » at its ends shown only while tabs are hidden on that side (a red dot when a hidden tab has an alert), and keeps the chosen and focused tab in view; only when even one tab can't fit between the arrows does it fold into one select with the same choices and a visible label.
 
-### Changed
-
-- Den's other pages and tools no longer stall just after the server starts on an install with agents from before the project link. The one-time link migration now gives other requests a turn after each record it writes. Before, with 140 agents to link, `/api/server-info` waited about 0.7 s.
-
-- A browser tab that goes away without closing its terminal (a crash, a sleeping laptop, a lost network) no longer keeps an agent's terminal at its size for up to a minute and a half. Den now checks every 10 s that each terminal window still answers. A window that misses a check is gone by the next one, and it hands the size on as a closed page does. The interval is a new Setting, Terminal connection check (`sessions.io_ping_seconds`). (issue 1913)
-
 ### Fixed
 
 - UI kit: the save-state line's Copy text is a 44px target on touch and at 480px wide or less, so a product no longer sizes `.den-savestate button` itself (issue 1976).
@@ -30,6 +24,10 @@ config and manifest changes a distribution must make to move to it under
 - After Change persona, the agent's pane keeps its "Switched to …" and "started fresh" lines when its connection drops and comes back. Before, the reconnect cleared them. (issue 1903)
 
 ### Changed
+
+- Den's other pages and tools no longer stall just after the server starts on an install with agents from before the project link. The one-time link migration now gives other requests a turn after each record it writes. Before, with 140 agents to link, `/api/server-info` waited about 0.7 s.
+
+- A browser tab that goes away without closing its terminal (a crash, a sleeping laptop, a lost network) no longer keeps an agent's terminal at its size for up to a minute and a half. Den now checks every 10 s that each terminal window still answers. A window that misses a check is gone by the next one, and it hands the size on as a closed page does. The interval is a new Setting, Terminal connection check (`sessions.io_ping_seconds`). (issue 1913)
 
 - Removing an agent whose Hub token was never made (Hub refused it) now clears its row in `den doctor`. Before, the row stayed after the agent was gone. `den doctor` also skips such a row for an agent that no longer exists. (issue 1907)
 
