@@ -703,9 +703,13 @@ never converted to HTML and back).
         onSave: (values) => save(values),
       });
 
-- `checksHtml({ id, legend, items, checked, disabled, note })` draws it:
-  a hidden legend, one whole-row `<label>` per item, the save line
-  (savestate.css's look) and the host's note. The words are the host's;
+- `checksHtml({ id, legend, intro, items, checked, disabled, note,
+  noteAction })` draws it: the host's intro lines (the first in body text,
+  the rest smaller and muted; the fieldset is described by them), a hidden
+  legend, one whole-row `<label>` per item, the save line (savestate.css's
+  look), then the host's note in the warning colour, with an optional
+  button (`noteAction: { label, onClick }`, such as Try again) while a host
+  note shows. The words are the host's;
   the kit says only "Saving…", "Saved", "Not saved. Retrying…" and
   "Not saved: {reason}" (en, es, ja).
 - Each tick calls `onSave(values)` with the ticked values in the items'

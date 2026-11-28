@@ -1596,6 +1596,10 @@
     "set.job.designer.d": "フローと画面をデザインします。",
     "set.job.install": "__DEN_TITLE__ 自身のエージェント",
     "set.job.install.d": "この __DEN_TITLE__ の面倒を見ます。",
+    "set.jobs.lead":
+      "これらの役割のエージェントは、あなたに確認せずに自分のプロジェクトで GitHub の issue を作成・更新できます。バグや残りの作業が書き残されます。",
+    "set.jobs.recorded":
+      "__DEN_TITLE__ はすべての変更を記録します。issue を閉じたり削除したりはできません。",
     "set.jobs.none": "issue を作成・更新できるエージェントはいません。",
     "set.jobs.unread":
       "__DEN_TITLE__ がこの設定を読めなかったため、チェックは表示していません。",

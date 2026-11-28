@@ -652,6 +652,7 @@ export function issueWriteJobs(reg) {
 }
 
 export function issueWriteSave(ticked, saved, jobs) {
+  if (!ticked.length) return [];
   const boxed = new Set(jobs.map((j) => j.value));
   return issueWriteRoles([
     ...ticked,
@@ -663,6 +664,16 @@ let jobsLoad = null;
 function drawIssueWrites(host, ctx) {
   const words = {
     legend: L("set.agents.issue_writes", "Who writes GitHub issues"),
+    intro: [
+      L(
+        "set.jobs.lead",
+        "Agents with these jobs can file and update GitHub issues in their own project without asking you, so bugs and follow-ups get written down.",
+      ),
+      L(
+        "set.jobs.recorded",
+        "__DEN_TITLE__ records every change they make. They can't close or delete an issue.",
+      ),
+    ],
     empty: L("set.jobs.none", "No agent can file or update issues."),
     unread: L(
       "set.jobs.unread",
@@ -684,29 +695,29 @@ function drawIssueWrites(host, ctx) {
     if (!Array.isArray(roles)) {
       mountChecks(host, {
         legend: words.legend,
+        intro: words.intro,
         items,
         checked: [],
         disabled: true,
         note: words.unread,
-      });
-      host.insertAdjacentHTML(
-        "beforeend",
-        `<button type="button" class="den-btn sm" data-jobs-again>${escHtml(words.again)}</button>`,
-      );
-      host.querySelector("[data-jobs-again]").addEventListener("click", () => {
-        ctx.shell
-          .api("GET", "/api/settings")
-          .then((d) => {
-            ctx.data.agent_issue_writes = d?.agent_issue_writes ?? null;
-          })
-          .catch(() => null)
-          .finally(() => drawIssueWrites(host, ctx));
+        noteAction: {
+          label: words.again,
+          onClick: () =>
+            ctx.shell
+              .api("GET", "/api/settings")
+              .then((d) => {
+                ctx.data.agent_issue_writes = d?.agent_issue_writes ?? null;
+              })
+              .catch(() => null)
+              .finally(() => drawIssueWrites(host, ctx)),
+        },
       });
       return;
     }
     let saved = issueWriteRoles(roles);
-    mountChecks(host, {
+    const list = mountChecks(host, {
       legend: words.legend,
+      intro: words.intro,
       items,
       checked: saved,
       disabled: viewOnly,
@@ -729,6 +740,19 @@ function drawIssueWrites(host, ctx) {
         saved = next;
       },
     });
+    if (!viewOnly && typeof MutationObserver !== "undefined") {
+      const html = document.documentElement;
+      const watch = new MutationObserver(() => {
+        if (!host.isConnected) return watch.disconnect();
+        if (html.dataset.denView !== "read-only") return;
+        watch.disconnect();
+        list.setDisabled(true, words.view);
+      });
+      watch.observe(html, {
+        attributes: true,
+        attributeFilter: ["data-den-view"],
+      });
+    }
   });
 }
 
@@ -5657,6 +5681,7 @@ export const DEN_SETTINGS = [
     scope: "user",
     keys: ["agent_issue_writes.roles"],
     control: { type: "custom", render: drawIssueWrites },
+    helpInControl: true,
     read: (ctx) => ctx.data.agent_issue_writes?.roles ?? [],
     write: (v, ctx) =>
       ctx.post({ agent_issue_writes: { roles: issueWriteRoles(v) } }),

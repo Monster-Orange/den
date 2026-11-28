@@ -2871,6 +2871,10 @@
     "set.job.designer.d": "Designs flows and screens.",
     "set.job.install": "__DEN_TITLE__'s own agent",
     "set.job.install.d": "Looks after this __DEN_TITLE__.",
+    "set.jobs.lead":
+      "Agents with these jobs can file and update GitHub issues in their own project without asking you, so bugs and follow-ups get written down.",
+    "set.jobs.recorded":
+      "__DEN_TITLE__ records every change they make. They can't close or delete an issue.",
     "set.jobs.none": "No agent can file or update issues.",
     "set.jobs.unread":
       "__DEN_TITLE__ couldn't read this setting, so the ticks aren't shown.",

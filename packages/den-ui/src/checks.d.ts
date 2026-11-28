@@ -11,6 +11,8 @@ export interface ChecksModel {
   checked?: string[];
   disabled?: boolean;
   note?: string;
+  intro?: string | string[];
+  noteAction?: { label: string; onClick?: () => void };
 }
 
 export interface ChecksOptions extends ChecksModel {

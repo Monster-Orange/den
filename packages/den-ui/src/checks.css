@@ -1,6 +1,29 @@
 /* den-ui: the checkbox list (checks.js, issue 1964). Tokens only; the
    sizes are the settings row's (setting-row.css). The whole row ticks.
    Linked, never injected. The save line is savestate.css's. */
+.den-checks-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 32rem;
+  font-family: var(--sans);
+  font-size: var(--fs-m);
+  line-height: var(--lh);
+  color: var(--text);
+}
+.den-checks-wrap > p {
+  margin: 0;
+}
+.den-checks-wrap > p.den-checks-intro {
+  font-size: var(--fs-m);
+  color: var(--text);
+}
+.den-checks-wrap > p.den-checks-intro + p.den-checks-intro {
+  margin-bottom: 2px;
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
 .den-checks {
   display: flex;
   flex-direction: column;
@@ -54,12 +77,15 @@
   font-size: var(--fs-s);
   color: var(--muted);
 }
-.den-checks-note {
-  margin: 0;
+.den-checks-wrap > p.den-checks-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
   font-size: var(--fs-s);
-  color: var(--muted);
+  color: var(--warn);
 }
-.den-checks-note[hidden] {
+.den-checks-wrap > p.den-checks-note[hidden] {
   display: none;
 }
 .den-checks[data-disabled] .den-checks-row,
@@ -80,5 +106,8 @@
     width: 22px;
     height: 22px;
     margin: 0;
+  }
+  .den-checks-act {
+    min-height: var(--tap);
   }
 }

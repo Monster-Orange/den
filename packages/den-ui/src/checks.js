@@ -31,13 +31,29 @@ export function checksHtml(o = {}) {
       );
     })
     .join("");
+  const intro = (Array.isArray(o.intro) ? o.intro : [o.intro])
+    .filter((t) => t != null && String(t).trim())
+    .map(
+      (t, n) =>
+        `<p class="den-checks-intro" id="${esc(id)}-i${n}">${esc(t)}</p>`,
+    );
+  const act = o.noteAction?.label
+    ? `<button type="button" class="den-btn sm den-checks-act" hidden>${esc(o.noteAction.label)}</button>`
+    : "";
   return (
-    `<fieldset class="den-checks" id="${esc(id)}"${off}${o.disabled ? " data-disabled" : ""}>` +
+    `<div class="den-checks-wrap">` +
+    intro.join("") +
+    `<fieldset class="den-checks" id="${esc(id)}"${off}${o.disabled ? " data-disabled" : ""}` +
+    (intro.length
+      ? ` aria-describedby="${intro.map((_, n) => `${esc(id)}-i${n}`).join(" ")}"`
+      : "") +
+    `>` +
     `<legend class="den-checks-legend">${esc(o.legend ?? "")}</legend>` +
     rows +
+    "</fieldset>" +
     `<p class="den-savestate den-checks-state" data-state="idle" role="status" aria-live="polite"></p>` +
-    `<p class="den-checks-note"${o.note ? "" : " hidden"}>${esc(o.note ?? "")}</p>` +
-    "</fieldset>"
+    `<p class="den-checks-note"${o.note ? "" : " hidden"}><span class="den-checks-note-t">${esc(o.note ?? "")}</span>${act}</p>` +
+    "</div>"
   );
 }
 
@@ -67,8 +83,12 @@ export function mountChecks(el, opts = {}) {
   ensureCss();
   el.innerHTML = checksHtml(opts);
   const fs = el.querySelector(".den-checks");
-  const line = fs.querySelector(".den-checks-state");
-  const note = fs.querySelector(".den-checks-note");
+  const line = el.querySelector(".den-checks-state");
+  const note = el.querySelector(".den-checks-note");
+  const noteText = el.querySelector(".den-checks-note-t");
+  const act = el.querySelector(".den-checks-act");
+  const onAct = () => opts.noteAction?.onClick?.();
+  act?.addEventListener("click", onAct);
   const boxes = () => [...fs.querySelectorAll("input[data-den-check]")];
   const lang = () =>
     typeof opts.lang === "function" ? opts.lang() : opts.lang || "en";
@@ -97,8 +117,9 @@ export function mountChecks(el, opts = {}) {
   const showNote = () => {
     const words =
       hostNote || (opts.empty && read().length === 0 ? opts.empty : "");
-    note.textContent = words;
+    noteText.textContent = words;
     note.hidden = !words;
+    if (act) act.hidden = !hostNote;
   };
 
   function send() {
@@ -182,6 +203,7 @@ export function mountChecks(el, opts = {}) {
       clearTimeout(retryTimer);
       clearTimeout(slowTimer);
       fs.removeEventListener("change", onChange);
+      act?.removeEventListener("click", onAct);
       globalThis.removeEventListener?.("online", onOnline);
     },
   };

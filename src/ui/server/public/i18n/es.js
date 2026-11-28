@@ -1653,6 +1653,10 @@
     "set.job.designer.d": "Diseña flujos y pantallas.",
     "set.job.install": "El agente propio de __DEN_TITLE__",
     "set.job.install.d": "Cuida de este __DEN_TITLE__.",
+    "set.jobs.lead":
+      "Los agentes con estos trabajos pueden crear y actualizar issues de GitHub en su propio proyecto sin preguntarte, para que los errores y lo pendiente queden anotados.",
+    "set.jobs.recorded":
+      "__DEN_TITLE__ registra cada cambio que hacen. No pueden cerrar ni borrar un issue.",
     "set.jobs.none": "Ningún agente puede crear ni actualizar issues.",
     "set.jobs.unread":
       "__DEN_TITLE__ no pudo leer este ajuste, así que no se muestran las marcas.",
