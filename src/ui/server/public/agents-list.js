@@ -2,7 +2,7 @@ import { attnSub, bandsOf, byNeed } from "/agent-bands.js";
 import { groupsLineHtml, groupsOffered, groupsViewHtml, viewSwitchHtml } from "/agent-groups.js";
 import { toolsBarHtml } from "/agents-bar.js";
 import { CLI, SERVER_WS, TITLE, esc, rowOf, st, t } from "/agents-core.js";
-import { refresh } from "/agents-data.js";
+import { FOLLOW_FOR_MS, refresh } from "/agents-data.js";
 import { closePane } from "/agents-panes.js";
 import { orderRowHtml, reorderBandHtml, reorderStoppedHtml, runningMovable, stoppedMovable } from "/agents-reorder.js";
 import { exitedShell, exitedShellHtml, inStopped, pcAttr, projName, rowHtml, seenMap, stoppedHtml, wsLinkHtml } from "/agents-rows.js";
@@ -443,6 +443,14 @@ function visibleRows() {
   return (st.data?.sessions ?? []).filter(inView);
 }
 
+function followingAgent(p, r) {
+  if (!p?.agent || r.kind !== "session") return false;
+  p.leftAgentAt ??= Date.now();
+  if (Date.now() - p.leftAgentAt > FOLLOW_FOR_MS) return false;
+  st.followUntil = Math.max(st.followUntil ?? 0, p.leftAgentAt + FOLLOW_FOR_MS);
+  return true;
+}
+
 /**
  * #80: the open panes of sessions outside this view leave the tabs (and
  * ?open=), kept in st.hiddenOpen for "Show in All active".
@@ -451,7 +459,7 @@ function hideOtherProjects() {
   if (!st.data) return;
   const out = st.open.filter((id) => {
     const r = rowOf(id);
-    return r && !inView(r);
+    return r && !inView(r) && !followingAgent(st.panes.get(id), r);
   });
   if (!out.length) return;
   // Issue 482: the other page's kind leaves quietly (it is on its page).

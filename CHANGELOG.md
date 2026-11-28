@@ -29,6 +29,8 @@ config and manifest changes a distribution must make to move to it under
 
 - After Change persona, the agent's pane keeps its "Switched to …" and "started fresh" lines when its connection drops and comes back. Before, the reconnect cleared them. (issue 1903)
 
+- Change persona no longer closes the agent's pane now and then. A list read in the moment the old session still ran but no longer belonged to the agent showed it as a plain terminal, and the Agents page closed its pane before the new session was listed. The pane now waits for its agent's new session, for up to 15 s. (issue 1903)
+
 ### Changed
 
 - Den's other pages and tools no longer stall just after the server starts on an install with agents from before the project link. The one-time link migration now gives other requests a turn after each record it writes. Before, with 140 agents to link, `/api/server-info` waited about 0.7 s.
