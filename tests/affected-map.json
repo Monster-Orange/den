@@ -34,6 +34,11 @@
     "tests/unit/server/route-classes.test.ts"
   ],
   "subjects": {
+    "tests/unit/server/start-resume-hold.browser.test.ts": [
+      "src/ui/server/public/agents-page.js",
+      "src/ui/server/public/dialog-den.js",
+      "packages/den-ui/src/dialog.js"
+    ],
     "tests/unit/server/subagent-limits-settings-1631.integration.test.ts": [
       "src/shared/den-config.ts",
       "src/ui/server/public/settings-registry.js"
@@ -1021,6 +1026,7 @@
         "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
+        "tests/unit/server/start-resume-hold.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1532,6 +1538,7 @@
         "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
+        "tests/unit/server/start-resume-hold.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1675,6 +1682,7 @@
         "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
+        "tests/unit/server/start-resume-hold.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -1813,6 +1821,7 @@
         "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
+        "tests/unit/server/start-resume-hold.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -2171,6 +2180,7 @@
         "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
+        "tests/unit/server/start-resume-hold.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -2578,6 +2588,7 @@
         "tests/unit/server/size-claim-1724.browser.test.ts",
         "tests/unit/server/start-dialog.browser.test.ts",
         "tests/unit/server/start-prefill.browser.test.ts",
+        "tests/unit/server/start-resume-hold.browser.test.ts",
         "tests/unit/server/status-not-colour-1137.browser.test.ts",
         "tests/unit/server/terminal-rail.browser.test.ts",
         "tests/unit/server/terminal-recent.browser.test.ts",
@@ -4939,6 +4950,15 @@
         "src/ui/server/public/agents-page.js"
       ],
       "run": ["tests/unit/server/start-prefill.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/dialog.js",
+        "src/ui/server/public/agents-page.js",
+        "src/ui/server/public/dialog-den.js"
+      ],
+      "run": ["tests/unit/server/start-resume-hold.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
