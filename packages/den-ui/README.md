@@ -14,8 +14,13 @@ own copy, so a page never mixes two versions.
 - `src/tokens.css`: colour (light and dark), type, radius, shadow,
   spacing, motion, layers and touch targets, as CSS custom properties.
   Light is the default. `data-mode="light"` or `"dark"` on `<html>` picks a
-  mode; with none set, the kit follows `prefers-color-scheme`. Every rule
-  has zero specificity (`:where()`), so a theme laid on top always wins.
+  mode; with none set, the kit follows `prefers-color-scheme`. The same
+  attribute on any other element sets the mode for its box (a light
+  preview inside a dark page, or both side by side on a docs page):
+  native controls and scrollbars inside follow it (`color-scheme`), and
+  `base.css` gives the box its own `--bg` and `--text`. A theme's own
+  mode blocks stay on `<html>`. Every rule has zero specificity
+  (`:where()`), so a theme laid on top always wins.
 - `src/fonts.css`: Rubik (400, 500) and Space Mono (400), latin and
   latin-ext, as woff2, `font-display: swap`. Nothing is fetched from a
   third party. Japanese uses the system's fonts.

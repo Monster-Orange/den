@@ -83,7 +83,7 @@ function kitModes(): Record<Mode, Tokens> {
   const css = read("tokens.css").replace(/\/\*[\s\S]*?\*\//g, "");
   return {
     light: block(css, /:root\[data-mode="light"\]/),
-    dark: block(css, /^\s*:where\(:root\[data-mode="dark"\]\)\s*$/),
+    dark: block(css, /^\s*:where\(:root\[data-mode="dark"\]\)\s*(,|$)/),
   };
 }
 

@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
+### Added
+
+- UI kit 0.23.0: `data-mode="light"` or `"dark"` on any element sets the mode for its box, not only on `<html>`, so a page can show light and dark side by side or a light preview inside a dark page. Native controls inside follow it, and the box takes its own background and text colour.
+
 ## [0.4.92] - unreleased
 
 ### Changed
