@@ -184,7 +184,7 @@ import {
   orderAgent,
   checkRepoName,
   workspaceRepoFolders,
-  migrateAgentLinks,
+  migrateAgentLinksPaced,
   removeStopped,
   restoreAgents,
   resumeInterrupted,
@@ -2765,7 +2765,7 @@ export function startAgentUpkeep(
   const restart = async () => {
     // D65 v2: once, agents from before the link get it from their folder.
     try {
-      const m = migrateAgentLinks(d);
+      const m = await migrateAgentLinksPaced(d);
       if (m.linked.length || m.unlinked.length)
         log(
           `Agents linked to their project: ${[...m.linked, ...m.unlinked].join(", ")}` +

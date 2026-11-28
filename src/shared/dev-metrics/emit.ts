@@ -367,7 +367,7 @@ export function record(
 
     try {
       const dir = path.join(root, ".dev-metrics");
-      fs.mkdirSync(dir, { recursive: true });
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir);
       fs.appendFileSync(eventsFile(root), JSON.stringify(obj) + "\n");
     } catch {
       /* non-writable dir → fail-open */

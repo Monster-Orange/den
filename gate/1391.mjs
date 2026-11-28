@@ -11,19 +11,19 @@
 //   its first start (the bed's product.denYml). The same ask is held, and
 //   nothing is written while it waits; the person's CLI (`config`, which
 //   runs as the person) can't set install_mode: personal there.
-// Allow, Undo and install_mode in Settings are the person's alone: the
-// fixture person is refused all three (gate/746 proves the Allow), and
-// this check asserts those refusals rather than widening them. A den2 has
-// no person session, so Undo's restore and Allow's run are proved by the
-// unit tests (setting-change, approval routes), not here.
+// Allow and Undo of a test bed agent's held write are the test
+// operator's: its Undo puts the setting back, its Allow writes it. The
+// same request from a session that isn't the operator's (it came through a
+// proxy, so forwarded headers) is refused (403) and changes nothing first.
+// install_mode in Settings stays the person's alone.
 // Teardown removes the agents and closes both Dens (close() deletes them).
 export const issue = 1391;
 export const items = [1391, 1403, 1371];
 export const clauses = [
   "a fresh install with no install_mode is personal, from default: in Doctor and in Settings",
   "an agent started on a personal install runs outside the sandbox",
-  "on personal, an agent's limit setting_change is written at once, and its bell row says so with Undo, which stays the person's (the fixture's Undo is refused and changes nothing)",
-  "with install_mode: strict in den.yml, the same ask is held: nothing is written while it waits, and the fixture can't Allow it",
+  "on personal, an agent's limit setting_change is written at once, and its bell row says so with Undo: a session that isn't the test operator is refused (403), and the test operator's Undo puts the setting back",
+  "with install_mode: strict in den.yml, the same ask is held: nothing is written while it waits, a session that isn't the test operator can't Allow it (403), and the test operator's Allow writes it",
   "on strict, the person's `config install_mode=personal` is refused, and the mode stays strict, from den.yml",
 ];
 export const timeoutMs = 300000;
@@ -36,6 +36,7 @@ const KEY = "sessions.close_grace_seconds";
 const VALUE = 7;
 const REASON = "gate check 1391";
 const D2S = [];
+const NOT_OPERATOR = { "x-forwarded-for": "127.0.0.1" };
 
 const msg = (e) => String(e?.message ?? e).slice(0, 200);
 const cut = (s, n = 160) =>
@@ -174,14 +175,19 @@ async function personalLeg(ctx) {
       }
     : null;
   if (bell?.row?.undo?.approval) {
-    const u = await d2
-      .fetch("/api/settings/undo", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ approval: bell.row.undo.approval }),
-      })
-      .catch((e) => ({ status: null, body: { error: msg(e) } }));
-    // The person's act: the fixture is refused, and nothing changes.
+    const undo = (headers) =>
+      d2
+        .fetch("/api/settings/undo", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...headers },
+          body: JSON.stringify({ approval: bell.row.undo.approval }),
+        })
+        .catch((e) => ({ status: null, body: { error: msg(e) } }));
+    const n = await undo(NOT_OPERATOR);
+    out.notOperatorUndo = { status: n.status, ok: n.body?.ok === true };
+    out.afterNotOperator = configValue(d2);
+    const u = await undo({});
+    // The test operator's act: the setting goes back.
     out.fixtureUndo = {
       status: u.status,
       ok: u.body?.ok === true,
@@ -226,13 +232,19 @@ async function strictLeg(ctx) {
     out.mcp = mcpSaid(d2);
     out.whileHeld = configValue(d2);
     if (held?.id) {
-      const r = await d2
-        .fetch(`/api/approvals/${encodeURIComponent(held.id)}/decide`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ decision: "allow" }),
-        })
-        .catch((e) => ({ status: null, body: { error: msg(e) } }));
+      const allow = (headers) =>
+        d2
+          .fetch(`/api/approvals/${encodeURIComponent(held.id)}/decide`, {
+            method: "POST",
+            headers: { "content-type": "application/json", ...headers },
+            body: JSON.stringify({ decision: "allow" }),
+          })
+          .catch((e) => ({ status: null, body: { error: msg(e) } }));
+      const n = await allow(NOT_OPERATOR);
+      out.notOperatorAllow = { status: n.status };
+      await ctx.sleep(1000);
+      out.afterNotOperator = configValue(d2);
+      const r = await allow({});
       out.fixtureAllow = {
         status: r.status,
         ...(r.body?.error ? { error: cut(r.body.error) } : {}),
@@ -322,11 +334,13 @@ export function expect(cells) {
         p.bell?.undo === true &&
         /without your Allow/.test(p.bell?.text ?? "") &&
         p.bell?.heldWaiting === 0 &&
-        p.fixtureUndo?.status === 403 &&
-        p.fixtureUndo?.ok === false &&
-        p.afterUndo === String(VALUE),
+        p.notOperatorUndo?.status === 403 &&
+        p.afterNotOperator === String(VALUE) &&
+        p.fixtureUndo?.status === 200 &&
+        p.fixtureUndo?.ok === true &&
+        p.afterUndo === p.before,
       pe ??
-        `before ${p.before}, after ${p.after}; agent's call ${JSON.stringify(p.mcp)}; bell: ${JSON.stringify(p.bell)}; fixture's Undo: ${JSON.stringify(p.fixtureUndo)}, then ${p.afterUndo}`,
+        `before ${p.before}, after ${p.after}; agent's call ${JSON.stringify(p.mcp)}; bell: ${JSON.stringify(p.bell)}; not the operator's Undo: ${JSON.stringify(p.notOperatorUndo)}, then ${p.afterNotOperator}; test operator's Undo: ${JSON.stringify(p.fixtureUndo)}, then ${p.afterUndo}`,
     ),
     row(
       clauses[3],
@@ -335,10 +349,12 @@ export function expect(cells) {
         t.mode?.from === "den.yml" &&
         !!t.held?.id &&
         t.whileHeld === t.before &&
-        t.fixtureAllow?.status === 403 &&
-        t.after === t.before,
+        t.notOperatorAllow?.status === 403 &&
+        t.afterNotOperator === t.before &&
+        t.fixtureAllow?.status === 200 &&
+        t.after === String(VALUE),
       te ??
-        `mode ${JSON.stringify(t.mode)}; agent's call ${JSON.stringify(t.mcp)}; held ${JSON.stringify(t.held)}; while held ${t.whileHeld} (before ${t.before}); fixture's Allow ${JSON.stringify(t.fixtureAllow)}; after ${t.after}`,
+        `mode ${JSON.stringify(t.mode)}; agent's call ${JSON.stringify(t.mcp)}; held ${JSON.stringify(t.held)}; while held ${t.whileHeld} (before ${t.before}); not the operator's Allow ${JSON.stringify(t.notOperatorAllow)}, then ${t.afterNotOperator}; test operator's Allow ${JSON.stringify(t.fixtureAllow)}; after ${t.after}`,
     ),
     row(
       clauses[4],

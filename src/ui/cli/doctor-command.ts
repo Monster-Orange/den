@@ -2980,10 +2980,10 @@ export async function cmdDoctor(args: string[]): Promise<number> {
       if (st.configured) {
         const dl = await hubDeliveryDoctor();
         if (dl.check) r.checks.push(dl.check);
-        const { readAgentTokenProblems } =
+        const { liveAgentTokenProblems } =
           await import("../../shared/hub-agent-tokens.js");
         r.checks.push(
-          ...hubAgentTokenLines(readAgentTokenProblems(getStateDir())).checks,
+          ...hubAgentTokenLines(liveAgentTokenProblems(getStateDir())).checks,
         );
       }
       r.checks.push(...(await hubAddressRows(st)).checks);
@@ -3161,9 +3161,9 @@ export async function cmdDoctor(args: string[]): Promise<number> {
     for (const l of hubLines(st, readBrand().name).lines) console.log(l);
     if (st.configured) {
       for (const l of (await hubDeliveryDoctor()).lines) console.log(l);
-      const { readAgentTokenProblems } =
+      const { liveAgentTokenProblems } =
         await import("../../shared/hub-agent-tokens.js");
-      for (const l of hubAgentTokenLines(readAgentTokenProblems(getStateDir()))
+      for (const l of hubAgentTokenLines(liveAgentTokenProblems(getStateDir()))
         .lines)
         console.log(l);
     }

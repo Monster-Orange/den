@@ -71,10 +71,12 @@ window.ready = true;
 </script></body></html>`;
 
 async function open(
-  o: { lang?: string; mode?: string; reduce?: boolean } = {},
+  o: { lang?: string; mode?: string; reduce?: boolean; touch?: boolean } = {},
 ): Promise<Page> {
   const ctx = await browser!.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: o.touch ? 390 : 1280, height: 800 },
+    hasTouch: o.touch ?? false,
+    isMobile: o.touch ?? false,
     reducedMotion: o.reduce === false ? "no-preference" : "reduce",
     colorScheme: o.mode === "dark" ? "dark" : "light",
     timezoneId: "UTC",
@@ -354,6 +356,26 @@ describe("savestate in a browser", () => {
           ? ["rgb(39, 97, 59)", "rgb(152, 49, 36)"]
           : ["rgb(111, 194, 143)", "rgb(239, 127, 106)"],
       );
+      await p.context().close();
+    },
+  );
+
+  it.each([
+    [false, 20],
+    [true, 44],
+  ])(
+    "Copy text is a 44px target on touch, and keeps the line's 20px with a mouse (touch: %s)",
+    async (touch, h) => {
+      if (skip()) return;
+      const p = await open({ touch });
+      await setPlan(p, [{ ms: 0, ok: false }]);
+      await type(p, "two");
+      await p.focus("#other");
+      await p.clock.runFor(1);
+      const copy = line(p).getByRole("button", { name: "Copy text" });
+      const box = await copy.boundingBox();
+      expect(Math.round(box!.height)).toBe(h);
+      expect(box!.width).toBeGreaterThanOrEqual(touch ? 44 : 0);
       await p.context().close();
     },
   );

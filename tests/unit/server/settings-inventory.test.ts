@@ -206,6 +206,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     close_grace_seconds: true,
     size_claim_grace_seconds: true,
     size_leave_grace_seconds: true,
+    io_ping_seconds: true,
     pty_close_seconds: true,
     pty_warn_above: true,
     pty_machine_warn_percent: true,
@@ -484,6 +485,7 @@ describe("the settings inventory (R21)", () => {
         "sessions.pty_warn_above",
         "sessions.size_claim_grace_seconds",
         "sessions.size_leave_grace_seconds",
+        "sessions.io_ping_seconds",
         // Issue 609: how agents' hooks wait for Den, and retry.
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",

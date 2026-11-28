@@ -7,6 +7,7 @@
    --md-max-height (full 360px, lite 200px). */
 .md-field {
   display: flex;
+  flex: var(--md-editor-grow, 0) 1 auto;
   flex-direction: column;
   min-width: 0;
   background: var(--raised);
@@ -75,9 +76,15 @@
 .md-editor-host,
 .md-fallback {
   font-family: var(--sans);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: var(--md-font-size, 15px);
+  line-height: var(--md-line-height, 1.5);
   color: var(--text);
+}
+.md-editor-host {
+  display: flex;
+  flex: var(--md-editor-grow, 0) 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 .md-fallback {
   display: block;
@@ -88,9 +95,10 @@
   background: transparent;
   resize: vertical;
   font: inherit;
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: var(--md-font-size, 15px);
+  line-height: var(--md-line-height, 1.5);
   color: var(--text);
+  flex: var(--md-editor-grow, 0) 1 auto;
 }
 .md-fallback:focus {
   outline: none;
@@ -100,10 +108,12 @@
 }
 .md-field .md-fallback,
 .md-field .md-editor-host .cm-content {
-  min-height: var(--md-min-height, 88px);
+  min-height: var(--md-editor-min-height, var(--md-min-height, 88px));
 }
 
 .md-editor-host .cm-editor {
+  flex: var(--md-editor-grow, 0) 1 auto;
+  min-height: 0;
   background: transparent;
   color: inherit;
 }
@@ -113,7 +123,7 @@
 .md-editor-host .cm-scroller {
   font-family: inherit;
   line-height: inherit;
-  max-height: var(--md-max-height, 360px);
+  max-height: var(--md-editor-max-height, var(--md-max-height, 360px));
   overflow: auto;
 }
 .md-editor-host .cm-content {
