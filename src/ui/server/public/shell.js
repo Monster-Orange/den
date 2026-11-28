@@ -409,6 +409,7 @@
     "fb.myS":
       "Shown live from GitHub. It works while you are signed in to GitHub.",
     "fb.tabMine": "Mine",
+    "fb.tabs": "Reports and drafts",
     "fb.tabDraft": "Drafts from agents ({n})",
     "fb.r3": "Draft: Finish later",
     "fb.r3s": "Saved on this computer · not sent",
@@ -769,6 +770,7 @@
     "gr.state.down": "down",
     "gr.state.ok": "ok",
     "gr.state.unknown": "unknown",
+    "gr.tabs": "Details",
     "gr.tab.activity": "Activity",
     "gr.tab.config": "Config",
     "gr.tab.logs": "Logs",
@@ -845,6 +847,7 @@
     "addSvc.filterPh": "Filter repos…",
     "addSvc.tab.local": "Local",
     "addSvc.tab.gh": "GitHub",
+    "addSvc.tabs": "Where to add from",
     "addSvc.sortBy": "Sort by",
     "addSvc.sort.name": "Name",
     "addSvc.sort.project": "Project",

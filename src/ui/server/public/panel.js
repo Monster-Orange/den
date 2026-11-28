@@ -17,6 +17,7 @@
  */
 import { linkOpen } from "/term-input.js";
 import { timeHtml } from "/kit/time.js";
+import { tabsHtml, hydrateTabs } from "/kit/tabs.js";
 import { healthReason } from "./value-words.js";
 import {
   commandTier,
@@ -770,8 +771,26 @@ export function renderPanel(el, sel) {
       <span class="dg-hbtns">${pinButton(kind === "repo" ? x.repo : x.id)}<button class="dg-ib" data-popout title="${esc(popLabel)}" aria-label="${esc(popLabel)}">${st.popped ? "⇲" : "⤢"}</button><button class="dg-ib" data-close aria-label="${esc(gw("gr.closeDetails", "Close details"))}">×</button></span></div>
     <div class="sub">${esc(kind === "repo" ? `${gw("gr.services", "{n} services", { n: x.services.length })} · ${s0.path}` : x.id)}</div>
     ${actionBar(x)}
-    <div class="dg-tabs" role="tablist">${tabs.map((t) => `<button role="tab" aria-selected="${t.id === st.tab}" data-tab="${t.id}">${esc(tabLabel(t))}</button>`).join("")}</div>
-  </div><div class="dg-pbody" role="tabpanel"></div>${st.popped ? popReport() : ""}`;
+    <div class="dg-tabs">${tabsHtml({
+      kind: "panel",
+      label: gw("gr.tabs", "Details"),
+      chosen: st.tab,
+      items: tabs.map((t) => ({
+        id: t.id,
+        text: tabLabel(t),
+        panel: `dg-pbody-${t.id}`,
+      })),
+    })}</div>
+  </div><div class="dg-pbody" id="dg-pbody-${esc(st.tab)}"></div>${st.popped ? popReport() : ""}`;
+  const tabsUi = hydrateTabs(el.querySelector(".dg-tabs .den-tabs"), {
+    onChange: (id) => {
+      const had = el.querySelector(".dg-tabs")?.contains(document.activeElement);
+      C.selectTab(id);
+      if (had)
+        el.querySelector('.dg-tabs .den-tab[aria-selected="true"]')?.focus();
+    },
+  });
+  disposers.push(() => tabsUi.destroy());
   const body = el.querySelector(".dg-pbody");
   for (const c of SECTIONS.filter(
     (c) => c.tab === st.tab && c.for.includes(kind) && (!c.when || c.when(x)),

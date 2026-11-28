@@ -285,6 +285,7 @@
     "fb.myS":
       "GitHub からそのまま表示します。GitHub にサインインしている間は使えます。",
     "fb.tabMine": "自分の",
+    "fb.tabs": "報告と下書き",
     "fb.tabDraft": "エージェントの下書き ({n})",
     "fb.r3": "下書き: あとで仕上げる",
     "fb.r3s": "このコンピューターに保存 · 未送信",
@@ -4044,6 +4045,7 @@
     "gr.state.down": "停止",
     "gr.state.ok": "正常",
     "gr.state.unknown": "不明",
+    "gr.tabs": "詳細",
     "gr.tab.activity": "アクティビティ",
     "gr.tab.config": "設定",
     "gr.tab.logs": "ログ",
@@ -4120,6 +4122,7 @@
     "addSvc.filterPh": "リポジトリを絞り込む…",
     "addSvc.tab.local": "ローカル",
     "addSvc.tab.gh": "GitHub",
+    "addSvc.tabs": "追加元",
     "addSvc.sortBy": "並べ替え",
     "addSvc.sort.name": "名前",
     "addSvc.sort.project": "プロジェクト",

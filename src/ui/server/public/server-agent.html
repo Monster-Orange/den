@@ -193,25 +193,8 @@
       }
       /* Issue 52: the agent's views and the Coach tab (mock v2). */
       .sa-tabs {
-        display: flex;
-        gap: 2px;
-        border-bottom: 1px solid var(--border);
-        margin: 0 0 14px;
-      }
-      .sa-tabs [role="tab"] {
-        padding: 8px 14px;
-        min-height: 36px;
-        background: none;
-        border: 0;
-        border-bottom: 2px solid transparent;
-        color: var(--muted);
-        font: inherit;
-        cursor: pointer;
-      }
-      .sa-tabs [role="tab"].on {
-        color: var(--text);
-        border-color: var(--accent);
-        font-weight: 600;
+        min-width: 0;
+        margin: 0 0 var(--space-3);
       }
       #sa-coach[hidden],
       #sa-body[hidden],
@@ -767,44 +750,11 @@
         </div>
       </div>
       <!-- Issue 52: the agent's views, Terminal (as it was) and Coach. -->
-      <div
-        class="sa-tabs"
-        id="sa-tabs"
-        role="tablist"
-        aria-label="Agent views"
-        data-t-attr="aria-label:co.tabs"
-      >
-        <button
-          type="button"
-          role="tab"
-          id="sa-tab-terminal"
-          data-tab="terminal"
-          aria-controls="sa-body"
-          aria-selected="true"
-          class="on"
-          data-t="co.tab.terminal"
-        >
-          Terminal
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="sa-tab-coach"
-          data-tab="coach"
-          aria-controls="sa-coach"
-          aria-selected="false"
-          tabindex="-1"
-          data-t="co.tab.coach"
-        >
-          Coach
-        </button>
-      </div>
+      <div class="sa-tabs" id="sa-tabs"></div>
       <div id="sa-body" aria-busy="true" aria-live="polite"></div>
       <div id="sa-pane"></div>
       <div
         id="sa-coach"
-        role="tabpanel"
-        aria-labelledby="sa-tab-coach"
         aria-busy="true"
         hidden
       ></div>

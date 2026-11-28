@@ -146,9 +146,9 @@ describe("the Coach tab", () => {
     if (!browser) return;
     const { p } = await open("/server-agent");
     await expect(
-      p.locator("#sa-tab-terminal").getAttribute("aria-selected"),
+      p.locator("#den-tab-sa-body").getAttribute("aria-selected"),
     ).resolves.toBe("true");
-    await p.locator("#sa-tab-coach").click();
+    await p.locator("#den-tab-sa-coach").click();
     await p.locator('[data-note="coach-table"]').waitFor();
     expect(new URL(p.url()).searchParams.get("tab")).toBe("coach");
     expect(await p.locator("#sa-body").isHidden()).toBe(true);

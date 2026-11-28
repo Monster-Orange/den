@@ -860,29 +860,8 @@ path.dg-flow.cross {
   font-weight: 600;
 }
 .dg-tabs {
-  display: flex;
-  gap: 2px;
-  margin: 14px -18px -12px;
-  padding: 0 12px;
-  border-top: 1px solid var(--border);
-  overflow-x: auto;
-}
-.dg-tabs button {
-  background: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  padding: 9px 10px;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.dg-tabs button[aria-selected="true"] {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-.dg-tabs button:hover {
-  color: var(--text);
+  min-width: 0;
+  margin: var(--space-3) 0 0;
 }
 .dg-sec {
   padding: 14px 18px;

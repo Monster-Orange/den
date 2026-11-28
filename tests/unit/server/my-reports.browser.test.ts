@@ -310,7 +310,7 @@ describe("FB: My reports", () => {
       },
     ];
     await openMy(p);
-    const agents = my(p).locator('[data-tab="agents"]');
+    const agents = my(p).locator('.den-tab[data-id="agents"]');
     await my(p).locator("[data-report]").first().waitFor();
     expect(await agents.textContent()).toBe("Drafts from agents (2)");
     // Mine doesn't list agents' drafts.
@@ -521,7 +521,7 @@ describe("FB: My reports", () => {
       await openMy(p);
       await my(p).locator("[data-report]").first().waitFor();
       expect(await my(p).locator("h2").textContent()).toBe(title);
-      expect(await my(p).locator('[data-tab="agents"]').textContent()).toBe(
+      expect(await my(p).locator('.den-tab[data-id="agents"]').textContent()).toBe(
         tab,
       );
       const over = await my(p).evaluate(

@@ -16,6 +16,7 @@
  *                                            kind }) after an add
  */
 import { dialogHtml, mountDialog } from "/dialog-den.js";
+import { tabsHtml, hydrateTabs } from "/kit/tabs.js";
 
 const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
 
@@ -38,6 +39,8 @@ const st = {
   selGh: null,
   sort: "name", // "name" | "workspace"
   tab: "local",
+  counts: { local: "", gh: "" },
+  tabs: null,
   onAdded: null,
   frame: null,
 };
@@ -86,7 +89,7 @@ function renderLocal() {
   const all = [...st.local, ...st.managed];
   if (!all.length) {
     list.innerHTML = empty(t("addSvc.noLocal"));
-    $("#add-svc-local-count").textContent = "";
+    setCount("local", "");
     return;
   }
   const q = query();
@@ -123,7 +126,7 @@ function renderLocal() {
   const mine = sorted(st.local.filter(hit));
   const ours = sorted(st.managed.filter(hit));
   const free = [...mine, ...ours].filter((r) => !added.has(r.relPath)).length;
-  $("#add-svc-local-count").textContent = free ? `(${free})` : "";
+  setCount("local", free || "");
   for (const b of dlg().querySelectorAll("[data-as-sort]")) {
     const on = b.dataset.asSort === st.sort;
     b.classList.toggle("active", on);
@@ -162,7 +165,7 @@ function renderGh() {
   const yes = st.gh.filter((r) => r.hasDen && shown(r));
   const no = st.gh.filter((r) => !r.hasDen && shown(r));
   const n = yes.length + no.length;
-  $("#add-svc-gh-count").textContent = n ? `(${n})` : "";
+  setCount("gh", n || "");
   if (!n) {
     list.innerHTML = empty(
       q
@@ -192,13 +195,37 @@ function renderGh() {
   list.innerHTML = html;
 }
 
+function drawTabs() {
+  const host = $("#add-svc-tabs");
+  if (!host) return;
+  const had = host.contains(document.activeElement);
+  st.tabs?.destroy();
+  host.innerHTML = tabsHtml({
+    kind: "panel",
+    label: t("addSvc.tabs"),
+    chosen: st.tab,
+    items: ["local", "gh"].map((id) => ({
+      id,
+      text: t(`addSvc.tab.${id}`),
+      count: st.counts[id],
+      panel: `add-svc-panel-${id}`,
+    })),
+  });
+  st.tabs = hydrateTabs(host.querySelector(".den-tabs"), {
+    onChange: (id) => setTab(id),
+  });
+  if (had) host.querySelector('.den-tab[aria-selected="true"]')?.focus();
+}
+
+function setCount(id, n) {
+  if (st.counts[id] === n) return;
+  st.counts[id] = n;
+  drawTabs();
+}
+
 function sync() {
   const local = st.tab === "local";
-  for (const b of dlg().querySelectorAll("[data-as-tab]")) {
-    const on = b.dataset.asTab === st.tab;
-    b.classList.toggle("active", on);
-    b.setAttribute("aria-selected", String(on));
-  }
+  if (st.tabs?.chosen() !== st.tab) drawTabs();
   $("#add-svc-panel-local").hidden = !local;
   $("#add-svc-panel-gh").hidden = local;
   $("#add-svc-gh-config").hidden = local || !st.selGh;
@@ -335,10 +362,7 @@ function bodyHtml() {
     `<div class="add-svc-top">` +
     `<input class="add-svc-search" id="add-svc-global-search" type="search" autocomplete="off"` +
     ` placeholder="${esc(t("addSvc.filterPh"))}" aria-label="${esc(t("addSvc.filter"))}">` +
-    `<div class="add-svc-tabs" role="tablist">` +
-    `<button type="button" class="add-svc-tab" role="tab" data-as-tab="local" aria-controls="add-svc-panel-local">${esc(t("addSvc.tab.local"))} <span class="add-svc-tab-count" id="add-svc-local-count"></span></button>` +
-    `<button type="button" class="add-svc-tab" role="tab" data-as-tab="gh" aria-controls="add-svc-panel-gh">${esc(t("addSvc.tab.gh"))} <span class="add-svc-tab-count" id="add-svc-gh-count"></span></button>` +
-    `</div></div>` +
+    `<div class="add-svc-tabs" id="add-svc-tabs"></div></div>` +
     `<div class="add-svc-body" id="add-svc-panel-local" role="tabpanel">` +
     `<div class="add-svc-tools"><span class="add-svc-tools-l">${esc(t("addSvc.sortBy"))}</span>` +
     `<span class="svc-sort-btns">` +
@@ -381,6 +405,9 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
   st.selLocal = null;
   st.selGh = null;
   st.onAdded = onAdded ?? null;
+  st.tabs?.destroy();
+  st.tabs = null;
+  st.counts = { local: "", gh: "" };
   st.frame = mountDialog(
     dialogHtml({
       kind: "panel",
@@ -409,8 +436,7 @@ export function openAddService({ ws, filter = "", onAdded, opener } = {}) {
   d.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b || !d.contains(b)) return;
-    if (b.dataset.asTab) setTab(b.dataset.asTab);
-    else if (b.dataset.asSort) {
+    if (b.dataset.asSort) {
       st.sort = b.dataset.asSort;
       renderLocal();
     } else if (b.dataset.asLocal != null) {

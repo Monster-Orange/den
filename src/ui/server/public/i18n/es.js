@@ -297,6 +297,7 @@
     "fb.myS":
       "Se muestran en vivo desde GitHub. Funciona mientras tengas la sesión iniciada en GitHub.",
     "fb.tabMine": "Míos",
+    "fb.tabs": "Informes y borradores",
     "fb.tabDraft": "Borradores de agentes ({n})",
     "fb.r3": "Borrador: Terminar luego",
     "fb.r3s": "Guardado en este ordenador · no enviado",
@@ -4184,6 +4185,7 @@
     "gr.state.down": "caído",
     "gr.state.ok": "correcto",
     "gr.state.unknown": "desconocido",
+    "gr.tabs": "Detalles",
     "gr.tab.activity": "Actividad",
     "gr.tab.config": "Configuración",
     "gr.tab.logs": "Registros",
@@ -4260,6 +4262,7 @@
     "addSvc.filterPh": "Filtrar repositorios…",
     "addSvc.tab.local": "Locales",
     "addSvc.tab.gh": "GitHub",
+    "addSvc.tabs": "De dónde añadir",
     "addSvc.sortBy": "Ordenar por",
     "addSvc.sort.name": "Nombre",
     "addSvc.sort.project": "Proyecto",

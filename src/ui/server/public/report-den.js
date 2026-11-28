@@ -9,6 +9,7 @@
  */
 import { formatTime, formatTitle } from "/kit/time.js";
 import { openReport } from "/kit/report.js";
+import { tabsHtml, hydrateTabs } from "/kit/tabs.js";
 import "./den-kit.js";
 import { dialogHtml, mountDialog } from "/dialog-den.js";
 
@@ -148,6 +149,9 @@ export async function openMyReports() {
     return `<li class="fb-row" data-draft="${esc(dr.id)}"><span class="fb-nodot"></span><div><b>${esc(dr.title || t("fb.untitled"))}</b><span class="fb-fine"${dr.by === "person" ? "" : ` title="${esc(formatTitle(dr.savedAt))}"`}>${esc(sub)}</span></div>${btn("cont", t("fb.cont"), ` data-id="${esc(dr.id)}"`)}${btn("rmdraft", t("fb.discard"), ` data-id="${esc(dr.id)}"`)}</li>`;
   }
 
+  let tabsUi = null;
+  const tabSel = () => `.fb-tabs .den-tab[data-id="${ms.tab}"]`;
+
   function render(focusSel) {
     const drafts = ms.drafts || [];
     const own = drafts.filter((x) => x.by === "person");
@@ -172,12 +176,29 @@ export async function openMyReports() {
       body = agents.length
         ? `<ul class="fb-list">${agents.map(draftRow).join("")}</ul>`
         : `<p class="fb-fine">${esc(t("fb.myAgE"))}</p>`;
-    const tab = (id, label) =>
-      `<button type="button" role="tab" data-tab="${id}" aria-selected="${ms.tab === id}" aria-controls="fb-my-panel" tabindex="${ms.tab === id ? 0 : -1}">${esc(label)}</button>`;
+    tabsUi?.destroy();
     dlg.querySelector("#fb-my-body").innerHTML =
       `<div class="fb-b"><p class="fb-sub">${esc(t("fb.myS"))}</p>` +
-      `<div class="fb-tabs" role="tablist">${tab("mine", t("fb.tabMine"))}${tab("agents", t("fb.tabDraft", { n: agents.length }))}</div>` +
-      `<div id="fb-my-panel" role="tabpanel" aria-live="polite">${body}</div></div>`;
+      `<div class="fb-tabs">${tabsHtml({
+        kind: "panel",
+        label: t("fb.tabs"),
+        chosen: ms.tab,
+        items: [
+          { id: "mine", text: t("fb.tabMine"), panel: "fb-my-panel-mine" },
+          {
+            id: "agents",
+            text: t("fb.tabDraft", { n: agents.length }),
+            panel: "fb-my-panel-agents",
+          },
+        ],
+      })}</div>` +
+      `<div id="fb-my-panel-${ms.tab}" class="fb-my-panel" aria-live="polite">${body}</div></div>`;
+    tabsUi = hydrateTabs(dlg.querySelector(".fb-tabs .den-tabs"), {
+      onChange: (id) => {
+        ms.tab = id;
+        render(tabSel());
+      },
+    });
     (
       (focusSel && dlg.querySelector(focusSel)) ||
       dlg.querySelector("h2")
@@ -226,7 +247,7 @@ export async function openMyReports() {
     }
     import("/kit/report-shot.js").then((m) => m.dropShot(id)).catch(() => {});
     ms.drafts = (ms.drafts || []).filter((x) => x.id !== id);
-    if (mine === self) render(`[data-tab="${ms.tab}"]`);
+    if (mine === self) render(tabSel());
   }
 
   function close() {
@@ -234,14 +255,6 @@ export async function openMyReports() {
     frame.close("done");
   }
 
-  dlg.addEventListener("keydown", (e) => {
-    const tb = e.target.closest?.('[role="tab"]');
-    if (tb && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
-      e.preventDefault();
-      ms.tab = ms.tab === "mine" ? "agents" : "mine";
-      render(`[data-tab="${ms.tab}"]`);
-    }
-  });
   dlg.addEventListener("click", (e) => {
     const o = e.target.closest?.("[data-open]");
     if (o) {
@@ -262,11 +275,6 @@ export async function openMyReports() {
           );
       }
       return;
-    }
-    const tb = e.target.closest?.("[data-tab]");
-    if (tb) {
-      ms.tab = tb.getAttribute("data-tab");
-      return render(`[data-tab="${ms.tab}"]`);
     }
     const b = e.target.closest?.("[data-act]");
     if (!b) return;

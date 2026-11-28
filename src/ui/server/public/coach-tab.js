@@ -32,6 +32,7 @@
  */
 
 import { formatTime } from "/kit/time.js";
+import { tabsHtml, hydrateTabs } from "/kit/tabs.js";
 
 const sh = () => globalThis.window?.denShell;
 const doc = () => globalThis.document;
@@ -917,14 +918,21 @@ export function mountTabs(doc = document) {
   const coach = doc.getElementById("sa-coach");
   if (!bar || !coach) return;
   const termEls = ["sa-body", "sa-pane"].map((id) => doc.getElementById(id));
+  const first =
+    new URL(location.href).searchParams.get("tab") === "coach"
+      ? "coach"
+      : "terminal";
+  bar.innerHTML = tabsHtml({
+    kind: "panel",
+    label: t("co.tabs"),
+    chosen: first,
+    items: [
+      { id: "terminal", text: t("co.tab.terminal"), panel: "sa-body" },
+      { id: "coach", text: t("co.tab.coach"), panel: "sa-coach" },
+    ],
+  });
   const show = (tab, push) => {
     const isCoach = tab === "coach";
-    for (const b of bar.querySelectorAll("[role=tab]")) {
-      const on = b.dataset.tab === tab;
-      b.setAttribute("aria-selected", String(on));
-      b.classList.toggle("on", on);
-      b.tabIndex = on ? 0 : -1;
-    }
     coach.hidden = !isCoach;
     for (const x of termEls) if (x) x.hidden = isCoach;
     if (push) {
@@ -935,22 +943,8 @@ export function mountTabs(doc = document) {
     }
     if (isCoach) void mountCoachTab(coach);
   };
-  bar.addEventListener("click", (e) => {
-    const b = e.target.closest?.("[role=tab]");
-    if (b) show(b.dataset.tab, true);
+  hydrateTabs(bar.querySelector(".den-tabs"), {
+    onChange: (id) => show(id, true),
   });
-  bar.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    const tabs = [...bar.querySelectorAll("[role=tab]")];
-    const i = tabs.findIndex((b) => b.getAttribute("aria-selected") === "true");
-    const next =
-      tabs[(i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length];
-    show(next.dataset.tab, true);
-    next.focus();
-  });
-  show(
-    new URL(location.href).searchParams.get("tab") === "coach"
-      ? "coach"
-      : "terminal",
-  );
+  show(first);
 }
