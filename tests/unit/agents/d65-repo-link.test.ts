@@ -39,6 +39,7 @@ import {
   changePersona,
   markInterrupted,
   migrateAgentLinks,
+  migrateAgentLinksPaced,
   moveAgent,
   proposeRepo,
   resolveAgentsDeps,
@@ -324,6 +325,39 @@ describe("D65 v2: Ward's case keeps its repo on every path", () => {
 });
 
 describe("D65 v2: the one-time migration and doctor", () => {
+  it("the server's paced run keeps what another request writes while it yields", async () => {
+    const r = await linkedRig();
+    const d = resolveAgentsDeps(r.deps);
+    const old = (id: string): AgentRecord =>
+      ({
+        id,
+        persona: "planner",
+        runtime: "den-claude",
+        workspace: "north",
+        cwd: path.join(r.wsDir("north"), "shop"),
+        session: { id: `s-${id}` },
+        sessionName: `acme-north:${id}`,
+        startedAt: new Date().toISOString(),
+      }) as unknown as AgentRecord;
+    for (const id of ["aa", "bb", "cc"]) writeRecord(r.stateDir, old(id));
+    let first = true;
+    const m = await migrateAgentLinksPaced(d, async () => {
+      if (!first) return;
+      first = false;
+      writeRecord(r.stateDir, {
+        ...rec(r, "bb"),
+        session: { id: "s-new" },
+      } as AgentRecord);
+      fs.rmSync(path.join(r.stateDir, "agents", "cc.json"));
+    });
+    expect(m).toEqual({ linked: ["aa", "bb"], unlinked: [] });
+    expect([rec(r, "bb").session.id, link(r, "bb")]).toEqual([
+      "s-new",
+      { project: "north", repo: "shop" },
+    ]);
+    expect(readRecord(r.stateDir, "cc")).toBeNull();
+  });
+
   it("links records from before from their folder; doctor lists the rest", async () => {
     const r = await linkedRig();
     const d = resolveAgentsDeps(r.deps);

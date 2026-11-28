@@ -285,6 +285,10 @@
       "src/ui/server/hub-proxy-routes.ts",
       "src/ui/server/token-binding.ts"
     ],
+    "tests/unit/server/agent-links-startup.integration.test.ts": [
+      "src/ui/cli/agent-ops.ts",
+      "src/ui/server/agent-routes.ts"
+    ],
     "tests/unit/server/agent-order.browser.test.ts": [
       "src/shared/agents/order.ts",
       "src/ui/server/session-routes.ts"
@@ -3513,6 +3517,11 @@
         "src/ui/server/token-binding.ts"
       ],
       "run": ["tests/unit/server/agent-inbox-busy.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": ["src/ui/cli/agent-ops.ts", "src/ui/server/agent-routes.ts"],
+      "run": ["tests/unit/server/agent-links-startup.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
