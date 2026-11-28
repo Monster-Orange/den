@@ -128,8 +128,10 @@ describe("Den's tabs are the kit's (issue 1977)", () => {
       `${row} [role="tab"][data-id="coach"][aria-selected="true"]`,
     );
     expect(await focusedId(p)).toBe("coach");
-    expect(await p.locator("#sa-coach").isHidden()).toBe(false);
-    expect(await p.locator("#sa-body").isHidden()).toBe(true);
+    const hidden = (sel: string) =>
+      p.locator(sel).evaluate((e) => (e as HTMLElement).hidden);
+    expect(await hidden("#sa-coach")).toBe(false);
+    expect(await hidden("#sa-body")).toBe(true);
     expect(new URL(p.url()).searchParams.get("tab")).toBe("coach");
     await p.context().close();
   });
