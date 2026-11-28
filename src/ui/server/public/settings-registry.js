@@ -4507,6 +4507,26 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ sessions: { size_leave_grace_seconds: v } }),
   },
   {
+    id: "server.sessions_io_ping",
+    category: "server",
+    label: "Terminal connection check",
+    description:
+      "How often Den checks that each open terminal window still answers. A window that misses a check is counted as gone by the next one, so a tab that vanished without closing (a crash, a sleeping laptop, a lost network) stops holding the terminal's size within twice this time. Applies to windows that connect after the change. __DEN_CLI__ config sessions.io_ping_seconds=10",
+    keywords: [
+      "terminal",
+      "connection",
+      "ping",
+      "tab",
+      "size",
+      "io_ping_seconds",
+    ],
+    scope: "user",
+    keys: ["sessions.io_ping_seconds"],
+    control: { type: "number", min: 1, max: 300, step: 1, unit: "s" },
+    read: (ctx) => ctx.data.sessions?.io_ping_seconds ?? 10,
+    write: (v, ctx) => ctx.post({ sessions: { io_ping_seconds: v } }),
+  },
+  {
     id: "server.sessions_pty_close",
     category: "server",
     label: "Terminal close after exit",

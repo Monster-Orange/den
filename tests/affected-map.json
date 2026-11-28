@@ -38,6 +38,11 @@
       "src/shared/den-config.ts",
       "src/ui/server/public/settings-registry.js"
     ],
+    "tests/unit/server/silent-view-1913.integration.test.ts": [
+      "src/ui/server/session-routes.ts",
+      "src/ui/server/websocket.ts",
+      "src/ui/server/term-size-lead.ts"
+    ],
     "tests/unit/server/size-claim-1724.integration.test.ts": [
       "src/ui/server/session-routes.ts",
       "src/ui/server/term-size-lead.ts"
@@ -284,6 +289,10 @@
     "tests/unit/server/agent-inbox-busy.integration.test.ts": [
       "src/ui/server/hub-proxy-routes.ts",
       "src/ui/server/token-binding.ts"
+    ],
+    "tests/unit/server/agent-links-startup.integration.test.ts": [
+      "src/ui/cli/agent-ops.ts",
+      "src/ui/server/agent-routes.ts"
     ],
     "tests/unit/server/agent-order.browser.test.ts": [
       "src/shared/agents/order.ts",
@@ -908,6 +917,11 @@
     "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
       "src/ui/server/public/agents-*.js"
+    ],
+    "tests/unit/server/graph-popout-837.browser.test.ts": [
+      "src/ui/server/public/graph.js",
+      "src/ui/server/public/graph.css",
+      "src/ui/server/public/panel.js"
     ]
   },
   "subjectless": [],
@@ -1171,6 +1185,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
@@ -1370,6 +1385,7 @@
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -1614,6 +1630,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
@@ -1734,6 +1751,7 @@
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -1882,6 +1900,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -2071,6 +2090,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
@@ -2187,6 +2207,7 @@
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/bell.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -2474,6 +2495,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
@@ -3516,6 +3538,11 @@
       "why": "starts Den as a process: its subject"
     },
     {
+      "when": ["src/ui/cli/agent-ops.ts", "src/ui/server/agent-routes.ts"],
+      "run": ["tests/unit/server/agent-links-startup.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
       "when": ["src/ui/mcp/server.ts"],
       "run": ["tests/unit/server/agent-mode-page.browser.test.ts"],
       "why": "starts Den as a process: its subject"
@@ -4063,6 +4090,15 @@
         "src/ui/server/graph-prefs.ts"
       ],
       "run": ["tests/unit/server/graph-many-groups.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/graph.css",
+        "src/ui/server/public/graph.js",
+        "src/ui/server/public/panel.js"
+      ],
+      "run": ["tests/unit/server/graph-popout-837.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
@@ -4837,6 +4873,15 @@
     {
       "when": ["src/shared/agents/signin-token.ts"],
       "run": ["tests/unit/server/signin-token.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/session-routes.ts",
+        "src/ui/server/term-size-lead.ts",
+        "src/ui/server/websocket.ts"
+      ],
+      "run": ["tests/unit/server/silent-view-1913.integration.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

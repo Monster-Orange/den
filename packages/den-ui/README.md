@@ -534,6 +534,14 @@ never converted to HTML and back).
 - **Touch sizes.** On `(pointer: coarse)` or below 720px the toolbar's
   buttons are `--tap` (44×44px) and the text is 16px (no zoom on focus);
   elsewhere 28px and 15px.
+- **Size hooks.** A host sets these on any ancestor (the editor's
+  wrapper, `body`), never on a kit class; they win over `rows` and work
+  on the textarea stand-in and on CodeMirror alike:
+  `--md-editor-min-height` (else from `rows`), `--md-editor-max-height`
+  (default 360px; `none` lets it grow), `--md-editor-grow: 1` (the field
+  and the editor fill a flex column's height), and `--md-font-size` and
+  `--md-line-height` (default 15px and 1.5; touch keeps 16px). Lite mode
+  keeps its own 48px and 200px.
 - **CSP.** CodeMirror writes its base styles into a `<style>`: under a
   strict `style-src`, pass the page's `nonce`.
 - The content element has `data-md-dirty` while it holds unsaved text
@@ -562,6 +570,9 @@ never converted to HTML and back).
   next save. A failure shows "Not saved. Retrying…" with Copy text (what
   `copyText()` returns), retries at 2 s, 4 s and 8 s, then every 30 s, and
   at once when the browser is back online.
+- Copy text is a 44px (`--tap`) target on touch and at 480px wide or
+  less; with a mouse the line keeps its 20px. A product needs no rule of
+  its own for it.
 - A visually hidden polite region beside the line says only the error and
   its recovery; `aria-live="off"` keeps the routine "Saved" quiet.
 - Only the dot's colour moves, over `--dur-fast`; none under reduced

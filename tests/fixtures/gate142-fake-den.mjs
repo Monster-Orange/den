@@ -16,9 +16,9 @@ export function fakeBed({
   withdraw = true,
   approvals = true,
   update = null,
+  finished = "done",
 } = {}) {
   const said = new Map(); // agent -> "needs" | "update"
-  const reads = new Map();
   const pending = new Map(); // id -> { name }
   const withdrawn = [];
   const asked = [];
@@ -54,17 +54,15 @@ export function fakeBed({
   const bell = () => {
     const needs = [];
     const updates = [];
+    const done = [];
     for (const [name, k] of said) {
       if (k === "needs") needs.push(item(`agent:${name}`, "waiting"));
       else {
-        const r = (reads.get(name) ?? 0) + 1;
-        reads.set(name, r);
-        if (r <= 3)
-          updates.push(
-            item(`agent:${name}`, "finished", {
-              link: `/agents?agent=${name}`,
-            }),
-          );
+        const link = `/agents?agent=${name}`;
+        if (finished === "done" || finished === "both")
+          done.push({ agent: name, name, workspace: "w", at: "t", link });
+        if (finished === "updates" || finished === "both")
+          updates.push(item(`agent:${name}`, "finished", { link }));
       }
     }
     if (held === "counts")
@@ -90,6 +88,8 @@ export function fakeBed({
     return {
       unread: needs.length,
       waiting: [],
+      done,
+      seenDone: [],
       groups: groups(needs),
       updates: { count: updates.length, groups: groups(updates) },
     };
