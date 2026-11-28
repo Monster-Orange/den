@@ -3481,6 +3481,7 @@
     "sa.saved": "保存しました。次回の起動から使われます。",
     // Issue 52: the Coach tab (mock v2).
     "co.tabs": "エージェントの表示",
+    "ph.tabs": "表示",
     "co.tab.terminal": "ターミナル",
     "co.tab.coach": "Coach",
     "co.run": "今すぐ実行",

@@ -641,7 +641,9 @@ describe("page tabs: the WAI-ARIA tabs pattern (0.3.0-dev.33)", () => {
       const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]')];
       return {
         afterHeader: list.previousElementSibling?.classList.contains("ph"),
-        label: list.getAttribute("aria-label"),
+        label: list
+          .querySelector('[role="tablist"]')
+          ?.getAttribute("aria-label"),
         tabs: tabs.map((t) => {
           const pnl = document.getElementById(
             t.getAttribute("aria-controls")!,

@@ -3615,6 +3615,7 @@
     "sa.saved": "Guardado. El agente lo usa desde su próximo inicio.",
     // Issue 52: the Coach tab (mock v2).
     "co.tabs": "Vistas del agente",
+    "ph.tabs": "Vistas",
     "co.tab.terminal": "Terminal",
     "co.tab.coach": "Coach",
     "co.run": "Ejecutar ahora",
