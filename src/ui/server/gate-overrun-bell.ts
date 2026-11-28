@@ -27,6 +27,14 @@ export interface GateOverrunWaiting {
   /** When it got the slot (ISO). */
   since: string;
   estimateMin: number;
+  /**
+   * Issue 1537: where estimateMin came from: the one the run gave, its
+   * measured history (a padded given one's, or none given), or the kind's
+   * default.
+   */
+  estimateFrom: "given" | "measured" | "default";
+  /** A padded run's own estimate, when the queue uses its history. */
+  givenMin?: number;
   /** Minutes past its estimate, rounded. */
   overMin: number;
   /** The agent that holds it, when an agent does. */
@@ -57,6 +65,13 @@ export function gateOverrunWaiting(
         label: e.label,
         since: e.grantedAt!,
         estimateMin: queueMinOf(e),
+        estimateFrom:
+          e.padded || e.estimateFrom === "label" || e.estimateFrom === "actor"
+            ? ("measured" as const)
+            : e.estimateFrom === "default"
+              ? ("default" as const)
+              : ("given" as const),
+        ...(e.padded ? { givenMin: e.estimateMin } : {}),
         overMin: Math.max(1, Math.round(held - est)),
         ...(agent ? { agent } : {}),
       };

@@ -365,11 +365,15 @@ function overrunRowHtml(w) {
   });
   const sub =
     typeof w.since === "string"
-      ? tr("bell.go.sub", {
-          time: formatTime(w.since),
-          est: Number(w.estimateMin) || 0,
-          over: Number(w.overMin) || 0,
-        })
+      ? // Issue 1537: a measured number is not called an estimate.
+        tr(
+          w.estimateFrom === "measured" ? "bell.go.subMeasured" : "bell.go.sub",
+          {
+            time: formatTime(w.since),
+            est: Number(w.estimateMin) || 0,
+            over: Number(w.overMin) || 0,
+          },
+        )
       : "";
   return (
     `<div class="den-bell-row den-bell-allow" data-kind="gate_overrun" data-go-row="${esc(w.id)}">` +

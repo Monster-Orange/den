@@ -1947,8 +1947,10 @@ export class GateStore {
 
   /**
    * Issue 999: the entry's estimate fields. None given: the measured
-   * median, else the kind's default. Given and over twice the median: kept
-   * and flagged, and the queue uses the median.
+   * median, else the kind's default. Given and over twice the label's own
+   * median: kept and flagged, and the queue uses the median. Issue 1537:
+   * only the label's own (3 or more runs): the asker's runs of other
+   * commands say nothing of this one, so its given estimate stands.
    */
   private estimateOf(o: {
     kind: GateKind;
@@ -1970,7 +1972,7 @@ export class GateStore {
       return m
         ? { estimateMin: m.minutes, estimateFrom: m.from }
         : { estimateMin: DEFAULT_ESTIMATE_MIN, estimateFrom: "default" };
-    if (m && o.estimateMin > 2 * m.minutes)
+    if (m?.from === "label" && o.estimateMin > 2 * m.minutes)
       return {
         estimateMin: o.estimateMin,
         estimateFrom: "given",
