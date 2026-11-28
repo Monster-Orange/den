@@ -36,6 +36,7 @@ import {
   orgHasGithub,
 } from "../../shared/org-sources.js";
 import { listReposWithManifests } from "../../shared/manifest/workspace-manifests.js";
+import { defaultBranchArgs, pinDefault } from "./github-service.js";
 
 import { product } from "../../shared/product.js";
 const execFileAsync = promisify(execFile);
@@ -753,12 +754,14 @@ export class ReleaseService {
   /** List branches for a repo (for the deploy-time branch selector). */
   async listBranches(repo: string): Promise<string[]> {
     const ghSlug = this.slug(repo);
-    const raw = await ghSafe([
-      "api",
-      "--paginate",
-      `repos/${ghSlug}/branches?per_page=100`,
-      "--jq",
-      "[.[].name]",
+    const [raw, def] = await Promise.all([
+      ghSafe([
+        "api",
+        `repos/${ghSlug}/branches?per_page=100`,
+        "--jq",
+        "[.[].name]",
+      ]),
+      ghSafe(defaultBranchArgs(ghSlug)),
     ]);
     if (!raw) return [];
     const names = raw
@@ -771,9 +774,9 @@ export class ReleaseService {
           return [];
         }
       });
-    // main first, then the rest sorted.
-    const rest = names.filter((n) => n !== "main").sort();
-    return names.includes("main") ? ["main", ...rest] : rest;
+    // The default branch first (main when GitHub can't say), then the rest sorted.
+    const first = def || (names.includes("main") ? "main" : "");
+    return pinDefault(names.sort(), first);
   }
 
   /**

@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
+### Fixed
+
+- The GitHub branch and repo lists (`/api/github/branches`, `/api/github/repos`, `/api/release/branches`) are faster: other requests no longer wait on GitHub while it answers, and the branch lists fetch one page of 100 instead of every page, with the repo's default branch always first. The repo list still fetches up to 200 per org. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed

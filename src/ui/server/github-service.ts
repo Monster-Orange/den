@@ -5,7 +5,7 @@
  * and org detection from the HTTP handler layer.
  */
 
-import { execFileSync, execSync } from "child_process";
+import { execFile } from "child_process";
 import * as path from "path";
 import {
   configuredGithubOrg,
@@ -27,6 +27,36 @@ import { isRepoName } from "../../shared/repo-name.js";
 // (basename + origin remote) must not depend on where the server was started.
 const ROOT = getDistRoot();
 
+// gh with its args as an array (no shell), off the event loop, with a timeout.
+function gh(args: string[], timeout: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      "gh",
+      args,
+      { encoding: "utf-8", timeout, maxBuffer: 16 * 1024 * 1024 },
+      (err, stdout, stderr) =>
+        err
+          ? reject(Object.assign(err, { stderr: String(stderr ?? "") }))
+          : resolve(String(stdout)),
+    );
+  });
+}
+
+const BRANCH_NAME = /^[A-Za-z0-9._/-]{1,255}$/;
+
+export function pinDefault(names: string[], def: string): string[] {
+  const d = def.trim();
+  if (!BRANCH_NAME.test(d)) return names;
+  return [d, ...names.filter((n) => n !== d)];
+}
+
+export const defaultBranchArgs = (slug: string) => [
+  "api",
+  `repos/${slug}`,
+  "--jq",
+  ".default_branch",
+];
+
 export interface GitHubRepo {
   name: string;
   nameWithOwner: string;
@@ -41,43 +71,33 @@ export class GitHubService {
     { names: string[]; fetchedAt: number }
   >();
   private reposCache: { data: GitHubRepo[]; fetchedAt: number } | null = null;
+  private reposInFlight: Promise<GitHubRepo[]> | null = null;
   private warnedNotConfigured = false;
 
   /**
    * List branches for a GitHub repo slug ("owner/repo").
    * Cached per slug for BRANCH_CACHE_TTL_MS.
    */
-  listBranches(gh: string): string[] {
+  async listBranches(slug: string): Promise<string[]> {
     // Strict owner/name: no shell metacharacters, and never a
     // "." or ".." segment, which would reach another GitHub API path.
-    if (!isRepoName(gh)) return [];
+    if (!isRepoName(slug)) return [];
 
-    const cached = this.branchesCache.get(gh);
+    const cached = this.branchesCache.get(slug);
     if (cached && Date.now() - cached.fetchedAt < BRANCH_CACHE_TTL_MS) {
       return cached.names;
     }
 
     try {
-      const raw = execFileSync(
-        "gh",
-        [
-          "api",
-          "--paginate",
-          `repos/${gh}/branches?per_page=100`,
-          "--jq",
-          "[.[].name]",
-        ],
-        {
-          encoding: "utf-8",
-          timeout: GH_API_TIMEOUT_MS * 2,
-          stdio: ["pipe", "pipe", "pipe"],
-        },
-      ).trim();
-      const names = raw
-        .split("\n")
-        .filter(Boolean)
-        .flatMap((line) => JSON.parse(line) as string[]);
-      this.branchesCache.set(gh, { names, fetchedAt: Date.now() });
+      const [raw, def] = await Promise.all([
+        gh(
+          ["api", `repos/${slug}/branches?per_page=100`, "--jq", "[.[].name]"],
+          GH_API_TIMEOUT_MS,
+        ),
+        gh(defaultBranchArgs(slug), GH_API_TIMEOUT_MS).catch(() => ""),
+      ]);
+      const names = pinDefault(JSON.parse(raw.trim() || "[]") as string[], def);
+      this.branchesCache.set(slug, { names, fetchedAt: Date.now() });
       return names;
     } catch {
       return [];
@@ -89,7 +109,7 @@ export class GitHubService {
    * flag. One org failing (no access, SSO) leaves the others listed.
    * Cached for REPO_CACHE_TTL_MS unless forceRefresh is true.
    */
-  listOrgRepos(forceRefresh = false): GitHubRepo[] {
+  async listOrgRepos(forceRefresh = false): Promise<GitHubRepo[]> {
     if (
       !forceRefresh &&
       this.reposCache &&
@@ -98,6 +118,14 @@ export class GitHubService {
       return this.reposCache.data;
     }
 
+    if (this.reposInFlight) return this.reposInFlight;
+    this.reposInFlight = this.fetchOrgRepos().finally(() => {
+      this.reposInFlight = null;
+    });
+    return this.reposInFlight;
+  }
+
+  private async fetchOrgRepos(): Promise<GitHubRepo[]> {
     const orgs = this.resolveOrgs();
     if (orgs.length === 0) {
       if (!this.warnedNotConfigured) {
@@ -109,30 +137,39 @@ export class GitHubService {
       }
       return [];
     }
-    const data = orgs.flatMap((org) => this.listOneOrg(org));
+    const data = (
+      await Promise.all(orgs.map((org) => this.listOneOrg(org)))
+    ).flat();
     this.reposCache = { data, fetchedAt: Date.now() };
     return data;
   }
 
-  private listOneOrg(org: string): GitHubRepo[] {
+  private async listOneOrg(org: string): Promise<GitHubRepo[]> {
     try {
-      const repoListCmd = `gh repo list "${org}" --json name,nameWithOwner,defaultBranchRef,isArchived --limit 200`;
-      const denSearchCmd = `gh api "search/code?q=filename:${product().manifestYml}+org:${org}&per_page=100" --jq '[.items[].repository.name]'`;
+      const raw = await gh(
+        [
+          "repo",
+          "list",
+          org,
+          "--json",
+          "name,nameWithOwner,defaultBranchRef,isArchived",
+          "--limit",
+          "200",
+        ],
+        GH_API_TIMEOUT_MS,
+      );
 
       let denRaw: string;
-
-      const raw = execSync(repoListCmd, {
-        encoding: "utf-8",
-        timeout: GH_API_TIMEOUT_MS,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
       try {
-        denRaw = execSync(denSearchCmd, {
-          encoding: "utf-8",
-          timeout: GH_API_TIMEOUT_MS,
-          stdio: ["pipe", "pipe", "pipe"],
-        });
+        denRaw = await gh(
+          [
+            "api",
+            `search/code?q=filename:${product().manifestYml}+org:${org}&per_page=100`,
+            "--jq",
+            "[.items[].repository.name]",
+          ],
+          GH_API_TIMEOUT_MS,
+        );
       } catch (e) {
         console.warn(
           `[github-service] listOrgRepos: ${product().manifestYml} search failed (has${product().title} flags will be false): ${(e as Error).message}`,
@@ -161,11 +198,8 @@ export class GitHubService {
 
       return data;
     } catch (e) {
-      const err = e as Error & { stderr?: Buffer | string };
-      const stderr =
-        err.stderr instanceof Buffer
-          ? err.stderr.toString().trim()
-          : (err.stderr ?? "").toString().trim();
+      const err = e as Error & { stderr?: string };
+      const stderr = (err.stderr ?? "").trim();
       console.warn(
         `[github-service] listOrgRepos: \`gh repo list ${org}\` failed — ` +
           `${err.message}${stderr ? ` | stderr: ${stderr}` : ""}. ` +
@@ -198,8 +232,7 @@ export class GitHubService {
         orgs.add(entry.gh.slice(0, entry.gh.indexOf("/")));
       }
     }
-    // Org names reach a shell command: GitHub owners are letters, digits and
-    // hyphens, so anything else is dropped.
+    // GitHub owners are letters, digits and hyphens: anything else is dropped.
     return [...orgs].filter(
       (o) => /^[A-Za-z0-9][A-Za-z0-9-]*$/.test(o) && !isPlaceholderGithubOrg(o),
     );
