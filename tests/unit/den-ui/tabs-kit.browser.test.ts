@@ -116,7 +116,7 @@ const state = (p: Page, host: string, attr: string) =>
 const focused = (p: Page) =>
   js<string | null>(p, "document.activeElement?.dataset?.id ?? null");
 const tab = (p: Page, host: string, id: string) =>
-  p.locator(`#${host} .den-tab[data-id="${id}"]`);
+  p.locator(`#${host} [data-id="${id}"]`);
 const css = (p: Page, sel: string, prop: string, pseudo = "") =>
   js<string>(
     p,
@@ -411,7 +411,7 @@ describe("tabs in a browser: right to left", () => {
   it("rounds the outer corners and draws the dividers on the reading side", async () => {
     if (skip()) return;
     const p = await open();
-    const sel = (i: number) => `#rtlwide .den-tab:nth-child(${i})`;
+    const sel = (i: number) => `#rtlwide [data-id="${"abc"[i - 1]}"]`;
     const r = (i: number, c: string) => css(p, sel(i), `border-${c}-radius`);
     expect(await r(1, "top-left")).toBe("0px");
     expect(await r(1, "top-right")).not.toBe("0px");
