@@ -6,11 +6,17 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Added
+
+- UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", « First, ‹ Previous, a page picker ("Page 3 of 17"), Next ›, Last » and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's.
+
 ### Changed
 
 - A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
 
 - The repo picker's list pages. `GET /api/workspaces/available-repos` returns `{ items, next }`, 50 by default (`limit`, `cursor`, capped by the install's list page size), and `?q=` filters by name, path or GitHub slug before the cut. The folder walk sorts each folder by name and stops once it has one more than the page, so later pages start after the cursor's path, and the `git remote` lookups run only for the page shown. `?all=1` keeps the old full array; Local Dev and Services ask for it until they use the pager. A cursor this list didn't give is refused (400 `bad_cursor`).
+
+- Projects' Add Service shows the repos on this machine one page at a time, with the kit's pager under the list (no total), and its filter searches on the server. Local Dev no longer reads the whole repo list each time it loads; the dialog asks for its first page when it opens. Services' unused repo dropdown, which still asked for the whole list, is gone.
 
 ## [0.4.92] - unreleased
 

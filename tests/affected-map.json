@@ -1115,6 +1115,7 @@
         "src/ui/server/public/graph-model.js",
         "src/ui/server/public/graph.css",
         "src/ui/server/public/graph.js",
+        "src/ui/server/public/list-pager.js",
         "src/ui/server/public/local-dev.html",
         "src/ui/server/public/panel.js"
       ],
