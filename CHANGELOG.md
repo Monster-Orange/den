@@ -8,6 +8,10 @@ config and manifest changes a distribution must make to move to it under
 
 0.4.92 was never published: its changes shipped in 0.4.93.
 
+### Fixed
+
+- Change persona no longer closes the agent's pane now and then. A list read in the moment the old session still ran but no longer belonged to the agent showed it as a plain terminal, and the Agents page closed its pane before the new session was listed. The pane now waits for its agent's new session, for up to 15 s. (issue 1903)
+
 ## [0.4.93] - 2026-11-28
 
 ### Added
