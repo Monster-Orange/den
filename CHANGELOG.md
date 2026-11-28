@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
+### Fixed
+
+- UI kit: a scope crumb before the last one no longer gets narrower than its value. Where the top bar is tight (a long project name, or a held search width), the company crumb's name used to draw under the next crumb's label. Now the crumb's label gives way, and its value keeps about 4 characters and its ▾.
+
 ## [0.4.92] - unreleased
 
 ### Changed
