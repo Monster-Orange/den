@@ -37,27 +37,6 @@ import { MAX_LOG_BYTES, ROTATED_KEEP_BYTES } from "../constants.js";
 
 import { product } from "../product.js";
 /** Where a rotated generation is kept — one only, overwritten each time. */
-export function openLogNoFollow(p: string, truncate = false): number {
-  const c = fs.constants;
-  const flags =
-    c.O_WRONLY | c.O_CREAT | c.O_NOFOLLOW | (truncate ? c.O_TRUNC : c.O_APPEND);
-  let fd: number;
-  try {
-    fd = fs.openSync(p, flags, 0o600);
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === "ELOOP")
-      throw new Error(`${p} is a link: Den won't write a log through it`);
-    throw e;
-  }
-  try {
-    fs.fchmodSync(fd, 0o600);
-  } catch (e) {
-    fs.closeSync(fd);
-    throw e;
-  }
-  return fd;
-}
-
 export function rotatedPathFor(logPath: string): string {
   return `${logPath}.1`;
 }
@@ -75,7 +54,7 @@ export function rotateIfOversized(
 ): boolean {
   let size: number;
   try {
-    const st = fs.lstatSync(logPath);
+    const st = fs.statSync(logPath);
     if (!st.isFile()) return false;
     size = st.size;
   } catch {
@@ -114,7 +93,7 @@ function copyTail(from: string, to: string, bytes: number): void {
       const nl = probe.subarray(0, read).indexOf(0x0a);
       if (nl !== -1) start += nl + 1;
     }
-    const dst = openLogNoFollow(to, true);
+    const dst = fs.openSync(to, "w");
     try {
       const buf = Buffer.alloc(1024 * 1024);
       let pos = start;
@@ -137,32 +116,6 @@ function copyTail(from: string, to: string, bytes: number): void {
  * Returns the paths rotated. Never throws — a sweep failure must not take the
  * server down.
  */
-export function makeLogsPrivate(logRoot: string): void {
-  const walk = (p: string) => {
-    let st: fs.Stats;
-    try {
-      st = fs.lstatSync(p);
-    } catch {
-      return;
-    }
-    if (st.isSymbolicLink()) return;
-    try {
-      fs.chmodSync(p, st.isDirectory() ? 0o700 : 0o600);
-    } catch {
-      return;
-    }
-    if (!st.isDirectory()) return;
-    let names: string[];
-    try {
-      names = fs.readdirSync(p);
-    } catch {
-      return;
-    }
-    for (const n of names) walk(path.join(p, n));
-  };
-  walk(logRoot);
-}
-
 export function sweepLogs(
   logRoot: string,
   maxBytes: number = MAX_LOG_BYTES,
