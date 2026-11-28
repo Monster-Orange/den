@@ -407,16 +407,19 @@ export async function openReport(opts = {}) {
   st.diag = diag?.sections || diag || {};
   st.repo = st.repo || st.info.repos?.[0]?.repo || "";
   const draftRepo = st.repo;
+  const repoOf = (repo) =>
+    (st.info.repos || []).find((x) => x.repo === repo) || {};
+  const closedRepo = (repo) =>
+    ["private", "internal"].includes(reportVisibility(repoOf(repo)).visibility);
   function redactFor(repo) {
-    const r = (st.info.repos || []).find((x) => x.repo === repo) || {};
-    const closed = ["private", "internal"].includes(
-      reportVisibility(r).visibility,
-    );
     const draft = repo === draftRepo && typeof d.redact === "boolean";
-    if (!closed) return !(draft && d.by === "person" && d.redact === false);
+    if (!closedRepo(repo))
+      return !(draft && d.by === "person" && d.repo === repo && !d.redact);
     if (draft) return d.redact;
-    if (typeof prefs?.redact === "boolean") return prefs.redact;
-    return r.redact !== false;
+    const saved = loadPrefs();
+    if (saved?.redact === false) return false;
+    if (saved?.redact === true && saved.redactChosen === true) return true;
+    return repoOf(repo).redact !== false;
   }
   st.redact = redactFor(st.repo);
   if (!st.sections) {
@@ -1118,12 +1121,18 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     }
     if (act === "review") {
       st.backToReview = false;
-      const keep = st.redactTouched ? st.redact : prefs?.redact;
+      const old = loadPrefs();
+      const keep =
+        st.redactTouched && closedRepo(st.repo)
+          ? { redact: st.redact, redactChosen: true }
+          : typeof old?.redact === "boolean"
+            ? { redact: old.redact, redactChosen: old.redactChosen }
+            : {};
       savePrefs(
         st.remember
           ? {
               sections: st.sections,
-              ...(typeof keep === "boolean" ? { redact: keep } : {}),
+              ...keep,
             }
           : null,
       );

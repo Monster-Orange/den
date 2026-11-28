@@ -205,14 +205,16 @@ names" box. Only `false` means off, and only for a private or internal
 repo. The box starts this way:
 
 - Public or unknown: on. A saved choice never turns it off, and nor does
-  an agent's draft. The person's own draft for that repo can.
+  an agent's draft or a draft with no repo. The person's own draft for
+  that repo can.
 - Private or internal: the draft's choice, then the person's saved choice,
   then the host's default, then on.
 
 Changing the repo in Review works the box out again, drops an earlier
 tick, and refreshes the preview. Remember my choices saves the box only if
-the person changed it, and a saved choice is read for private and
-internal repos only.
+the person changed it on a private or internal repo, and a saved choice
+is read for those repos only. An "on" saved by an older kit (which saved
+the box whether or not it was changed) is ignored; an old "off" counts.
 
 ### Strings
 

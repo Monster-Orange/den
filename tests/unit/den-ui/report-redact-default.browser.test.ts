@@ -148,6 +148,19 @@ async function lastPreview(p: Page, after: number) {
 
 const PRIV: Repo = { repo: "o/closed", visibility: "private", redact: false };
 const PUB: Repo = { repo: "o/open", visibility: "public" };
+const PRIV_ON: Repo = { repo: "o/team", visibility: "internal" };
+
+const draft = (by: string, repo: string | undefined, redact: boolean) => ({
+  draft: { id: "d1", by, title: "Pane drops", repo, redact },
+});
+
+async function pick(p: Page, repo: string) {
+  const n = await p.evaluate(
+    () => (window as unknown as { previews: unknown[] }).previews.length,
+  );
+  await dialog(p).locator('select[data-f="repo"]').selectOption(repo);
+  return lastPreview(p, n);
+}
 
 describe.each(["chromium", "webkit"])(
   "Report: the Redact names default (%s)",
@@ -237,6 +250,113 @@ describe.each(["chromium", "webkit"])(
       });
       try {
         expect(await box(p)).toBe(true);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+    it("a person's own draft can turn it off on a public repo", async () => {
+      if (skip()) return;
+      const p = await include(b(), [PUB], {
+        open: draft("person", PUB.repo, false),
+      });
+      try {
+        expect(await box(p)).toBe(false);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+
+    it("a person's draft with no repo can't turn it off on a public repo", async () => {
+      if (skip()) return;
+      const p = await include(b(), [PUB], {
+        open: draft("person", undefined, false),
+      });
+      try {
+        expect(await box(p)).toBe(true);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+
+    it("private: a saved choice beats the host default", async () => {
+      if (skip()) return;
+      const p = await include(b(), [PRIV], {
+        saved: { redact: true, redactChosen: true },
+      });
+      try {
+        expect(await box(p)).toBe(true);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+
+    it("private: the draft beats the saved choice", async () => {
+      if (skip()) return;
+      const p = await include(b(), [PRIV_ON], {
+        saved: { redact: false },
+        open: draft("agent", PRIV_ON.repo, true),
+      });
+      try {
+        expect(await box(p)).toBe(true);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+
+    it("unticking on a public repo with Remember saves nothing for private ones", async () => {
+      if (skip()) return;
+      const p = await include(b(), [PUB, PRIV_ON]);
+      try {
+        await dialog(p).locator('[data-f="redact"]').uncheck();
+        await dialog(p).locator('[data-f="remember"]').check();
+        expect((await toReview(p)).redact).toBe(false);
+        expect(await saved(p)).not.toHaveProperty("redact");
+        expect(await pick(p, PRIV_ON.repo)).toEqual({
+          repo: PRIV_ON.repo,
+          redact: true,
+        });
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+
+    it("a second Review keeps the choice the first one saved", async () => {
+      if (skip()) return;
+      const p = await include(b(), [PRIV_ON, PUB]);
+      try {
+        await dialog(p).locator('[data-f="redact"]').uncheck();
+        await dialog(p).locator('[data-f="remember"]').check();
+        await toReview(p);
+        expect(await saved(p)).toHaveProperty("redact", false);
+        await pick(p, PUB.repo);
+        await dialog(p).locator('[data-act="back-include"]').click();
+        await toReview(p);
+        expect(await saved(p)).toHaveProperty("redact", false);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+    it("private: an old saved on, from before the mark, leaves the host's off", async () => {
+      if (skip()) return;
+      const p = await include(b(), [PRIV], { saved: { redact: true } });
+      try {
+        expect(await box(p)).toBe(false);
+      } finally {
+        await p.context().close();
+      }
+    }, 60_000);
+
+    it("a tick on a private repo with Remember saves it, marked as chosen", async () => {
+      if (skip()) return;
+      const p = await include(b(), [PRIV]);
+      try {
+        await dialog(p).locator('[data-f="redact"]').check();
+        await dialog(p).locator('[data-f="remember"]').check();
+        await toReview(p);
+        expect(await saved(p)).toMatchObject({
+          redact: true,
+          redactChosen: true,
+        });
       } finally {
         await p.context().close();
       }
