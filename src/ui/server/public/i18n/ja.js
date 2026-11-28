@@ -1126,6 +1126,9 @@
     "set.server.lookup_retry": "プロセス検索の再試行の待ち時間",
     "set.server.lookup_retry.d":
       "最初の試行が時間切れになったときに、2 回目の試行が待つ時間です。混み合ったマシンでは応答が遅れることがあります。__DEN_CLI__ config process_lookup.retry_seconds=20",
+    "set.server.menu_load_timeout": "プロジェクトメニューの読み込み待ち時間",
+    "set.server.menu_load_timeout.d":
+      "各ページの上部バーがプロジェクトメニューの読み込みを待つ時間。過ぎると失敗として扱い、もう一度試します。遅い接続や止まった接続でも、再読み込みするまでメニューが隠れることはありません。__DEN_CLI__ config web.menu_load_timeout_ms=8000",
     "set.server.address_check_timeout": "アドレス確認の待ち時間",
     "set.server.address_check_timeout.d":
       "アドレスがこの __DEN_TITLE__ に届くか確認するとき、表示したり開いたりする前に __DEN_TITLE__ が応答を待つ時間。__DEN_CLI__ config web.address_check_timeout_seconds=5",

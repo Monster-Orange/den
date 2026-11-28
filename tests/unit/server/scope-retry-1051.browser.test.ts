@@ -1,7 +1,7 @@
 /**
- * Issue 1051: one failed load of the top bar's project menu
- * (/api/workspaces) no longer hides it until a reload. The page tries
- * again, and the next answer shows the menu.
+ * One failed load of the top bar's project menu (/api/workspaces) never
+ * hides it until a reload. The page tries again, and the next answer
+ * shows the menu.
  *
  *  - The first /api/workspaces fails (a dropped connection): the project
  *    button shows once a later try answers, with no reload.
@@ -17,6 +17,8 @@ import { closeBrowserSuite } from "../../browser-teardown.js";
 import { startDenServer } from "../../child-servers.js";
 import { signIn } from "./helpers/signed-in.js";
 import { launchBrowser } from "../helpers/browser.js";
+
+const neverAnswered = () => new Promise<void>(() => undefined);
 
 const ENGINE = path.resolve(__dirname, "../../..");
 let tmp = "";
@@ -100,6 +102,7 @@ afterAll(async () => {
  */
 async function openFailing(
   fail: number,
+  how: "reset" | "stall" = "reset",
 ): Promise<{ p: Page; loads: () => number }> {
   const ctx = await browser!.newContext({
     viewport: { width: 1440, height: 900 },
@@ -109,7 +112,8 @@ async function openFailing(
   await ctx.route(/\/api\/workspaces(\?|$)/, async (r) => {
     if (r.request().method() !== "GET") return r.continue();
     n++;
-    if (n <= fail) return r.abort("connectionreset");
+    if (n <= fail)
+      return how === "reset" ? r.abort("connectionreset") : neverAnswered();
     return r.continue();
   });
   const p = await ctx.newPage();
@@ -130,6 +134,72 @@ describe("issue 1051: the project menu after a failed load", () => {
     expect(navs).toBe(0);
     await p.context().close();
   }, 40_000);
+
+  it("the first load never answers: the project button shows once a later try answers, no reload", async () => {
+    if (!browser) return;
+    const { p, loads } = await openFailing(1, "stall");
+    let navs = 0;
+    p.on("framenavigated", (f) => {
+      if (f === p.mainFrame()) navs++;
+    });
+    await p.waitForSelector("#ws-pill:not([hidden])", { timeout: 25_000 });
+    expect(loads()).toBeGreaterThanOrEqual(2);
+    expect(navs).toBe(0);
+    await p.context().close();
+  }, 50_000);
+
+  it("the first load's body never comes: the project button shows once a later try answers, no reload", async () => {
+    if (!browser) return;
+    const ctx = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+    });
+    await signIn(ctx, path.join(tmp, "home"), base());
+    await ctx.addInitScript(() => {
+      const real = window.fetch.bind(window);
+      const w = window as unknown as { __wsLoads: number };
+      w.__wsLoads = 0;
+      window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (
+          !/\/api\/workspaces(\?|$)/.test(url) ||
+          (init?.method ?? "GET") !== "GET"
+        )
+          return real(input, init);
+        w.__wsLoads++;
+        if (w.__wsLoads > 1) return real(input, init);
+        const signal = init?.signal;
+        const body = new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(new TextEncoder().encode("{"));
+            signal?.addEventListener("abort", () =>
+              c.error(new DOMException("aborted", "AbortError")),
+            );
+          },
+        });
+        return Promise.resolve(
+          new Response(body, {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      };
+    });
+    const p = await ctx.newPage();
+    let navs = 0;
+    p.on("framenavigated", (f) => {
+      if (f === p.mainFrame()) navs++;
+    });
+    await p.goto(`${base()}/services`);
+    navs = 0;
+    await p.waitForSelector("#ws-pill:not([hidden])", { timeout: 25_000 });
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { __wsLoads: number }).__wsLoads,
+      ),
+    ).toBeGreaterThanOrEqual(2);
+    expect(navs).toBe(0);
+    await ctx.close();
+  }, 50_000);
 
   it("a failed refresh after a good load keeps the menu it had", async () => {
     if (!browser) return;

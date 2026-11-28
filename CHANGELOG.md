@@ -4,6 +4,25 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.93] - unreleased
+
+### Added
+
+- UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", icon buttons for First, Previous, Next and Last (each word is the button's name and tooltip, and the icons mirror right to left), a page picker ("Page 3 of 17") and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's. More mode can hand its press to `onNavigate` (a list that redraws itself whole), and the 44px size follows a phone-width window or a touch screen, never the width of the box the pager sits in. The ⋯ menu and the short "3 / 17" picker appear only when the pager's box is 600px wide or less, in place of the full controls; above that the full row shows, in two lines when it must. A More list redrawn whole after its last chunk can keep its row with "All N shown" (`loaded: true`). A compact kind for a list inside a card (`compact: true`): ‹ [2] / 25 ›, with First and Last on a row wider than 600px. With `perDefault`, a list that fits one page keeps its row when the person chose another page size, so they can switch back.
+- UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps. Every word is the host's. A row that doesn't fit scrolls sideways, with « and » at its ends shown only while tabs are hidden on that side (a red dot when a hidden tab has an alert), and keeps the chosen and focused tab in view; only when even one tab can't fit between the arrows does it fold into one select with the same choices and a visible label.
+
+### Fixed
+
+- UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
+
+- The approval dialog no longer brings back a request you just denied or allowed. A check of what waits that was already under way when you answered could open it again with that request. (issue 1898)
+
+- After Change persona, the agent's pane keeps its "Switched to …" and "started fresh" lines when its connection drops and comes back. Before, the reconnect cleared them. (issue 1903)
+
+### Changed
+
+- Removing an agent whose Hub token was never made (Hub refused it) now clears its row in `den doctor`. Before, the row stayed after the agent was gone. `den doctor` also skips such a row for an agent that no longer exists. (issue 1907)
+
 ## [0.4.92] - unreleased
 
 ### Changed
@@ -25,6 +44,7 @@ config and manifest changes a distribution must make to move to it under
 
 - Agents can be kept from seeing secret-looking environment variables (`*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, `OP_SESSION_*`): set `agents.env_hold` in config/local/user.yml, or use a strict install, which holds them back by default. A name an agent needs goes in `agents.env_allow`. `env`, `printenv` and `set` in an agent's shell show those values masked. Agents started before keep theirs until you pick Keep these or Remove in the bell, and `den doctor` lists what is held back, by name only. (issue 974) It was held back from 0.4.91: on 0.4.91-dev.1 its live check (gate/974) failed because of a bug in the check itself (it sent multi-line shell probes, and read a cut-off copy of settings.json), not in the env hold. The fixed check is the proof: on that same build it passed with the hold on and with it off.
 - `nice`, `timeout`, `stdbuf` and `xargs` in front of `env` or `printenv`, and `env` running one of them (`-S` included), now show secret-looking values masked too. (issue 1837)
+- An agent's sandbox now hides each Hub token file Den keeps: the per-Hub token files Connect makes (`hub/token-<slot>`), the agents' own Hub tokens (`hub/agents/`) and tokens waiting for a revoke (`hub/unrevoked/`), on macOS and Linux, even if a read rule were to name their folder. On Linux the old `hub/token` is now masked in that case too.
 
 - Every link Den gives to the server agent (a bell row, its question, a notification, the link in its own replies, its held write's Allow) opens the server agent's page. Before, each opened an Agents page for a project nobody can see, with nothing to answer (issue 1811)
 - The Agents list's switch now says Need, Project and Group, without "By" (es: Urgencia, Proyecto, Grupo; ja: プロジェクト, グループ), so it takes less room.
@@ -48,7 +68,7 @@ config and manifest changes a distribution must make to move to it under
 
 - With `DEN_LOGIN_SHELL=off`, `den doctor` and the server no longer start the person's shell to list the names in its environment. Den's tests set it, so a test no longer runs the developer's shell profile. (issue 1857)
 
-- After Change persona, the agent's pane keeps its "Switched to …" and "started fresh" lines when its connection drops and comes back. Before, the reconnect cleared them. (issue 1903)
+- Top bar: a project menu load that stalls (no answer, or headers with no body) now counts as failed after a while and is tried again, so the menu no longer stays hidden until a reload. The wait is a Setting, Settings › Server › Project menu load wait (`web.menu_load_timeout_ms`, 8 s by default, 1 s to 10 min). (issues 1051, 1044)
 
 ## [0.4.91] - 2026-11-26
 
