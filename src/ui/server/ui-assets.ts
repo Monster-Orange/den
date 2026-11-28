@@ -279,8 +279,11 @@ const KIT_SHELL_PARTS = [
  */
 const KIT_SHELL_SCOPED: ReadonlyArray<{ file: string; names: string[] }> = [
   { file: "dialog.js", names: ["openerOf", "focusBack"] },
+  { file: "tabs.js", names: ["tabsHtml", "hydrateTabs"] },
 ];
 const KIT_SHELL_NAMES = [
+  "tabsHtml",
+  "hydrateTabs",
   "shellHtml",
   "topBarHtml",
   "markHtml",

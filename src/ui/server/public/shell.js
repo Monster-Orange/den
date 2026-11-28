@@ -3319,7 +3319,8 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
-    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Set project {project}'s agent cap: {from} → {to}",
     "ap.det.project_agent_cap.now": "Now: {v}",
     "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
@@ -4526,6 +4527,7 @@
     "sa.saved": "Saved. The agent uses it from its next start.",
     // Issue 52: the Coach tab (mock v2).
     "co.tabs": "Agent views",
+    "ph.tabs": "Views",
     "co.tab.terminal": "Terminal",
     "co.tab.coach": "Coach",
     "co.run": "Run now",
@@ -7821,41 +7823,72 @@
   /**
    * The page header's tabs, made only when a page asks (no empty stub):
    * spec { label, tabs: [{ id, label, panel }], selected?, onSelect? }.
-   * A .ptabs tablist below the header, wired by wireTabs; each panel is
-   * the page's own element. Asked again, the old tablist is replaced.
+   * The kit's panel tabs below the header; each panel is the page's own
+   * element. Asked again, the old tabs are replaced.
    */
   function pageTabs(spec) {
     if (!ph || !spec || !Array.isArray(spec.tabs)) return null;
-    if (ph.tabs) ph.tabs.remove();
-    var list = document.createElement("div");
-    list.className = "ptabs den-ptabs";
-    list.setAttribute("role", "tablist");
-    if (spec.label) list.setAttribute("aria-label", String(spec.label));
-    var panels = [];
-    var sel = 0;
-    spec.tabs.forEach(function (d, i) {
-      var b = document.createElement("button");
-      b.type = "button";
-      b.setAttribute("role", "tab");
-      if (d.id) b.setAttribute("data-tab", String(d.id));
-      b.textContent = String(d.label || d.id || "");
-      list.appendChild(b);
-      panels.push(d.panel || null);
-      if (spec.selected != null && d.id === spec.selected) sel = i;
+    if (ph.tabs) {
+      if (ph.tabs._denTabs) ph.tabs._denTabs.destroy();
+      ph.tabs.remove();
+    }
+    var items = spec.tabs.map(function (d, i) {
+      return {
+        id: String(d.id != null ? d.id : i),
+        text: String(d.label || d.id || ""),
+        panel: d.panel ? tabIdOf(d.panel, "tabpanel") : "den-ptab-" + ++tabSeq,
+      };
     });
-    ph.el.parentNode.insertBefore(list, ph.el.nextSibling);
-    ph.tabs = list;
-    var all = Array.prototype.slice.call(list.querySelectorAll('[role="tab"]'));
-    return wireTabs(list, {
-      panelOf: function (tab) {
-        return panels[all.indexOf(tab)] || null;
-      },
-      selected: sel,
-      onSelect: function (tab) {
-        if (typeof spec.onSelect === "function")
-          spec.onSelect(tab.getAttribute("data-tab"), tab);
-      },
+    var chosen = items.some(function (it) {
+      return it.id === String(spec.selected);
+    })
+      ? String(spec.selected)
+      : items.length
+        ? items[0].id
+        : "";
+    var box = document.createElement("div");
+    box.className = "ptabs den-ptabs";
+    box.innerHTML = DUI.tabsHtml({
+      kind: "panel",
+      label: String(spec.label || t("ph.tabs")),
+      chosen: chosen,
+      items: items,
     });
+    ph.el.parentNode.insertBefore(box, ph.el.nextSibling);
+    ph.tabs = box;
+    function tabEl(id) {
+      return box.querySelector(
+        '[role="tab"][data-id="' + CSS.escape(id) + '"]',
+      );
+    }
+    function idOf(tOrIndex) {
+      if (typeof tOrIndex === "number")
+        return items[tOrIndex] ? items[tOrIndex].id : null;
+      if (tOrIndex && tOrIndex.dataset) return tOrIndex.dataset.id;
+      return tOrIndex == null ? null : String(tOrIndex);
+    }
+    function fire(id) {
+      if (typeof spec.onSelect === "function") spec.onSelect(id, tabEl(id));
+    }
+    var ui = DUI.hydrateTabs(box.querySelector(".den-tabs"), {
+      onChange: fire,
+    });
+    box._denTabs = ui;
+    return {
+      select: function (tOrIndex, focus) {
+        var id = idOf(tOrIndex);
+        if (!id || !tabEl(id)) return;
+        ui.set(id);
+        if (focus) tabEl(id).focus();
+        fire(id);
+      },
+      selected: function () {
+        return tabEl(ui.chosen());
+      },
+      tabs: function () {
+        return Array.prototype.slice.call(box.querySelectorAll('[role="tab"]'));
+      },
+    };
   }
   /**
    * The page header (R20): { el, h1, sub, act, tabs }, or null on a page
@@ -10984,13 +11017,7 @@
     ".den-ph .sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; padding: 0; min-height: 1.45em; }",
     ".den-ph .act { margin-left: auto; display: flex; gap: 8px; }",
     ".den-ph [hidden], .den-ptabs[hidden], [role='tabpanel'][hidden] { display: none !important; }",
-    ".ptabs.den-ptabs { flex: none; margin: 0 24px 18px; }",
-    ".ptabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; }",
-    ".ptabs [role='tab'] { background: none; border: 0; padding: 8px 12px; color: var(--muted); cursor: pointer;",
-    "  border-bottom: 2px solid transparent; margin: 0 0 -1px; white-space: nowrap; font: inherit; font-size: 14px;",
-    "  line-height: 1.45; text-decoration: none; }",
-    ".ptabs [role='tab']:hover { color: var(--text); }",
-    ".ptabs [role='tab'][aria-selected='true'] { color: var(--text); border-bottom-color: var(--accent); font-weight: 500; }",
+    ".ptabs.den-ptabs { flex: none; min-width: 0; margin: 0 24px 18px; }",
     // The key caps (⌘K, Report's ⌘⇧F) are the kit's (.den-kbd, den-ui 0.7.0).
     ".den-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);",
     "  border-radius: 999px; padding: 3px 10px; background: var(--surface); cursor: pointer; font: inherit;",

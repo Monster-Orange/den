@@ -14,6 +14,7 @@ config and manifest changes a distribution must make to move to it under
 ### Changed
 
 - The tabs in Add Service, the graph's details, My reports and the server agent's page are the kit's tabs now (issue 1977). Each is one named tab row: ← and → move and choose, Home and End go to the ends, focus stays on the chosen tab when the view redraws, and a row too narrow for its tabs scrolls or folds into one choice. Their own tab styles and key handling are gone.
+- A page's header tabs (`denShell.pageHeader().tabs(…)`) are the kit's tabs too (issue 1977): the same keys, scroll and fold, and a row with no label of its own is named "Views". `denShell.wireTabs` is unchanged for pages that wire their own tablist.
 
 ### Fixed
 
