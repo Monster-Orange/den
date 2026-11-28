@@ -115,6 +115,13 @@ describe("dev-metrics record — buffering, guards, fail-open", () => {
     expect(typeof r.duration_ms).toBe("string");
   });
 
+  it("issue 1892: never makes its repo root again once the root is gone", () => {
+    process.env.DEV_METRICS_DISABLED = "1";
+    fs.rmSync(tmp, { recursive: true, force: true });
+    recordInvocation({ command: "sessions", surface: "cli", exit: 0 });
+    expect(fs.existsSync(tmp)).toBe(false);
+  });
+
   it("CI=true suppresses shipping but still buffers", () => {
     optIn();
     process.env.CI = "true";
