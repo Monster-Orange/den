@@ -590,40 +590,52 @@ never converted to HTML and back).
   links it from `opts.css`, else from beside another kit stylesheet on the
   page.
 
-## The popover
+## The pop-over (DS component #4)
 
 - `src/popover.js`, `src/popover.css` (exports `./popover`,
-  `./popover.css`): a small non-modal box anchored to what opened it (a
-  button, a link, or a node in an SVG map), for a card or a short set of
-  actions. The host gives it its content and its name; the kit places it
-  and owns its keys and focus.
+  `./popover.css`): a small non-modal panel that opens from one trigger
+  and belongs to it (a button, a link, or a node in an SVG map), for a
+  card, a short menu or a set of filters. The host gives it its content
+  and its name; the kit places it and owns its keys and focus.
 
       import { openPopover } from "@monster-orange/den-ui/popover";
       // link popover.css after tokens.css
-      const pop = openPopover(node, {
-        content: cardEl,          // a Node, or HTML the host has escaped
-        label: "Item card",       // or labelledBy: an id inside it
+      const pop = openPopover(button, {
+        content: rowsEl,          // a Node, or HTML the host has escaped
+        footer: actionsEl,        // optional: stays put while the body scrolls
+        label: "Filters",         // or labelledBy: an id inside it
+        menu: false,              // true: a menu (Lifecycle)
         onClose: () => {},
       });
-      pop.close();                // focus goes back to the anchor
+      pop.close();                // focus goes back to the trigger
 
-- It is `role="dialog"` and never `aria-modal`, so there is no focus trap
-  (only the kit's modal dialogs trap focus). Focus moves to its first
-  control. Esc, a press outside it, or Tab out of it closes it. Esc and a
-  press on nothing put focus back on the anchor; a press on a control
-  leaves focus there. Tab past its last control goes on to what follows
-  the anchor, and Shift+Tab before its first goes back to the anchor.
-- A press on the open anchor closes it, and that press's click never
-  reaches the anchor, so a host that opens it on click doesn't open it
-  again, and a link anchor doesn't follow its `href`.
-- A button anchor (an HTML button, or anything with `role="button"`, an
-  SVG node too) says `aria-haspopup="dialog"`, and `aria-expanded` and
-  `aria-controls` while it is open. One is open at a time.
-- It sits below the anchor, or above it when there is no room, always 8px
-  inside the viewport, and moves with scroll and resize. Its look is the
-  menus' (`.den-pop`): `--raised`, `--border-strong`, `--shadow`, 10px
-  corners, in every theme. For a phone-width sheet, use the dialog
-  instead.
+- Wider than 600px: 4px below the trigger, its end edge on the trigger's
+  (`align: "start"` for the start edge; swapped right to left). With no
+  room it lines up the other way, then shifts to stay 16px inside the
+  window, and opens above when there is more room there. Its width fits
+  its content between max(200px, the trigger's width) and min(360px,
+  100vw − 32px); long lines wrap. Its height is at most the room on its
+  side less 16px: the body scrolls, the footer stays. Scroll and resize
+  place it again; when the trigger scrolls out of view it closes.
+- At 600px or less: a full-width bottom sheet over a `--kit-backdrop`
+  scrim, at most 85vh, with a header (`title`, default the trigger's
+  text, and the kit's "Close") and the footer above the safe area. A tap
+  on the scrim closes it.
+- It is shown in the top layer (`popover="manual"`) where the browser has
+  it. `role="dialog"`, never modal: no focus trap. Focus moves to its
+  first control. Esc, a press outside, Tab out of it or the trigger again
+  close it; focus goes back to the trigger, or stays on a control that
+  was pressed. Tab past its end goes on to what follows the trigger.
+- `menu: true`: the body is `role="menu"` (buttons and links in it become
+  `menuitem` unless they have a role), the trigger says
+  `aria-haspopup="menu"`, focus opens on the checked or current item,
+  ↑ ↓ Home End move, and choosing an item closes it.
+- The trigger says `aria-expanded` and `aria-controls` while it is open
+  (a `.den-btn` shows its pressed look). One is open at a time.
+- The look: `--raised`, a 1px `--border`, `--radius`, `--shadow-menu`,
+  `--z-menu`, `--space-2` padding; rows (`menuitem`s or
+  `.den-popover-row`) 36px, 44px on the sheet, `--sunken` on hover and
+  focus, with `small` or `.den-popover-sub` in `--muted`.
 
 ## The panel fold toggle, its edge strip and the switch
 
