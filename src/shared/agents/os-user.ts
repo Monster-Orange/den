@@ -1035,7 +1035,6 @@ export const OWED_REFUSAL =
 export const OS_LOGIN_OWED: readonly string[] = [
   "a sandbox policy for the agents' login",
   "own/ files read without following links (O_NOFOLLOW)",
-  "the Linux end-to-end run as root in CI",
   "the sign-in token passed by file handle, not the environment",
   "access lists on the folders above the person's home on macOS",
 ];
