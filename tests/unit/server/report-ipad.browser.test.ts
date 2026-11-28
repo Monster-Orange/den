@@ -80,10 +80,10 @@ async function tablet(width: number, height: number): Promise<Page> {
   return p;
 }
 
-const dlg = (p: Page) => p.locator("dialog.fb-dlg");
+const dlg = (p: Page) => p.getByRole("dialog", { name: "Report an issue" });
 
 async function openWithShot(p: Page) {
-  await p.locator("#den-shell .den-top [data-den-report]").tap();
+  await p.locator("[data-den-report]:visible").tap();
   await dlg(p).waitFor();
   await dlg(p).locator("canvas[data-shot]").waitFor({ timeout: 20_000 });
   await dlg(p).locator('[data-f="title"]').fill("Pane drops");
@@ -141,7 +141,9 @@ describe("Report on a tablet with touch", () => {
         });
     };
     const hidden = () =>
-      dlg(p).locator(".fb-tools [aria-live]").first().textContent();
+      dlg(p)
+        .getByText(/^\d+ areas? hidden$/)
+        .textContent();
     await drag();
     expect(await hidden()).toBe("0 areas hidden");
     await dlg(p).getByRole("button", { name: "Mask an area" }).tap();
@@ -167,7 +169,7 @@ describe("Report on a tablet with touch", () => {
     const small = await dlg(p).evaluate((d) =>
       [
         ...d.querySelectorAll(
-          ".fb-btns button, .fb-btns a, input[type=text], input:not([type]), textarea, input[type=number], button[data-act]",
+          "button, select, input[type=text], input:not([type]), input[type=number]",
         ),
       ]
         .map((x) => [
