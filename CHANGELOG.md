@@ -10,12 +10,12 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
-- The UI kit (den-ui 0.23.1): a button that waits keeps its own name. An icon or arrow hidden from screen readers (aria-hidden) no longer joins it, so More ▾ is still named More.
 - Change persona no longer closes the agent's pane now and then. A list read in the moment the old session still ran but no longer belonged to the agent showed it as a plain terminal, and the Agents page closed its pane before the new session was listed. The pane now waits for its agent's new session, for up to 15 s. (issue 1903)
 
 ### Changed
 
 - The UI kit (den-ui 0.23.1): `holdOpen(container, work)` keeps a dialog, a menu, a popover or a page form's dialog open, its button showing the wait, until the request ends. It closes on success and keeps the error beside the button on failure. A box shut before its request ended showed no wait at all since 0.22. `mountDialog`'s `onAction` now also holds a button that posts a page form. (issue 2013)
+- The UI kit (den-ui 0.23.1): a button that waits keeps its own name. An icon or arrow hidden from screen readers (aria-hidden) no longer joins it, so More ▾ is still named More.
 - Service logs are private to you: Den writes each one readable by your login only, in a folder only your login can open, and closes older logs the same way when the server starts.
 
 ## [0.4.93] - 2026-11-28
