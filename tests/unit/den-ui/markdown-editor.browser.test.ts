@@ -461,34 +461,41 @@ describe("den-ui Markdown editor in a browser", () => {
     const measure = async (style: string) => {
       const { p, release } = await open({ hold: true, style });
       await mount(p, { rows: 3 });
-      const field = p.locator("#host [data-markdown-field]");
-      const standIn = await p
-        .locator("#host textarea.md-fallback")
-        .evaluate((e) => {
-          const c = getComputedStyle(e);
-          return `${Math.round(e.getBoundingClientRect().height)} ${c.fontSize} ${c.lineHeight}`;
-        });
+      const box = p.locator("#host [data-markdown-field]");
+      const text = box.getByRole("textbox");
+      const standIn = await text.evaluate((e) => {
+        const c = getComputedStyle(e);
+        return {
+          h: Math.round(e.getBoundingClientRect().height),
+          font: `${c.fontSize} ${c.lineHeight}`,
+        };
+      });
       release();
       await ready(p);
-      const after = await field.evaluate((f) => {
-        const ed = f.querySelector(".cm-editor")!.getBoundingClientRect();
-        const box = f.getBoundingClientRect();
-        const c = getComputedStyle(f.querySelector(".cm-content")!);
+      const fieldH = await box.evaluate((f) =>
+        Math.round(f.getBoundingClientRect().height),
+      );
+      const after = await text.evaluate((content) => {
+        const scroller = content.parentElement!;
+        const editor = scroller.parentElement!;
+        const field = editor.closest("[data-markdown-field]")!;
+        const c = getComputedStyle(content);
         return {
-          field: Math.round(box.height),
-          editorToBottom: Math.round(box.bottom - ed.bottom),
-          scrollerMax: getComputedStyle(f.querySelector(".cm-scroller")!)
-            .maxHeight,
+          editorToBottom: Math.round(
+            field.getBoundingClientRect().bottom -
+              editor.getBoundingClientRect().bottom,
+          ),
+          scrollerMax: getComputedStyle(scroller).maxHeight,
           font: `${c.fontSize} ${c.lineHeight}`,
         };
       });
       await p.context().close();
-      return { standIn, ...after };
+      return { standIn, field: fieldH, ...after };
     };
     const tall = await measure(
       "#host { --md-editor-min-height: 420px; --md-editor-max-height: none; }",
     );
-    expect(tall.standIn.split(" ")[0]).toBe("420");
+    expect(tall.standIn.h).toBe(420);
     expect(tall.field).toBeGreaterThanOrEqual(420);
     expect(tall.scrollerMax).toBe("none");
     const fill = await measure(
@@ -499,7 +506,7 @@ describe("den-ui Markdown editor in a browser", () => {
     const font = await measure(
       "#host { --md-font-size: 14px; --md-line-height: 1.6; }",
     );
-    expect(font.standIn.split(" ").slice(1)).toEqual(["14px", "22.4px"]);
+    expect(font.standIn.font).toBe("14px 22.4px");
     expect(font.font).toBe("14px 22.4px");
   }, 60_000);
 
