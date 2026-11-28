@@ -42,7 +42,7 @@ async function pillTop(
   style: string,
   width: number,
   height: number,
-): Promise<[number, number]> {
+): Promise<{ top: number; height: number }> {
   const ctx = await browser!.newContext({ viewport: { width, height } });
   const p = await ctx.newPage();
   await p.route(`${ORIGIN}/**`, async (r: Route) => {
@@ -61,8 +61,8 @@ async function pillTop(
   await p.waitForFunction("window.ready === true");
   const at = (await p.getByRole("region", { name: "Update" }).evaluate((el) => {
     const r = el.firstElementChild!.getBoundingClientRect();
-    return [Math.round(r.top), Math.round(r.height)];
-  })) as [number, number];
+    return { top: Math.round(r.top), height: Math.round(r.height) };
+  })) as { top: number; height: number };
   await ctx.close();
   return at;
 }
@@ -77,7 +77,7 @@ describe("the update pill's place under the shell's top bar", () => {
     "%ix%i: centred on the 48px bar, 1px above the top, as designed",
     async (w, h) => {
       if (skip()) return;
-      expect(await pillTop("", w, h)).toEqual([-1, 50]);
+      expect(await pillTop("", w, h)).toEqual({ top: -1, height: 50 });
     },
   );
 
@@ -85,7 +85,7 @@ describe("the update pill's place under the shell's top bar", () => {
     "%ix%i: with no top bar (--den-top-h: 0px) the pill is whole, 8px down",
     async (w, h) => {
       if (skip()) return;
-      const [top] = await pillTop(
+      const { top } = await pillTop(
         "body.den-has-shell { --den-top-h: 0px; }",
         w,
         h,
@@ -96,7 +96,7 @@ describe("the update pill's place under the shell's top bar", () => {
 
   it("a bar shorter than the pill never puts it above the window", async () => {
     if (skip()) return;
-    const [top] = await pillTop(
+    const { top } = await pillTop(
       "body.den-has-shell { --den-top-h: 20px; }",
       1366,
       1024,
@@ -109,7 +109,7 @@ describe("the update pill's place under the shell's top bar", () => {
     async (w, h) => {
       if (skip()) return;
       const bar = "body.den-has-shell { --den-top-h: 0px; }";
-      const at = async (rule: string) => (await pillTop(bar + rule, w, h))[0];
+      const at = async (rule: string) => (await pillTop(bar + rule, w, h)).top;
       expect(await at("body { --den-overlay-top: 56px; }")).toBe(56);
       expect(await at("body { --den-overlay-top: calc(44px + 8px); }")).toBe(
         52,
@@ -120,7 +120,7 @@ describe("the update pill's place under the shell's top bar", () => {
 
   it("a host's own --upd-top on .den-upd wins", async () => {
     if (skip()) return;
-    const [top] = await pillTop(
+    const { top } = await pillTop(
       "body.den-has-shell .den-upd { --upd-top: 64px; }",
       1366,
       1024,

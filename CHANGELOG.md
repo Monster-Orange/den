@@ -12,7 +12,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
-- UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as Hub's focus mode. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
+- UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
 
 ## [0.4.92] - unreleased
 
