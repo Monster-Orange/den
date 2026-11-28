@@ -30,6 +30,7 @@ export interface ReportAdapter {
       visibility?: "public" | "private" | "internal" | "unknown";
       /** Who can see it, as words (shown after a private or internal pill). */
       audience?: string;
+      redact?: boolean;
     }[];
     maxPerHour?: number;
     captureSeconds?: number;
