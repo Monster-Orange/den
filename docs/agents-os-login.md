@@ -8,8 +8,12 @@ Not in use yet: setup makes the login and doctor checks it, but Den's server
 doesn't start agents through it until a later slice. Until then agents still
 run as the person, and setup and doctor say so.
 
-This Den version still owes a check before the login is safe to use: access
-lists on the person's home on Linux. Until that list (`OS_LOGIN_OWED`) is empty, `agents
+This Den version still owes checks before the login is safe to use: a sandbox
+policy for the agents' login, `own/` files read without following links, the
+Linux end-to-end run as root in CI, the sign-in token passed by file handle
+rather than the environment, access lists on the folders above the
+person's home on macOS, and the owner and mode of the folders above the
+person's home on Linux. Until that list (`OS_LOGIN_OWED`) is empty, `agents
 os-login setup` and `agents session` refuse with "the agents' own login isn't
 ready on this Den version yet", and name what is still to come. Each later
 slice removes its own item.
@@ -64,8 +68,11 @@ else in.
 ## The person's home
 
 The agents' login must not read the person's home. Doctor fails when the home
-has any group or other permission bit, or (on macOS) an ACL entry that lets
-someone else in. Setup closes an open home to 0700, as a step it shows. So
+has any group or other permission bit, or an access list entry that lets
+someone else in: on macOS from `ls -le`, on Linux from `getfacl` when `ls -ld`
+shows a `+`. On Linux, each folder above the home fails too when a named user
+or group in its access list can write it. Access lists that can't be read, or
+an entry Den can't read, fail. Setup closes an open home to 0700, as a step it shows. So
 Den's runtime must live outside the person's home: setup refuses to start, and
 doctor fails, while it is inside.
 

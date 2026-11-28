@@ -53,6 +53,14 @@ describe("the real-Linux OS-user test runs in CI (issue 1736)", () => {
     expect(at(/sudo chmod 0755 \/opt\n/)).toBeLessThan(at(/DEN_OS_USER_E2E=1/));
   });
 
+  it("removes the runner image's own access lists on /home before the test, as a real machine has none", () => {
+    const at = (re: RegExp) => runs.search(re);
+    expect(at(/sudo setfacl -b \/home\n/)).toBeGreaterThan(-1);
+    expect(at(/sudo setfacl -b \/home\n/)).toBeLessThan(
+      at(/DEN_OS_USER_E2E=1/),
+    );
+  });
+
   it("runs on a pull request that touches the OS-user code, and by hand", () => {
     expect(job.needs).toEqual(["fast", "pr"]);
     expect(job.if).toMatch(/workflow_dispatch/);
