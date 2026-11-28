@@ -535,7 +535,7 @@
     "pc.slate": "Slate",
     "set.workspace.colour": "Colour",
     "set.workspace.colour.d":
-      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
+      "This project's colour in agents, tabs and the top bar; only you see it.",
     "ws.manage": "Manage projects…",
     "ws.order.az": "Sorted A to Z",
     "ws.order.mine": "Your order",
@@ -1173,10 +1173,23 @@
     "setd.g.work": "Projects and agents",
     "setd.g.access": "Access and safety",
     "setd.g.den": "This install",
-    "setd.readOnly": "Sign in to change these. This browser can look but change nothing.",
+    "setd.readOnly":
+      "Sign in to change these. This browser can look but change nothing.",
     "setd.toAccount.devices": "Your devices",
     "setd.toAccount.profile": "Sign out",
     "setd.sub.more": "More",
+    "setd.sub.workspace.project": "This project",
+    "setd.sub.workspace.hub": "Hub",
+    "setd.sub.workspace.agents": "Agents in this project",
+    "setd.sub.workspace.tools": "Tools and feeds",
+    "setd.sub.agents.approvals": "Approvals and permissions",
+    "setd.sub.agents.limits": "How many agents",
+    "setd.sub.agents.startup": "Runtimes, skills and personas",
+    "setd.sub.agents.resume": "Resume and reconnect",
+    "setd.sub.agents.context": "Context and compaction",
+    "setd.sub.agents.issues": "Issues and GitHub",
+    "setd.sub.agents.waits": "Waits and hooks",
+    "setd.sub.agents.page": "The Agents page",
     "set.ui.rot.scope.agent": "Agent",
     "set.ui.rot.scope.persona-workspace": "Persona in a project",
     "set.ui.rot.scope.persona": "Persona",
@@ -1201,11 +1214,9 @@
     "setc.graph.d":
       "How the graph is laid out, and how the Projects page shows its projects. The pages' own controls set these too.",
     "setc.workspace": "Project setup",
-    "setc.workspace.d":
-      "Settings for one project. They follow the project you view in the top bar.",
+    "setc.workspace.d": "Settings for the project picked in the top bar.",
     "setc.agents": "Agents",
-    "setc.agents.d":
-      "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
+    "setc.agents.d": "The runtimes agents run on, and how they run.",
     "setc.access": "Access",
     "setc.access.d":
       "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
@@ -1284,18 +1295,18 @@
     "set.graph.panelWidth.d":
       "The width of the graph's details panel, in pixels (360 to 760).",
     "set.workspace.name.d":
-      "The name Den shows for this project in the header, lists and pages. Linked to a Hub project, it is Hub's name. The slug never changes.",
+      "The name Den shows for this project; a linked Hub project's name wins.",
     "set.workspace.editor.d":
-      "Opening this project, or a repo in it without a per-language override, uses this editor instead of your default.",
+      "The editor this project's repos open in, instead of your default.",
     "set.workspace.hub.d":
-      "The Hub project this project's agents file their Hub work in: docs, mocks, comments. Den never links on its own: Hub suggests one with the same repos or name, and you confirm. Not linked, Hub files the work in Unfiled. __DEN_CLI__ hub link -p <project>",
+      "The Hub project this project's agents file docs, mocks and comments in. __DEN_CLI__ hub link -p <project>",
     "set.agents.layout.d":
-      "Focus shows one agent, Tabs shows one with a tab for each, Tile shows up to four in a grid. The Agents tab's switch, ⌃⇧1, ⌃⇧2, ⌃⇧3 and ⌘K set it too.",
+      "How the Agents tab shows agents: one, one with tabs, or up to four.",
     "set.agents.layout.o.focus": "Focus",
     "set.agents.layout.o.tabs": "Tabs",
     "set.agents.layout.o.tile": "Tile",
     "set.agents.coach_counts.d":
-      "Total shows the window's counts; Per day divides them by its days. Percents and averages stay the same. The Coach tab's switch sets it too.",
+      "Whether the Coach tab shows totals or counts per day.",
     "set.agents.coach_counts.o.total": "Total",
     "set.agents.coach_counts.o.per_day": "Per day",
     "set.agents.helpers_shown": "Show up to this many helpers under an agent",
@@ -1307,7 +1318,7 @@
     "set.agents.helpers_shown.o.10": "10",
     "setc.hub": "Hub",
     "setc.hub.d":
-      "Den Hub is where your company's docs, mocks, comments and approvals live. Connect this install, and every agent can search and publish there, and gets the comments and decisions on its work. See docs/hub.md in Den's docs.",
+      "Where your company's docs, mocks, comments and approvals live.",
     "setc.notifications": "Notifications",
     "setc.notifications.d":
       "What shows in the bell and counts on its badge. These are your own choices. Off means no bell item and no badge. The activity trail still records it.",
@@ -1407,17 +1418,17 @@
       "Show the number of agents that need you in the tab title and on the tab icon (not the bell's count). Zero shows nothing.",
     "hp.showAll": "Show all ({n})",
     "set.agents.runtimes.d":
-      "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
+      "Each runtime's status, version and path, and where the path came from.",
     "set.agents.rotation.d":
-      "When an agent's conversation has compacted this many times (or its pull request merged), Den starts it again from its handoff: a fresh conversation, the same name, persona, project and folder. Auto asks the agent for its handoff when it is idle, then relaunches it by itself; Ask shows buttons on the agent; Off does nothing. Overrides win over this install's value: agent, persona in a project, persona, project, service. __DEN_CLI__ agents rotate",
+      "When Den restarts an agent fresh from its handoff, after this many compactions. __DEN_CLI__ agents rotate",
     "set.agents.hub.d":
-      "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its company comes from this install's token, its Hub project from Project setup › Hub project.",
+      "Connect this install to your company's Hub so every agent gets Hub's tools.",
     "set.agents.hub_github.d":
-      "How many of your company's GitHub repos Den Hub can read, asked live from Hub, with GitHub's link to give it access or change its repos.",
+      "How many of your company's GitHub repos Den Hub can read.",
     "set.agents.personas.d":
-      "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
+      "Agent setups to start from: built-in, your distribution's, and your own.",
     "set.agents.keep_running.d":
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "Whether agents keep running after you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     "set.cli.local_dev.d":
       "Off hides Projects and the project APIs for you. __DEN_CLI__ config local_dev=false",
     "set.cli.cli_tabs.d":
@@ -1463,7 +1474,7 @@
     "set.distribution.github_org.d":
       "github_org: the org whose repos Den clones and lists.", // words-ok: the Settings row's text, moved word for word
     "set.distribution.hub_github.d":
-      "How many of your company's GitHub repos Den Hub can read, asked live from Hub. Den Hub reads a repo only through your company's GitHub App install; the button opens GitHub to install it or change its repos. When you come back, Den sends its projects to Hub again and the repos link by themselves.",
+      "How many of your company's GitHub repos Den Hub can read.",
     "set.distribution.orgs.d":
       "orgs: display names for the GitHub orgs repos belong to.", // words-ok: the Settings row's text, moved word for word
     "set.distribution.web_port.d":
@@ -2328,31 +2339,31 @@
     "hubrv.switch": "Switch company",
     "set.agents.hub_link_all": "Unclear matches",
     "set.agents.hub_link_all.d":
-      "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
+      "Projects Den couldn't match to a Hub project. Pick one for each.",
     "set.agents.hub_delivery_loop": "Hub delivery loop",
     "set.agents.hub_delivery_loop.d":
-      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+      "Whether agents in Hub-connected projects get the delivery loop in their instructions.",
     "set.agents.hub_groups": "Groups from Hub",
     "set.agents.hub_groups.d":
-      "Whether the Agents page shows your Hub's groups (Group, beside Project in the list's switch). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+      "Whether the Agents page shows your Hub's groups. __DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "Auto",
     "set.agents.hub_groups.o.on": "On",
     "set.agents.hub_groups.o.off": "Off",
     "set.agents.hub_groups_cache": "Groups kept for",
     "set.agents.hub_groups_cache.d":
-      "How long Den keeps a copy of Hub's groups in memory before it asks Hub again: 5 to 3600 seconds. Try again on the Agents page asks Hub now. __DEN_CLI__ config hub.groups_cache_seconds=30",
+      "How long Den keeps Hub's groups before asking again. __DEN_CLI__ config hub.groups_cache_seconds=30",
     "set.workspace.hub_delivery_loop": "Hub delivery loop: this project",
     "set.workspace.hub_delivery_loop.d":
-      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+      "Whether this project's agents get the Hub delivery loop, over the install's choice.",
     "set.workspace.hub_delivery_loop.o.install": "As everywhere",
     "set.workspace.hub_delivery_loop.o.on": "On",
     "set.workspace.hub_delivery_loop.o.off": "Off",
     "set.workspace.agents_max_per_project": "Agents per project: this project",
     "set.workspace.agents_max_per_project.d":
-      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
+      "How many of this project's agents may run at once; empty uses the default.",
     "set.workspace.hub_delivery_loop_extra": "Added to the Hub delivery loop",
     "set.workspace.hub_delivery_loop_extra.d":
-      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
+      "This project's own text, added after Den's delivery loop.",
     "ub.intro":
       "Den can't tell which Hub project fits these. Pick one for each, then press Link.",
     "ub.why.repos": "Two Hub projects share its repos",
@@ -2666,7 +2677,7 @@
       "When GitHub doesn't answer whether a repository is public or private, how long before Report asks again. 0 asks on every open. __DEN_CLI__ config feedback.visibility_retry_seconds=60",
     "set.agents.pane_reconnect": "Terminal reconnect tries",
     "set.agents.pane_reconnect.d":
-      "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
+      "Failed reconnect tries, within the time below, before a terminal stops retrying. __DEN_CLI__ config panes.reconnect_max_failures=20",
     "set.agents.pane_reconnect_window": "Terminal reconnect window",
     "set.agents.pane_reconnect_window.d":
       "The time the failed tries above are counted in. __DEN_CLI__ config panes.reconnect_window_seconds=300",
@@ -2675,19 +2686,19 @@
       "The first try waits 1 s, and each wait doubles, up to this. __DEN_CLI__ config panes.reconnect_max_seconds=30",
     "set.agents.shell_path_wait": "Shell PATH wait",
     "set.agents.shell_path_wait.d":
-      "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+      "How long __DEN_TITLE__ waits for your shell's PATH when finding agent CLIs. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     "set.agents.draft_hold_max": "Draft hold before the bell",
     "set.agents.draft_hold_max.d":
-      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+      "How long an unsent draft holds messages before the bell says they're waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
     "set.agents.max_subagents": "Subagents at once",
     "set.agents.max_subagents.d":
-      "How many subagents the agents on this machine may run at once, all together. A start past this is refused, and the agent is told this setting's name. Unset, twice Agents at once. __DEN_CLI__ config agents.max_subagents=8",
+      "How many subagents all agents here may run at once. __DEN_CLI__ config agents.max_subagents=8",
     "set.agents.subagents_respect_load_hold": "No new subagents under load",
     "set.agents.subagents_respect_load_hold.d":
-      "On, while the machine's load is over the agents' load ceiling, a new subagent is refused, and the agent is told this setting's name. Off, subagents start whatever the load. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+      "When on, no new subagent starts while the machine's load is too high. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
     "set.agents.skill_packs": "Skill packs",
     "set.agents.skill_packs.d":
-      "Skill packs Den gives its agents. Each is vendored in Den at a pinned version and never fetched. __DEN_CLI__ config skill_packs.on=false",
+      "Skill packs Den gives its agents, pinned in Den and never fetched. __DEN_CLI__ config skill_packs.on=false",
     "set.agents.skill_packs.pstack": "pstack",
     "set.agents.skill_packs.pstack.d":
       "Open-source skills for coding agents. Choose which of them Den's agents get. __DEN_CLI__ config skill_packs",
@@ -2701,13 +2712,13 @@
     "set.ui.skillPackNone": "None",
     "set.agents.max_concurrent": "Agents at once",
     "set.agents.max_concurrent.d":
-      "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+      "How many agents may run at once on this machine. __DEN_CLI__ config agents.max_concurrent=4",
     "set.agents.max_per_project": "Agents per project",
     "set.agents.max_per_project.d":
-      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
+      "How many agents one project may run at once; 0 means no limit. __DEN_CLI__ config agents.max_per_project=10",
     "set.agents.list_host_wait": "Terminal host wait",
     "set.agents.list_host_wait.d":
-      "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "How long the Agents list waits for the terminal host. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
     "set.server.sessions_max": "Terminals at once",
     "set.server.sessions_max.d":
       "How many plain terminals may run at once. Agents never count. A new one past this is refused, and says so. __DEN_CLI__ config sessions.max_concurrent=8",
@@ -2732,31 +2743,31 @@
       "Doctor fails when the terminals in use on this machine reach this share of its limit. __DEN_CLI__ config sessions.pty_machine_warn_percent=90",
     "set.agents.hook_wait": "Agent hook wait",
     "set.agents.hook_wait.d":
-      "How long an agent's hooks wait for __DEN_TITLE__ on each try when they tell it the agent needs you, or check the Hub inbox. A busy machine can be slow to answer. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+      "How long an agent's hooks wait for __DEN_TITLE__ on each try. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
     "set.agents.hook_retries": "Agent hook retries",
     "set.agents.hook_retries.d":
-      "How many more times an agent's hook tries when __DEN_TITLE__ didn't answer in time or turned the call away. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.retries=2",
+      "How many more times an agent's hook tries after no answer. __DEN_CLI__ config agent_hooks.retries=2",
     "set.agents.hook_backoff": "Agent hook pause",
     "set.agents.hook_backoff.d":
-      "How long an agent's hook waits before its first retry. Each later pause doubles. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
+      "How long a hook waits before its first retry; each later pause doubles. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
     "set.agents.compaction_loop": "Compacting repeatedly: compactions",
     "set.agents.compaction_loop.d":
-      "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
+      "Compactions within the minutes below before the bell says an agent is looping. __DEN_CLI__ config agent_context.compaction_loop_count=3",
     "set.agents.compaction_minutes": "Compacting repeatedly: minutes",
     "set.agents.compaction_minutes.d":
       "The window the compactions above are counted in. __DEN_CLI__ config agent_context.compaction_loop_minutes=10",
     "set.agents.compaction_pause": "Hold deliveries after a compaction loop",
     "set.agents.compaction_pause.d":
-      "On: once the bell says an agent is compacting repeatedly, new deliveries to it (Hub comments, notes) wait until a person clears it on the Agents page. Off (the default): they go as usual. __DEN_CLI__ config agent_context.pause_after_loop=true",
+      "When on, a looping agent's new deliveries wait until someone clears it. __DEN_CLI__ config agent_context.pause_after_loop=true",
     "set.agents.instruction_share": "Instruction files: warn above",
     "set.agents.instruction_share.d":
-      "When the instruction files an agent loads at start (CLAUDE.md, AGENTS.md and the like, up its folders) are more than this share of its model's context, its row and doctor warn, naming the largest. Sizes are estimated as bytes / 4 tokens. __DEN_CLI__ config agent_context.instruction_share_percent=15",
+      "Warn when an agent's instruction files take more than this share of context. __DEN_CLI__ config agent_context.instruction_share_percent=15",
     "set.agents.context_tokens": "Context size when unknown",
     "set.agents.context_tokens.d":
-      "The context size, in tokens, the share above is taken of when __DEN_TITLE__ doesn't know the model's own. __DEN_CLI__ config agent_context.context_tokens=200000",
+      "The context size used above when the model's own isn't known. __DEN_CLI__ config agent_context.context_tokens=200000",
     "set.agents.list_refresh_wait": "Agents list wait",
     "set.agents.list_refresh_wait.d":
-      "How long the Agents page waits for its list. After this, it says the list may be out of date and tries again. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
+      "How long the Agents page waits for its list before trying again. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
     "set.server.address": "__DEN_TITLE__'s address",
     "set.server.address.d":
       "The address people and other devices open this __DEN_TITLE__ at, for example https://__DEN_CLI__.local.example.com. Check and save asks it to answer first, and saves only if it does. Same as __DEN_CLI__ web url.",
@@ -2774,29 +2785,29 @@
     "addr.adopted": "Saved: {url} is the address now.",
     "set.workspace.approvals_policy": "Agents' writes here",
     "set.workspace.approvals_policy.d":
-      "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
+      "What this project's agents may do without your Allow.",
     "set.workspace.approvals_policy.o.install": "As everywhere",
     "set.workspace.approvals_policy.o.auto": "Run, no note",
     "set.workspace.approvals_policy.o.notify": "Run and tell me",
     "set.workspace.approvals_policy.o.ask": "Ask me",
     "set.workspace.approvals_watch": "Watched here",
     "set.workspace.approvals_watch.d":
-      "An agent's write on any of these asks you first, whatever its kind. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+      "Names whose agent writes always ask you first, comma-separated.",
     "set.workspace.approvals_critical": "Critical here",
     "set.workspace.approvals_critical.d":
-      "Kinds of agent write that always ask you in this project. Comma-separated, for example repo_clone, service_try.",
+      "Kinds of agent write that always ask you in this project.",
     "set.agents.approvals_policy": "Agent writes",
     "set.agents.approvals_policy.d":
-      "What an agent may do without your Allow. Run and tell me: it runs, and your updates say so. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks, as does one on something you watch or pinned.",
+      "What an agent may do without your Allow; risky writes always ask.",
     "set.agents.approvals_policy.o.auto": "Run, no note",
     "set.agents.approvals_policy.o.notify": "Run and tell me",
     "set.agents.approvals_policy.o.ask": "Ask me",
     "set.agents.approvals_watch": "Watched",
     "set.agents.approvals_watch.d":
-      "An agent's write on any of these asks you first, whatever its kind; so does one on a repo or service you pinned. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+      "Names whose agent writes always ask you first, comma-separated.",
     "set.agents.approvals_critical": "Critical",
     "set.agents.approvals_critical.d":
-      "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+      "Kinds of agent write that always ask you, in every project.",
     "set.server.health_poll": "Health checks while you look",
     "set.server.health_poll.d":
       "How often an open, visible page checks every service's health: 2 to 300 seconds. __DEN_CLI__ config health_poll.visible_seconds=5",
@@ -2808,7 +2819,7 @@
       "How many git processes Den runs at once when a page reads its repos, such as the Tests page's branch and commit: 1 to 64. __DEN_CLI__ config git_reads.at_once=16",
     "set.agents.held_wait": "Requests wait for your Allow",
     "set.agents.held_wait.d":
-      "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+      "How long a request waits for your Allow before it lapses. __DEN_CLI__ config held_writes.wait_minutes=1440",
     "set.server.install_mode": "This install is",
     "set.server.install_mode.d":
       "Personal: one person's own machine. Agents run outside the sandbox, so Docker, sockets and your tools work, and they change settings without asking, except money, deleting, security and acting on others. Strict: for a company's install or a shared machine. The sandbox is on, and agents' writes follow your approval policy. A setting you made yourself stays as you set it. __DEN_CLI__ config install_mode=strict",
@@ -2817,20 +2828,20 @@
     "set.agents.settings_limits":
       "Agents changing settings: Limits and performance",
     "set.agents.settings_limits.d":
-      "Caps, timeouts and intervals: how many agents at once, how long Den waits. A change made without asking is noted in the audit, and your updates say so.",
+      "Caps, timeouts and intervals. Changes made without asking are audited.",
     "set.agents.settings_limits.o.auto": "Change without asking (tell me)",
     "set.agents.settings_limits.o.ask": "Ask me",
     "set.agents.settings_limits.o.never": "Never",
     "set.agents.settings_look": "Agents changing settings: Look and layout",
     "set.agents.settings_look.d":
-      "How Den looks and tells you: tabs, the rail, alerts and quiet hours. A change made without asking is noted in the audit, and your updates say so.",
+      "Tabs, the rail, alerts and quiet hours. Changes made without asking are audited.",
     "set.agents.settings_look.o.auto": "Change without asking (tell me)",
     "set.agents.settings_look.o.ask": "Ask me",
     "set.agents.settings_look.o.never": "Never",
     "set.agents.settings_integrations":
       "Agents changing settings: Integrations",
     "set.agents.settings_integrations.d":
-      "Editors, terminals, runtimes, Hub and GitHub. A change made without asking is noted in the audit, and your updates say so.",
+      "Editors, terminals, runtimes, Hub and GitHub. Changes made without asking are audited.",
     "set.agents.settings_integrations.o.auto":
       "Change without asking (tell me)",
     "set.agents.settings_integrations.o.ask": "Ask me",
@@ -2838,14 +2849,14 @@
     "set.agents.settings_network":
       "Agents changing settings: Network and access",
     "set.agents.settings_network.d":
-      "Den's address, the edge, sign-in limits and embedding. A change made without asking is noted in the audit, and your updates say so.",
+      "Den's address, the edge, sign-in limits and embedding. Changes made without asking are audited.",
     "set.agents.settings_network.o.auto": "Change without asking (tell me)",
     "set.agents.settings_network.o.ask": "Ask me",
     "set.agents.settings_network.o.never": "Never",
     "set.agents.settings_agent_powers":
       "Agents changing settings: Agent powers",
     "set.agents.settings_agent_powers.d":
-      "The sandbox, grants, approvals, secrets and the install's mode. These always ask you, or are refused. A change made without asking is noted in the audit, and your updates say so.",
+      "The sandbox, grants, approvals, secrets and mode. These always ask you, or are refused.",
     "set.agents.settings_agent_powers.o.ask": "Ask me",
     "set.agents.settings_agent_powers.o.never": "Never",
     "set.server.restore_services": "Bring back services after a restart",
@@ -2853,29 +2864,29 @@
       "On, after the machine or __DEN_TITLE__ restarts, the services that were up come back by themselves, a few at a time. A service you stopped stays stopped. The bell says what came back. __DEN_CLI__ config services.restore_on_boot=true",
     "set.agents.resume_batch": "Agents restarted at a time",
     "set.agents.resume_batch.d":
-      "After a restart, or when Hub's tools change, agents restart this many at a time; the ones that were working go first. 0 restarts every agent at once. __DEN_CLI__ config agents.resume.batch=4",
+      "How many agents restart at a time after a restart; 0 means all. __DEN_CLI__ config agents.resume.batch=4",
     "set.agents.resume_gap": "Wait between restart batches",
     "set.agents.resume_gap.d":
       "How long the next batch of agent restarts waits after one starts. __DEN_CLI__ config agents.resume.gap_seconds=30",
     "set.agents.resume_load": "Load that holds restarts",
     "set.agents.resume_load.d":
-      "While the machine's 1-minute load is over this, the next batch of agent restarts waits. 0: no limit. The default is the number of cores × 2. __DEN_CLI__ config agents.resume.load_ceiling=16",
+      "While the machine's load is over this, the next restart batch waits. __DEN_CLI__ config agents.resume.load_ceiling=16",
     "set.agents.resume_max_wait": "Longest a restart waits for the load",
     "set.agents.resume_max_wait.d":
-      "Once an agent has waited this long, its batch restarts even if the load is still high, a few at a time as before. 0: the load may hold restarts as long as it stays high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
+      "After this wait, a batch restarts even if the load is still high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "Who writes GitHub issues",
     "set.agents.issue_writes.d":
-      "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "Roles whose agents may file issues and comments in their project's repos. __DEN_CLI__ config agents.issue_writes=[planner,sde]",
     "set.agents.issue_writes_per_hour": "GitHub issue writes an hour",
     "set.agents.issue_writes_per_hour.d":
-      "How many issue writes all agents together may make in an hour. Past it, an agent is told how long to wait. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+      "How many issue writes all agents together may make an hour. __DEN_CLI__ config agents.issue_writes_per_hour=60",
     "set.agents.issue_writes_visibility_minutes":
       "Recheck a repo's visibility after",
     "set.agents.issue_writes_visibility_minutes.d":
-      "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+      "Minutes a repo's public or private status is kept before GitHub is asked again. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
     "set.agents.issue_writes_public": "Agents write issues in public repos",
     "set.agents.issue_writes_public.d":
-      "On, agents may create issues and comments in public repos. Their text is first checked for listed names, and the footer names no agent or install. Off, a write to a public repo is refused. Turning it on needs your Allow. __DEN_CLI__ config agents.issue_writes_public=false",
+      "Whether agents may write issues and comments in public repos. __DEN_CLI__ config agents.issue_writes_public=false",
     "ap.do.agent_import":
       'Bring in conversation {session} as a {persona} agent of project "{project}"',
     "ap.do.approval_policy":
@@ -2885,7 +2896,7 @@
     "ap.do.pr_close": "Close pull request {pr} on {repo}: {comment}",
     "set.agents.default_mode": "Agents' mode: Den-wide default",
     "set.agents.default_mode.d":
-      "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",
+      "The mode every agent runs in, unless its project or itself overrides it.",
     "set.agents.default_mode.o.persona": "Each persona's",
     "set.agents.default_mode.o.ask": "Ask for everything",
     "set.agents.default_mode.o.edits": "Auto-approve edits",
@@ -3337,7 +3348,8 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
-    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Set project {project}'s agent cap: {from} → {to}",
     "ap.det.project_agent_cap.now": "Now: {v}",
     "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",
@@ -3739,14 +3751,14 @@
     "set.workspace.agents_mode":
       "Agents' mode: this project (overrides the Den-wide default)",
     "set.workspace.agents_mode.d":
-      "The mode this project's agents run in, over the Den-wide default. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
+      "The mode this project's agents run in, over the Den-wide default.",
     "set.workspace.mcp_servers": "Agents' extra MCP servers: this project",
     "set.workspace.mcp_servers.d":
-      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
+      "Extra HTTP MCP endpoints this project's agents get, besides Den's and Hub's.",
     "pmcp.none": "No extra MCP servers for this project's agents.",
     "set.workspace.event_feeds": "App event feeds: this project",
     "set.workspace.event_feeds.d":
-      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add or remove one here; an agent asks with project_event_feed_add or project_event_feed_remove. A bearer is a secrets.refs name, never a value.",
+      "Event streams from this project's apps, each read by one agent.",
     "set.embed.feed_max_streams": "App feeds read at once",
     "set.embed.feed_max_streams.d":
       "The most app event feeds Den reads at one time, across every project. Past it, a feed isn't read, and its project's notifications say so.",

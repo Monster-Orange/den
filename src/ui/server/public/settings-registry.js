@@ -87,15 +87,13 @@ export const DEN_SETTING_CATEGORIES = [
     id: "workspace",
     label: "Project setup",
     order: 50,
-    description:
-      "Settings for one project. They follow the project you view in the top bar.",
+    description: "Settings for the project picked in the top bar.",
   },
   {
     id: "agents",
     label: "Agents",
     order: 55,
-    description:
-      "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
+    description: "The runtimes agents run on, and how they run.",
   },
   {
     // issue 267: Hub has a section of its own: its address, the connection,
@@ -104,7 +102,7 @@ export const DEN_SETTING_CATEGORIES = [
     label: "Hub",
     order: 55.5,
     description:
-      "Den Hub is where your company's docs, mocks, comments and approvals live. Connect this install, and every agent can search and publish there, and gets the comments and decisions on its work. See docs/hub.md in Den's docs.",
+      "Where your company's docs, mocks, comments and approvals live.",
   },
   {
     // Bell v6 (0.4.45): the person's bell.
@@ -4963,7 +4961,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Name",
     description:
-      "The name Den shows for this project in the header, lists and pages. Linked to a Hub project, it is Hub's name. The slug never changes.",
+      "The name Den shows for this project; a linked Hub project's name wins.",
     // Mock v6: one help line on screen, the state's own (the control
     // draws it); this one is for search and screen readers.
     helpInControl: true,
@@ -4979,7 +4977,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Colour",
     description:
-      "The colour of this project's agents, tabs, To line and top bar chip. Automatic picks one, the same every time; yours only, never shared or sent to Hub.",
+      "This project's colour in agents, tabs and the top bar; only you see it.",
     keywords: ["colour", "color", "hue", "project"],
     scope: "workspace",
     control: { type: "custom", render: renderProjectColour },
@@ -4997,7 +4995,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "IDE for this project",
     description:
-      "Opening this project, or a repo in it without a per-language override, uses this editor instead of your default.",
+      "The editor this project's repos open in, instead of your default.",
     keywords: ["workspace", "editor", "ide", "override"],
     scope: "workspace",
     control: { type: "workspace-editor" },
@@ -5011,7 +5009,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Hub project",
     description:
-      "The Hub project this project's agents file their Hub work in: docs, mocks, comments. Den never links on its own: Hub suggests one with the same repos or name, and you confirm. Not linked, Hub files the work in Unfiled. __DEN_CLI__ hub link -p <project>",
+      "The Hub project this project's agents file docs, mocks and comments in. __DEN_CLI__ hub link -p <project>",
     keywords: ["hub", "hub project", "link", "unfiled", "company", "project"],
     scope: "workspace",
     control: { type: "custom", render: renderHubProject },
@@ -5024,7 +5022,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Hub delivery loop: this project",
     description:
-      "Whether this project's agents get the Hub delivery loop in their instructions, over the install's Hub delivery loop. Reaches an agent at its next start.",
+      "Whether this project's agents get the Hub delivery loop, over the install's choice.",
     keywords: [
       "hub",
       "delivery",
@@ -5055,8 +5053,7 @@ export const DEN_SETTINGS = [
     id: "workspace.hub_delivery_loop_extra",
     category: "workspace",
     label: "Added to the Hub delivery loop",
-    description:
-      "This project's own text, added after Den's copy of the loop in its agents' instructions. Den's copy can't be edited. Empty adds nothing.",
+    description: "This project's own text, added after Den's delivery loop.",
     keywords: ["hub", "delivery", "loop", "add", "project", "instructions"],
     scope: "workspace",
     // The server's limit (HUB_LOOP_EXTRA_MAX), so a long paste stops here.
@@ -5073,7 +5070,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Agents per project: this project",
     description:
-      "How many of this project's agents may run at once. Empty or 0 uses Agents per project. It can only be lower than that. A start past it is refused, and says which cap holds it.",
+      "How many of this project's agents may run at once; empty uses the default.",
     keywords: ["agents", "limit", "max_per_project", "project", "cap"],
     scope: "workspace",
     control: { type: "number", min: 0, max: 1000, step: 1 },
@@ -5091,7 +5088,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Agents' mode: this project (overrides the Den-wide default)",
     description:
-      "The mode this project's agents run in, over the Den-wide default. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. Each agent below says its mode and where it comes from. A change reaches running agents after their turn, on its own.",
+      "The mode this project's agents run in, over the Den-wide default.",
     keywords: [
       "agents",
       "mode",
@@ -5113,8 +5110,7 @@ export const DEN_SETTINGS = [
     id: "workspace.approvals_policy",
     category: "workspace",
     label: "Agents' writes here",
-    description:
-      "What an agent in this project may do without your Allow, over Agent writes. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks.",
+    description: "What this project's agents may do without your Allow.",
     keywords: ["approval", "allow", "policy", "notify", "ask", "auto"],
     scope: "workspace",
     control: seg([
@@ -5132,7 +5128,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Watched here",
     description:
-      "An agent's write on any of these asks you first, whatever its kind. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+      "Names whose agent writes always ask you first, comma-separated.",
     keywords: ["watch", "watched", "favorite", "approval", "allow", "ask"],
     scope: "workspace",
     control: { type: "text" },
@@ -5144,8 +5140,7 @@ export const DEN_SETTINGS = [
     id: "workspace.approvals_critical",
     category: "workspace",
     label: "Critical here",
-    description:
-      "Kinds of agent write that always ask you in this project. Comma-separated, for example repo_clone, service_try.",
+    description: "Kinds of agent write that always ask you in this project.",
     keywords: ["critical", "approval", "allow", "ask", "policy"],
     scope: "workspace",
     control: { type: "text" },
@@ -5163,7 +5158,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "Agents' extra MCP servers: this project",
     description:
-      "HTTP MCP servers this project's agents get, besides Den's and Hub's, by name and address. A bearer is read from the install's secrets store at each call and is never shown. Change or remove one here. An agent asks with project_mcp_add, project_mcp_update or project_mcp_remove, and you Allow it.",
+      "Extra HTTP MCP endpoints this project's agents get, besides Den's and Hub's.",
     keywords: ["agents", "mcp", "mcp server", "tools", "bearer", "http"],
     scope: "workspace",
     control: { type: "custom", render: renderProjectMcp },
@@ -5177,7 +5172,7 @@ export const DEN_SETTINGS = [
     category: "workspace",
     label: "App event feeds: this project",
     description:
-      "Events an app of this project sends on its own stream, for one agent. Den types the agent a short line when some are unread, when it is idle, never mid-turn; the agent reads them with app_feed_read. Each feed says whether it is connected and when its last event came. Add or remove one here; an agent asks with project_event_feed_add or project_event_feed_remove. A bearer is a secrets.refs name, never a value.",
+      "Event streams from this project's apps, each read by one agent.",
     keywords: ["feed", "events", "stream", "app", "sse"],
     scope: "workspace",
     control: { type: "custom", render: renderAppFeeds },
@@ -5192,7 +5187,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agent writes",
     description:
-      "What an agent may do without your Allow. Run and tell me: it runs, and your updates say so. A write that widens what an agent may do, touches secrets, deletes data or spends money always asks, as does one on something you watch or pinned.",
+      "What an agent may do without your Allow; risky writes always ask.",
     keywords: ["approval", "allow", "policy", "notify", "ask", "auto"],
     scope: "user",
     keys: ["approvals_policy"],
@@ -5210,7 +5205,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents changing settings: Limits and performance",
     description:
-      "Caps, timeouts and intervals: how many agents at once, how long Den waits. A change made without asking is noted in the audit, and your updates say so.",
+      "Caps, timeouts and intervals. Changes made without asking are audited.",
     keywords: [
       "setting",
       "settings",
@@ -5235,7 +5230,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents changing settings: Look and layout",
     description:
-      "How Den looks and tells you: tabs, the rail, alerts and quiet hours. A change made without asking is noted in the audit, and your updates say so.",
+      "Tabs, the rail, alerts and quiet hours. Changes made without asking are audited.",
     keywords: [
       "setting",
       "settings",
@@ -5260,7 +5255,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents changing settings: Integrations",
     description:
-      "Editors, terminals, runtimes, Hub and GitHub. A change made without asking is noted in the audit, and your updates say so.",
+      "Editors, terminals, runtimes, Hub and GitHub. Changes made without asking are audited.",
     keywords: [
       "setting",
       "settings",
@@ -5285,7 +5280,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents changing settings: Network and access",
     description:
-      "Den's address, the edge, sign-in limits and embedding. A change made without asking is noted in the audit, and your updates say so.",
+      "Den's address, the edge, sign-in limits and embedding. Changes made without asking are audited.",
     keywords: [
       "setting",
       "settings",
@@ -5310,7 +5305,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents changing settings: Agent powers",
     description:
-      "The sandbox, grants, approvals, secrets and the install's mode. These always ask you, or are refused. A change made without asking is noted in the audit, and your updates say so.",
+      "The sandbox, grants, approvals, secrets and mode. These always ask you, or are refused.",
     keywords: [
       "setting",
       "settings",
@@ -5333,7 +5328,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Watched",
     description:
-      "An agent's write on any of these asks you first, whatever its kind; so does one on a repo or service you pinned. Comma-separated: project:<name>, repo:<name>, service:<repo>/<name>, persona:<id>, agent:<id>, or a bare name.",
+      "Names whose agent writes always ask you first, comma-separated.",
     keywords: ["watch", "watched", "favorite", "pinned", "approval", "ask"],
     scope: "user",
     keys: ["approvals_watch"],
@@ -5346,8 +5341,7 @@ export const DEN_SETTINGS = [
     id: "agents.approvals_critical",
     category: "agents",
     label: "Critical",
-    description:
-      "Kinds of agent write that always ask you, in every project. Comma-separated, for example repo_clone, service_try.",
+    description: "Kinds of agent write that always ask you, in every project.",
     keywords: ["critical", "approval", "allow", "ask", "policy"],
     scope: "user",
     keys: ["approvals_critical"],
@@ -5363,7 +5357,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Requests wait for your Allow",
     description:
-      "How long an agent's request waits for your Allow before it lapses: 10 minutes to 7 days (10080). It stays in the bell the whole time, and survives a restart. Allowing an old one checks it again first. __DEN_CLI__ config held_writes.wait_minutes=1440",
+      "How long a request waits for your Allow before it lapses. __DEN_CLI__ config held_writes.wait_minutes=1440",
     keywords: [
       "approval",
       "allow",
@@ -5417,7 +5411,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents restarted at a time",
     description:
-      "After a restart, or when Hub's tools change, agents restart this many at a time; the ones that were working go first. 0 restarts every agent at once. __DEN_CLI__ config agents.resume.batch=4",
+      "How many agents restart at a time after a restart; 0 means all. __DEN_CLI__ config agents.resume.batch=4",
     keywords: ["restart", "resume", "agents", "batch", "load", "stagger"],
     scope: "user",
     keys: ["agents_resume.batch"],
@@ -5443,7 +5437,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Load that holds restarts",
     description:
-      "While the machine's 1-minute load is over this, the next batch of agent restarts waits. 0: no limit. The default is the number of cores × 2. __DEN_CLI__ config agents.resume.load_ceiling=16",
+      "While the machine's load is over this, the next restart batch waits. __DEN_CLI__ config agents.resume.load_ceiling=16",
     keywords: ["restart", "resume", "load", "cpu", "ceiling"],
     scope: "user",
     keys: ["agents_resume.load_ceiling"],
@@ -5456,7 +5450,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Longest a restart waits for the load",
     description:
-      "Once an agent has waited this long, its batch restarts even if the load is still high, a few at a time as before. 0: the load may hold restarts as long as it stays high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
+      "After this wait, a batch restarts even if the load is still high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     keywords: ["restart", "resume", "wait", "load", "longest"],
     scope: "user",
     keys: ["agents_resume.max_wait_seconds"],
@@ -5522,7 +5516,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Who writes GitHub issues",
     description:
-      "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "Roles whose agents may file issues and comments in their project's repos. __DEN_CLI__ config agents.issue_writes=[planner,sde]",
     keywords: [
       "issue",
       "issues",
@@ -5551,7 +5545,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "GitHub issue writes an hour",
     description:
-      "How many issue writes all agents together may make in an hour. Past it, an agent is told how long to wait. __DEN_CLI__ config agents.issue_writes_per_hour=60",
+      "How many issue writes all agents together may make an hour. __DEN_CLI__ config agents.issue_writes_per_hour=60",
     keywords: [
       "issue",
       "issues",
@@ -5573,7 +5567,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Recheck a repo's visibility after",
     description:
-      "Text an agent files in a public repo, or one whose visibility isn't known, is checked for listed names first. This is how many minutes a repo's visibility is kept before GitHub is asked again, so a repo made public is checked soon after. 1 to 1440. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
+      "Minutes a repo's public or private status is kept before GitHub is asked again. __DEN_CLI__ config agents.issue_writes_visibility_minutes=10",
     keywords: [
       "issue",
       "github",
@@ -5595,7 +5589,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents write issues in public repos",
     description:
-      "On, agents may create issues and comments in public repos. Their text is first checked for listed names, and the footer names no agent or install. Off, a write to a public repo is refused. Turning it on needs your Allow. __DEN_CLI__ config agents.issue_writes_public=false",
+      "Whether agents may write issues and comments in public repos. __DEN_CLI__ config agents.issue_writes_public=false",
     keywords: [
       "issue",
       "github",
@@ -5618,7 +5612,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents' mode: Den-wide default",
     description:
-      "The mode every agent runs in, the __DEN_TITLE__ agent too, unless its project overrides it. Which wins: an agent's own setting, then the project, then the Den-wide default, then its persona. A change reaches running agents after their turn, on its own.",
+      "The mode every agent runs in, unless its project or itself overrides it.",
     keywords: [
       "agents",
       "mode",
@@ -5643,7 +5637,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Terminal reconnect tries",
     description:
-      "A terminal whose connection drops tries again on its own, waiting longer each time. After this many failed tries within the time below, it stops and shows Reconnect. __DEN_CLI__ config panes.reconnect_max_failures=20",
+      "Failed reconnect tries, within the time below, before a terminal stops retrying. __DEN_CLI__ config panes.reconnect_max_failures=20",
     keywords: ["reconnect", "terminal", "pane", "disconnected", "retry"],
     scope: "user",
     keys: ["panes_reconnect.max_failures"],
@@ -5684,7 +5678,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents at once",
     description:
-      "How many agents may run at once on this machine. Plain terminals never count. A start past this is refused, and says so. This wins over the distribution's value. __DEN_CLI__ config agents.max_concurrent=4",
+      "How many agents may run at once on this machine. __DEN_CLI__ config agents.max_concurrent=4",
     keywords: [
       "agents",
       "limit",
@@ -5704,7 +5698,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents per project",
     description:
-      "How many agents one project may run at once. 0 means no limit beyond Agents at once. A project may set a lower value of its own (agents.max_per_project in its entry in workspaces.yml). A start past this is refused, and says which cap holds it. __DEN_CLI__ config agents.max_per_project=10",
+      "How many agents one project may run at once; 0 means no limit. __DEN_CLI__ config agents.max_per_project=10",
     keywords: ["agents", "limit", "max_per_project", "project", "cap"],
     scope: "user",
     keys: ["agents_limits.max_per_project"],
@@ -5717,7 +5711,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Subagents at once",
     description:
-      "How many subagents the agents on this machine may run at once, all together. A start past this is refused, and the agent is told this setting's name. Unset, twice Agents at once. __DEN_CLI__ config agents.max_subagents=8",
+      "How many subagents all agents here may run at once. __DEN_CLI__ config agents.max_subagents=8",
     keywords: [
       "agents",
       "subagents",
@@ -5739,7 +5733,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "No new subagents under load",
     description:
-      "On, while the machine's load is over the agents' load ceiling, a new subagent is refused, and the agent is told this setting's name. Off, subagents start whatever the load. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+      "When on, no new subagent starts while the machine's load is too high. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
     keywords: [
       "agents",
       "subagents",
@@ -5761,7 +5755,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Skill packs",
     description:
-      "Skill packs Den gives its agents. Each is vendored in Den at a pinned version and never fetched. __DEN_CLI__ config skill_packs.on=false",
+      "Skill packs Den gives its agents, pinned in Den and never fetched. __DEN_CLI__ config skill_packs.on=false",
     keywords: ["agents", "skills", "skill packs", "plugin", "skill_packs"],
     scope: "user",
     keys: ["skill_packs"],
@@ -5795,7 +5789,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Terminal host wait",
     description:
-      "How long the Agents list waits for the terminal host. After this, the list says it couldn't reach it and tries again. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+      "How long the Agents list waits for the terminal host. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
     keywords: ["timeout", "terminal", "host", "list", "wait"],
     scope: "user",
     keys: ["agents_list.host_timeout_seconds"],
@@ -5809,7 +5803,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Shell PATH wait",
     description:
-      "How long __DEN_TITLE__ waits for your shell to say its PATH when it looks for agent CLIs: the PATH a new shell gets, startup files and all. After this, it looks in the usual places instead. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
+      "How long __DEN_TITLE__ waits for your shell's PATH when finding agent CLIs. __DEN_CLI__ config agents.shell_path_timeout_seconds=10",
     keywords: ["timeout", "shell", "path", "zshrc", "cli", "runtime", "wait"],
     scope: "user",
     keys: ["agents_shell.path_timeout_seconds"],
@@ -5823,7 +5817,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Draft hold before the bell",
     description:
-      "While you have an unsent message typed into an agent's terminal, __DEN_TITLE__ holds what it would type there, and never sends your draft. After this long, the bell says messages are waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
+      "How long an unsent draft holds messages before the bell says they're waiting. __DEN_CLI__ config agents.draft_hold_max_minutes=30",
     keywords: [
       "draft",
       "typing",
@@ -5844,7 +5838,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents list wait",
     description:
-      "How long the Agents page waits for its list. After this, it says the list may be out of date and tries again. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
+      "How long the Agents page waits for its list before trying again. __DEN_CLI__ config agents_list.refresh_timeout_seconds=15",
     keywords: ["timeout", "list", "refresh", "wait", "out of date"],
     scope: "user",
     keys: ["agents_list.refresh_timeout_seconds"],
@@ -5859,7 +5853,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agent hook wait",
     description:
-      "How long an agent's hooks wait for __DEN_TITLE__ on each try when they tell it the agent needs you, or check the Hub inbox. A busy machine can be slow to answer. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
+      "How long an agent's hooks wait for __DEN_TITLE__ on each try. __DEN_CLI__ config agent_hooks.timeout_seconds=20",
     keywords: ["timeout", "hook", "attention", "bell", "wait"],
     scope: "user",
     keys: ["agent_hooks.timeout_seconds"],
@@ -5872,7 +5866,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agent hook retries",
     description:
-      "How many more times an agent's hook tries when __DEN_TITLE__ didn't answer in time or turned the call away. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.retries=2",
+      "How many more times an agent's hook tries after no answer. __DEN_CLI__ config agent_hooks.retries=2",
     keywords: ["retry", "hook", "attention", "bell"],
     scope: "user",
     keys: ["agent_hooks.retries"],
@@ -5885,7 +5879,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agent hook pause",
     description:
-      "How long an agent's hook waits before its first retry. Each later pause doubles. Applies when an agent next starts. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
+      "How long a hook waits before its first retry; each later pause doubles. __DEN_CLI__ config agent_hooks.backoff_seconds=1",
     keywords: ["retry", "backoff", "pause", "hook"],
     scope: "user",
     keys: ["agent_hooks.backoff_seconds"],
@@ -5899,7 +5893,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Compacting repeatedly: compactions",
     description:
-      "How many automatic compactions an agent may have within the minutes below before the bell says it is compacting repeatedly. One bell per episode. __DEN_CLI__ config agent_context.compaction_loop_count=3",
+      "Compactions within the minutes below before the bell says an agent is looping. __DEN_CLI__ config agent_context.compaction_loop_count=3",
     keywords: ["compaction", "compact", "loop", "context", "bell"],
     scope: "user",
     keys: ["agent_context.compaction_loop_count"],
@@ -5927,7 +5921,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Hold deliveries after a compaction loop",
     description:
-      "On: once the bell says an agent is compacting repeatedly, new deliveries to it (Hub comments, notes) wait until a person clears it on the Agents page. Off (the default): they go as usual. __DEN_CLI__ config agent_context.pause_after_loop=true",
+      "When on, a looping agent's new deliveries wait until someone clears it. __DEN_CLI__ config agent_context.pause_after_loop=true",
     keywords: ["compaction", "pause", "hold", "deliveries", "loop"],
     scope: "user",
     keys: ["agent_context.pause_after_loop"],
@@ -5940,7 +5934,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Instruction files: warn above",
     description:
-      "When the instruction files an agent loads at start (CLAUDE.md, AGENTS.md and the like, up its folders) are more than this share of its model's context, its row and doctor warn, naming the largest. Sizes are estimated as bytes / 4 tokens. __DEN_CLI__ config agent_context.instruction_share_percent=15",
+      "Warn when an agent's instruction files take more than this share of context. __DEN_CLI__ config agent_context.instruction_share_percent=15",
     keywords: ["instructions", "CLAUDE.md", "AGENTS.md", "context", "size"],
     scope: "user",
     keys: ["agent_context.instruction_share_percent"],
@@ -5954,7 +5948,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Context size when unknown",
     description:
-      "The context size, in tokens, the share above is taken of when __DEN_TITLE__ doesn't know the model's own. __DEN_CLI__ config agent_context.context_tokens=200000",
+      "The context size used above when the model's own isn't known. __DEN_CLI__ config agent_context.context_tokens=200000",
     keywords: ["context", "tokens", "size", "model"],
     scope: "user",
     keys: ["agent_context.context_tokens"],
@@ -5967,7 +5961,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Agents tab layout",
     description:
-      "Focus shows one agent, Tabs shows one with a tab for each, Tile shows up to four in a grid. The Agents tab's switch, ⌃⇧1, ⌃⇧2, ⌃⇧3 and ⌘K set it too.",
+      "How the Agents tab shows agents: one, one with tabs, or up to four.",
     keywords: ["agents", "layout", "focus", "tabs", "tile", "grid", "panes"],
     scope: "user",
     control: seg([
@@ -5983,8 +5977,7 @@ export const DEN_SETTINGS = [
     id: "agents.coach_counts",
     category: "agents",
     label: "Coach tab: show counts as",
-    description:
-      "Total shows the window's counts; Per day divides them by its days. Percents and averages stay the same. The Coach tab's switch sets it too.",
+    description: "Whether the Coach tab shows totals or counts per day.",
     keywords: ["coach", "counts", "total", "per day", "usage", "tokens"],
     scope: "user",
     control: seg([
@@ -6019,7 +6012,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Runtimes",
     description:
-      "Each runtime's status and version, the path in use and where it came from. Set path… runs its version command first and refuses a path that isn't that runtime.",
+      "Each runtime's status, version and path, and where the path came from.",
     keywords: [
       "runtime",
       "claude",
@@ -6041,7 +6034,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Rotation",
     description:
-      "When an agent's conversation has compacted this many times (or its pull request merged), Den starts it again from its handoff: a fresh conversation, the same name, persona, project and folder. Auto asks the agent for its handoff when it is idle, then relaunches it by itself; Ask shows buttons on the agent; Off does nothing. Overrides win over this install's value: agent, persona in a project, persona, project, service. __DEN_CLI__ agents rotate",
+      "When Den restarts an agent fresh from its handoff, after this many compactions. __DEN_CLI__ agents rotate",
     keywords: [
       "rotation",
       "rotate",
@@ -6063,7 +6056,7 @@ export const DEN_SETTINGS = [
     category: "hub",
     label: "Hub",
     description:
-      "Connect this install to your company's Hub: sign in there and approve it. Every agent then gets Hub's tools: search Hub, publish docs and mocks there. Its company comes from this install's token, its Hub project from Project setup › Hub project.",
+      "Connect this install to your company's Hub so every agent gets Hub's tools.",
     keywords: [
       "hub",
       "den hub",
@@ -6089,7 +6082,7 @@ export const DEN_SETTINGS = [
     category: "hub",
     label: "Hub delivery loop",
     description:
-      "On, every agent Den starts in a project connected to Hub gets the delivery loop in its instructions: requirement docs in Hub, issues linked in full, review and feedback in Hub's threads, status from git. Off for every project here unless a project turns it on. Reaches an agent at its next start.",
+      "Whether agents in Hub-connected projects get the delivery loop in their instructions.",
     keywords: ["hub", "delivery", "loop", "instructions", "agents", "review"],
     scope: "user",
     keys: ["hub_delivery_loop"],
@@ -6104,7 +6097,7 @@ export const DEN_SETTINGS = [
     category: "hub",
     label: "Groups from Hub",
     description:
-      "Whether the Agents page shows your Hub's groups (Group, beside Project in the list's switch). Auto: when your Den Hub supports groups. Off: Den never asks Hub for them. __DEN_CLI__ config hub.groups=auto",
+      "Whether the Agents page shows your Hub's groups. __DEN_CLI__ config hub.groups=auto",
     keywords: ["hub", "groups", "group", "lead", "agents", "by group"],
     scope: "user",
     keys: ["hub_groups.mode"],
@@ -6123,7 +6116,7 @@ export const DEN_SETTINGS = [
     category: "hub",
     label: "Groups kept for",
     description:
-      "How long Den keeps a copy of Hub's groups in memory before it asks Hub again: 5 to 3600 seconds. Try again on the Agents page asks Hub now. __DEN_CLI__ config hub.groups_cache_seconds=30",
+      "How long Den keeps Hub's groups before asking again. __DEN_CLI__ config hub.groups_cache_seconds=30",
     keywords: ["hub", "groups", "cache", "seconds", "memory", "refresh"],
     scope: "user",
     keys: ["hub_groups.cache_seconds"],
@@ -6138,7 +6131,7 @@ export const DEN_SETTINGS = [
     // Issue 167 (mock v6 B): the anchor stays; the row is Unclear matches.
     label: "Unclear matches",
     description:
-      "Linking ties a project to its Hub project, so its agents file docs, mocks and comments there. Den lists a project here only when it can't tell which Hub project fits. Pick one and press Link. Until then, nothing is filed for that project.",
+      "Projects Den couldn't match to a Hub project. Pick one for each.",
     keywords: ["hub", "link", "projects", "unclear", "pick", "match"],
     scope: "user",
     control: { type: "custom", render: renderHubLinkAll },
@@ -6149,8 +6142,7 @@ export const DEN_SETTINGS = [
     id: "agents.hub_github",
     category: "agents",
     label: "Den Hub's GitHub access",
-    description:
-      "How many of your company's GitHub repos Den Hub can read, asked live from Hub, with GitHub's link to give it access or change its repos.",
+    description: "How many of your company's GitHub repos Den Hub can read.",
     keywords: ["hub", "github", "access", "app", "install", "repos"],
     scope: "user",
     control: { type: "custom", render: renderHubGithub },
@@ -6162,7 +6154,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Personas",
     description:
-      "Agent setups you can start from. Built-in ones ship with Den, distribution ones with your distribution, and yours live on this machine. View or Edit, Duplicate, + New persona; only your own can be edited or deleted.",
+      "Agent setups to start from: built-in, your distribution's, and your own.",
     keywords: [
       "persona",
       "role",
@@ -6186,7 +6178,7 @@ export const DEN_SETTINGS = [
     category: "agents",
     label: "Keep agents running after logout",
     description:
-      "On (the default for a new install): __DEN_TITLE__ runs as a LaunchDaemon, so agents keep running after you log out. There they sign in with a long-lived token from your secrets store, not the login keychain: your agents' CLI makes it when you sign in to it, and you paste it into Sign-in token below. Off: agents stop when you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
+      "Whether agents keep running after you log out. __DEN_CLI__ config agents.keep_running_after_logout=true, then __DEN_CLI__ service install",
     keywords: [
       "logout",
       "log out",
@@ -6406,8 +6398,7 @@ export const DEN_SETTINGS = [
     id: "distribution.hub_github",
     category: "hub",
     label: "Den Hub's GitHub access",
-    description:
-      "How many of your company's GitHub repos Den Hub can read, asked live from Hub. Den Hub reads a repo only through your company's GitHub App install; the button opens GitHub to install it or change its repos. When you come back, Den sends its projects to Hub again and the repos link by themselves.",
+    description: "How many of your company's GitHub repos Den Hub can read.",
     keywords: [
       "distribution",
       "github",

@@ -39,6 +39,81 @@ export const ACCOUNT_LINKS = {
 
 export const SUBS = {};
 
+SUBS.workspace = {
+  project: ["name", "colour", "editor"],
+  hub: ["hub", "hub_delivery_loop", "hub_delivery_loop_extra"],
+  agents: [
+    "agents_max_per_project",
+    "agents_mode",
+    "approvals_policy",
+    "approvals_watch",
+    "approvals_critical",
+  ],
+  tools: ["mcp_servers", "event_feeds"],
+};
+
+SUBS.agents = {
+  approvals: [
+    "approvals_policy",
+    "settings_limits",
+    "settings_look",
+    "settings_integrations",
+    "settings_network",
+    "settings_agent_powers",
+    "approvals_watch",
+    "approvals_critical",
+    "held_wait",
+    "draft_hold_max",
+  ],
+  limits: [
+    "max_concurrent",
+    "max_per_project",
+    "max_subagents",
+    "subagents_respect_load_hold",
+  ],
+  startup: [
+    "default_mode",
+    "runtimes",
+    "skill_packs",
+    "skill_packs.pstack",
+    "personas",
+  ],
+  resume: [
+    "resume_batch",
+    "resume_gap",
+    "resume_load",
+    "resume_max_wait",
+    "pane_reconnect",
+    "pane_reconnect_window",
+    "pane_reconnect_wait",
+    "keep_running",
+  ],
+  context: [
+    "compaction_loop",
+    "compaction_minutes",
+    "compaction_pause",
+    "instruction_share",
+    "context_tokens",
+    "rotation",
+  ],
+  issues: [
+    "issue_writes",
+    "issue_writes_per_hour",
+    "issue_writes_visibility_minutes",
+    "issue_writes_public",
+    "hub_github",
+  ],
+  waits: [
+    "list_host_wait",
+    "shell_path_wait",
+    "list_refresh_wait",
+    "hook_wait",
+    "hook_retries",
+    "hook_backoff",
+  ],
+  page: ["layout", "coach_counts", "helpers_shown"],
+};
+
 export function subsOf(pane, rows) {
   const plan = SUBS[pane];
   if (!plan) return null;
