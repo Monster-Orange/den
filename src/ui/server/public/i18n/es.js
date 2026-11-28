@@ -1641,7 +1641,31 @@
       "Tras esta espera, un lote se reinicia aunque la carga siga alta. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "Quién escribe issues de GitHub",
     "set.agents.issue_writes.d":
-      "Roles cuyos agentes pueden crear issues y comentarios en los repos de su proyecto. __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "Los agentes con estos trabajos pueden crear y actualizar issues de GitHub en su propio proyecto sin preguntarte, para que los errores y lo pendiente queden anotados. __DEN_TITLE__ registra cada cambio que hacen. No pueden cerrar ni borrar un issue.",
+    "set.job.planner": "Planificador",
+    "set.job.planner.d": "Divide los objetivos en historias pequeñas y listas.",
+    "set.job.orchestrator": "Orquestador",
+    "set.job.orchestrator.d":
+      "Reparte las historias entre otros agentes y las sigue hasta el final.",
+    "set.job.sde": "Ingeniero de software",
+    "set.job.sde.d": "Construye una historia y abre un pull request.",
+    "set.job.reviewer": "Revisor",
+    "set.job.reviewer.d": "Revisa pull requests. Nunca fusiona.",
+    "set.job.tester": "Tester",
+    "set.job.tester.d": "Ejecuta las pruebas e informa de los fallos.",
+    "set.job.designer": "Diseñador",
+    "set.job.designer.d": "Diseña flujos y pantallas.",
+    "set.job.install": "El agente propio de __DEN_TITLE__",
+    "set.job.install.d": "Cuida del propio __DEN_TITLE__.",
+    "set.jobs.lead":
+      "Los agentes con estos trabajos pueden crear y actualizar issues de GitHub en su propio proyecto sin preguntarte, para que los errores y lo pendiente queden anotados.",
+    "set.jobs.recorded":
+      "__DEN_TITLE__ registra cada cambio que hacen. No pueden cerrar ni borrar un issue.",
+    "set.jobs.none": "Ningún agente puede crear ni actualizar issues.",
+    "set.jobs.unread":
+      "__DEN_TITLE__ no pudo leer este ajuste, así que no se muestran las marcas.",
+    "set.jobs.viewOnly": "Puedes ver esto, pero no cambiarlo.",
+    "set.jobs.again": "Reintentar",
     "set.agents.issue_writes_per_hour":
       "Escrituras de issues de GitHub por hora",
     "set.agents.issue_writes_per_hour.d":
@@ -4716,7 +4740,8 @@
     "setc.workspace": "Configuración del proyecto",
     "setc.workspace.d": "Ajustes del proyecto elegido en la barra superior.",
     "setc.agents": "Agentes",
-    "setc.agents.d": "Los entornos en que corren los agentes, y cómo corren.",
+    "setc.agents.d":
+      "Los programas con los que funcionan tus agentes, primero los instalados. Una ruta que defines se aplica solo a esta máquina. La ruta definida para un proyecto tiene prioridad sobre la definida para todos.",
     "setc.access": "Acceso",
     "setc.access.d": "Accede a este Den desde tus otros dispositivos.",
     "setc.embed": "Incrustación",
@@ -5261,8 +5286,7 @@
     "lg.empty.click":
       "No hay registros abiertos. Haz clic en el nombre de un servicio de arriba para abrir uno.",
     "lg.search.pane": 'búsqueda: "{q}"',
-    "lg.search.matches":
-      "{n} en esta página (haz clic para abrir el registro)",
+    "lg.search.matches": "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.matches.one":
       "{n} en esta página (haz clic para abrir el registro)",
     "lg.search.none":

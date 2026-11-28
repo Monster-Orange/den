@@ -52,6 +52,8 @@
     "./tabs.css": "./src/tabs.css",
     "./pager": "./src/pager.js",
     "./pager.css": "./src/pager.css",
+    "./checks": "./src/checks.js",
+    "./checks.css": "./src/checks.css",
     "./preview": "./src/preview.js",
     "./preview-frame": "./src/preview-frame.js",
     "./filter-bar": "./src/filter-bar.js",

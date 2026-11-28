@@ -1240,7 +1240,8 @@
     "setc.workspace": "Project setup",
     "setc.workspace.d": "Settings for the project picked in the top bar.",
     "setc.agents": "Agents",
-    "setc.agents.d": "The runtimes agents run on, and how they run.",
+    "setc.agents.d":
+      "The programs your agents run on, installed ones first. A path you set applies to this machine only. A path set for one project wins over the one set for every project.",
     "setc.access": "Access",
     "setc.access.d": "Reach this Den from your other devices.",
     "setc.embed": "Embedding",
@@ -2911,7 +2912,31 @@
       "After this wait, a batch restarts even if the load is still high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "Who writes GitHub issues",
     "set.agents.issue_writes.d":
-      "Roles whose agents may file issues and comments in their project's repos. __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "Agents with these jobs can file and update GitHub issues in their own project without asking you, so bugs and follow-ups get written down. __DEN_TITLE__ records every change they make. They can't close or delete an issue.",
+    "set.job.planner": "Planner",
+    "set.job.planner.d": "Splits goals into small, ready stories.",
+    "set.job.orchestrator": "Orchestrator",
+    "set.job.orchestrator.d":
+      "Hands stories to other agents and follows them to done.",
+    "set.job.sde": "Software engineer",
+    "set.job.sde.d": "Builds one story and opens a pull request.",
+    "set.job.reviewer": "Reviewer",
+    "set.job.reviewer.d": "Reviews pull requests. Never merges.",
+    "set.job.tester": "Tester",
+    "set.job.tester.d": "Runs the tests and reports failures.",
+    "set.job.designer": "Designer",
+    "set.job.designer.d": "Designs flows and screens.",
+    "set.job.install": "__DEN_TITLE__'s own agent",
+    "set.job.install.d": "Looks after __DEN_TITLE__ itself.",
+    "set.jobs.lead":
+      "Agents with these jobs can file and update GitHub issues in their own project without asking you, so bugs and follow-ups get written down.",
+    "set.jobs.recorded":
+      "__DEN_TITLE__ records every change they make. They can't close or delete an issue.",
+    "set.jobs.none": "No agent can file or update issues.",
+    "set.jobs.unread":
+      "__DEN_TITLE__ couldn't read this setting, so the ticks aren't shown.",
+    "set.jobs.viewOnly": "You can see this but not change it.",
+    "set.jobs.again": "Try again",
     "set.agents.issue_writes_per_hour": "GitHub issue writes an hour",
     "set.agents.issue_writes_per_hour.d":
       "How many issue writes all agents together may make an hour. __DEN_CLI__ config agents.issue_writes_per_hour=60",
