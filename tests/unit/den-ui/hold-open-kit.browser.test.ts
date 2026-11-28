@@ -112,6 +112,7 @@ type W = Window & {
       button?: Element;
       value?: string;
       closeNow?: boolean;
+      error?: boolean;
     },
   ) => Promise<{ ok: boolean; value?: unknown; error?: unknown }>;
   mountDialog: (el: Element, o: Record<string, unknown>) => unknown;
@@ -191,6 +192,19 @@ async function expectFailed(p: Page, button: string, other: string) {
   ).toBe(false);
   expect(await active(p)).toBe(button.slice(1));
 }
+
+const holdMenu = (p: Page, o: { error?: boolean }) =>
+  p.evaluate((o) => {
+    const w = window as unknown as W;
+    w.result = undefined;
+    void w
+      .holdOpen(document.getElementById("menu")!, w.pending(), {
+        button: document.getElementById("m-sum")!,
+        closeNow: true,
+        ...o,
+      })
+      .then((r) => (w.result = r));
+  }, o);
 
 const openKitPopover = (p: Page) =>
   p.evaluate(() => {
@@ -336,6 +350,39 @@ describe.each(["chromium", "webkit"])(
       expect(
         await p.locator("#dlg").evaluate((d) => (d as HTMLDialogElement).open),
       ).toBe(false);
+      await p.context().close();
+    });
+
+    it("closeNow: on success the menu stays shut and its summary is given back", async () => {
+      if (skip()) return;
+      const p = await openPage(browsers[name]);
+      await p.locator("#m-sum").click();
+      await holdMenu(p, {});
+      await answer(p, true);
+      await settled(p);
+      expect(
+        await p
+          .locator("#menu")
+          .evaluate((d) => (d as HTMLDetailsElement).open),
+      ).toBe(false);
+      expect(await attr(p, "#m-sum", "aria-busy")).toBeNull();
+      expect(await attr(p, "#m-sum", "aria-disabled")).toBeNull();
+      expect(await active(p)).toBe("m-sum");
+      await p.context().close();
+    });
+
+    it("closeNow with error: false leaves the error to the caller (no alert line)", async () => {
+      if (skip()) return;
+      const p = await openPage(browsers[name]);
+      await p.locator("#m-sum").click();
+      await holdMenu(p, { error: false });
+      await answer(p, false);
+      await settled(p);
+      const r = await p.evaluate(() => (window as unknown as W).result);
+      expect(r?.ok).toBe(false);
+      expect(await p.locator('[role="alert"]').count()).toBe(0);
+      expect(await attr(p, "#m-sum", "aria-busy")).toBeNull();
+      expect(await active(p)).toBe("m-sum");
       await p.context().close();
     });
 
