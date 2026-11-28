@@ -162,7 +162,8 @@ const FOLLOW_FOR_MS = 15_000;
 function followAgents() {
   for (const p of [...st.panes.values()]) {
     const r = knowAgent(p);
-    if (!p.agent || p.closed || r?.state === "running") continue;
+    if (!p.agent || p.closed || (r?.kind === "agent" && r.state === "running"))
+      continue;
     const next = st.data?.sessions?.find(
       (x) =>
         x.kind === "agent" &&
@@ -225,6 +226,7 @@ function retarget(p, row) {
   p.el.setAttribute("aria-label", row.label ?? row.id);
   p.exited = false;
   p.lost = false;
+  p.leftAgentAt = null;
   p.notes = [];
   noteLine(
     p,
