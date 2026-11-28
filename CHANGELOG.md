@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
+### Changed
+
+- Boxes and tags across Den drop their dashed borders for a solid border on the sunken background: banners, empty states, the 404 card, the source and scope tags, the rename-waiting box and Checks' warning flag. (issue 1926)
+
 ## [0.4.92] - unreleased
 
 ### Changed
