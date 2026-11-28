@@ -14,10 +14,18 @@ import * as yaml from "yaml";
 const ROOT = process.cwd();
 const SCRIPT = path.join(ROOT, "scripts", "ci-ok.mjs");
 
+interface Step {
+  uses?: string;
+  run?: string;
+  env?: Record<string, string>;
+  with?: Record<string, string | number | boolean>;
+  "timeout-minutes"?: number;
+}
 interface Job {
   needs?: string | string[];
   if?: string;
-  steps?: { run?: string; env?: Record<string, string> }[];
+  steps?: Step[];
+  "timeout-minutes"?: number;
 }
 const ci = yaml.parse(
   fs.readFileSync(path.join(ROOT, ".github", "workflows", "ci.yml"), "utf-8"),
@@ -134,6 +142,20 @@ describe("issue 843: ci-ok, the merge queue's one required check", () => {
     expect(j.if).toMatch(/merge_group/);
     const step = (j.steps ?? []).find((s) => s.run?.includes("ci-ok.mjs"));
     expect(step?.env?.NEEDS).toMatch(/toJSON\(needs\)/);
+  });
+
+  it("issue 1522: a slow checkout can't time the job out (GitHub shows that as cancelled, a false red)", () => {
+    const j = ci.jobs["ci-ok"];
+    expect(j["timeout-minutes"]).toBeGreaterThanOrEqual(10);
+    const co = (j.steps ?? []).find((s) =>
+      String(s.uses ?? "").startsWith("actions/checkout@"),
+    );
+    expect(co).toBeDefined();
+    if (!co) return;
+    expect(co["timeout-minutes"]).toBeGreaterThan(0);
+    expect(co["timeout-minutes"]).toBeLessThan(j["timeout-minutes"] ?? 0);
+    expect(co.with?.["fetch-depth"]).toBe(1);
+    expect(co.with?.["sparse-checkout"]).toBe("scripts/ci-ok.mjs");
   });
 
   it("needs every job a pull request runs, so a new one can't slip past", () => {
