@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
+### Changed
+
+- Den and Hub keep the chosen project when you move between them. The rail's Hub link (and ⌘K's Hub entry) opens Hub on the Hub project the chosen project is linked to (`?project=<Hub slug>`). It adds nothing under All active or for a project not linked to this Hub. A link from Hub with `?project=<Hub slug>` picks the Den project linked to that slug. An unknown or unlinked slug changes nothing, and the parameter leaves the address either way. Only a stored link counts, never a name.
+
 ## [0.4.92] - unreleased
 
 ### Changed

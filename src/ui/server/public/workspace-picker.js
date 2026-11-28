@@ -90,6 +90,21 @@ function hubNameOf(data, slug) {
   return typeof h === "string" && h.trim() ? h.trim() : "";
 }
 
+export function hubSlugOf(data, slug) {
+  if (!slug || data?.hubElsewhere?.[slug]) return "";
+  const h = data?.workspaces?.[slug]?.hub_project;
+  const v = h && typeof h === "object" ? h.slug || h.id : "";
+  return typeof v === "string" ? v.trim() : "";
+}
+
+export function projectForHubSlug(data, hubSlug) {
+  if (typeof hubSlug !== "string" || !hubSlug) return null;
+  const hits = activeNames(data).filter(
+    (ws) => hubSlugOf(data, ws) === hubSlug,
+  );
+  return hits.length === 1 ? hits[0] : null;
+}
+
 /**
  * Issue 646 (mock v2, part 2): the project header's Hub chip. `hub`: the
  * shell's Hub status (team, url), or null before it answers. Linked:
