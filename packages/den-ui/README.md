@@ -922,6 +922,60 @@ own parts or names.
 - The words are `kit.filter.*` and `kit.bulk.*` in `strings.js`. Both
   work under `script-src 'self'; style-src 'self'`.
 
+## The dialog with left nav and search (DS component #5)
+
+`src/dialog-nav.js` and `src/dialog-nav.css` (exports `./dialog-nav`,
+`./dialog-nav.css`): one modal of panes, for an Account or a Settings
+pop-up.
+
+    import { dialogNavHtml, hydrateDialogNav } from "@monster-orange/den-ui/dialog-nav";
+    host.innerHTML = dialogNavHtml({ id: "acct", kind: "account",
+      param: "account", title: "Account", open: "profile",
+      href: location.pathname + location.search, shown: false,
+      cross: { href: "?settings=company" },
+      groups: [{ label: "You", panes: [{ id: "profile", title: "Profile",
+        desc: "Your name and photo. Only you can change them.",
+        html: cards }] }] });
+    const dn = hydrateDialogNav(document.getElementById("acct"), {
+      load: (pane, body) => fill(body), onCross: (href) => go(href) });
+    dn.open("profile", null, button);
+
+- 960 by 760px at most, a fixed size. A 240px rail (search, the panes
+  under group headings, the cross-link at its foot) and the open pane,
+  which scrolls on its own. Every pane stays mounted, so a half-typed
+  field survives a switch; `lazy: true` panes call `load` the first time
+  they open. `readOnly: "<who can change it>"` shows that line and
+  disables the pane's controls (a disabled fieldset).
+- Search matches pane titles and each `[data-entry]` in a pane (its text
+  and `data-entry-en`), up to 6 per pane, nested under the pane with the
+  match in bold. Enter jumps to the first, ↓ moves into them, `/`
+  focuses the search, and Esc clears it before it closes anything. A jump
+  opens the pane, scrolls the row to the middle, flashes it twice and
+  focuses its control.
+- The address is its state: `?<param>=<pane>`, and `&at=<entry>` jumps
+  to a row. Opening pushes one history entry, moving between panes
+  replaces it, Back closes it, and closing takes the entry back off.
+  With `shown: true` (a link with the parameter) it is drawn open; with
+  no script it is a `<dialog open>` of links and plain forms.
+  With `shown: false` it is drawn closed and kept out of view until
+  `open()`: build it once, append it, and open it from a button.
+- A link in a pane to another pane: `<a href="?<param>=<pane>"
+  data-dn-to="<pane>" data-dn-at="<entry>">` (`data-dn-at` optional)
+  switches panes in place; ⌘-, Ctrl- or Shift-click still opens the
+  address. `data-dn-hit` is the search's own and not for pane links.
+- A `<form>` in a pane saves in place: through `onSave(form, pane)` when
+  given (`{ ok, message }` or `{ ok: false, error }`), else a fetch of
+  its action with `x-dn-pane: 1` whose reply replaces the pane body when
+  it carries `x-dn-pane`. Save is held with the kit's dots, and "Saved"
+  or the error shows at the pane's top. Controls that save on change
+  through their own code don't submit, so the kit leaves them alone.
+- A field marked `data-dn-typed` that differs from its saved value makes
+  closing ask "Discard your change to {field}?" (the kit's confirm).
+- At 600px or less: full screen, the list first (44px rows with ›), then
+  the pane with ← (back to the list, as the phone's Back does) and ✕.
+  Search results are a flat "Pane › match" list.
+- Words in en, es and ja (`DIALOG_NAV_WORDS`), or `words`.
+
 ## The general button, the page action menu and the settings row
 
 Three pieces, data in, the kit's words out (en, es, ja).

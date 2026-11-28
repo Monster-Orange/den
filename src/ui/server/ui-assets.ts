@@ -116,6 +116,7 @@ export const UI_MODULES: readonly string[] = [
   "/pty-refusal.js",
   // D64: Restart Den from the browser, in place.
   "/restart-den.js",
+  "/account-dialog.js",
   // UK-2: Den's actions on the kit's working pop-up (/kit/busy.js).
   "/busy-den.js",
   // issue 133: Den's words and Report on the kit's dialogs (/kit/dialog.js).
@@ -185,6 +186,8 @@ export const KIT_FILES: readonly string[] = [
   "dialog.js",
   // den-ui 0.6.2: the dialogs' look, linked (no injected <style>).
   "dialog.css",
+  "dialog-nav.js",
+  "dialog-nav.css",
   // The save-state line for autosaving editors, and its look.
   "savestate.js",
   "savestate.css",

@@ -1882,6 +1882,17 @@
     "set.access.machine_name": "マシン名",
     "ident.toast": "このデバイスは {host} の {name} にサインインしました",
     "acct.roleOwner": "オーナー",
+    "acd.title": "あなたの情報",
+    "acd.profile": "プロフィール",
+    "acd.access": "アクセス",
+    "acd.devices": "デバイス",
+    "acd.notifications": "通知",
+    "acd.group": "あなた",
+    "acd.name": "名前",
+    "acd.login": "GitHub",
+    "acd.role": "役割",
+    "acd.local": "このコンピューター",
+    "acd.profileD": "この Den に、ここでサインインしている人。",
     "set.access.approveNeedsBrowser":
       "デバイスの承認には、サインイン済みのブラウザーが必要です。このページで改めてサインインしてから承認してください。",
     "set.access.approveNotAgent":
