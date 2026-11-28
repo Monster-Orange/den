@@ -143,6 +143,9 @@ body.den-has-shell > #den-content {
   align-items: center;
   gap: 8px;
   min-width: 0;
+  /* Issue 1080: its width is its column's, so the crumbs can ask how much
+     room they have (the @container rule after the crumbs). */
+  container: den-left / inline-size;
 }
 /* The crumbs give way first: they shrink before the brand does. */
 .den-brand {
@@ -990,6 +993,23 @@ body.den-has-shell .den-upd {
   font-size: 13px;
   min-width: 0;
 }
+/* Issue 1080: a crumb before the last is never narrower than what it
+   draws at its least: its padding and border (8px and 1px a side), the
+   6px gap after its label, and its value's least width (4ch; a menu
+   crumb's 5ch and its ▾). Past that it clips, so the separator after it
+   never lands on its value. */
+.den-scope .den-ib:not(.den-last) {
+  min-width: calc(24px + 4ch);
+  overflow: hidden;
+}
+.den-scope .den-scope-btn:not(.den-last) {
+  min-width: calc(24px + 5ch + 0.28em);
+}
+/* The optional crumb may give way to nothing (clipped, never over the
+   next one); on a narrow left part it goes (below). */
+.den-scope .den-opt:not(.den-last) {
+  min-width: 0;
+}
 /* The last crumb's least width is its whole self: it never gives way. */
 .den-scope .den-ib.den-last {
   min-width: auto;
@@ -1045,6 +1065,44 @@ body.den-has-shell .den-upd {
 }
 .den-scope .den-ib[aria-expanded="true"] {
   background: var(--sunken);
+}
+/* Issue 1080: when the left part is too narrow for every crumb (the
+   brand already given way), the optional crumb and its separator go
+   before anything runs under the search. Its words stay in the group's
+   title (scopeHtml). */
+@container den-left (max-width: 300px) {
+  /* A plain optional crumb and the keys are hidden from sight only: a
+     screen reader still hears "Company: …" and "PROJECT" (out of the grid,
+     so they take no room). The separator after that crumb goes. An
+     optional crumb that is a menu stays at its floor: it opens a menu
+     (a host's company picker), so it is never hidden. */
+  .den-scope .den-opt:not([aria-haspopup]),
+  .den-scope .den-k {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .den-scope .den-opt:not([aria-haspopup]) + .den-sep {
+    display: none;
+  }
+  /* The last crumb (kept whole, issue 303, on a wider bar) shrinks here
+     like the others, to a floor: its padding and border, 7ch of value
+     (6 characters and its "…") and its ▾. Its value ends in "…" where
+     the left part can't hold it, so the crumbs end where the left part
+     ends, beside an optional menu crumb too. The whole value is in its
+     menu. An env's name is short and never capped (below): an env crumb
+     last keeps its own width, so a floor wider than its words never takes
+     room from the crumb before it. */
+  .den-scope .den-ib.den-last:not([data-scope="env"]) {
+    min-width: calc(24px + 7ch + 0.28em);
+    overflow: hidden;
+  }
 }
 /* A long value ends in an ellipsis; the whole value is in the menu. An
    env's name is short: never capped. */

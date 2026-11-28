@@ -709,10 +709,16 @@ export function scopeCrumbHtml(c, lang) {
 export function scopeHtml({ crumbs, label, lang, after } = {}) {
   const list = (crumbs || []).filter(Boolean);
   if (!list.length) return "";
+  const kept = list
+    .filter((c) => c.optional && !c.hidden)
+    .map((c) => c.label + ": " + (c.value ?? ""))
+    .join(" / ");
   let html =
     '<div class="den-scope" role="group" aria-label="' +
     esc(label ?? kitT(lang, "kit.scope")) +
-    '"><span class="den-sep" aria-hidden="true">/</span>';
+    '"' +
+    (kept ? ' title="' + esc(kept) + '"' : "") +
+    '><span class="den-sep" aria-hidden="true">/</span>';
   // Each separator after a crumb comes and goes with it: host content.
   list.forEach((c, i) => {
     // The last crumb is kept whole when the crumbs give way (issue 303).

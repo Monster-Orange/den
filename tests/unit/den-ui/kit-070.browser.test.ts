@@ -121,7 +121,12 @@ if (!q.has("bare")) {
       ...(q.has("filter") ? { filter: Number(q.get("filter")) } : {}),
       ...(q.has("nofilter") ? { filter: false } : {}) },
   ];
-  if (!q.has("noenv")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
+  if (q.has("narrow"))
+    crumbs.splice(0, crumbs.length,
+      { key: "org", label: "Company", value: "Fixture company name", optional: true,
+        ...(q.has("menuopt") ? { menu: '<a href="#other" role="menuitem">Other company</a>' } : {}) },
+      { key: "ws", label: "Project", value: q.get("narrow") === "long" ? "Quarterly planning for the north garden" : "All projects", menu: projects });
+  if (!q.has("noenv") && !q.has("narrow")) crumbs.push({ key: "env", label: "Env", value: "local", menu: '<a href="#staging" role="menuitem">staging</a>' });
   model.slots = {
     start: DenUI.scopeHtml({ crumbs }) + DenUI.searchHtml(),
     bell: DenUI.bellButtonHtml({ count: Number(q.get("count") ?? 2) }),
@@ -909,6 +914,74 @@ for (const engine of ["chromium", "webkit"]) {
       expect(new Set(r.map((x) => x[3])).size).toBe(1);
       await p.context().close();
     });
+
+    it.each([
+      [960, "short", ""],
+      [1100, "short", ""],
+      [960, "long", ""],
+      [960, "long", "&menuopt"],
+    ])(
+      "issue 1080 at %ipx, a %s last value%s: the crumbs never draw over each other or under the search",
+      async (width, last, more) => {
+        const b = browsers[engine];
+        if (!b) return;
+        const p = await open(b, `?narrow=${last}${more}`, width);
+        const spans = await p.evaluate(() => {
+          const shown = (el: Element) => {
+            const r = el.getBoundingClientRect();
+            return (
+              r.width > 1 &&
+              r.height > 1 &&
+              getComputedStyle(el).visibility !== "hidden"
+            );
+          };
+          const span = (part: Element) => {
+            let l = Infinity;
+            let r = -Infinity;
+            for (const el of [part, ...part.querySelectorAll("*")]) {
+              if (!shown(el)) continue;
+              let { left, right } = el.getBoundingClientRect();
+              for (
+                let a = el.parentElement;
+                a && part.contains(a) && a !== part.parentElement;
+                a = a.parentElement
+              ) {
+                if (getComputedStyle(a).overflowX === "visible") continue;
+                const c = a.getBoundingClientRect();
+                left = Math.max(left, c.left);
+                right = Math.min(right, c.right);
+              }
+              if (right <= left) continue;
+              l = Math.min(l, left);
+              r = Math.max(r, right);
+            }
+            return [l, r];
+          };
+          const scope = document.querySelector(
+            '[data-nav-role="crumb"]',
+          )!.parentElement!;
+          const parts = [...scope.children].filter(shown);
+          parts.push(document.getElementById("den-search")!);
+          return parts.map((el) => [
+            el.id || el.className,
+            ...span(el).map((x) => Math.round(x * 10) / 10),
+          ]);
+        });
+        expect(spans.length).toBeGreaterThan(2);
+        for (let i = 0; i + 1 < spans.length; i++) {
+          const [a, , aRight] = spans[i] as [string, number, number];
+          const [bName, bLeft] = spans[i + 1] as [string, number, number];
+          expect([a, bName, aRight <= bLeft + 0.5]).toEqual([a, bName, true]);
+        }
+        if (more) {
+          const org = p.locator('[data-scope="org"]');
+          expect(await org.isVisible()).toBe(true);
+          await org.click();
+          await expect(org.getAttribute("aria-expanded")).resolves.toBe("true");
+        }
+        await p.context().close();
+      },
+    );
 
     it("one key cap: Report's ⌘⇧F and search's ⌘K are the same .den-kbd cap", async () => {
       const b = browsers[engine];
