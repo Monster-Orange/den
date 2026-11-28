@@ -909,7 +909,7 @@ describe("issue_write: its Settings rows", () => {
     ).toMatchObject({
       category: "agents",
       scope: "user",
-      control: { type: "text" },
+      control: { type: "custom" },
     });
     expect(
       rows.find((r) => r.keys?.includes("agent_issue_writes.per_hour")),
