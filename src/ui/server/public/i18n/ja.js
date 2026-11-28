@@ -3120,6 +3120,8 @@
       "{id} は再起動されませんでした: バックグラウンドのジョブが実行中です ({cmd}、{min} 分)",
     "bell.m.rsFailed": "{id} は再起動されませんでした",
     "bell.m.noHub": "{n} 件のエージェントが Hub なしで起動しました",
+    "bell.m.stateKept":
+      "状態ファイルを読めませんでした: {file}。コピーを backup/{saved} に残し、新しく始めました",
     "bell.m.restartFailed": "{name} は再起動後に戻りませんでした: {why}",
     "bell.m.unaskedExit":
       "{name} は Den が求めていないのに終了しました (終了コード {code}): {why}",

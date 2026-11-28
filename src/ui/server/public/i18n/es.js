@@ -3204,6 +3204,8 @@
       "{id} no se reinició: hay una tarea en segundo plano ({cmd}, {min} min)",
     "bell.m.rsFailed": "{id} no se reinició",
     "bell.m.noHub": "{n} agentes empezaron sin Hub",
+    "bell.m.stateKept":
+      "No se pudo leer un archivo de estado: {file}. Hay una copia en backup/{saved}, y empezó de nuevo",
     "bell.m.restartFailed": "{name} no volvió tras un reinicio: {why}",
     "bell.m.unaskedExit":
       "{name} terminó sin que Den lo pidiera (salida {code}): {why}",

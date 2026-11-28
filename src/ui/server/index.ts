@@ -1840,6 +1840,7 @@ import {
 } from "../../shared/web/web-log-file.js";
 import { readBrand } from "../../shared/brand.js";
 import { launchdSession } from "../../shared/launchd-session.js";
+import { startStateKeptBell } from "./state-kept-bell.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 /** config `web.port` (user > team), falling back to the built-in default. */
 function readWebPortSafe(): number {
@@ -12611,6 +12612,11 @@ const CRASH_GATE: Promise<void> = (() => {
   }
   return new Promise((r) => setTimeout(r, boot.waitMs));
 })();
+try {
+  startStateKeptBell(getStateDir(), () => notificationDeps().store);
+} catch {
+  /* the bell is best effort: doctor's row still names them */
+}
 // AG-14: agents interrupted by a restart, and stopped ones to forget
 // (after the crash-loop wait: a start that waits resumes nothing yet).
 void CRASH_GATE.then(() =>

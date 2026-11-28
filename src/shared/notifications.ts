@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { readStateJson } from "./state-backup.js";
 import { writeFileAtomic } from "./atomic-write.js";
 
 export type NotificationKind =
@@ -270,7 +271,9 @@ const plain = (v: string) =>
 /** The file as it is on disk (empty when missing or unreadable). */
 function readStore(file: string): StoreFile {
   try {
-    const v = JSON.parse(fs.readFileSync(file, "utf-8")) as {
+    const r = readStateJson(path.dirname(file), file);
+    if (!r.ok) return { items: [], mutes: [] };
+    const v = (r.value ?? {}) as {
       items?: unknown;
       mutes?: unknown;
     };

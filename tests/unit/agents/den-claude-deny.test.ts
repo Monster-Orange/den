@@ -154,6 +154,8 @@ describe("issue 728: every credential file in the state dir is denied as web.sec
     "test-install.created",
     "embed/server-keys.json",
     "gate/runner-tokens.json",
+    "backup/actor-tokens.json.2026-11-23T08-00-00-000Z.bad",
+    "backup/kept.json",
   ];
   it.each(
     files.flatMap((f) => [`cat ${STATE}/${f}`, `cp ~/.acme/${f} /tmp/x`]),

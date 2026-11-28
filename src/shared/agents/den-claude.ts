@@ -527,6 +527,7 @@ export const STATE_CREDENTIAL_FILES: readonly string[] = [
 export const STATE_CREDENTIAL_DIRS: readonly string[] = [
   "actor-token",
   "hub",
+  "backup",
   // Issue 1391: the trail written before redaction, set aside.
   AUDIT_SET_ASIDE_DIR,
 ];

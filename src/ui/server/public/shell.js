@@ -4128,6 +4128,8 @@
       "{id} was not restarted: a background job is running ({cmd}, {min} min)",
     "bell.m.rsFailed": "{id} was not restarted",
     "bell.m.noHub": "{n} agents started without Hub",
+    "bell.m.stateKept":
+      "A state file couldn't be read: {file}. A copy is kept in backup/{saved}, and it started fresh",
     "bell.m.restartFailed": "{name} didn't come back after a restart: {why}",
     "bell.m.unaskedExit":
       "{name} ended without Den asking (exit {code}): {why}",

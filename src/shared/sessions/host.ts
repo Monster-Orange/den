@@ -46,6 +46,7 @@ import {
   type SessionInfo,
   type SessionPool,
 } from "./types.js";
+import { keepUnreadable } from "../state-backup.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 export const BACKEND_ID = "den-pty";
@@ -478,8 +479,13 @@ export class SessionHost {
         };
         this.sessions.set(rec.id, s);
         if (!rec.exited) this.persist(s);
-      } catch {
-        /* an unreadable record is skipped, not fatal */
+      } catch (e) {
+        if (e instanceof SyntaxError)
+          keepUnreadable(
+            this.opts.stateDir,
+            path.join(this.paths.dir, f),
+            e.message,
+          );
       }
     }
   }

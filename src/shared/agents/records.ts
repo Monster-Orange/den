@@ -31,6 +31,7 @@ import {
   type ConversationEntry,
 } from "./conversation-history.js";
 import type { PermissionIntent } from "./permissions.js";
+import { keepUnreadable, readKept } from "../state-backup.js";
 import { writeFileAtomic } from "../atomic-write.js";
 
 export interface AgentRecord {
@@ -425,14 +426,36 @@ function keepConversations(stateDir: string, rec: AgentRecord): void {
 
 export function readRecord(stateDir: string, id: string): AgentRecord | null {
   if (!AGENT_ID_RE.test(id)) return null;
+  const file = recordFile(stateDir, id);
+  let text: string;
   try {
-    return JSON.parse(
-      fs.readFileSync(recordFile(stateDir, id), "utf-8"),
-    ) as AgentRecord;
+    text = fs.readFileSync(file, "utf-8");
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw e;
   }
+  try {
+    return JSON.parse(text) as AgentRecord;
+  } catch (e) {
+    keepUnreadable(stateDir, file, (e as Error).message);
+    return null;
+  }
+}
+
+export function recordKeptUnreadable(stateDir: string, id: string): boolean {
+  if (!AGENT_ID_RE.test(id)) return false;
+  const rel = path
+    .relative(stateDir, recordFile(stateDir, id))
+    .split(path.sep)
+    .join("/");
+  return readKept(stateDir).some((k) => k.file === rel);
+}
+
+export function agentIdTaken(stateDir: string, id: string): boolean {
+  if (!AGENT_ID_RE.test(id)) return false;
+  if (readRecord(stateDir, id)) return true;
+  if (fs.existsSync(recordFile(stateDir, id))) return true;
+  return recordKeptUnreadable(stateDir, id);
 }
 
 /** Where removed records wait for Undo (AG-14.1b). */

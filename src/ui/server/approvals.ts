@@ -61,6 +61,7 @@ import {
 } from "../../shared/web/web-session.js";
 import { CSRF_HEADER, type GuardResult } from "./request-guard.js";
 import { redactSecrets } from "../../shared/redact.js";
+import { keepUnreadable, safeWhy } from "../../shared/state-backup.js";
 import { writeFileAtomic } from "../../shared/atomic-write.js";
 
 /** The header an anonymous asker reads its own request with. */
@@ -622,7 +623,7 @@ export class ApprovalQueue {
       if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return;
       return this.loadFailed(
         file,
-        `the file can't be read (${String((e as Error)?.message ?? e)})`,
+        `the file ${safeWhy(String((e as Error)?.message ?? e))}`,
       );
     }
     let doc: {
@@ -638,7 +639,7 @@ export class ApprovalQueue {
     } catch (e) {
       return this.loadFailed(
         file,
-        `the file is broken (${String((e as Error)?.message ?? e)})`,
+        `the file is broken (${safeWhy(String((e as Error)?.message ?? e))})`,
       );
     }
     if (
@@ -686,11 +687,12 @@ export class ApprovalQueue {
 
   private loadFailed(file: string, detail: string): void {
     const why = `the held-write queue could not be read back after a restart: ${detail}. Requests that waited are lost; ask again.`;
-    try {
-      fs.renameSync(file, `${file}.corrupt-${this.now()}`);
-    } catch {
-      /* kept where it is; the next write replaces it */
-    }
+    if (!keepUnreadable(path.dirname(file), file, detail))
+      try {
+        fs.renameSync(file, `${file}.corrupt-${this.now()}`);
+      } catch {
+        /* kept where it is; the next write replaces it */
+      }
     this.lostUnknown = { at: this.now(), why };
     this.tellLost(null, why);
     this.persist();
