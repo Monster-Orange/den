@@ -13,6 +13,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Report works on an iPad (UI kit). The first step's Next, Finish later and Cancel now stay on screen: the button row sticks to the dialog's bottom at every width, and the dialog's height follows the visible window, so Safari's own toolbar and the on-screen keyboard no longer hide them. With the keyboard up, the dialog moves to the visible top. On a touch screen, a swipe on the screenshot scrolls the dialog; to black out an area, pick "Mask an area" first. The screenshot is capped at 45% of the window's height, and every control is at least 44px tall.
+
 - UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
 
 - The approval dialog no longer brings back a request you just denied or allowed. A check of what waits that was already under way when you answered could open it again with that request. (issue 1898)

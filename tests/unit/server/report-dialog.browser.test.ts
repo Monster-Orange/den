@@ -835,12 +835,12 @@ describe("FB: the screenshot and its mask", () => {
     await p.keyboard.press("ControlOrMeta+Shift+F");
     const c = dlg(p).locator("canvas[data-shot]");
     await c.waitFor();
-    const cb = await boxOf(c);
-    const at = (fx: number, fy: number) => ({
-      x: cb.x + fx * cb.width,
-      y: cb.y + fy * cb.height,
-    });
     const drag = async () => {
+      const cb = await boxOf(c);
+      const at = (fx: number, fy: number) => ({
+        x: cb.x + fx * cb.width,
+        y: cb.y + fy * cb.height,
+      });
       const a = at(mark.x / vw - 0.03, mark.y / vh - 0.03);
       const b = at(mark.x / vw + 0.03, mark.y / vh + 0.03);
       await p.mouse.move(a.x, a.y);
