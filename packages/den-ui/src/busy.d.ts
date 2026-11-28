@@ -92,6 +92,7 @@ export interface BusyHooks {
    * pop-up opens (ms; default DOTS_MS, 3000).
    */
   dotsMs?: number;
+  css?: string | null;
 }
 export interface BusyOptions<T = unknown> {
   /** Issue 699: false holds the button without dots (and OPEN_MS). */
