@@ -1578,9 +1578,33 @@
     "set.agents.resume_max_wait": "負荷で再起動を待たせる最長時間",
     "set.agents.resume_max_wait.d":
       "エージェントがこれだけ待つと、負荷が高いままでもそのグループを再起動します（これまでどおり数件ずつ）。0: 負荷が高い間はいつまでも待ちます。__DEN_CLI__ config agents.resume.max_wait_seconds=600",
-    "set.agents.issue_writes": "GitHub の issue を書けるロール",
+    "set.agents.issue_writes": "GitHub の issue を書けるエージェント",
     "set.agents.issue_writes.d":
-      "自分のプロジェクトの GitHub リポジトリで、issue の作成、コメント、ラベル付け、マイルストーン設定をすぐに行えるエージェントのロールです。すべて記録されます。カンマ区切り、空欄はなし。未設定: planner、orchestrator、lead、sde、builder、reviewer、install（__DEN_TITLE__ 自身のエージェント）。__DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "これらの役割のエージェントは、あなたに確認せずに自分のプロジェクトで GitHub の issue を作成・更新できます。バグや残りの作業が書き残されます。__DEN_TITLE__ はすべての変更を記録します。issue を閉じたり削除したりはできません。",
+    "set.job.planner": "プランナー",
+    "set.job.planner.d": "目標を小さく、すぐ着手できるストーリーに分けます。",
+    "set.job.orchestrator": "オーケストレーター",
+    "set.job.orchestrator.d":
+      "ストーリーを他のエージェントに渡し、完了まで見届けます。",
+    "set.job.sde": "ソフトウェアエンジニア",
+    "set.job.sde.d": "ストーリーを 1 つ実装し、プルリクエストを開きます。",
+    "set.job.reviewer": "レビュアー",
+    "set.job.reviewer.d": "プルリクエストをレビューします。マージはしません。",
+    "set.job.tester": "テスター",
+    "set.job.tester.d": "テストを実行し、失敗を報告します。",
+    "set.job.designer": "デザイナー",
+    "set.job.designer.d": "フローと画面をデザインします。",
+    "set.job.install": "__DEN_TITLE__ 自身のエージェント",
+    "set.job.install.d": "__DEN_TITLE__ 自体の面倒を見ます。",
+    "set.jobs.lead":
+      "これらの役割のエージェントは、あなたに確認せずに自分のプロジェクトで GitHub の issue を作成・更新できます。バグや残りの作業が書き残されます。",
+    "set.jobs.recorded":
+      "__DEN_TITLE__ はすべての変更を記録します。issue を閉じたり削除したりはできません。",
+    "set.jobs.none": "issue を作成・更新できるエージェントはいません。",
+    "set.jobs.unread":
+      "__DEN_TITLE__ がこの設定を読めなかったため、チェックは表示していません。",
+    "set.jobs.viewOnly": "表示はできますが、変更はできません。",
+    "set.jobs.again": "再試行",
     "set.agents.issue_writes_per_hour":
       "1 時間あたりの GitHub issue の書き込み数",
     "set.agents.issue_writes_per_hour.d":
@@ -1833,7 +1857,8 @@
     "set.workspace.hub_delivery_loop.o.install": "全体と同じ",
     "set.workspace.hub_delivery_loop.o.on": "オン",
     "set.workspace.hub_delivery_loop.o.off": "オフ",
-    "set.workspace.agents_max_per_project": "プロジェクトごとのエージェント数: このプロジェクト",
+    "set.workspace.agents_max_per_project":
+      "プロジェクトごとのエージェント数: このプロジェクト",
     "set.workspace.agents_max_per_project.d":
       "このプロジェクトのエージェントを同時に動かせる数です。空か 0 なら「プロジェクトごとのエージェント数」を使います。それより低い値だけ設定できます。これを超える起動は拒否され、どの上限で止まったかが表示されます。",
     "set.workspace.hub_delivery_loop_extra": "Hub のデリバリーループへの追加",
@@ -2295,7 +2320,8 @@
     "ap.det.den_sandbox_on.off":
       "user.yml で off にしたエージェントは off のままです。",
     "ap.do.repo_clone": "{source} を {path} にクローン",
-    "ap.do.project_agent_cap": "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "プロジェクト {project} のエージェント上限を設定: {from} → {to}",
     "ap.det.project_agent_cap.now": "現在: {v}",
     "ap.det.project_agent_cap.then": "変更後: {v}",
     "ap.do.project_mode":
@@ -4480,7 +4506,7 @@
       "1 つのプロジェクトの設定です。上部バーで表示しているプロジェクトに従います。",
     "setc.agents": "エージェント",
     "setc.agents.d":
-      "エージェントが動くランタイムです。インストール済みのものが先に並びます。設定したパスはこのマシンだけのものです。全体 (config/local/user.yml) か 1 つのプロジェクト (config/local/workspaces.yml) に設定でき、プロジェクトの設定が優先されます。",
+      "エージェントが動くプログラムです。インストール済みのものが先に並びます。設定したパスはこのマシンにだけ適用されます。1 つのプロジェクトに設定したパスは、すべてのプロジェクト向けのパスより優先されます。",
     "setc.access": "アクセス",
     "setc.access.d":
       "ほかのデバイスからこの Den にアクセスします。オーナーとして GitHub でサインインするか、一回限りのリンクでデバイスをペアリングします。localhost では何も求められません。",

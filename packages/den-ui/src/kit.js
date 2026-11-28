@@ -143,6 +143,7 @@ import {
   mountSettingField,
   settingFieldHtml,
 } from "./setting-field.js";
+import { checksHtml, mountChecks } from "./checks.js";
 
 const state = {
   lang: "en",
@@ -271,6 +272,10 @@ export function settingField(el, opts = {}) {
   return opts.label != null
     ? mountSettingField(el, o)
     : hydrateSettingField(el, o);
+}
+
+export function checks(el, opts = {}) {
+  return mountChecks(el, { lang, ...opts });
 }
 
 /**
@@ -410,6 +415,8 @@ const DenUI = {
   settingRow,
   settingFieldHtml,
   settingField,
+  checksHtml,
+  checks,
 };
 
 if (typeof window !== "undefined") window.DenUI = DenUI;

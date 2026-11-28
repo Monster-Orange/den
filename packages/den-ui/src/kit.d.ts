@@ -74,6 +74,7 @@ import type {
   SettingFieldOptions,
   settingFieldHtml,
 } from "./setting-field.js";
+import type { Checks, ChecksOptions, checksHtml } from "./checks.js";
 import type {
   hydrateRailFolds,
   railFoldStore,
@@ -228,6 +229,7 @@ export declare function settingField(
   el: HTMLElement,
   opts: SettingFieldHydrateOptions & Partial<SettingFieldOptions>,
 ): SettingField;
+export declare function checks(el: HTMLElement, opts: ChecksOptions): Checks;
 export declare function hydrate(
   root: ParentNode,
   opts?: KitHydrateOptions,
@@ -294,6 +296,8 @@ export interface DenUIKit {
   settingRow: typeof settingRow;
   settingFieldHtml: typeof settingFieldHtml;
   settingField: typeof settingField;
+  checksHtml: typeof checksHtml;
+  checks: typeof checks;
 }
 declare const DenUI: DenUIKit;
 export default DenUI;

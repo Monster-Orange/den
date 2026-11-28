@@ -197,6 +197,8 @@ export const KIT_FILES: readonly string[] = [
   "popover.css",
   "switch.js",
   "switch.css",
+  "checks.js",
+  "checks.css",
   // A list's filter bar (issue 552) and bulk bar (issue 553), and their looks.
   "filter-bar.js",
   "filter-bar.css",

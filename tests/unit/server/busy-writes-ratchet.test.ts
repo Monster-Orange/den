@@ -38,7 +38,7 @@ const LEFT: Record<string, number> = {
   "release.html": 4,
   "server-agent-page.js": 4,
   "services.html": 3,
-  "settings-registry.js": 15,
+  "settings-registry.js": 16,
   "shell.js": 4,
   "svc-panel.js": 1,
   "topbar.js": 2,

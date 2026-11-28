@@ -908,6 +908,11 @@
     "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
       "src/ui/server/public/agents-*.js"
+    ],
+    "tests/unit/server/issue-writes-row-1964.browser.test.ts": [
+      "src/ui/server/public/settings-registry.js",
+      "packages/den-ui/src/checks.js",
+      "packages/den-ui/src/checks.css"
     ]
   },
   "subjectless": [],
@@ -1126,6 +1131,7 @@
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
+        "tests/unit/den-ui/checks-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1374,6 +1380,7 @@
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
+        "tests/unit/server/issue-writes-row-1964.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/mode-layers.browser.test.ts",
@@ -1531,6 +1538,7 @@
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
+        "tests/unit/den-ui/checks-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1738,6 +1746,7 @@
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
+        "tests/unit/server/issue-writes-row-1964.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/mode-layers.browser.test.ts",
@@ -1831,6 +1840,7 @@
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
+        "tests/unit/den-ui/checks-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -1975,6 +1985,7 @@
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
+        "tests/unit/den-ui/checks-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -2077,6 +2088,7 @@
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
+        "tests/unit/server/issue-writes-row-1964.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
@@ -2377,6 +2389,7 @@
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
+        "tests/unit/den-ui/checks-kit.browser.test.ts",
         "tests/unit/den-ui/den-topbar-kit.browser.test.ts",
         "tests/unit/den-ui/held-focus-1434.browser.test.ts",
         "tests/unit/den-ui/kind-tag.browser.test.ts",
@@ -2480,6 +2493,7 @@
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
+        "tests/unit/server/issue-writes-row-1964.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
@@ -2606,6 +2620,7 @@
         "tests/unit/server/issue-1333-pair-dialog.test.ts",
         "tests/unit/server/issue-819-device-approval-words.test.ts",
         "tests/unit/server/issue-868-signin-methods.test.ts",
+        "tests/unit/server/issue-writes-row-1964.test.ts",
         "tests/unit/server/lead-routing.test.ts",
         "tests/unit/server/mode-source-words.test.ts",
         "tests/unit/server/own-mode-row.test.ts",
@@ -4229,6 +4244,15 @@
     {
       "when": ["src/ui/server/signin-methods.ts"],
       "run": ["tests/unit/server/issue-868-signin-methods.integration.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/checks.css",
+        "packages/den-ui/src/checks.js",
+        "src/ui/server/public/settings-registry.js"
+      ],
+      "run": ["tests/unit/server/issue-writes-row-1964.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {
