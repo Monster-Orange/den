@@ -2697,6 +2697,8 @@
         "tests/unit/test-infra/gate-143-runner.test.ts",
         "tests/unit/test-infra/gate-1668-clauses.test.ts",
         "tests/unit/test-infra/gate-252-runner.test.ts",
+        "tests/unit/test-infra/gate-340-runner.test.ts",
+        "tests/unit/test-infra/gate-367-clauses.test.ts",
         "tests/unit/test-infra/gate-380-runner.test.ts",
         "tests/unit/test-infra/gate-402-clauses.test.ts",
         "tests/unit/test-infra/gate-415-runner.test.ts",
@@ -2714,9 +2716,11 @@
         "tests/unit/test-infra/gate-609.test.ts",
         "tests/unit/test-infra/gate-629-runner.test.ts",
         "tests/unit/test-infra/gate-631-runner.test.ts",
+        "tests/unit/test-infra/gate-701-629-send-to.test.ts",
         "tests/unit/test-infra/gate-701-659-runner.test.ts",
         "tests/unit/test-infra/gate-746-ask-inside.test.ts",
         "tests/unit/test-infra/gate-746-teardown-1293.test.ts",
+        "tests/unit/test-infra/gate-750-clauses.test.ts",
         "tests/unit/test-infra/gate-828.test.ts",
         "tests/unit/test-infra/gate-93-bell-state-1905.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
@@ -3081,6 +3085,16 @@
       "why": "tests that load gate/252.mjs"
     },
     {
+      "when": ["gate/340.mjs"],
+      "run": ["tests/unit/test-infra/gate-340-runner.test.ts"],
+      "why": "tests that load gate/340.mjs"
+    },
+    {
+      "when": ["gate/367.mjs"],
+      "run": ["tests/unit/test-infra/gate-367-clauses.test.ts"],
+      "why": "tests that load gate/367.mjs"
+    },
+    {
       "when": ["gate/380.mjs"],
       "run": ["tests/unit/test-infra/gate-380-runner.test.ts"],
       "why": "tests that load gate/380.mjs"
@@ -3155,7 +3169,10 @@
     },
     {
       "when": ["gate/629.mjs"],
-      "run": ["tests/unit/test-infra/gate-629-runner.test.ts"],
+      "run": [
+        "tests/unit/test-infra/gate-629-runner.test.ts",
+        "tests/unit/test-infra/gate-701-629-send-to.test.ts"
+      ],
       "why": "tests that load gate/629.mjs"
     },
     {
@@ -3175,7 +3192,10 @@
     },
     {
       "when": ["gate/701.mjs"],
-      "run": ["tests/unit/test-infra/gate-701-659-runner.test.ts"],
+      "run": [
+        "tests/unit/test-infra/gate-701-629-send-to.test.ts",
+        "tests/unit/test-infra/gate-701-659-runner.test.ts"
+      ],
       "why": "tests that load gate/701.mjs"
     },
     {
@@ -3196,7 +3216,8 @@
       "run": [
         "tests/unit/gates/gate-750-hub-leg.test.ts",
         "tests/unit/gates/gate-750-real-read.test.ts",
-        "tests/unit/server/agent-groups-view.test.ts"
+        "tests/unit/server/agent-groups-view.test.ts",
+        "tests/unit/test-infra/gate-750-clauses.test.ts"
       ],
       "why": "tests that load gate/750.mjs"
     },

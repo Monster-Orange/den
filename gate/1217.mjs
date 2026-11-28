@@ -220,6 +220,18 @@ export function expect(cells) {
     );
   const twoSkip = cells.some(({ result }) => !result?.two);
   const bareSkip = cells.some(({ result }) => !result?.bare);
+  const shown = all(
+    (r) => storedAs(r, r.none) && r.openAll && r.railAll.pins.includes(r.none),
+  );
+  const listed = all((r) => r.doctorKept.some((l) => l.includes(r.none)));
+  const noProject = !shown
+    ? { ok: false }
+    : listed
+      ? { ok: true }
+      : { ok: null, skip: "needs-a-hand-edit" };
+  const unlisted = noProject.skip
+    ? "; doctor's part needs a pin only a hand edit of user.yml leaves unmigrated: the save through /api/settings migrates it, so doctor has nothing to list"
+    : "";
   return [
     {
       clause: clauses[0],
@@ -248,17 +260,12 @@ export function expect(cells) {
         },
     {
       clause: clauses[2],
-      ok: all(
-        (r) =>
-          storedAs(r, r.none) &&
-          r.openAll &&
-          r.railAll.pins.includes(r.none) &&
-          r.doctorKept.some((l) => l.includes(r.none)),
-      ),
-      detail: d(
-        (r) =>
-          `${r.none}: stored ${show(pinsOf(r, r.none))}; under All the rail has it: ${r.railAll.pins.includes(r.none)}; doctor: ${r.doctorKept.join(" | ") || "no kept line"}`,
-      ),
+      ...noProject,
+      detail:
+        d(
+          (r) =>
+            `${r.none}: stored ${show(pinsOf(r, r.none))}; under All the rail has it: ${r.railAll.pins.includes(r.none)}; doctor's kept lines: ${r.doctorKept.join(" | ") || "none"}`,
+        ) + unlisted,
       evidence: shots("old-all"),
     },
     {

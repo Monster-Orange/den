@@ -197,7 +197,10 @@ async function hubLeg(ctx) {
     if (mk.code !== 0 && !/already/i.test(mkSaid))
       return {
         ...out,
-        ...fail("project", `workspace create ${WS}: ${mk.code} ${mkSaid.trim().slice(0, 160)}`),
+        ...fail(
+          "project",
+          `workspace create ${WS}: ${mk.code} ${mkSaid.trim().slice(0, 160)}`,
+        ),
       };
     const act = d2.cli(["workspace", "activate", WS]);
     if (act.code !== 0)
@@ -482,7 +485,7 @@ export async function run(ctx, s) {
           link: n?.querySelector("a")?.getAttribute("href") ?? null,
           linkText: n?.querySelector("a")?.textContent?.trim() ?? null,
           groupUi: document.querySelectorAll(
-            "[data-by-switch], [data-group], [data-group-none]",
+            '[data-by-switch] [data-by="group"], [data-group], [data-group-none]',
           ).length,
           byProject: document.querySelectorAll("div[data-ws]:not([data-agent])")
             .length,
@@ -512,6 +515,7 @@ export function expect(cells) {
         (r) =>
           JSON.stringify(g(r).switch) ===
             JSON.stringify([
+              ["need", "false"],
               ["project", "false"],
               ["group", "true"],
             ]) &&

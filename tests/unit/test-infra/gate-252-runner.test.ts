@@ -75,6 +75,12 @@ describe("gate/252.mjs as the bed runs it", () => {
     expect(r.rows?.[3].ok).toBe(true);
   });
 
+  it("the audit rows land a second after the restart is seen: the audit clause waits for them and passes", () => {
+    const r = runGate("lateAudit");
+    expect(r.rows?.[1].ok).toBe(true);
+    expect(r.rows?.[3].ok).toBe(true);
+  });
+
   it("the button never shows busy while the mode applies: the menu clause fails", () => {
     const r = runGate("noBusy");
     expect(r.rows?.[0].ok).toBe(false);

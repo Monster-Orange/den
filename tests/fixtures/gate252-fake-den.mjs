@@ -4,7 +4,7 @@
 // nothing typed) in the new mode, in a new session, with an audit row. `den`:
 //   "good":       as Den does;
 //   "noRestart":  the mode is saved but the agent never restarts;
-//   "noAudit":    it restarts, but no audit row is written;
+//   "noAudit":    it restarts, but no audit row is written ("lateAudit": written 1 s after the restart);
 //   "noRuntime":  the project's mode view doesn't list the agent;
 //   "oldCli":     the CLI help still says "from its next start";
 //   "noBusy":     the button never shows busy while the mode applies;
@@ -100,10 +100,9 @@ export function fakeBed({ den = "good" } = {}) {
     if (++st.quiet < 2) return;
     st.running = want();
     st.session++;
-    if (den !== "noAudit" && den !== "oldAudit")
-      st.audit.push(
-        `restarted ${ID} in ${WS} at idle to take mode ${want()}, from ${SOURCE[source()]}, by Den itself`,
-      );
+    const row = `restarted ${ID} in ${WS} at idle to take mode ${want()}, from ${SOURCE[source()]}, by Den itself`;
+    if (den === "lateAudit") setTimeout(() => st.audit.push(row), 1000);
+    else if (den !== "noAudit" && den !== "oldAudit") st.audit.push(row);
   }
 
   const fail = (what) => {

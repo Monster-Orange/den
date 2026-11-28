@@ -60,6 +60,8 @@ async function modeOf(ctx, ws) {
     : null;
 }
 
+export const AUDIT_WAIT_MS = 5000;
+const AUDIT_POLL_MS = 250;
 const auditDetails = (ctx) =>
   String(ctx.readBed("state:audit.jsonl") ?? "")
     .split("\n")
@@ -317,8 +319,14 @@ export async function run(ctx, s) {
   );
   r.tagBack = await rowTag(ctx, w.ws);
   await ctx.shot("mode-followed-row");
-  // Only the rows this run wrote (setup counted the ones before it).
-  r.audit = auditDetails(ctx).slice(s.auditFrom ?? 0);
+  // Only the rows this run wrote (setup counted the ones before it), polled: a row can land after the restart is seen.
+  const restarts = (l) =>
+    l.filter((d) => d.startsWith(`restarted ${ID} in ${w.ws} at idle`)).length;
+  for (let t = Date.now(); ; ) {
+    r.audit = auditDetails(ctx).slice(s.auditFrom ?? 0);
+    if (restarts(r.audit) >= 2 || Date.now() - t >= AUDIT_WAIT_MS) break;
+    await new Promise((res) => setTimeout(res, AUDIT_POLL_MS));
+  }
   return r;
 }
 
