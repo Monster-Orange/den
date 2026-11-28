@@ -10,6 +10,8 @@ config and manifest changes a distribution must make to move to it under
 
 - A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
 
+- The repo picker's list pages. `GET /api/workspaces/available-repos` returns `{ items, next }`, 50 by default (`limit`, `cursor`, capped by the install's list page size), and `?q=` filters by name, path or GitHub slug before the cut. The folder walk sorts each folder by name and stops once it has one more than the page, so later pages start after the cursor's path, and the `git remote` lookups run only for the page shown. `?all=1` keeps the old full array; Local Dev and Services ask for it until they use the pager. A cursor this list didn't give is refused (400 `bad_cursor`).
+
 ## [0.4.92] - unreleased
 
 ### Changed
