@@ -53,6 +53,32 @@ describe("issue 988: an ACL entry that lets the agents' login write is a problem
   });
 });
 
+describe("issue 988 review: ACL entries that can't be read safely count", () => {
+  it("a principal with a space is read whole; a group named with a space counts", () => {
+    expect(aclLetsAgentsWrite("group:Domain Users allow write", WHO)).toBe(
+      true,
+    );
+    expect(
+      aclLetsAgentsWrite("group:Domain Users inherited allow add_file", WHO),
+    ).toBe(true);
+    expect(aclLetsAgentsWrite("user:Agent X allow write", WHO)).toBe(false);
+    expect(
+      aclLetsAgentsWrite("user:Agent X allow write", {
+        ...WHO,
+        name: "Agent X",
+      }),
+    ).toBe(true);
+    expect(aclLetsAgentsWrite("group:Domain Users deny write", WHO)).toBe(
+      false,
+    );
+  });
+
+  it("an entry it can't read counts", () => {
+    for (const e of ["group:everyone allow", "allow write", "garbage"])
+      expect([e, aclLetsAgentsWrite(e, WHO)]).toEqual([e, true]);
+  });
+});
+
 describe("issue 988: ls -led output is read per path", () => {
   it("entries go to the path above them, spaces and all", () => {
     const out = [
@@ -74,6 +100,30 @@ describe("issue 988: ls -led output is read per path", () => {
     ]);
     expect(m.has("/e")).toBe(false);
     expect(m.has("/e/f1")).toBe(false);
+  });
+
+  it("a path ls didn't list, or an entry under no listed path, throws", () => {
+    const head = "-rw-r--r--+ 1 me  staff  0 Nov 27 18:38";
+    expect(() =>
+      parseLsAcl(`${head} /e/other\n 0: group:everyone allow write\n`, [
+        "/e/f1",
+      ]),
+    ).toThrow();
+    expect(() => parseLsAcl(`${head} /e/f1\n`, ["/e/f1", "/e/f2"])).toThrow();
+    expect(() =>
+      parseLsAcl(` 0: group:everyone allow write\n${head} /e/f1\n`, ["/e/f1"]),
+    ).toThrow();
+  });
+
+  it("a link's header ends in -> target", () => {
+    const out = [
+      "lrwxr-xr-x+ 1 me  staff  5 Nov 27 18:38 /e/l -> /e/t",
+      " 0: group:everyone allow write",
+      "-rw-r--r--  1 me  staff  0 Nov 27 18:38 /e/t",
+    ].join("\n");
+    const m = parseLsAcl(out, ["/e/l", "/e/t"]);
+    expect(m.get("/e/l")).toEqual(["group:everyone allow write"]);
+    expect(m.has("/e/t")).toBe(false);
   });
 });
 

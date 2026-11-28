@@ -969,14 +969,16 @@ export interface AclWho {
 }
 
 export function aclLetsAgentsWrite(entry: string, who: AclWho): boolean {
-  const m = /^(\S+)\s+(?:inherited\s+)?allow\s+(\S+)/.exec(entry.trim());
-  if (!m) return false;
-  if (!m[2]!.split(",").some((x) => ACL_WRITES.has(x))) return false;
+  const m = /^(.+?)\s+(?:inherited\s+)?(allow|deny)\s+(\S+)/.exec(entry.trim());
+  if (!m) return true;
+  if (m[2] === "deny") return false;
+  if (!m[3]!.split(",").some((x) => ACL_WRITES.has(x))) return false;
   if (who.name === undefined || who.groupNames === undefined) return true;
   const p = m[1]!;
   if (p === "everyone" || p === "group:everyone") return true;
   if (p.startsWith("user:")) return p.slice(5) === who.name;
-  if (p.startsWith("group:")) return who.groupNames.includes(p.slice(6));
+  if (p.startsWith("group:"))
+    return /\s/.test(p) || who.groupNames.includes(p.slice(6));
   return true;
 }
 
@@ -997,15 +999,26 @@ export function parseLsAcl(
 ): Map<string, string[]> {
   const byLength = [...paths].sort((a, b) => b.length - a.length);
   const acls = new Map<string, string[]>();
+  const listed = new Set<string>();
   let at: string | null = null;
   for (const line of out.split("\n")) {
     const e = /^\s*\d+:\s*(.+)$/.exec(line)?.[1]?.trim();
     if (e) {
-      if (at !== null) acls.set(at, [...(acls.get(at) ?? []), e]);
+      if (at === null) throw new Error(`ls -le gave "${e}" under no path`);
+      acls.set(at, [...(acls.get(at) ?? []), e]);
       continue;
     }
-    at = byLength.find((p) => line.endsWith(` ${p}`)) ?? null;
+    if (!line.trim()) continue;
+    at =
+      byLength.find(
+        (p) => line.endsWith(` ${p}`) || line.includes(` ${p} -> `),
+      ) ?? null;
+    if (at === null)
+      throw new Error(`ls -le listed a path it wasn't asked for`);
+    listed.add(at);
   }
+  const missed = paths.find((p) => !listed.has(p));
+  if (missed !== undefined) throw new Error(`ls -le didn't list ${missed}`);
   return acls;
 }
 
