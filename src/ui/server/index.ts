@@ -1503,10 +1503,7 @@ import {
 let sudoInVault = false;
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
-import {
-  makeLogsPrivate,
-  sweepLogs,
-} from "../../shared/process/log-rotation.js";
+import { sweepLogs } from "../../shared/process/log-rotation.js";
 import {
   readBody,
   readBodyCapped,
@@ -12437,7 +12434,6 @@ try {
 // periodically. unref'd so it never holds the process open.
 function sweepServiceLogs(): void {
   try {
-    makeLogsPrivate(getServiceLogRoot());
     const rotated = sweepLogs(getServiceLogRoot());
     if (rotated.length > 0) {
       serverLog(

@@ -8,8 +8,8 @@ Not in use yet: setup makes the login and doctor checks it, but Den's server
 doesn't start agents through it until a later slice. Until then agents still
 run as the person, and setup and doctor say so.
 
-This Den version still owes a check before the login is safe to use: access
-lists on the person's home on Linux. Until that list (`OS_LOGIN_OWED`) is empty, `agents
+This Den version still owes a check before the login is safe to use: service
+logs private to the person's login. Until that list (`OS_LOGIN_OWED`) is empty, `agents
 os-login setup` and `agents session` refuse with "the agents' own login isn't
 ready on this Den version yet", and name what is still to come. Each later
 slice removes its own item.
@@ -51,15 +51,6 @@ password, no `ALL` and no wildcard in the command:
 ```
 <person> ALL=(<agents user>) NOPASSWD: <launcher>
 ```
-
-## Service logs
-
-Service logs are private to the person's login. Den writes each log 0600 in a
-0700 folder, and when the server starts it makes every folder under
-`<state>/logs` 0700 and every file 0600 (links are left alone). Doctor and
-`check` fail while the agents' login is in use and the logs folder has any
-group or other permission bit, or (on macOS) an ACL entry that lets someone
-else in.
 
 ## The person's home
 
