@@ -58,6 +58,7 @@ export interface NavItem {
     n: number | string;
     bad?: boolean;
     warn?: boolean;
+    soft?: boolean;
     what?: BadgeWhat;
   } | null;
   /** HTML in place of the icon (a status dot). */
