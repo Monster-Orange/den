@@ -15,6 +15,8 @@ config and manifest changes a distribution must make to move to it under
 
 - The Agents page pages its list with the UI kit's pager. Agents that need you always show in full above it; Done, Working, Idle and Stopped page by page number in the page's own order, with each band's and project's whole count, and a group cut by a page break shows "(continued)". The page is in the address, so a reload or Back keeps it, and each poll asks for that page only (`GET /api/sessions?view=agents`).
 
+- On the Agents and Terminals pages the rail's Agents badge counts the whole Den again: running helpers (and, on Terminals, agents that need you) come from `GET /api/sessions/helpers`, as on every other page, at most every 15 s, not from the rows of the page in view. (issue 1926)
+
 ### Added
 
 - UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", « First, ‹ Previous, a page picker ("Page 3 of 17"), Next ›, Last » and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's.

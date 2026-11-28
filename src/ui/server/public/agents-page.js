@@ -761,6 +761,26 @@ function movedNote() {
 }
 
 /** Issue 482: the Terminals page, in the project in view. */
+const RAIL_COUNTS_MS = 15_000;
+let railCountsAt = 0;
+async function railCounts() {
+  if (Date.now() - railCountsAt < RAIL_COUNTS_MS) return;
+  railCountsAt = Date.now();
+  const b = await fetch("/api/sessions/helpers", {
+    headers: { accept: "application/json" },
+    cache: "no-store",
+  })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  if (!b) return;
+  window.denShell?.setState?.({
+    ...(typeof b.running === "number" ? { helpersRunning: b.running } : {}),
+    ...(PAGE === "terminal" && typeof b.needs === "number"
+      ? { agentsNeedYou: b.needs }
+      : {}),
+  });
+}
+
 function terminalsHref() {
   const view = viewWorkspaces();
   return view.length === 1
@@ -1161,15 +1181,13 @@ async function refreshOnce() {
   }
   st.loadFailed = !st.data && !st.signedOut;
   followAgents();
-  window.denShell?.setState?.({
-    helpersRunning: (st.data?.sessions ?? []).reduce(
-      (n, r) => n + (r.helpers?.running ?? 0),
-      0,
-    ),
-    agentsNeedYou: railNeeds(
-      (st.data?.sessions ?? []).filter((r) => !inStopped(r)),
-    ),
-  });
+  if (PAGE !== "terminal")
+    window.denShell?.setState?.({
+      agentsNeedYou: railNeeds(
+        (st.data?.sessions ?? []).filter((r) => !inStopped(r)),
+      ),
+    });
+  void railCounts();
   for (const [id, at] of st.seenNow) {
     const r = rowOf(id);
     if (!r || r.attn !== "done" || r.attnSince !== at) st.seenNow.delete(id);
