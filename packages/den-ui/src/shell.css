@@ -794,7 +794,11 @@ body.den-rail-collapsed .den-rail .den-bdg {
 }
 body.den-has-shell .den-upd {
   --upd-top: calc(
-    env(safe-area-inset-top, 0px) + (var(--den-top-h) - 50px) / 2
+    env(safe-area-inset-top, 0px) +
+      var(
+        --den-overlay-top,
+        max((var(--den-top-h) - 50px) / 2, -1px, 8px - var(--den-top-h))
+      )
   );
   font-family: var(--sans);
 }
