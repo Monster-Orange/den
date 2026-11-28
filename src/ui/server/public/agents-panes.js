@@ -223,6 +223,7 @@ function closePane(id, { quiet = false } = {}) {
   const p = st.panes.get(id);
   if (!p) return;
   p.closed = true;
+  p.notes = null;
   p.conn?.stop();
   st.panes.delete(id);
   st.open = st.open.filter((x) => x !== id);

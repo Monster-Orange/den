@@ -190,9 +190,14 @@ function knowAgent(p) {
   return r;
 }
 
-/** The pane's line for a resume that had nothing to continue (AG-14). */
+/** The pane's line for a resume that had nothing to continue (AG-14); kept, as noteLine's. */
 function freshLine(p) {
-  p.term?.write(`\x1b[2m${t("ag.freshLine")}\x1b[0m\r\n`);
+  noteLine(p, `\x1b[2m${t("ag.freshLine")}\x1b[0m\r\n`);
+}
+
+function noteLine(p, line) {
+  (p.notes ??= []).push(line);
+  p.term?.write(line);
 }
 
 function forgetPty(p) {
@@ -220,7 +225,9 @@ function retarget(p, row) {
   p.el.setAttribute("aria-label", row.label ?? row.id);
   p.exited = false;
   p.lost = false;
-  p.term?.write(
+  p.notes = [];
+  noteLine(
+    p,
     `\r\n\x1b[2m${t("ag.switched", { p: row.persona ?? row.agent })}\x1b[0m\r\n`,
   );
   if (st.fresh.delete(`${p.agentWs}\u0000${p.agent}`)) freshLine(p);

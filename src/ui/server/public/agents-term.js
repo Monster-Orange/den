@@ -270,8 +270,9 @@ function connect(p) {
       p.lost = r.kind === "tripped" || r.kind === "refused";
       paintBar(p);
     },
-    onOpen: (sock) => {
+    onOpen: (sock, again) => {
       p.sock = sock;
+      if (again) for (const line of p.notes ?? []) p.term?.write(line);
       p.heardSession = false;
       forgetPty(p);
       p.heardSize = false;
