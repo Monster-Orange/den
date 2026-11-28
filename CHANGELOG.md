@@ -8,6 +8,10 @@ config and manifest changes a distribution must make to move to it under
 
 0.4.92 was never published: its changes shipped in 0.4.93.
 
+### Changed
+
+- Service logs are private to you: Den writes each one readable by your login only, in a folder only your login can open, and closes older logs the same way when the server starts.
+
 ## [0.4.93] - 2026-11-28
 
 ### Added
