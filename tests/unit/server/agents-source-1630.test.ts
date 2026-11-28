@@ -145,3 +145,43 @@ describe("agentsSource's edges", () => {
     );
   });
 });
+
+const ENTRY_IMPORT =
+  /(?:^|[;\s])(?:import|export)\b[^;]*?["']\/agents-page\.js["']|\bimport\s*\(\s*["']\/agents-page\.js["']/m;
+const importsEntry = (code: string) => ENTRY_IMPORT.test(withoutComments(code));
+
+describe("the agents page's parts never import its entry", () => {
+  it("finds a static, re-export or dynamic import of the entry, not a comment", () => {
+    expect(importsEntry('import { st } from "/agents-page.js";')).toBe(true);
+    expect(importsEntry('export { st } from "/agents-page.js";')).toBe(true);
+    expect(importsEntry('const m = await import("/agents-page.js");')).toBe(true);
+    expect(importsEntry('import "/agents-page.js";')).toBe(true);
+    expect(importsEntry('// import { st } from "/agents-page.js";')).toBe(false);
+    expect(importsEntry('const href = "/agents-page.js";')).toBe(false);
+  });
+
+  it("no part the real page loads imports agents-page.js", () => {
+    const parts = agentsFiles().filter((f) => f !== AGENTS_ENTRY);
+    expect(parts.length).toBeGreaterThan(0);
+    const bad = parts.filter((f) =>
+      importsEntry(fs.readFileSync(path.join(AGENTS_PUBLIC, f), "utf-8")),
+    );
+    expect(bad).toEqual([]);
+  });
+});
+
+describe("the entry adds the stale-pick listeners, once each", () => {
+  const added = (code: string, type: string) =>
+    code.split(`addEventListener("${type}", dropStalePick, true)`).length - 1;
+
+  it("pointerdown and keydown, in agents-page.js and in no part", () => {
+    const entry = withoutComments(
+      fs.readFileSync(path.join(AGENTS_PUBLIC, AGENTS_ENTRY), "utf-8"),
+    );
+    const all = agentsSource();
+    for (const type of ["pointerdown", "keydown"]) {
+      expect(added(entry, type)).toBe(1);
+      expect(added(all, type)).toBe(1);
+    }
+  });
+});
