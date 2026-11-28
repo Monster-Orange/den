@@ -37,6 +37,7 @@ import {
   timeZones,
   upgradeTimes,
 } from "/kit/time.js";
+import { switchHtml, switchInputHtml } from "/kit/switch.js";
 import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
@@ -621,7 +622,11 @@ function drawPush(host, ctx, io) {
   };
   const draw = (on, note) => {
     host.innerHTML =
-      `<input type="checkbox" class="set-check" id="set-phone-push" aria-labelledby="l-notifications-phone"${on ? " checked" : ""}>` +
+      switchInputHtml({
+        id: "set-phone-push",
+        on,
+        labelledBy: "l-notifications-phone",
+      }) +
       (note ? `<p class="set-warn" role="status">${escHtml(note)}</p>` : "");
     host
       .querySelector("input")
@@ -1893,7 +1898,7 @@ function drawGateBoxes(host, ctx) {
       "number",
       'min="1" max="86400" step="1"',
     ) +
-    `<label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="set-box-on" checked> ${escHtml(L("set.ui.boxOn", "On"))}</label>` +
+    switchHtml({ id: "set-box-on", label: L("set.ui.boxOn", "On"), on: true }) +
     `<button type="button" class="den-btn sm" id="set-box-save">${escHtml(L("set.ui.boxSave", "Save box"))}</button>` +
     `</div>` +
     `<div id="set-box-out" style="flex-basis:100%" aria-live="polite"></div>` +
@@ -3033,7 +3038,11 @@ function renderKeepRunning(host, ctx) {
   const signLine = keepTokenLine(ctx.data.agent_signin, t);
   host.innerHTML =
     `<div data-keep style="display:grid;gap:8px">` +
-    `<label class="set-note" style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-keep-on${on0 ? " checked" : ""}> ${escR(t("keep.label"))}</label>` +
+    switchHtml({
+      label: t("keep.label"),
+      on: on0,
+      attrs: { "data-keep-on": "" },
+    }) +
     `<p class="set-note" data-keep-offer${offer ? "" : " hidden"}>${escR(t("keep.offer"))}</p>` +
     `<p class="set-note" data-keep-warn${on0 ? "" : " hidden"}>${escR(t("keep.warn"))}</p>` +
     `<p class="set-note" data-keep-token="${signLine.state}"${on0 ? "" : " hidden"}>${keepTokenHtml(signLine, ctx.data.agent_signin, t)}</p>` +
@@ -7184,7 +7193,11 @@ export function hubHtml(b, flash, t = (k) => k) {
             ? t("hub.legacy")
             : "";
   const tools =
-    `<label class="hub-tools"><input type="checkbox" id="hub-allow-tools"${b.allowTools !== false ? " checked" : ""}> ${escR(L("set.ui.hub.tools", "Agents use Hub's tools without asking"))}</label>` +
+    switchHtml({
+      id: "hub-allow-tools",
+      label: L("set.ui.hub.tools", "Agents use Hub's tools without asking"),
+      on: b.allowTools !== false,
+    }) +
     `<p class="set-note" data-hub-tools-note>${escR(
       b.allowTools !== false
         ? L(

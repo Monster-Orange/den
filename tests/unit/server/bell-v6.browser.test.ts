@@ -334,7 +334,7 @@ describe("bell v6: a quieter bell", () => {
     if (skip()) return;
     const p = await open("/settings#notifications");
     const sw = (k: string) =>
-      p.locator(`#setting-notifications-${k} input.set-check`);
+      p.locator(`#setting-notifications-${k} input[role="switch"]`);
     // Signing in drops the #: the category from its link in the nav.
     await p.click('#set-nav a[data-cat="notifications"]');
     await sw("waiting").waitFor();

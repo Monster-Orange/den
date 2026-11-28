@@ -698,18 +698,28 @@ never converted to HTML and back).
       });
       sw.set(false); sw.setDisabled(true); sw.on(); sw.destroy();
 
-- `<label class="den-switch">` holds the label, the help under it, then an
-  `<input type="checkbox" role="switch">` named by the label alone
-  (`aria-labelledby`) and described by the help (`aria-describedby`). The
-  label and help are the host's own words, the name of its own setting,
-  as a page's name in the rail is; the switch adds no words of its own (a
-  screen reader says on and off). No label: nothing is drawn. No `id`: one
-  of the kit's (`den-sw-N`). A click on the row, Space or Enter calls
-  `onChange(on)`; disabled is out of the tab order and calls nothing.
-- The row is 44px tall. The track is `--accent-fill` on and
-  `--border-strong` off (`--border` when disabled); the knob is
-  `--surface` and slides over `--dur-fast`, not at all under reduced
-  motion. A transparent border shows the track in forced colours.
+- `<label class="den-switch">` holds an `<input type="checkbox"
+  role="switch">`, then the label and the help under it. The input is
+  named by the label alone (`aria-labelledby`) and described by the help
+  (`aria-describedby`). The label and help are the host's own words, the
+  name of its own setting, as a page's name in the rail is; the switch
+  adds no words of its own (a screen reader says on and off). No label:
+  nothing is drawn. No `id`: one of the kit's (`den-sw-N`). A click on
+  the row, Space or Enter calls `onChange(on)`; disabled is out of the tab
+  order and calls nothing.
+- The look is the sister app's switch, value for value (issue 680): a 40×24 track,
+  fully round, `--border-strong` off and `--accent-fill` on; an 18px knob
+  3px in, `--switch-knob` (light in both themes) with `--shadow-knob`,
+  16px of travel over `--dur` and `--ease-out`, none under reduced
+  motion. The switch sits before its label, 10px apart, top-aligned; the
+  help is 4px under the label, `--fs-s`, muted, at most 60ch. Disabled:
+  the switch at .45 opacity, the label muted. On a touch screen the
+  switch has a 44px target; the drawn size stays. A transparent border
+  shows the track in forced colours.
+- A row that draws its own label (a settings row) takes the bare switch,
+  `switchInputHtml({ id, on, disabled, labelledBy, describedBy, attrs })`:
+  the same input, named by the row's `<label for>` (or `labelledBy`).
+  `switchHtml` draws its input through it. Link `switch.css` either way.
 - Under `style-src 'self'`: no inline styles, nothing injected.
 - `src/tabs.js`, `src/tabs.css` (exports `./tabs`, `./tabs.css`): tabs,
   the segmented control (DS component #1): one row of two to six choices,

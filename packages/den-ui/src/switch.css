@@ -1,13 +1,22 @@
-/* den-ui: the switch (issue 551), switch.js. Tokens only: no colour of
-   its own. Linked, never injected: clean under style-src 'self'. The row
-   is 44px tall and all of it is the tap; the track is the accent's fill
-   when on, the strong border when off; the knob slides over --dur-fast. */
+/* den-ui: the switch (issues 551, 680), switch.js. The sister app's shipped switch
+  , value for value, on the kit's tokens: a 40x24 track, fully
+   round; an 18px knob at 3px with the sister app's shadow; 16px of travel. The
+   switch comes before its label, 10px apart, top-aligned so a wrapping
+   label keeps the switch on its first line; the help sits under the
+   label, which puts it 50px in, as the sister app's hint is.
+   Sister app to kit: ink-200 off track -> --border-strong (ink-200 is 1.5:1 on
+   paper; the sister app's own fix is ink-400, and --border-strong is the kit's 3:1
+   border); accent -> --accent-fill; paper-0 knob -> --switch-knob (light
+   in both themes); dur-base -> --dur; ease-out -> --ease-out; focus ring
+   -> 2px --accent at 2px; text-small -> --fs-s; text-muted -> --muted.
+   The kit adds: a 44px target under a coarse pointer (::after; the drawn
+   size stays), and reduced motion stops the knob.
+   Tokens only. Linked, never injected: clean under style-src 'self'. */
 .den-switch {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-height: var(--tap);
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 10px;
   font-family: var(--sans);
   font-size: var(--fs-m);
   line-height: var(--lh);
@@ -22,67 +31,90 @@
   flex-direction: column;
   min-width: 0;
 }
+.den-switch-label {
+  line-height: 24px;
+}
 .den-switch-help {
+  margin-top: var(--space-1);
+  max-width: 60ch;
   font-size: var(--fs-s);
+  line-height: 1.45;
   color: var(--muted);
+}
+.den-switch-help:lang(ja) {
+  word-break: auto-phrase;
+  overflow-wrap: anywhere;
+  line-break: strict;
 }
 .den-switch-input {
   appearance: none;
   -webkit-appearance: none;
   position: relative;
-  flex: none;
+  flex: 0 0 40px;
   box-sizing: border-box;
-  width: 44px;
-  height: 26px;
+  width: 40px;
+  min-width: 40px;
+  height: 24px;
   margin: 0;
   /* Transparent: seen only in forced colours, where the fills are not. */
   border: 1px solid transparent;
-  border-radius: 13px;
+  border-radius: 999px;
   background-color: var(--border-strong);
   cursor: pointer;
-  transition: background-color var(--dur-fast) ease;
+  transition: background-color var(--dur) var(--ease-out);
 }
-.den-switch-input::after {
+/* The knob. top/left 3px from the track's outer edge: the 1px border is
+   inside the box, so the knob sits 2px in from it. */
+.den-switch-input::before {
   content: "";
   position: absolute;
   top: 2px;
   left: 2px;
   box-sizing: border-box;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border: 1px solid transparent;
   border-radius: 50%;
-  background-color: var(--surface);
-  transition: transform var(--dur-fast) var(--ease);
+  background-color: var(--switch-knob);
+  box-shadow: var(--shadow-knob);
+  transition: transform var(--dur) var(--ease-out);
 }
 .den-switch-input:checked {
   background-color: var(--accent-fill);
 }
-.den-switch-input:checked::after {
-  transform: translateX(18px);
+.den-switch-input:checked::before {
+  transform: translateX(16px);
 }
 .den-switch-input:focus-visible {
   outline: 2px solid var(--focus-ring, var(--accent));
   outline-offset: var(--focus-offset, 2px);
 }
-/* Disabled: the quiet border for the track, faint words, no pointer. */
+/* A phone's tap: 44px, centred on the track; the drawn size stays. */
+@media (pointer: coarse) {
+  .den-switch-input::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    min-width: var(--tap);
+    min-height: var(--tap);
+    transform: translate(-50%, -50%);
+  }
+}
+/* Disabled: the switch at .45, the label muted, no pointer anywhere. */
 .den-switch[data-disabled] {
-  color: var(--faint);
   cursor: not-allowed;
+}
+.den-switch[data-disabled] .den-switch-label {
+  color: var(--muted);
 }
 .den-switch-input:disabled {
-  background-color: var(--border);
+  opacity: .45;
   cursor: not-allowed;
-}
-.den-switch-input:disabled:checked {
-  background-color: var(--border-strong);
-}
-.den-switch[data-disabled] .den-switch-help {
-  color: var(--faint);
 }
 @media (prefers-reduced-motion: reduce) {
   .den-switch-input,
-  .den-switch-input::after {
+  .den-switch-input::before {
     transition: none;
   }
 }

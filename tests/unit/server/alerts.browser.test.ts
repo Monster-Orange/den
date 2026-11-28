@@ -264,7 +264,7 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       front: true,
     });
     await p.click('#set-nav a[data-cat="notifications"]');
-    const sw = p.locator("#setting-notifications-desktop input.set-check");
+    const sw = p.locator("#setting-notifications-desktop input[role='switch']");
     await sw.waitFor();
     // Not allowed in this browser yet: off.
     expect(await sw.isChecked()).toBe(false);
@@ -276,7 +276,7 @@ describe("issue 172 S1: desktop alerts from an open tab", () => {
       () =>
         (
           document.querySelector(
-            "#setting-notifications-desktop input.set-check",
+            "#setting-notifications-desktop input[role='switch']",
           ) as HTMLInputElement | null
         )?.checked === true,
       null,

@@ -23,6 +23,16 @@
 
 /** The search's terms: lower-case words, every one of which must match. */
 import { projectLabel } from "./workspace-picker.js";
+import { switchInputHtml } from "/kit/switch.js";
+
+export function toggleControlHtml({ cid, key, on, did }) {
+  return switchInputHtml({
+    id: cid,
+    on,
+    describedBy: did,
+    attrs: { "data-focus-key": key },
+  });
+}
 
 export function terms(q) {
   return String(q || "")
@@ -512,7 +522,7 @@ export async function mountSettings(deps) {
       const max = Number.isInteger(ml) ? ` maxlength="${ml}"` : "";
       ctl = `<input type="text" id="${cid}" data-focus-key="${id}" value="${esc(v)}"${max} ${desc}>`;
     } else if (t === "toggle") {
-      ctl = `<input type="checkbox" class="set-check" id="${cid}" data-focus-key="${id}"${v ? " checked" : ""} ${desc}>`;
+      ctl = toggleControlHtml({ cid, key: id, on: !!v, did });
       // Bell v6: a switch may say what being off means (waiting).
       const notice = r.control.notice?.(ctx);
       if (notice) ctl += `<p class="set-warn" role="status">${esc(notice)}</p>`;

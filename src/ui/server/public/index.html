@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/kit/fonts.css" />
     <link rel="stylesheet" href="/kit/tokens.css" />
     <link rel="stylesheet" href="/kit/base.css" />
+    <link rel="stylesheet" href="/kit/switch.css" />
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <title>__DEN_TITLE__ · Tests</title>
     <style>
@@ -241,10 +242,7 @@
         color: var(--muted);
         white-space: nowrap;
       }
-      .toggle-input {
-        accent-color: var(--accent);
-        cursor: pointer;
-      }
+      /* On/off controls are the kit's switch (switch.css). */
       /* Per-perf-test optional launch fields (generic, declarative) */
       #perf-opt-fields {
         display: contents;
@@ -1136,8 +1134,10 @@
               <label class="smoke-override" id="local-checkout-wrap">
                 <input
                   id="use-local-checkout"
-                  class="toggle-input"
+                  class="den-switch-input"
                   type="checkbox"
+                  role="switch"
+                  data-den-switch
                 />
                 <span class="smoke-override-label" data-t="tst.localCheckout"
                   >use local checkout</span
@@ -1771,7 +1771,9 @@
           if (f.type === "boolean") {
             const input = document.createElement("input");
             input.type = "checkbox";
-            input.className = "toggle-input";
+            input.className = "den-switch-input";
+            input.setAttribute("role", "switch");
+            input.dataset.denSwitch = "";
             input.checked =
               val === true || val === 1 || val === "1" || val === "true";
             input.disabled = disabled;

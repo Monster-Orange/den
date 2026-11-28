@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="/kit/fonts.css" />
     <link rel="stylesheet" href="/kit/tokens.css" />
     <link rel="stylesheet" href="/kit/base.css" />
+    <link rel="stylesheet" href="/kit/switch.css" />
     <link rel="stylesheet" href="/theme.css" id="theme-css" />
     <link rel="stylesheet" href="/persona-ui.css" />
     <title>__DEN_TITLE__ · Settings</title>
@@ -856,12 +857,6 @@
       .hub-flash.warn {
         color: var(--warn, inherit);
       }
-      .hub-tools {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        margin-top: 10px;
-      }
       /* D30: the add form: each control with its label, wrapping. */
       .rot-pick {
         display: inline-flex;
@@ -1049,12 +1044,7 @@
       input[type="number"] {
         width: 100px;
       }
-      .set-check {
-        width: 16px;
-        height: 16px;
-        accent-color: var(--accent);
-        margin: 6px 0;
-      }
+      /* On/off settings are the kit's switch (switch.css). */
       .set-unit {
         color: var(--muted);
         font-size: 13px;

@@ -364,15 +364,15 @@ describe("switch (issue 551) in a browser", () => {
     await p.close();
   });
 
-  it("the knob moves over --dur-fast, and not under reduced motion", async () => {
+  it("the knob moves over --dur, and not under reduced motion", async () => {
     if (skip()) return;
     const moving = await open({ reduce: false });
     expect(
-      await style(moving, "#sw", "transition-duration", "::after"),
+      await style(moving, "#sw", "transition-duration", "::before"),
     ).not.toBe("0s");
     await moving.close();
     const still = await open({ reduce: true });
-    expect(await style(still, "#sw", "transition-duration", "::after")).toBe(
+    expect(await style(still, "#sw", "transition-duration", "::before")).toBe(
       "0s",
     );
     await still.close();
@@ -420,13 +420,15 @@ describe("the look: 1280 and 390, light and dark", () => {
         );
         expect(await style(p, SHOW, "outline-width")).toBe("2px");
         await p.keyboard.press("Enter");
-        // The switch: on is the accent fill, off the strong border.
+        // The switch: on is the accent fill, off the strong border; disabled at .45.
         expect(await style(p, "#sw", "background-color")).toBe(
           await token(p, "--accent-fill"),
         );
         expect(await style(p, "#sw2", "background-color")).toBe(
-          await token(p, "--border"),
+          await token(p, "--border-strong"),
         );
+        expect(await style(p, "#sw2", "opacity")).toBe("0.45");
+        expect(await box(p, "#sw")).toEqual({ w: 40, h: 24 });
         await p.evaluate(() =>
           (window as unknown as { sw: { set: (b: boolean) => void } }).sw.set(
             false,
@@ -435,8 +437,8 @@ describe("the look: 1280 and 390, light and dark", () => {
         expect(await style(p, "#sw", "background-color")).toBe(
           await token(p, "--border-strong"),
         );
-        expect(await style(p, "#sw", "background-color", "::after")).toBe(
-          await token(p, "--surface"),
+        expect(await style(p, "#sw", "background-color", "::before")).toBe(
+          await token(p, "--switch-knob"),
         );
         await p.focus("#sw");
         await p.keyboard.press("Shift+Tab");
@@ -446,9 +448,15 @@ describe("the look: 1280 and 390, light and dark", () => {
         );
         // Sizes: 44px targets on a phone; the desktop's own sizes else.
         const fold = await box(p, FOLD);
-        const sw = await box(p, ".den-switch");
-        expect(sw.h).toBeGreaterThanOrEqual(44);
         if (width === 390) {
+          const swHit = await p.evaluate(() => {
+            const s = getComputedStyle(
+              document.querySelector("#sw")!,
+              "::after",
+            );
+            return [parseFloat(s.minWidth), parseFloat(s.minHeight)];
+          });
+          expect(swHit).toEqual([44, 44]);
           expect(fold.h).toBeGreaterThanOrEqual(44);
           await p.click(FOLD);
           const hit = await p.evaluate(() => {

@@ -7,6 +7,7 @@ export interface SwitchModel {
   help?: string;
   /** The input's id (default: den-sw-N). */
   id?: string;
+  attrs?: Record<string, string>;
 }
 
 export interface SwitchOptions {
@@ -24,6 +25,17 @@ export interface Switch {
 
 /** <label class="den-switch">: the words, then <input role="switch">. */
 export declare function switchHtml(model: SwitchModel): string;
+
+export interface SwitchInputModel {
+  id?: string;
+  on?: boolean;
+  disabled?: boolean;
+  labelledBy?: string;
+  describedBy?: string;
+  attrs?: Record<string, string>;
+}
+
+export declare function switchInputHtml(model: SwitchInputModel): string;
 
 /** The switch's input, or the .den-switch around it. */
 export declare function hydrateSwitch(
