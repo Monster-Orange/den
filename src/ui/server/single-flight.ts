@@ -1,11 +1,10 @@
 /**
- * A short-lived, keyed cache whose builds are single-flight: callers that ask
- * for the same key while a build is running share it instead of starting their
- * own, and a settled result is reused for `ttlMs`. A failed build is never
- * cached, so the next caller retries.
+ * A short-lived, keyed cache whose builds are single-flight: callers asking for
+ * a key while it builds share that build; a settled result is reused for
+ * `ttlMs`; a failed build is never cached. For routes every open tab polls.
  *
- * For server routes the UI polls from every open tab (/api/services,
- * /api/health): N tabs cost one build, not N.
+ * Past `maxKeys` the oldest settled keys go; a key still building is kept, so
+ * many builds at once can hold the cache above `maxKeys` until they settle.
  */
 export interface SingleFlight<T> {
   /** The cached or in-flight value for `key`; `fresh` forces a new build. */
