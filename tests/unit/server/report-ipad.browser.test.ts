@@ -7,6 +7,7 @@ import {
 } from "./helpers/agents-page-server.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { en } from "../../../packages/den-ui/src/strings.js";
 
 jest.setTimeout(60_000);
 
@@ -39,10 +40,14 @@ const IPADS: [number, number][] = [
   [820, 1180],
 ];
 
-async function tablet(width: number, height: number): Promise<Page> {
+async function tablet(
+  width: number,
+  height: number,
+  touch = true,
+): Promise<Page> {
   const ctx = await browser!.newContext({
     viewport: { width, height },
-    hasTouch: true,
+    hasTouch: touch,
     reducedMotion: "reduce",
   });
   const p = await ctx.newPage();
@@ -83,11 +88,34 @@ async function tablet(width: number, height: number): Promise<Page> {
 const dlg = (p: Page) => p.getByRole("dialog", { name: "Report an issue" });
 
 async function openWithShot(p: Page) {
-  await p.locator("[data-den-report]:visible").tap();
+  const report = p.locator("[data-den-report]:visible");
+  if (await p.evaluate(() => matchMedia("(any-pointer: coarse)").matches))
+    await report.tap();
+  else await report.click();
   await dlg(p).waitFor();
   await dlg(p).locator("canvas[data-shot]").waitFor({ timeout: 20_000 });
   await dlg(p).locator('[data-f="title"]').fill("Pane drops");
   await dlg(p).locator('[data-f="description"]').fill("It drops.");
+}
+
+async function drag(p: Page, pointerType: "touch" | "mouse") {
+  const c = dlg(p).locator("canvas[data-shot]");
+  const b = (await c.boundingBox())!;
+  const at = (x: number, y: number) => ({
+    pointerId: 1,
+    pointerType,
+    clientX: b.x + x,
+    clientY: b.y + y,
+  });
+  await c.dispatchEvent("pointerdown", at(20, 20));
+  await c.dispatchEvent("pointerup", at(120, 90));
+}
+
+async function areas(p: Page, n: number) {
+  const tpl = n === 1 ? en["kit.report.masks.one"] : en["kit.report.masks"];
+  await dlg(p)
+    .getByText(String(tpl).replace("{n}", String(n)), { exact: true })
+    .waitFor({ timeout: 5_000 });
 }
 
 describe("Report on a tablet with touch", () => {
@@ -151,31 +179,8 @@ describe("Report on a tablet with touch", () => {
     if (skip()) return;
     const p = await tablet(1366, 1024);
     await openWithShot(p);
-    const drag = async () => {
-      const b = (await dlg(p).locator("canvas[data-shot]").boundingBox())!;
-      await dlg(p)
-        .locator("canvas[data-shot]")
-        .dispatchEvent("pointerdown", {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: b.x + 20,
-          clientY: b.y + 20,
-        });
-      await dlg(p)
-        .locator("canvas[data-shot]")
-        .dispatchEvent("pointerup", {
-          pointerId: 1,
-          pointerType: "touch",
-          clientX: b.x + 120,
-          clientY: b.y + 90,
-        });
-    };
-    const hidden = () =>
-      dlg(p)
-        .getByText(/^\d+ areas? hidden$/)
-        .textContent();
-    await drag();
-    expect(await hidden()).toBe("0 areas hidden");
+    await drag(p, "touch");
+    await areas(p, 0);
     await dlg(p).getByRole("button", { name: "Mask an area" }).tap();
     expect(
       await dlg(p)
@@ -187,8 +192,24 @@ describe("Report on a tablet with touch", () => {
         .locator("canvas[data-shot]")
         .evaluate((c) => getComputedStyle(c).touchAction),
     ).toBe("none");
-    await drag();
-    expect(await hidden()).toBe("1 area hidden");
+    await drag(p, "touch");
+    await areas(p, 1);
+    await p.context().close();
+  });
+
+  it("a finger on a page whose main pointer is fine still scrolls; a mouse masks", async () => {
+    if (skip()) return;
+    const p = await tablet(1366, 1024, false);
+    await openWithShot(p);
+    expect(
+      await dlg(p)
+        .locator("canvas[data-shot]")
+        .evaluate((c) => getComputedStyle(c).touchAction),
+    ).toMatch(/pan-y/);
+    await drag(p, "touch");
+    await areas(p, 0);
+    await drag(p, "mouse");
+    await areas(p, 1);
     await p.context().close();
   });
 

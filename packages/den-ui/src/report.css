@@ -237,6 +237,9 @@
   height: auto;
   display: block;
   cursor: crosshair;
+  touch-action: pan-y pinch-zoom;
+}
+.fb-shot[data-masking] canvas {
   touch-action: none;
 }
 .fb-shot img {
@@ -426,7 +429,7 @@
     margin-inline: auto;
   }
 }
-@media (pointer: coarse) {
+@media (any-pointer: coarse) {
   .fb-shot {
     text-align: center;
   }
@@ -436,10 +439,8 @@
     width: auto;
     max-width: 100%;
     display: inline-block;
-    touch-action: pan-y pinch-zoom;
   }
   .fb-shot[data-masking] canvas {
-    touch-action: none;
     outline: 2px solid var(--focus-ring, var(--accent));
   }
   .fb-shot-wait {

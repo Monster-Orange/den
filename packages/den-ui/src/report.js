@@ -939,7 +939,17 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     render('[data-act="copy"]');
   }
 
+  const vv = window.visualViewport;
+  const fit = () => {
+    dlg.style.setProperty("--fb-vh", `${vv.height}px`);
+    dlg.style.setProperty("--fb-top", `${vv.offsetTop + 16}px`);
+    dlg.toggleAttribute("data-fb-kb", vv.height < window.innerHeight - 80);
+  };
   function close() {
+    if (vv) {
+      vv.removeEventListener("resize", fit);
+      vv.removeEventListener("scroll", fit);
+    }
     if (current === self) current = null;
     if (dlg.open) dlg.close();
     dlg.remove();
@@ -1020,10 +1030,9 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
       y: (e.clientY - r.top) / r.height,
     };
   };
-  const touchy = () => matchMedia("(pointer: coarse)").matches;
   dlg.addEventListener("pointerdown", (e) => {
     const c = e.target.closest?.("canvas[data-shot]");
-    if (!c || (touchy() && !st.maskMode)) return;
+    if (!c || (e.pointerType === "touch" && !st.maskMode)) return;
     e.preventDefault();
     c.setPointerCapture?.(e.pointerId);
     st.drag = { a: frac(e, c), b: null };
@@ -1141,17 +1150,6 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     }
   });
 
-  const vv = window.visualViewport;
-  const fit = () => {
-    if (!dlg.isConnected) {
-      vv.removeEventListener("resize", fit);
-      vv.removeEventListener("scroll", fit);
-      return;
-    }
-    dlg.style.setProperty("--fb-vh", `${vv.height}px`);
-    dlg.style.setProperty("--fb-top", `${vv.offsetTop + 16}px`);
-    dlg.toggleAttribute("data-fb-kb", vv.height < window.innerHeight - 80);
-  };
   if (vv) {
     vv.addEventListener("resize", fit);
     vv.addEventListener("scroll", fit);
