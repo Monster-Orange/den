@@ -38,32 +38,19 @@ const r629 = (postThrew: string) =>
   })[1];
 
 describe("gates 701 and 629: a test doc whose Send to offers no agent", () => {
-  it.each([PERSON, NO_BOX])(
-    "701: %s leaves every row not run, saying so",
-    (m) => {
-      for (const row of r701(m)) {
-        expect(row).toMatchObject({
-          ok: null,
-          skip: "needs-fixture-comment",
-        });
-        expect(row.detail).toContain("offers no agent to send a comment to");
-      }
-    },
-  );
+  it.each([PERSON, NO_BOX])("701: %s fails every row, saying so", (m) => {
+    for (const row of r701(m)) {
+      expect(row.ok).toBe(false);
+      expect(row.skip).toBeUndefined();
+      expect(row.detail).toContain("Send to on the test doc offers no agent");
+    }
+  });
 
-  it.each([PERSON, NO_BOX])(
-    "629: %s leaves the Hub row not run, saying so",
-    (m) => {
-      expect(r629(m)).toMatchObject({
-        ok: null,
-        skip: "needs-fixture-comment",
-      });
-    },
-  );
-
-  it("the skip is not the bed's needs-hub, which the bed turns into ERROR", () => {
-    const skips = [...r701(PERSON), r629(PERSON)].map((x) => String(x.skip));
-    expect(skips.filter((s) => /needs-hub\b/.test(s))).toEqual([]);
+  it.each([PERSON, NO_BOX])("629: %s fails the Hub row, saying so", (m) => {
+    const row = r629(m);
+    expect(row.ok).toBe(false);
+    expect(row.skip).toBeUndefined();
+    expect(row.detail).toContain("Send to on the test doc offers no agent");
   });
 
   it("any other failure to post still FAILs both checks' rows", () => {

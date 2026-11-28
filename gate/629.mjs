@@ -378,9 +378,8 @@ function hubRow(h) {
   if (NO_SEND_TO.test(h.postThrew ?? ""))
     return {
       clause: clauses[1],
-      ok: null,
-      skip: "needs-fixture-comment",
-      detail: `the bed's test doc offers no agent to send a comment to, so none was posted: ${h.postThrew}`,
+      ok: false,
+      detail: `Hub's Send to on the test doc offers no agent, though the bed's Connect asks Hub to cover its agents (agents=yes), so no comment was posted: ${h.postThrew}`,
     };
   if (h.running && h.noDialog)
     return {

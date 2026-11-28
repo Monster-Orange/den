@@ -1,8 +1,8 @@
 /* eslint-env browser */
 // Live check for issue 1217: an old-format pin (an id-only entry, `shell.pins: [repo/service, …]`,
 // as a page before 0.4.85 saved it) never vanishes. On load it goes to each project whose services
-// or repos include its repo; with none, it's kept with no project and shown under All (saved, it is
-// migrated, so doctor needn't list it). A bare id with no "/" follows the same rules. The old list is saved the way an older
+// or repos include its repo; with none, it's kept with no project, shown under All, and doctor lists
+// it as kept. A bare id with no "/" follows the same rules. The old list is saved the way an older
 // page saved it, through /api/settings; the view is set the way the menu sets it, POST /api/scope.
 // The person's own pins, which a fixture save never removes (issue 946), are set aside and left out
 // of every comparison. Teardown puts the person's pins and view back as they were.
@@ -12,7 +12,7 @@ export const issue = 1217;
 export const clauses = [
   "an old pin whose repo is in one project goes to that project",
   "an old pin whose repo is in two or more projects goes to each of them",
-  "an old pin whose repo is in no project is kept with no project and shown under All",
+  "an old pin whose repo is in no project is kept with no project, shown under All, and doctor lists it as kept",
   "one bad entry is skipped and named in doctor, and the other pins stay",
   'a bare id with no "/" follows the same rules',
 ];
@@ -220,6 +220,18 @@ export function expect(cells) {
     );
   const twoSkip = cells.some(({ result }) => !result?.two);
   const bareSkip = cells.some(({ result }) => !result?.bare);
+  const shown = all(
+    (r) => storedAs(r, r.none) && r.openAll && r.railAll.pins.includes(r.none),
+  );
+  const listed = all((r) => r.doctorKept.some((l) => l.includes(r.none)));
+  const noProject = !shown
+    ? { ok: false }
+    : listed
+      ? { ok: true }
+      : { ok: null, skip: "needs-a-hand-edit" };
+  const unlisted = noProject.skip
+    ? "; doctor's part needs a pin only a hand edit of user.yml leaves unmigrated: the save through /api/settings migrates it, so doctor has nothing to list"
+    : "";
   return [
     {
       clause: clauses[0],
@@ -248,14 +260,12 @@ export function expect(cells) {
         },
     {
       clause: clauses[2],
-      ok: all(
-        (r) =>
-          storedAs(r, r.none) && r.openAll && r.railAll.pins.includes(r.none),
-      ),
-      detail: d(
-        (r) =>
-          `${r.none}: stored ${show(pinsOf(r, r.none))}; under All the rail has it: ${r.railAll.pins.includes(r.none)}; doctor's kept lines: ${r.doctorKept.join(" | ") || "none (a migrated pin needn't be listed)"}`,
-      ),
+      ...noProject,
+      detail:
+        d(
+          (r) =>
+            `${r.none}: stored ${show(pinsOf(r, r.none))}; under All the rail has it: ${r.railAll.pins.includes(r.none)}; doctor's kept lines: ${r.doctorKept.join(" | ") || "none"}`,
+        ) + unlisted,
       evidence: shots("old-all"),
     },
     {

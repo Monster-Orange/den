@@ -284,9 +284,8 @@ export async function teardown(ctx, s) {
 const NO_SEND_TO =
   /^hub comment: (the doc's Send to names the person @|the doc page has no Send to box)/;
 const notSent = (x) => ({
-  ok: null,
-  skip: "needs-fixture-comment",
-  detail: `the bed's test doc offers no agent to send a comment to, so none was posted: ${x.postThrew}`,
+  ok: false,
+  detail: `Hub's Send to on the test doc offers no agent, though the bed's Connect asks Hub to cover its agents (agents=yes), so no comment was posted: ${x.postThrew}`,
 });
 
 const NO_HUB = {
