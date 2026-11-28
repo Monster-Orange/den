@@ -11,8 +11,8 @@
 //   its first start (the bed's product.denYml). The same ask is held, and
 //   nothing is written while it waits; the person's CLI (`config`, which
 //   runs as the person) can't set install_mode: personal there.
-// Allow and Undo of a test bed agent's held write are the test operator's
-// (issue 1414): its Undo puts the setting back, its Allow writes it. The
+// Allow and Undo of a test bed agent's held write are the test
+// operator's: its Undo puts the setting back, its Allow writes it. The
 // same request from a session that isn't the operator's (it came through a
 // proxy, so forwarded headers) is refused (403) and changes nothing first.
 // install_mode in Settings stays the person's alone.
