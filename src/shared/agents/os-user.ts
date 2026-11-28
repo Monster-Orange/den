@@ -526,7 +526,13 @@ export interface OsUserFacts {
   };
   group: { exists: boolean; members?: string[] };
   personUid: number;
-  personHome: (StatFacts & { acl: string[]; aclUnread?: boolean }) | null;
+  personHome:
+    | (StatFacts & {
+        acl: string[];
+        aclUnread?: boolean;
+        parents?: { path: string; acl: string[]; unread: boolean }[];
+      })
+    | null;
   sudoers: StatFacts | null;
   personRules: string[] | null;
   launcher: (StatFacts & { text: string }) | null;
@@ -566,10 +572,21 @@ export function homeProblems(l: OsUserLayout, f: OsUserFacts): string[] {
         `your home ${l.personHome} is ${octal(h.mode)}: the agents' login could read your files (it should be 0700; \`agents os-login setup\` closes it)`,
       );
     for (const e of h.acl)
-      if (/\ballow\b/.test(e) && !e.startsWith(`user:${l.person} `))
+      if (aclLetsOthersIn(e, l.person))
         out.push(
           `your home ${l.personHome} has the ACL entry "${e}": it lets someone else in`,
         );
+    for (const x of h.parents ?? []) {
+      if (x.unread)
+        out.push(
+          `the access lists on ${x.path}, above your home, couldn't be read`,
+        );
+      for (const e of x.acl)
+        if (aclLetsOthersWrite(e))
+          out.push(
+            `${x.path}, above your home, has the ACL entry "${e}": someone else could change it`,
+          );
+    }
   }
   for (const r of [l.runtime.bin, l.runtime.script])
     if (inside(l.personHome, r))
@@ -593,7 +610,7 @@ export function logsProblems(l: OsUserLayout, f: OsUserFacts): string[] {
       `Den's service logs folder ${g.path} is ${octal(g.mode)}: the agents' login could read the logs (Den makes it 0700 when it starts)`,
     );
   for (const e of g.acl)
-    if (!/\bdeny\b/.test(e) && !e.startsWith(`user:${l.person} `))
+    if (aclLetsOthersIn(e, l.person))
       out.push(
         `Den's service logs folder ${g.path} has the ACL entry "${e}": it lets someone else in`,
       );
@@ -923,7 +940,16 @@ const lsAcl = (
   p: string,
   ok: (cmd: string, args: string[]) => string | null,
 ): { acl: string[]; aclUnread: boolean } => {
-  if (l.platform !== "darwin") return { acl: [], aclUnread: false };
+  if (l.platform !== "darwin") {
+    const ls = ok("ls", ["-ld", "--", p]);
+    if (ls === null) return { acl: [], aclUnread: true };
+    if (!(ls.trim().split(/\s+/)[0] ?? "").endsWith("+"))
+      return { acl: [], aclUnread: false };
+    const g = ok("getfacl", ["--absolute-names", "--omit-header", "--", p]);
+    return g === null
+      ? { acl: [], aclUnread: true }
+      : { acl: getfaclEntries(g), aclUnread: false };
+  }
   const out = ok("/bin/ls", ["-led", "--", p]);
   if (out === null) return { acl: [], aclUnread: true };
   try {
@@ -940,7 +966,18 @@ function personHomeFacts(
 ): OsUserFacts["personHome"] {
   const st = d.stat(l.personHome);
   if (!st) return null;
-  return { ...st, ...lsAcl(l, l.personHome, ok) };
+  const parents: { path: string; acl: string[]; unread: boolean }[] = [];
+  if (l.platform === "linux")
+    for (let x = path.dirname(l.personHome); ; x = path.dirname(x)) {
+      const a = lsAcl(l, x, ok);
+      parents.push({ path: x, acl: a.acl, unread: a.aclUnread });
+      if (x === path.dirname(x)) break;
+    }
+  return {
+    ...st,
+    ...lsAcl(l, l.personHome, ok),
+    ...(l.platform === "linux" ? { parents } : {}),
+  };
 }
 
 function logsDirFacts(
@@ -996,7 +1033,11 @@ export const UID_UNREAD = "can't read the agents' login's uid";
 export const OWED_REFUSAL =
   "the agents' own login isn't ready on this Den version yet";
 export const OS_LOGIN_OWED: readonly string[] = [
-  "Linux access lists on the person's home",
+  "a sandbox policy for the agents' login",
+  "own/ files read without following links (O_NOFOLLOW)",
+  "the Linux end-to-end run as root in CI",
+  "the sign-in token passed by file handle, not the environment",
+  "access lists on the folders above the person's home on macOS",
 ];
 
 const ACL_WRITES = new Set([
@@ -1017,18 +1058,62 @@ export interface AclWho {
   groupNames?: string[];
 }
 
+const macAcl = (
+  entry: string,
+): { principal: string; kind: string; rights: string } | null => {
+  const m = /^(.+)\s+(allow|deny)\s+(\S+)$/.exec(entry.trim());
+  return m
+    ? {
+        principal: m[1]!.replace(/\s+inherited$/, ""),
+        kind: m[2]!,
+        rights: m[3]!,
+      }
+    : null;
+};
+
 export function aclLetsAgentsWrite(entry: string, who: AclWho): boolean {
-  const m = /^(.+?)\s+(?:inherited\s+)?(allow|deny)\s+(\S+)/.exec(entry.trim());
+  const m = macAcl(entry);
   if (!m) return true;
-  if (m[2] === "deny") return false;
-  if (!m[3]!.split(",").some((x) => ACL_WRITES.has(x))) return false;
+  if (m.kind === "deny") return false;
+  if (!m.rights.split(",").some((x) => ACL_WRITES.has(x))) return false;
   if (who.name === undefined || who.groupNames === undefined) return true;
-  const p = m[1]!;
+  const p = m.principal;
   if (p === "everyone" || p === "group:everyone") return true;
   if (p.startsWith("user:")) return p.slice(5) === who.name;
   if (p.startsWith("group:"))
     return /\s/.test(p) || who.groupNames.includes(p.slice(6));
   return true;
+}
+
+const linuxAcl = (entry: string) =>
+  /^(?:default:)?(user|group|mask|other):([^:]*):([rwx-]{3})$/.exec(entry);
+
+export function aclLetsOthersIn(entry: string, person: string): boolean {
+  const m = macAcl(entry);
+  if (m) return m.kind === "allow" && m.principal !== `user:${person}`;
+  const x = linuxAcl(entry);
+  if (!x) return true;
+  const named = (x[1] === "user" || x[1] === "group") && x[2] !== "";
+  return named && x[3] !== "---" && !(x[1] === "user" && x[2] === person);
+}
+
+const aclLetsOthersWrite = (entry: string): boolean => {
+  const x = linuxAcl(entry);
+  if (!x) return true;
+  const named = (x[1] === "user" || x[1] === "group") && x[2] !== "";
+  return named && x[3]!.includes("w");
+};
+
+export function getfaclEntries(out: string): string[] {
+  const entries: string[] = [];
+  for (const raw of out.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const [entry = "", ...rest] = line.split(/\s+/);
+    const eff = /#effective:([rwx-]{3})/.exec(rest.join(" "))?.[1];
+    entries.push(eff ? entry.replace(/:[rwx-]{3}$/, `:${eff}`) : entry);
+  }
+  return entries;
 }
 
 export function loginNames(): AclWho {

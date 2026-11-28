@@ -139,13 +139,13 @@ describe("issue 988: agents os-login setup", () => {
     expect(OS_LOGIN_OWED.length).toBeGreaterThan(0);
   });
 
-  it("with this Den version's own list, setup refuses and names the Linux home's access lists", async () => {
+  it("with this Den version's own list, setup refuses and names the sandbox policy", async () => {
     expect(defaultOsUserDeps("den").owed()).toBe(OS_LOGIN_OWED);
     const r = rig({ yes: true, owed: [...OS_LOGIN_OWED] });
     expect(await cmdOsUser(["setup"], r.d)).toBe(1);
     expect(r.ran).toEqual([]);
     expect(r.err.join("\n")).toContain(
-      "Linux access lists on the person's home",
+      "a sandbox policy for the agents' login",
     );
   });
 
