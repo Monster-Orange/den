@@ -4516,6 +4516,15 @@
     "setc.server": "サーバー", // words-ok: the en string's own word, translated
     "setc.server.d":
       "このページが通信している Den の Web サーバーです。再起動してもエージェントとサービスは動き続けます。", // words-ok: the en string's own word, translated
+    "setd.sub.embed.apps": "Web アプリとアプリキー",
+    "setd.sub.embed.feeds": "アプリフィード",
+    "setd.sub.server.restarts": "インストール、再起動と更新",
+    "setd.sub.server.address": "アドレスと到達性",
+    "setd.sub.server.terminals": "ターミナル",
+    "setd.sub.server.logs": "ログとレポート",
+    "setd.sub.server.checks": "待ち時間と確認",
+    "setd.sub.server.github": "GitHub",
+    "setd.sub.server.gate": "テストの実行",
     "setc.cli": "コマンドライン",
     "setc.cli.d":
       "これもあなた個人の設定 (config/local/user.yml) で、コマンドラインから設定します: __DEN_CLI__ config <key>=<value>。",

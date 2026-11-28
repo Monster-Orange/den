@@ -1218,6 +1218,15 @@
     "setc.server": "Server",
     "setc.server.d":
       "The Den web server this page talks to. A restart keeps agents and services running.", // words-ok: the Settings row's text, moved word for word
+    "setd.sub.embed.apps": "Web apps and app keys",
+    "setd.sub.embed.feeds": "App feeds",
+    "setd.sub.server.restarts": "Install, restarts and updates",
+    "setd.sub.server.address": "Address and reach",
+    "setd.sub.server.terminals": "Terminals",
+    "setd.sub.server.logs": "Logs and reports",
+    "setd.sub.server.checks": "Waits and checks",
+    "setd.sub.server.github": "GitHub",
+    "setd.sub.server.gate": "Test runs",
     "setc.cli": "Command line",
     "setc.cli.d":
       "Also yours (config/local/user.yml), set from the command line: __DEN_CLI__ config <key>=<value>.",
