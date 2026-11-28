@@ -171,7 +171,7 @@ export { deepLinkOf, layoutFromUrl, openFromUrl };
 
 // ── the list ────────────────────────────────────────────────────────────
 
-/** Issue 278: a person looked: the loop is over for now; held deliveries go. */
+/** A person looked: the loop is over for now; held deliveries go. */
 async function clearCompacting(r, button) {
   await window.denShell.busyAction(
     "save",
@@ -219,7 +219,7 @@ function saveStoppedOpen(open) {
   }
 }
 
-/** #80: All active, with the hidden tabs back. */
+/** All active, with the hidden tabs back. */
 async function showAllActive() {
   try {
     // busy-ok: the stored view follows the page; the reload is its answer
