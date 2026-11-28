@@ -18,8 +18,11 @@ import * as os from "os";
 import * as path from "path";
 import { isTmpDir, resolveOn, sentinelDir, withSentinel } from "./sentinel.js";
 import { boxOwnPort } from "@monster-orange/den/pw-guard";
+import { connectHost } from "../src/shared/sessions/client.js";
+import { sessionPaths } from "../src/shared/sessions/paths.js";
 
 const REGISTRY_DIR = path.join(os.tmpdir(), "den-test-children");
+const STATE_DIRS = new Map<number, string>();
 const recordOf = (pgid: number): string =>
   path.join(REGISTRY_DIR, `${pgid}.json`);
 
@@ -103,11 +106,10 @@ export function spawnServer(
   opts: SpawnOptions,
   marker: string = args[args.length - 1] ?? cmd,
 ): ChildProcess {
-  const child = spawn(cmd, args, {
-    ...opts,
-    env: serverEnv(opts.env ?? process.env),
-    detached: true,
-  });
+  const env = serverEnv(opts.env ?? process.env);
+  const child = spawn(cmd, args, { ...opts, env, detached: true });
+  const state = stateDirOf(env);
+  if (child.pid && state) STATE_DIRS.set(child.pid, state);
   if (child.pid) {
     fs.mkdirSync(REGISTRY_DIR, { recursive: true });
     fs.writeFileSync(
@@ -148,7 +150,50 @@ export async function stopServer(
   while (groupAlive(pgid) && Date.now() < deadline)
     await new Promise((r) => setTimeout(r, 50));
   if (groupAlive(pgid)) killGroup(pgid, "SIGKILL");
+  await stopSessionHost(STATE_DIRS.get(pgid), graceMs);
+  STATE_DIRS.delete(pgid);
   forgetServer(child);
+}
+
+function stateDirOf(env: NodeJS.ProcessEnv): string | null {
+  const dir = env.DEN_HOME || (env.HOME ? path.join(env.HOME, ".den") : "");
+  return dir && isTmpDir(path.resolve(dir)) ? path.resolve(dir) : null;
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+async function stopSessionHost(
+  stateDir: string | undefined,
+  graceMs: number,
+): Promise<void> {
+  const socket = stateDir ? sessionPaths(stateDir).socket : "";
+  if (!socket || !fs.existsSync(socket)) return;
+  let pid = 0;
+  try {
+    const c = await Promise.race([
+      connectHost(socket),
+      new Promise<never>((_, no) =>
+        setTimeout(() => no(new Error("no answer")), 2_000),
+      ),
+    ]);
+    pid = c.hostPid;
+    await c.shutdown().catch(() => undefined);
+    c.close();
+  } catch {
+    return;
+  }
+  if (!pid) return;
+  const deadline = Date.now() + graceMs;
+  while (pidAlive(pid) && Date.now() < deadline)
+    await new Promise((r) => setTimeout(r, 50));
+  if (pidAlive(pid)) process.kill(pid, "SIGKILL");
 }
 
 /** Drop `child`'s record (its group was stopped some other way). */
