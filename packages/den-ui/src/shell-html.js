@@ -191,12 +191,20 @@ export function navItemHtml(n, navRole, lang) {
   const b = n.badge || null;
   const kind = navKind(n.kind, lang);
   const off = navOff(n.off);
+  const waits =
+    b && b.what === "waiting" && b.n != null && b.n !== ""
+      ? ' title="' +
+        esc(kitT(lang, "kit.badge.waiting.title", { n: b.n })) +
+        '"'
+      : "";
   const extra = b
     ? '<span class="den-bdg' +
       (b.bad ? " bad" : b.warn ? (b.soft ? " warn soft" : " warn") : "") +
       '" data-badge="' +
       (b.bad ? "bad" : b.warn ? "warn" : "") +
-      '" aria-hidden="true">' +
+      '" aria-hidden="true"' +
+      waits +
+      ">" +
       esc(b.n) +
       "</span>"
     : "";
