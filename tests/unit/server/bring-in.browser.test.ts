@@ -501,7 +501,7 @@ describe("Bring in (AG-17.1)", () => {
         }))
         .catch((x: unknown) => ({ error: String(x) }))
         .then((seen) =>
-          console.log(
+          console.warn(
             `ISSUE-1903 DUMP\n${JSON.stringify({ old: sid, seen, logs: logsDump(s!.stateDir), made: s!.made.length }, null, 2)}\nconsole:\n${lines.join("\n")}\npage errors:\n${errors.join("\n")}`,
           ),
         );
