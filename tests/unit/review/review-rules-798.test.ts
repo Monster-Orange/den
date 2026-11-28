@@ -16,6 +16,8 @@ import {
   matchReview,
   reviewAt,
   reviewLoosenings,
+  reviewRulesGuard,
+  reviewSchema,
   type Review,
   type ReviewPr,
 } from "../../../src/shared/review/rules.js";
@@ -412,5 +414,100 @@ describe("in the layered manifest", () => {
       "bare",
     );
     expect(reviewAt(repo, "bare")).toEqual({ file: null, review: undefined });
+  });
+});
+
+describe("a PR that edits the review rules", () => {
+  const core = reviewSchema.parse(CORE);
+  const base = { file: YML, review: core };
+
+  it("an unchanged section adds nothing", () => {
+    expect(reviewRulesGuard(base, { file: YML, review: core })).toBeNull();
+    expect(
+      reviewRulesGuard(
+        { file: null, review: undefined },
+        { file: null, review: undefined },
+      ),
+    ).toBeNull();
+  });
+
+  it("a removed, loosened, added or unreadable section gets a blocking review", () => {
+    const blocking = {
+      rule: "review-rules-changed",
+      reviews: 1,
+      lenses: ["governance"],
+      blocksMerge: true,
+    };
+    expect(
+      reviewRulesGuard(base, { file: YML, review: { rules: [] } }),
+    ).toEqual(blocking);
+    expect(reviewRulesGuard(base, { file: YML, review: undefined })).toEqual(
+      blocking,
+    );
+    expect(reviewRulesGuard({ file: null, review: undefined }, base)).toEqual(
+      blocking,
+    );
+    expect(reviewRulesGuard(base, null)).toEqual(blocking);
+  });
+
+  it("on real refs, swapping the yml manifest for the json one can't hide an edit", () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "den-review-guard-"));
+    try {
+      const git = (...a: string[]) =>
+        execFileSync(
+          "git",
+          [
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "-c",
+            "commit.gpgsign=false",
+            ...a,
+          ],
+          { cwd: repo, stdio: "pipe" },
+        );
+      git("init", "-q", "-b", "main");
+      fs.writeFileSync(
+        path.join(repo, YML),
+        "name: shop\nreview:\n  rules:\n    - name: core\n      require: { reviews: 2 }\n",
+      );
+      git("add", ".");
+      git("commit", "-qm", "base");
+      git("checkout", "-q", "-b", "pr");
+      git("rm", "-q", YML);
+      fs.writeFileSync(
+        path.join(repo, product().manifestJson),
+        JSON.stringify({ name: "shop", review: { rules: [] } }),
+      );
+      git("add", ".");
+      git("commit", "-qm", "move the manifest and turn reviews off");
+      const base = reviewAt(repo, "main");
+      const head = reviewAt(repo, "pr");
+      expect(base?.file).toBe(YML);
+      expect(head).toEqual({
+        file: product().manifestJson,
+        review: { rules: [] },
+      });
+      expect(reviewRulesGuard(base, head)).toEqual({
+        rule: "review-rules-changed",
+        reviews: 1,
+        lenses: ["governance"],
+        blocksMerge: true,
+      });
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("a key order change alone is not a change", () => {
+    const reordered = {
+      rules: core.rules.map((r) => ({
+        require: r.require,
+        match: r.match,
+        name: r.name,
+      })),
+    };
+    expect(reviewRulesGuard(base, { file: YML, review: reordered })).toBeNull();
   });
 });

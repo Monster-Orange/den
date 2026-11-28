@@ -152,6 +152,33 @@ export function matchReview(
     }));
 }
 
+function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.keys(v as Record<string, unknown>)
+        .sort()
+        .map((k) => [k, canonical((v as Record<string, unknown>)[k])]),
+    );
+  return v;
+}
+
+export type ReviewAt = ReturnType<typeof reviewAt>;
+
+export function reviewRulesGuard(
+  base: ReviewAt,
+  head: ReviewAt,
+): MatchedRule | null {
+  const section = (a: ReviewAt) => JSON.stringify(canonical(a?.review ?? null));
+  if (base && head && section(base) === section(head)) return null;
+  return {
+    rule: "review-rules-changed",
+    reviews: 1,
+    lenses: ["governance"],
+    blocksMerge: true,
+  };
+}
+
 /** How wide an author kind is: any takes both. */
 const AUTHORS_WIDTH = { people: 1, agents: 1, any: 2 } as const;
 
