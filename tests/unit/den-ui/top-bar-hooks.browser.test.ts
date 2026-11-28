@@ -31,7 +31,7 @@ const CRUMBS = [
     key: "company",
     label: "Company",
     value: "A company with a long name",
-    optional: "wide",
+    optional: "wide" as const,
   },
   {
     key: "project",
