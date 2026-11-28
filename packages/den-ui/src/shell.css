@@ -1234,6 +1234,17 @@ body.den-has-shell .den-upd {
     display: none;
   }
 }
+@media (max-width: 1023.98px) {
+  .den-scope .den-opt-wide {
+    display: none;
+  }
+}
+.den-scope.den-crumbs-bare .den-k {
+  display: none;
+}
+.den-scope.den-crumbs-bare .den-ib.den-last {
+  min-width: 0;
+}
 @media (max-width: 720px) {
   /* The search is its icon, in a slot after the brand: the same x in
      every product (--den-top-left-md, 200px; on a phone

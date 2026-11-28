@@ -194,8 +194,8 @@ export interface Crumb {
   id?: string;
   title?: string;
   hidden?: boolean;
-  /** The first to give way on a narrow bar. */
-  optional?: boolean;
+  /** The first to give way on a narrow bar; "wide": shown only from 1024px. */
+  optional?: boolean | "wide";
   cls?: string;
   valueCls?: string;
   /**
@@ -211,6 +211,7 @@ export interface ScopeOptions {
   lang?: string;
   /** The host's HTML at the group's end. */
   after?: string;
+  bare?: boolean;
 }
 /** The search's placeholder and name are the kit's words ("Search…"). */
 export interface SearchOptions {
