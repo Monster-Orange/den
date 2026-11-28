@@ -32,6 +32,7 @@ import * as path from "path";
 import {
   FIXTURE_SESSION_MINUTES,
   FIXTURE_SESSION_RANGE,
+  fixtureSessionPastTime,
   LOGIN_CODE_TTL_MS,
   safeNext,
 } from "./web/web-session.js";
@@ -208,7 +209,7 @@ export function fixtureSessionExpired(
   now: number,
   minutes: number,
 ): boolean {
-  return now - createdAt >= minutes * 60_000;
+  return fixtureSessionPastTime(createdAt, now, minutes);
 }
 
 function mac(secret: Buffer, body: string): Buffer {

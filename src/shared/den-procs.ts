@@ -56,6 +56,7 @@ export function pidAlive(pid: number): boolean {
 export function denProcessPids(
   stateDir: string,
   alive: (pid: number) => boolean = pidAlive,
+  role?: DenProcRole,
 ): number[] | null {
   let names: string[];
   try {
@@ -66,6 +67,7 @@ export function denProcessPids(
   const pids: number[] = [];
   for (const n of names) {
     if (!n.endsWith(".json")) continue;
+    if (role && !n.startsWith(`${role}-`)) continue;
     let rec: { pid?: unknown };
     try {
       rec = JSON.parse(

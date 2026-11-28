@@ -56,7 +56,7 @@ describe("issue 1299: the sessions lock", () => {
     server.create({ host: "c" });
     expect(onDisk()).toBe(3);
     // The other ends a; the server's next write doesn't bring it back.
-    other.end(a.session.key);
+    other.end(a.session.key, "revoked");
     server.create({ host: "d" });
     expect(onDisk()).toBe(3);
     expect(server.lookup(a.id)).toBeNull();

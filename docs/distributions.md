@@ -2509,6 +2509,18 @@ user, and the CLI does that for you:
 ./bin/acme web logout --all  # and rotate web.secret and revoke every agent's token
 ```
 
+`web logout` asks the running server. When the server is there but doesn't
+answer in time, it says so and changes nothing: try again. It edits the
+sessions file itself only when nothing listens on the port and Den's own
+process records (`den-procs/` in the state folder, written when the server
+starts) show no running server. A server started with `DEN_BIND_HOST` on
+another address still counts. Then it holds
+`web-sessions.lock` in the state folder (the server's own writes take it
+too), re-reads the file under it, ends only the sessions it was asked to,
+and records each end in the activity trail. If another running process
+holds that lock, it waits up to `web.sessions_lock_wait_ms` (2000 ms unless
+set), then says so and changes nothing.
+
 - **The link** is `<web.url>/auth?c=<code>` (D80: this install's address), with `&next=<path>`
   for where to land (`web login --next /settings`). The code works once,
   within `web.login_link_ttl` (5 minutes unless set; 30s to 60m, as `90s`,

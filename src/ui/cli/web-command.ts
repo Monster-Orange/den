@@ -46,9 +46,13 @@ import {
   parseOrigin,
   readWebAuthConfig,
   SESSION_TOUCH_MS,
+  sessionByPrefix,
+  sessionEndRow,
   sessionIdPrefix,
   WebSessionStore,
 } from "../../shared/web/web-session.js";
+import { appendAuditRowWhenNoServer } from "../../shared/audit-file.js";
+import { denProcessPids, pidAlive } from "../../shared/den-procs.js";
 import { revokeAllActorTokens } from "../../shared/actor-token.js";
 import { engineBin, engineModuleFile } from "../../shared/engine.js";
 import { readEdgeConfig, readWebPort } from "../../shared/edge/config.js";
@@ -475,15 +479,6 @@ export async function isDenWebRunning(
     (await isDenWebApiRunning(port, probeMs)) &&
     (await isDenWebUiReady(port, probeMs))
   );
-}
-
-function pidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM";
-  }
 }
 
 /**
@@ -1961,6 +1956,8 @@ interface CliIo {
   addressDeps?: Partial<CheckDeps>;
   /** Sign-in: where this runs (tests give its parents and the terminal). */
   person?: PersonCheck;
+  callTimeoutMs?: number;
+  lockWaitMs?: number;
 }
 
 /** Sign-in: personHereRefusal's parts, and whether output is a terminal. */
@@ -2504,18 +2501,31 @@ interface SessionRow {
   host: string;
 }
 
-/**
- * A call to the running server with the person token, or null when no
- * server answers on the port (the caller then edits the state files).
- */
-function serverCall(
+/** Only "none" (the connection was refused) lets a command change the state files itself. */
+export type ServerReply =
+  | { kind: "answer"; status: number; json: unknown }
+  | { kind: "none" }
+  | { kind: "no-answer" };
+
+const NOT_LISTENING = new Set(["ECONNREFUSED", "EADDRNOTAVAIL"]);
+
+const SERVER_CALL_MS = 10_000;
+
+function serverReply(
   stateDir: string,
   port: number,
   method: string,
   p: string,
   body?: unknown,
-): Promise<{ status: number; json: unknown } | null> {
+  timeoutMs: number = SERVER_CALL_MS,
+): Promise<ServerReply> {
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (r: ServerReply) => {
+      if (settled) return;
+      settled = true;
+      resolve(r);
+    };
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const to = webProbeTarget(process.env.DEN_BIND_HOST, port);
     const req = http.request(
@@ -2524,7 +2534,7 @@ function serverCall(
         port,
         path: p,
         method,
-        timeout: 10_000,
+        timeout: timeoutMs,
         setHost: false,
         headers: {
           host: to.hostHeader,
@@ -2548,20 +2558,59 @@ function serverCall(
           } catch {
             /* not JSON */
           }
-          resolve({ status: res.statusCode ?? 0, json });
+          finish({ kind: "answer", status: res.statusCode ?? 0, json });
         });
+        res.on("error", () => finish({ kind: "no-answer" }));
       },
     );
-    req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(null));
+    req.on("timeout", () => {
+      finish({ kind: "no-answer" });
+      req.destroy();
+    });
+    req.on("error", (e: NodeJS.ErrnoException) =>
+      finish(
+        NOT_LISTENING.has(e.code ?? "")
+          ? { kind: "none" }
+          : { kind: "no-answer" },
+      ),
+    );
     req.end(payload);
   });
 }
 
-function offlineStore(stateDir: string): WebSessionStore {
+async function serverCall(
+  stateDir: string,
+  port: number,
+  method: string,
+  p: string,
+  body?: unknown,
+): Promise<{ status: number; json: unknown } | null> {
+  const r = await serverReply(stateDir, port, method, p, body);
+  return r.kind === "answer" ? { status: r.status, json: r.json } : null;
+}
+
+function serverNotRunning(stateDir: string, port: number): void {
+  const pids = denProcessPids(stateDir, pidAlive, "server");
+  if (pids === null)
+    throw new Error(
+      `Den's process records can't be read, so whether Den web runs is unknown; nothing was changed`,
+    );
+  if (pids.length)
+    throw new Error(
+      `Den web is running here (pid ${pids[0]}) but nothing answered on port ${port} at ${webProbeTarget(process.env.DEN_BIND_HOST, port).host}; it may listen on another address (DEN_BIND_HOST). Nothing was changed: run this where DEN_BIND_HOST is set as Den web's`,
+    );
+}
+
+function offlineStore(stateDir: string, lockWaitMs?: number): WebSessionStore {
   return new WebSessionStore({
     stateDir: () => stateDir,
     secret: () => readWebSecret(stateDir),
+    lockWaitMs: () =>
+      lockWaitMs ??
+      readWebAuthConfig(getDistRoot(), product().configFile).sessionsLockWaitMs,
+    onEnd: (ended, why) => {
+      for (const s of ended) appendAuditRowWhenNoServer(stateDir, sessionEndRow(s, why));
+    },
   });
 }
 
@@ -2697,13 +2746,26 @@ export async function cmdWebLogout(
   }
   const id = ids[0];
   const stateDir = io.stateDir ?? getStateDir();
-  const r = await serverCall(stateDir, port, "POST", "/api/web/logout", {
-    ...(id ? { id } : {}),
-    ...(all ? { rotate: true } : {}),
-  });
+  const r = await serverReply(
+    stateDir,
+    port,
+    "POST",
+    "/api/web/logout",
+    {
+      ...(id ? { id } : {}),
+      ...(all ? { rotate: true } : {}),
+    },
+    io.callTimeoutMs,
+  );
   let ended: number;
   let agentTokens = 0;
-  if (r) {
+  if (r.kind === "no-answer") {
+    io.err(
+      `${product().cli}: Den didn't answer on port ${port}; nothing was changed. Try again.\n`,
+    );
+    return 1;
+  }
+  if (r.kind === "answer") {
     if (r.status !== 200) {
       io.err(`${product().cli}: ${apiError(r)}\n`);
       return 1;
@@ -2712,10 +2774,22 @@ export async function cmdWebLogout(
     ended = (j.ended ?? []).length;
     if (typeof j.agentTokens === "number") agentTokens = j.agentTokens;
   } else {
-    // No server: the state files themselves (the same OS user's).
-    const store = offlineStore(stateDir);
+    const store = offlineStore(stateDir, io.lockWaitMs);
+    const serverRecordSaysNoneRuns = () => serverNotRunning(stateDir, port);
     try {
-      ended = id ? (store.endByPrefix(id), 1) : store.endAll();
+      ended = (
+        id
+          ? store.endLocked(
+              (now) => [sessionByPrefix(now, id).key],
+              "revoked",
+              serverRecordSaysNoneRuns,
+            )
+          : store.endLocked(
+              (now) => now.map((x) => x.key),
+              "signed-out-everywhere",
+              serverRecordSaysNoneRuns,
+            )
+      ).length;
     } catch (e) {
       io.err(`${product().cli}: ${(e as Error).message}\n`);
       return 1;

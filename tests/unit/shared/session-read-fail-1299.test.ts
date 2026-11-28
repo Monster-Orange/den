@@ -99,7 +99,9 @@ describe("issue 1299: a failed read never costs a session", () => {
       expect(() => s.consumeCode("nonce-1", T0 + 60_000)).toThrow(
         SessionStoreUnreadable,
       );
-      expect(() => s.endAll()).toThrow(SessionStoreUnreadable);
+      expect(() => s.endAll("signed-out-everywhere")).toThrow(
+        SessionStoreUnreadable,
+      );
       fs.chmodSync(webSessionsPath(tmp), 0o600);
       expect(onDisk()).toBe(3);
       expect(s.lookup(a.id)).not.toBeNull();

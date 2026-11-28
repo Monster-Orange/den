@@ -38,6 +38,24 @@ const LOGIN_CODE_SKEW_MS = 5_000;
 const LOGIN_CONTEXT = "den-login-v1:";
 const SESSION_CONTEXT = "den-session-v1:";
 export const WEB_SESSIONS_FILE = "web-sessions.json";
+
+export function sessionByPrefix(
+  all: SessionView[],
+  prefix: string,
+): SessionView {
+  const p = prefix.trim().toLowerCase();
+  if (!/^[0-9a-f]{4,64}$/.test(p))
+    throw new Error(
+      `"${prefix}" is not a sign-in id prefix (4 or more hex characters, as \`web sessions\` lists them)`,
+    );
+  const hits = all.filter((s) => s.key.startsWith(p));
+  if (hits.length === 0) throw new Error(`No browser sign-in starts with ${p}`);
+  if (hits.length > 1)
+    throw new Error(
+      `${hits.length} browser sign-ins start with ${p}; give more of the id`,
+    );
+  return hits[0];
+}
 /**
  * lastSeenAt is written at most this often per session (so a page load
  * doesn't rewrite the file): `web sessions` shows it to the minute.
@@ -881,6 +899,79 @@ export interface SessionView extends SessionRecord {
   key: string;
 }
 
+export type SessionEndWhy =
+  | "signed-out"
+  | "revoked"
+  | "signed-out-everywhere"
+  | "address-proven"
+  | "fixture-expired"
+  | "fixture-key-changed"
+  | "fixture-not-allowed"
+  | "agent-view-ended";
+
+const END_WORDS: Record<SessionEndWhy, string> = {
+  "signed-out": "signed out",
+  revoked: "revoked from linked devices",
+  "signed-out-everywhere": "signed out everywhere",
+  "address-proven": "Den's own address works now, so sign-in moved there",
+  "fixture-expired":
+    "the test person's sign-in reached its time limit (web.fixture_session_minutes)",
+  "fixture-key-changed": "the test person was set up again",
+  "fixture-not-allowed": "test sign-in isn't allowed here any more",
+  "agent-view-ended": "the agent's view ended",
+};
+
+/** Never the key, the cookie or the CSRF value: only the 8-hex id `web sessions` shows. */
+export function sessionEndRow(
+  s: SessionView,
+  why: SessionEndWhy,
+): { verb: "session-end"; detail: string; principal: string } {
+  const kind =
+    s.via === "fixture"
+      ? "test person"
+      : s.via === "agent-view"
+        ? "agent view"
+        : "browser";
+  const principal =
+    s.via === "fixture"
+      ? "fixture:person"
+      : s.via === "agent-view" && s.agent
+        ? `agent:${s.agent}`
+        : s.login
+          ? `person:${s.login}`
+          : "person";
+  return {
+    verb: "session-end",
+    detail: `${sessionIdPrefix(s.key)} (${kind}) ended: ${END_WORDS[why]}`,
+    principal,
+  };
+}
+
+export function fixtureSessionPastTime(
+  createdAt: number,
+  now: number,
+  minutes: number,
+): boolean {
+  return now - createdAt >= minutes * 60_000;
+}
+
+export function fixtureSessionEndWhy(
+  s: { createdAt: number; fixtureKey?: string },
+  now: {
+    testInstall: boolean;
+    fingerprint: string | null;
+    minutes: number;
+    now: number;
+  },
+): SessionEndWhy | null {
+  if (!now.testInstall || !now.fingerprint) return "fixture-not-allowed";
+  if (!s.fixtureKey || s.fixtureKey !== now.fingerprint)
+    return "fixture-key-changed";
+  if (fixtureSessionPastTime(s.createdAt, now.now, now.minutes))
+    return "fixture-expired";
+  return null;
+}
+
 export function webSessionsPath(stateDir: string = getStateDir()): string {
   return path.join(stateDir, WEB_SESSIONS_FILE);
 }
@@ -1027,23 +1118,22 @@ export class WebSessionStore {
 
   /** Issue 1299: why the last read failed; set, every write is refused. */
   private unreadable: string | null = null;
-  /** Issue 1299: told when a read fails or a bad file is moved aside. */
   private readonly onProblem?: (msg: string, kind: SessionStoreProblem) => void;
-  /** Issue 1299: how long a write waits for another process's lock (ms). */
   private readonly lockWaitMs: () => number;
+  private readonly onEnd?: (ended: SessionView[], why: SessionEndWhy) => void;
 
   constructor(opts: {
     stateDir?: () => string;
     secret: () => Buffer | null;
     now?: () => number;
-    /** Issue 1299: told when a read fails (the server log); never contents. */
+    onEnd?: (ended: SessionView[], why: SessionEndWhy) => void;
     onProblem?: (msg: string, kind: SessionStoreProblem) => void;
-    /** Issue 1299: web.sessions_lock_wait_ms (default 2000). */
     lockWaitMs?: () => number;
   }) {
     this.stateDir = opts.stateDir ?? getStateDir;
     this.secret = opts.secret;
     this.now = opts.now ?? Date.now;
+    this.onEnd = opts.onEnd;
     this.onProblem = opts.onProblem;
     this.lockWaitMs = opts.lockWaitMs ?? (() => SESSIONS_LOCK_WAIT_MS);
   }
@@ -1053,6 +1143,15 @@ export class WebSessionStore {
       this.onProblem?.(msg, kind);
     } catch {
       /* the log is best effort */
+    }
+  }
+
+  private told(ended: SessionView[], why: SessionEndWhy): void {
+    if (!ended.length || !this.onEnd) return;
+    try {
+      this.onEnd(ended, why);
+    } catch {
+      /* the end stands */
     }
   }
 
@@ -1182,11 +1281,13 @@ export class WebSessionStore {
   private write<R>(
     change: (data: StoreFile) => { save: boolean; value: R },
     waitMs = this.waitMs(),
+    busyAsIs = false,
   ): R {
     let release: () => void;
     try {
       release = this.lock(waitMs);
     } catch (e) {
+      if (busyAsIs && e instanceof WebSessionsBusy) throw e;
       const code =
         e instanceof WebSessionsBusy
           ? "EBUSY"
@@ -1450,53 +1551,74 @@ export class WebSessionStore {
   }
 
   /** End the session with this key. */
-  end(key: string): boolean {
-    return this.write((d) => {
-      if (!d.sessions[key]) return { save: false, value: false };
+  end(key: string, why: SessionEndWhy): boolean {
+    const gone = this.write((d) => {
+      const r = d.sessions[key];
+      if (!r) return { save: false, value: null };
       delete d.sessions[key];
-      return { save: true, value: true };
+      return { save: true, value: { key, ...r } };
     });
+    if (!gone) return false;
+    this.told([gone], why);
+    return true;
   }
 
   /** End every session `which` picks, in one write. Returns their keys. */
-  endWhere(which: (s: SessionView) => boolean): string[] {
-    return this.write((d) => {
-      const keys = Object.entries(d.sessions)
-        .filter(([key, r]) => which({ key, ...r }))
-        .map(([key]) => key);
-      for (const k of keys) delete d.sessions[k];
-      return { save: keys.length > 0, value: keys };
+  endWhere(which: (s: SessionView) => boolean, why: SessionEndWhy): string[] {
+    const ended = this.write((d) => {
+      const picked = Object.entries(d.sessions)
+        .map(([key, r]) => ({ key, ...r }))
+        .filter((v) => which(v));
+      for (const v of picked) delete d.sessions[v.key];
+      return { save: picked.length > 0, value: picked };
     });
+    this.told(ended, why);
+    return ended.map((v) => v.key);
   }
 
-  /**
-   * End the one session whose key starts with `prefix` (4 hex at least).
-   * Throws when none or several match.
-   */
-  endByPrefix(prefix: string): SessionView {
-    const p = prefix.trim().toLowerCase();
-    if (!/^[0-9a-f]{4,64}$/.test(p))
-      throw new Error(
-        `"${prefix}" is not a session id prefix (4 or more hex characters, as \`web sessions\` lists them)`,
-      );
-    const hits = this.list().filter((s) => s.key.startsWith(p));
-    if (hits.length === 0)
-      throw new Error(`No browser session starts with ${p}`);
-    if (hits.length > 1)
-      throw new Error(
-        `${hits.length} browser sessions start with ${p}; give more of the id`,
-      );
-    this.end(hits[0].key);
-    return hits[0];
+  endByPrefix(prefix: string, why: SessionEndWhy): SessionView {
+    const hit = sessionByPrefix(this.list(), prefix);
+    this.end(hit.key, why);
+    return hit;
   }
 
   /** End every browser session; how many there were. */
-  endAll(): number {
-    return this.write((d) => {
-      const n = Object.keys(d.sessions).length;
+  endAll(why: SessionEndWhy): number {
+    const ended = this.write((d) => {
+      const all = Object.entries(d.sessions).map(([key, r]) => ({
+        key,
+        ...r,
+      }));
       d.sessions = {};
-      return { save: true, value: n };
+      return { save: true, value: all };
     });
+    this.told(ended, why);
+    return ended.length;
+  }
+
+  /** For a process other than the server: ends only what `choose` picks from the file as it is under the lock. */
+  endLocked(
+    choose: (all: SessionView[]) => string[],
+    why: SessionEndWhy,
+    throwToChangeNothing?: () => void,
+  ): SessionView[] {
+    const ended = this.write(
+      (d) => {
+        throwToChangeNothing?.();
+        const all = Object.entries(d.sessions).map(([key, r]) => ({
+          key,
+          ...r,
+        }));
+        const pick = new Set(choose(all));
+        const gone = all.filter((v) => pick.has(v.key));
+        for (const v of gone) delete d.sessions[v.key];
+        return { save: gone.length > 0, value: gone };
+      },
+      this.waitMs(),
+      true,
+    );
+    this.told(ended, why);
+    return ended;
   }
 }
 
