@@ -93,7 +93,8 @@ function copyTail(from: string, to: string, bytes: number): void {
       const nl = probe.subarray(0, read).indexOf(0x0a);
       if (nl !== -1) start += nl + 1;
     }
-    const dst = fs.openSync(to, "w");
+    const dst = fs.openSync(to, "w", 0o600);
+    fs.fchmodSync(dst, 0o600);
     try {
       const buf = Buffer.alloc(1024 * 1024);
       let pos = start;
@@ -116,6 +117,32 @@ function copyTail(from: string, to: string, bytes: number): void {
  * Returns the paths rotated. Never throws — a sweep failure must not take the
  * server down.
  */
+export function makeLogsPrivate(logRoot: string): void {
+  const walk = (p: string) => {
+    let st: fs.Stats;
+    try {
+      st = fs.lstatSync(p);
+    } catch {
+      return;
+    }
+    if (st.isSymbolicLink()) return;
+    try {
+      fs.chmodSync(p, st.isDirectory() ? 0o700 : 0o600);
+    } catch {
+      return;
+    }
+    if (!st.isDirectory()) return;
+    let names: string[];
+    try {
+      names = fs.readdirSync(p);
+    } catch {
+      return;
+    }
+    for (const n of names) walk(path.join(p, n));
+  };
+  walk(logRoot);
+}
+
 export function sweepLogs(
   logRoot: string,
   maxBytes: number = MAX_LOG_BYTES,

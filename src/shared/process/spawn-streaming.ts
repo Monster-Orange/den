@@ -21,7 +21,7 @@ import { product } from "../product.js";
  */
 export function getServiceLogPath(repoName: string, subsystem: string): string {
   const dir = path.join(getServiceLogRoot(), repoName);
-  fs.mkdirSync(dir, { recursive: true });
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   return path.join(dir, `${subsystem}.log`);
 }
 
@@ -76,7 +76,7 @@ export function spawnDaemon(
   onServiceExit?: (exitCode: number) => void,
   onSpawn?: (pid: number) => void,
 ): ReturnType<typeof spawn> {
-  fs.mkdirSync(path.dirname(logPath), { recursive: true });
+  fs.mkdirSync(path.dirname(logPath), { recursive: true, mode: 0o700 });
 
   // Cap the log before the next run appends to it. Cheap (one statSync) and it
   // covers restart-heavy services; the periodic sweep in the server catches
@@ -85,7 +85,9 @@ export function spawnDaemon(
 
   // Stamp the log so the tail starts reading from a clean boundary.
   const ts = new Date().toISOString();
-  fs.appendFileSync(logPath, `\n\n─── ${product().cli} start ${ts} ───\n`);
+  fs.appendFileSync(logPath, `\n\n─── ${product().cli} start ${ts} ───\n`, {
+    mode: 0o600,
+  });
   // Where this run's output starts. The tail reads from here, not from "the
   // end when tail opened": a fast command (a refused sudo, a typo) can write
   // and exit before tail starts, and `-n 0` would drop those lines.
@@ -96,7 +98,8 @@ export function spawnDaemon(
   // O_APPEND recomputes the offset to EOF on every write. With plain O_WRONLY
   // the child would keep its old offset and write a multi-GB sparse hole of
   // NULs. See log-rotation.ts.
-  const logFd = fs.openSync(logPath, "a");
+  const logFd = fs.openSync(logPath, "a", 0o600);
+  fs.fchmodSync(logFd, 0o600);
 
   const svcProc = spawn(command, [], {
     env,
