@@ -1,11 +1,13 @@
+import { latestShell } from "/shell-pick.js";
+import { reconnectOptions } from "/pane-reconnect.js";
 import { attnSub, bandsOf, byNeed } from "/agent-bands.js";
 import { groupsLineHtml, groupsOffered, groupsViewHtml, viewSwitchHtml } from "/agent-groups.js";
 import { toolsBarHtml } from "/agents-bar.js";
-import { CLI, SERVER_WS, TITLE, esc, rowOf, st, t } from "/agents-core.js";
+import { BY, CLI, LAYOUTS, SERVER_WS, TITLE, agentPath, api, esc, rowOf, st, t } from "/agents-core.js";
 import { refresh } from "/agents-data.js";
-import { closePane } from "/agents-panes.js";
+import { closePane, openPane } from "/agents-panes.js";
 import { orderRowHtml, reorderBandHtml, reorderStoppedHtml, runningMovable, stoppedMovable } from "/agents-reorder.js";
-import { exitedShell, exitedShellHtml, inStopped, pcAttr, projName, rowHtml, seenMap, stoppedHtml, wsLinkHtml } from "/agents-rows.js";
+import { exitedShell, exitedShellHtml, inStopped, isStopped, pcAttr, projName, rowHtml, seenMap, stoppedHtml, wsLinkHtml } from "/agents-rows.js";
 import { agoPlain } from "/agents-start-dialog.js";
 import { PAGE, phone, pickedWorkspace, shellUsed, shownLayout, urlWorkspace, viewWorkspaces, writeUrl } from "/agents-url.js";
 import { belongsOn, movedNoteHtml, terminalGroups, terminalRowHtml, terminalsCountText } from "/terminals-list.js";
@@ -519,4 +521,142 @@ function scopeLabelFor(shown) {
   return st.scope === "all" ? t("ag.all") : projName(st.scope);
 }
 
-export { GROUPS_EVERY_MS, LIST_FLOOR_MIN_PX, LIST_FLOOR_ROWS, MOVED_KEY, STOPPED_OPEN_KEY, fitListFloor, hideOtherProjects, inView, listFocusKey, loadGroups, movedNote, movedSeen, paintList, paintSub, placeHelperToggles, scopeLabelFor, setList, showProject, stoppedGroupHtml, stoppedOpen, switchToProjectOf, terminalsBodyHtml, visibleRows };
+
+/** Issue 278: a person looked: the loop is over for now; held deliveries go. */
+async function clearCompacting(r, button) {
+  await window.denShell.busyAction(
+    "save",
+    (headers) =>
+      api("POST", agentPath(r, "compacting-clear"), undefined, { headers }),
+    {
+      button,
+      success: () => t("ag.ctx.cleared", { id: r.agent }),
+    },
+  );
+  await refresh();
+}
+
+function markMovedSeen() {
+  try {
+    localStorage.setItem(MOVED_KEY, "1");
+  } catch {
+    /* none: shown again on the next load */
+  }
+}
+
+/** Issue 482: the Terminals page, in the project in view. */
+function terminalsHref() {
+  const view = viewWorkspaces();
+  return view.length === 1
+    ? `/terminals?project=${encodeURIComponent(view[0])}`
+    : "/terminals";
+}
+
+function setBy(by) {
+  st.by = BY.includes(by) ? by : "need";
+  try {
+    localStorage.setItem("den-agents-by", st.by);
+  } catch {
+    /* this page only */
+  }
+  paintList();
+}
+
+function saveStoppedOpen(open) {
+  try {
+    localStorage.setItem(STOPPED_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    /* none: this page only */
+  }
+}
+
+/** #80: All active, with the hidden tabs back. */
+async function showAllActive() {
+  try {
+    // busy-ok: the stored view follows the page; the reload is its answer
+    await window.denShell?.api?.("POST", "/api/scope", { scope: "all" });
+  } catch {
+    /* the link below still shows every project for this page */
+  }
+  const u = new URL(location.href);
+  u.searchParams.delete("ws");
+  u.searchParams.delete("project");
+  u.searchParams.set(
+    "open",
+    [...new Set([...st.open, ...st.hiddenOpen])].join(","),
+  );
+  location.assign(
+    u.pathname + "?" + u.searchParams.toString().replace(/%2C/gi, ","),
+  );
+}
+
+/** #80: "Back to <project>": the project left, its tabs back. */
+async function switchBack() {
+  const ws = st.switchedFrom;
+  if (!ws) return;
+  st.switchedFrom = null;
+  await showProject(ws);
+  // Its tabs come back from where the browser kept them.
+  for (const id of [...st.hiddenOpen]) {
+    const r = rowOf(id);
+    if (r && inView(r)) {
+      st.hiddenOpen = st.hiddenOpen.filter((x) => x !== id);
+      await openPane(id);
+    }
+  }
+  paintList();
+  writeUrl();
+}
+
+/**
+ * #80, scope wins: no pane of this project is open (the top bar's project
+ * changed under the pane): its most recent running agent comes in front,
+ * else the pane says to pick one there.
+ */
+async function paneFollowsProject() {
+  if (st.open.length) return;
+  const view = viewWorkspaces();
+  if (view.length !== 1) return;
+  // Issue 482: the Terminals page: the project's terminal used last.
+  if (PAGE === "terminal") {
+    const sh = latestShell(visibleRows(), view[0], shellUsed());
+    if (sh) await openPane(sh.id);
+    return;
+  }
+  const latest = visibleRows()
+    .filter(
+      (r) => r.kind === "agent" && !isStopped(r) && r.workspace === view[0],
+    )
+    .sort((a, b) => (b.startedAt ?? "").localeCompare(a.startedAt ?? ""))[0];
+  if (latest) await openPane(latest.id);
+}
+
+/**
+ * The person's layout (GET /api/settings agents_layout), else Focus; and
+ * where a path link opens (editor_open), else none.
+ */
+async function savedLayout() {
+  try {
+    const r = await fetch("/api/settings", { headers: { accept: "json" } });
+    const b = r.ok ? await r.json() : null;
+    if (typeof b?.editor_open === "string") st.editorOpen = b.editor_open;
+    st.reconnect = reconnectOptions(b?.panes_reconnect);
+    if (Number.isInteger(b?.agents_helpers_shown) && b.agents_helpers_shown > 0)
+      st.helpersShown = b.agents_helpers_shown;
+    return LAYOUTS.includes(b?.agents_layout) ? b.agents_layout : "focus";
+  } catch {
+    return "focus";
+  }
+}
+
+async function loadScope() {
+  try {
+    const r = await fetch("/api/scope");
+    const s = r.ok ? await r.json() : null;
+    st.scope = s?.scope ?? "all";
+  } catch {
+    st.scope = "all";
+  }
+}
+
+export { GROUPS_EVERY_MS, LIST_FLOOR_MIN_PX, LIST_FLOOR_ROWS, MOVED_KEY, STOPPED_OPEN_KEY, clearCompacting, fitListFloor, hideOtherProjects, inView, listFocusKey, loadGroups, loadScope, markMovedSeen, movedNote, movedSeen, paintList, paintSub, paneFollowsProject, placeHelperToggles, saveStoppedOpen, savedLayout, scopeLabelFor, setBy, setList, showAllActive, showProject, stoppedGroupHtml, stoppedOpen, switchBack, switchToProjectOf, terminalsBodyHtml, terminalsHref, visibleRows };
