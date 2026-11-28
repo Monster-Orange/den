@@ -1245,7 +1245,8 @@
     "role": "dialog",
     "aria-label": "Report an issue",
     "data-step": "write",
-    "open": ""
+    "open": "",
+    "style": "--fb-vh: 900px; --fb-top: 16px;"
    },
    "kids": [
     {
@@ -1457,7 +1458,8 @@
       {
        "tag": "div",
        "attrs": {
-        "class": "fb-shot"
+        "class": "fb-shot",
+        "data-shot-box": ""
        },
        "kids": [
         {
@@ -1487,6 +1489,17 @@
          },
          "kids": [],
          "text": "Undo"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "fb-maskmode",
+          "data-act": "maskmode",
+          "aria-pressed": "false"
+         },
+         "kids": [],
+         "text": "Mask an area"
         },
         {
          "tag": "label",
@@ -1716,30 +1729,30 @@
     "count": 1,
     "rect": [
      339,
-     970.88,
+     835,
      602,
-     40
+     64
     ],
     "style": {
      "display": "flex",
-     "position": "static",
+     "position": "sticky",
      "font-family": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"Noto Sans\", Helvetica, Arial, sans-serif",
      "font-size": "16px",
      "font-weight": "400",
      "line-height": "normal",
      "color": "rgb(36, 30, 24)",
-     "background-color": "rgba(0, 0, 0, 0)",
+     "background-color": "rgb(255, 255, 255)",
      "border-top-width": "0px",
      "border-top-color": "rgb(36, 30, 24)",
      "border-radius": "0px",
-     "padding-top": "0px",
+     "padding-top": "8px",
      "padding-right": "0px",
-     "padding-bottom": "0px",
+     "padding-bottom": "16px",
      "padding-left": "0px",
      "margin-top": "14px",
      "margin-left": "0px",
      "gap": "8px",
-     "z-index": "auto",
+     "z-index": "1",
      "opacity": "1",
      "box-shadow": "none"
     }
@@ -3149,7 +3162,8 @@
     "role": "dialog",
     "aria-label": "Report an issue",
     "data-step": "write",
-    "open": ""
+    "open": "",
+    "style": "--fb-vh: 844px; --fb-top: 16px;"
    },
    "kids": [
     {
@@ -3361,7 +3375,8 @@
       {
        "tag": "div",
        "attrs": {
-        "class": "fb-shot"
+        "class": "fb-shot",
+        "data-shot-box": ""
        },
        "kids": [
         {
@@ -3391,6 +3406,17 @@
          },
          "kids": [],
          "text": "Undo"
+        },
+        {
+         "tag": "button",
+         "attrs": {
+          "type": "button",
+          "class": "fb-maskmode",
+          "data-act": "maskmode",
+          "aria-pressed": "false"
+         },
+         "kids": [],
+         "text": "Mask an area"
         },
         {
          "tag": "label",
@@ -3620,9 +3646,9 @@
     "count": 1,
     "rect": [
      15,
-     707,
+     699,
      360,
-     150
+     158
     ],
     "style": {
      "display": "flex",
@@ -3636,14 +3662,14 @@
      "border-top-width": "0px",
      "border-top-color": "rgb(36, 30, 24)",
      "border-radius": "0px",
-     "padding-top": "0px",
+     "padding-top": "8px",
      "padding-right": "0px",
      "padding-bottom": "14px",
      "padding-left": "0px",
      "margin-top": "14px",
      "margin-left": "0px",
      "gap": "8px",
-     "z-index": "auto",
+     "z-index": "1",
      "opacity": "1",
      "box-shadow": "none"
     }
