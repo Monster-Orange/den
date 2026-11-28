@@ -23,7 +23,7 @@ import { type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import type { Browser, Page } from "playwright";
+import type { Browser, Page, Request } from "playwright";
 import { denAuth } from "./helpers/den-auth.js";
 import { startDenServer } from "../../child-servers.js";
 import { closeBrowserSuite } from "../../browser-teardown.js";
@@ -195,6 +195,8 @@ const untilTxt = (p: Page, sel: string, want: string) =>
       { timeout: 5_000 },
     )
     .catch(() => undefined);
+
+const SLOW_SAVE_MS = 1_000;
 
 describe("the runs dock (R16)", () => {
   it("is on every page: a bar at the foot of the content column, closed until asked", async () => {
@@ -403,6 +405,16 @@ describe("the runs dock (R16)", () => {
   it("stays open across a click to another page, and lands there", async () => {
     if (!browser) return;
     const p = await open("/services");
+    const shutting = (r: Request) =>
+      r.method() === "POST" &&
+      new URL(r.url()).pathname === "/api/settings" &&
+      (r.postDataJSON() as { shell?: { dock?: unknown } })?.shell?.dock ===
+        false;
+    await p.context().route("**/api/settings", async (r) => {
+      if (shutting(r.request()))
+        await new Promise((ok) => setTimeout(ok, SLOW_SAVE_MS));
+      await r.continue();
+    });
     await p.click('#den-dock [data-act="dock"]');
     await p.waitForSelector("#den-dock-out");
     await Promise.all([
@@ -418,7 +430,9 @@ describe("the runs dock (R16)", () => {
     ).toBe("page");
     await p.waitForSelector("#den-dock-out");
     expect(await runs(p, "isOpen")).toBe(true);
+    const shutSaved = p.waitForResponse((r) => shutting(r.request()));
     await p.click('#den-dock [data-act="dock"]');
+    await shutSaved;
     await Promise.all([
       p.waitForURL(/\/services$/),
       p.click('.den-rail .den-ni[data-nav="services"]'),
