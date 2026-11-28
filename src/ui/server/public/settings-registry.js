@@ -683,10 +683,11 @@ function drawIssueWrites(host, ctx) {
   const viewOnly =
     typeof document !== "undefined" &&
     document.documentElement.dataset.denView === "read-only";
-  jobsLoad ??= ctx.shell
-    .api("GET", "/api/personas")
-    .catch(() => null)
-    .then((reg) => issueWriteJobs(reg));
+  jobsLoad ??= (
+    ctx.shell.configInvalid?.() === true
+      ? Promise.resolve(null)
+      : ctx.shell.api("GET", "/api/personas").catch(() => null)
+  ).then((reg) => issueWriteJobs(reg));
   void jobsLoad.then((items) => {
     if (!host.isConnected && host.ownerDocument) return;
     if (!Array.isArray(roles)) {
