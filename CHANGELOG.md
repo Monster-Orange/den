@@ -18,6 +18,7 @@ config and manifest changes a distribution must make to move to it under
 ### Fixed
 
 - UI kit: the save-state line's Copy text is a 44px target on touch and at 480px wide or less, so a product no longer sizes `.den-savestate button` itself (issue 1976).
+- On the Graph page, a service's details popped out are now a dialog like Den's other pop-ups: named by the service, with Close, Esc, Report, and the keyboard back on the card when it shuts. Dock puts them back at the side.
 - UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
 
 - The approval dialog no longer brings back a request you just denied or allowed. A check of what waits that was already under way when you answered could open it again with that request. (issue 1898)

@@ -912,6 +912,11 @@
     "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
       "src/ui/server/public/agents-*.js"
+    ],
+    "tests/unit/server/graph-popout-837.browser.test.ts": [
+      "src/ui/server/public/graph.js",
+      "src/ui/server/public/graph.css",
+      "src/ui/server/public/panel.js"
     ]
   },
   "subjectless": [],
@@ -1175,6 +1180,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
@@ -1374,6 +1380,7 @@
         "tests/unit/server/embed-frame.browser.test.ts",
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -1618,6 +1625,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
@@ -1738,6 +1746,7 @@
         "tests/unit/server/error-frame.browser.test.ts",
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/gate-chip.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -1886,6 +1895,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
@@ -2075,6 +2085,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
@@ -2191,6 +2202,7 @@
         "tests/unit/server/bell-v6.browser.test.ts",
         "tests/unit/server/bell.browser.test.ts",
         "tests/unit/server/config-invalid-page.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
@@ -2478,6 +2490,7 @@
         "tests/unit/server/graph-edges-flow.browser.test.ts",
         "tests/unit/server/graph-health-cards.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
+        "tests/unit/server/graph-popout-837.browser.test.ts",
         "tests/unit/server/health-poll-1022.browser.test.ts",
         "tests/unit/server/held-focus-den-1434.browser.test.ts",
         "tests/unit/server/hub-switch.browser.test.ts",
@@ -4072,6 +4085,15 @@
         "src/ui/server/graph-prefs.ts"
       ],
       "run": ["tests/unit/server/graph-many-groups.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "src/ui/server/public/graph.css",
+        "src/ui/server/public/graph.js",
+        "src/ui/server/public/panel.js"
+      ],
+      "run": ["tests/unit/server/graph-popout-837.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

@@ -78,10 +78,6 @@ const KNOWN: Record<string, { n: number; how: string }> = {
     n: 1,
     how: "the gate queue (issue 144): a dialog on the body, given Report by the injector (gate-chip.browser.test.ts)",
   },
-  "graph.js": {
-    n: 1,
-    how: "the popped detail panel: reportFoot() drawn with it (panel.js, den#143)",
-  },
   "popover.js": { n: 3, how: "not a pop-up: how pop-ups close" },
   "report-inject.js": { n: 2, how: "not a pop-up: the injector's own list" },
 };
@@ -389,10 +385,8 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     await p.click(".dg-card");
     await p.waitForSelector(".dg-panel:not([hidden])");
     await p.click(".dg-panel [data-popout]");
-    await p.waitForSelector(".dg-panel[role=dialog]");
-    const tabs = p.locator(
-      '.dg-panel[role=dialog] [role="tab"][aria-selected="false"]',
-    );
+    await p.waitForSelector("dialog#dg-pop[open]");
+    const tabs = p.locator('dialog#dg-pop [role="tab"][aria-selected="false"]');
     if (await tabs.count()) await tabs.first().click();
     await p.waitForTimeout(300);
     await p.keyboard.press("Escape");
@@ -415,7 +409,7 @@ describe("the Report button in every pop-up (FB, den#81)", () => {
     await p.waitForSelector("#den-lock-pop");
     await p.waitForTimeout(300);
     expect((await reportSeen(p)).sort()).toEqual(
-      ["#den-bell-pop", "#den-lock-pop", ".dg-panel[role=dialog]"].sort(),
+      ["#den-bell-pop", "#den-lock-pop", "dialog#dg-pop"].sort(),
     );
     expect(await reportMisses(p)).toEqual([]);
     await ctx.close();
