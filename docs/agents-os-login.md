@@ -8,9 +8,8 @@ Not in use yet: setup makes the login and doctor checks it, but Den's server
 doesn't start agents through it until a later slice. Until then agents still
 run as the person, and setup and doctor say so.
 
-This Den version still owes some checks before the login is safe to use:
-access lists (ACLs) on Den's runtime on macOS, and service logs private to
-the person's login. Until that list (`OS_LOGIN_OWED`) is empty, `agents
+This Den version still owes a check before the login is safe to use: service
+logs private to the person's login. Until that list (`OS_LOGIN_OWED`) is empty, `agents
 os-login setup` and `agents session` refuse with "the agents' own login isn't
 ready on this Den version yet", and name what is still to come. Each later
 slice removes its own item.
@@ -140,6 +139,9 @@ These hold before the server starts any agent as the agents' login:
    sandbox denies looking at other processes.
 3. The person's Den never trusts or follows a link in `own/`.
 4. Every launch checks that the agents' login can't write Den's runtime, or
-   any folder above it, before it starts. The check reads owners and mode bits
-   only: access control lists (ACLs) aren't checked yet. That check is on the
-   owed list above, so setup and launch refuse until it lands.
+   any folder above it, before it starts. The check reads owners, mode bits
+   and, on macOS, access control lists (ACLs) from `ls -le`. An allow entry
+   with a right to write, append, delete, add or remove files, or change
+   attributes, owner or ACL counts when it names the agents' login, a group
+   it is in, everyone, or an id `ls` can't name. If the ACLs can't be read,
+   the check fails.
