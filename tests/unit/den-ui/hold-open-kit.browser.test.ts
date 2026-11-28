@@ -37,7 +37,8 @@ const PAGE = `<!doctype html>
 </head><body>
 <button id="outside" type="button">Outside</button>
 <dialog id="dlg"><p>Resolve all?</p>
-  <button id="d-other" type="button">Cancel</button>
+  <a id="d-cancel" href="#cancel">Cancel</a>
+  <button id="d-other" type="button">Later</button>
   <button id="d-go" type="button" value="go">Resolve all</button></dialog>
 <details id="menu"><summary id="m-sum">More</summary>
   <div role="menu"><button id="m-go" type="button" role="menuitem">Mark shipped</button>
@@ -65,9 +66,9 @@ document.getElementById("pageform").addEventListener("submit", (e) => {
 window.ready = true;
 </script></body></html>`;
 
-async function openPage(browser: Browser): Promise<Page> {
+async function openPage(browser: Browser, width = 1280): Promise<Page> {
   const ctx = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
+    viewport: { width, height: 800 },
     reducedMotion: "reduce",
   });
   const p = await ctx.newPage();
@@ -107,12 +108,17 @@ type W = Window & {
   holdOpen: (
     c: Element,
     work: unknown,
-    o?: { button?: Element; value?: string; close?: boolean },
+    o?: {
+      button?: Element;
+      value?: string;
+      closeNow?: boolean;
+    },
   ) => Promise<{ ok: boolean; value?: unknown; error?: unknown }>;
   mountDialog: (el: Element, o: Record<string, unknown>) => unknown;
   openPopover: (a: Element, o: Record<string, unknown>) => { el: Element };
   result?: { ok: boolean; value?: unknown };
   dlgClosed?: string;
+  failed?: string;
 };
 
 const log = (p: Page) => p.evaluate(() => (window as unknown as W).log);
@@ -123,7 +129,10 @@ const answer = (p: Page, ok: boolean) =>
   p.evaluate((ok) => {
     const w = window as unknown as W;
     if (ok) w.answer!.ok("done");
-    else w.answer!.no(new Error("The server said no."));
+    else {
+      w.failed = `refused ${Date.now()}`;
+      w.answer!.no(new Error(w.failed));
+    }
   }, ok);
 const settled = (p: Page) =>
   p.waitForFunction(() => !!(window as unknown as W).result);
@@ -168,7 +177,9 @@ async function expectFailed(p: Page, button: string, other: string) {
   expect(await attr(p, button, "aria-busy")).toBeNull();
   const alert = p.locator('[role="alert"]');
   expect(await alert.count()).toBe(1);
-  expect(await alert.textContent()).toBe("The server said no.");
+  expect(await alert.textContent()).toBe(
+    await p.evaluate(() => (window as unknown as W).failed),
+  );
   expect(
     await p
       .locator(other)
@@ -180,6 +191,21 @@ async function expectFailed(p: Page, button: string, other: string) {
   ).toBe(false);
   expect(await active(p)).toBe(button.slice(1));
 }
+
+const openKitPopover = (p: Page) =>
+  p.evaluate(() => {
+    const w = window as unknown as W;
+    const box = document.createElement("div");
+    box.innerHTML =
+      '<button id="k-go" type="button">Approve all</button> <button id="k-other" type="button">Later</button>';
+    box
+      .querySelector("#k-other")!
+      .addEventListener("click", () => w.log.push("k-other"));
+    w.openPopover(document.getElementById("kit-anchor")!, {
+      content: box,
+      label: "Card",
+    });
+  });
 
 describe.each(["chromium", "webkit"])(
   "the kit's holdOpen in %s (issue 2013)",
@@ -256,6 +282,100 @@ describe.each(["chromium", "webkit"])(
       await p.context().close();
     });
 
+    it("a press on a held dialog's link, then on its scrim, leaves focus on the button at 390", async () => {
+      if (skip()) return;
+      const p = await openPage(browsers[name], 390);
+      await p.evaluate(() =>
+        (document.getElementById("dlg") as HTMLDialogElement).showModal(),
+      );
+      await hold(p, "#dlg", "#d-go");
+      await p.evaluate(() =>
+        document
+          .getElementById("d-go")!
+          .addEventListener("blur", () =>
+            (window as unknown as W).log.push("blur"),
+          ),
+      );
+      await p.locator("#d-cancel").click({ force: true });
+      expect(await active(p)).toBe("d-go");
+      await p.mouse.click(4, 790);
+      expect(await active(p)).toBe("d-go");
+      expect(
+        await p.locator("#dlg").evaluate((d) => (d as HTMLDialogElement).open),
+      ).toBe(true);
+      expect(await p.evaluate(() => location.hash)).toBe("");
+      expect(await log(p)).not.toContain("blur");
+      await p.context().close();
+    });
+
+    it("with no request it lets go when the busy hold ends (a failed page post)", async () => {
+      if (skip()) return;
+      const p = await openPage(browsers[name]);
+      await p.evaluate(() => {
+        const w = window as unknown as W;
+        (document.getElementById("dlg") as HTMLDialogElement).showModal();
+        const b = document.getElementById("d-go")!;
+        b.setAttribute("aria-busy", "true");
+        b.setAttribute("aria-disabled", "true");
+        b.focus();
+        void w.holdOpen(document.getElementById("dlg")!, undefined, {
+          button: b,
+        });
+      });
+      expect(await attr(p, "#d-other", "disabled")).toBe("");
+      await p.evaluate(() => {
+        const b = document.getElementById("d-go")!;
+        b.removeAttribute("aria-busy");
+        b.removeAttribute("aria-disabled");
+      });
+      await p.waitForFunction(
+        () =>
+          !(document.getElementById("d-other") as HTMLButtonElement).disabled,
+      );
+      await p.keyboard.press("Escape");
+      expect(
+        await p.locator("#dlg").evaluate((d) => (d as HTMLDialogElement).open),
+      ).toBe(false);
+      await p.context().close();
+    });
+
+    it("closeNow shuts a menu at once and holds its summary until the answer", async () => {
+      if (skip()) return;
+      const p = await openPage(browsers[name]);
+      await p.locator("#m-sum").click();
+      await p.evaluate(() => {
+        const w = window as unknown as W;
+        w.result = undefined;
+        void w
+          .holdOpen(document.getElementById("menu")!, w.pending(), {
+            button: document.getElementById("m-sum")!,
+            closeNow: true,
+          })
+          .then((r) => (w.result = r));
+      });
+      const open = () =>
+        p.locator("#menu").evaluate((d) => (d as HTMLDetailsElement).open);
+      expect(await open()).toBe(false);
+      expect(await attr(p, "#m-sum", "aria-busy")).toBe("true");
+      expect(await attr(p, "#m-sum", "aria-disabled")).toBe("true");
+      expect(await active(p)).toBe("m-sum");
+      await p.keyboard.press("Enter");
+      await p.locator("#m-sum").click({ force: true });
+      expect(await open()).toBe(false);
+      await answer(p, false);
+      await settled(p);
+      expect(await attr(p, "#m-sum", "aria-busy")).toBeNull();
+      expect(
+        await p
+          .locator("#menu")
+          .evaluate((d) => d.nextElementSibling?.getAttribute("role") ?? ""),
+      ).toBe("alert");
+      expect(await active(p)).toBe("m-sum");
+      await p.locator("#m-sum").click();
+      expect(await open()).toBe(true);
+      await p.context().close();
+    });
+
     it("a <details> menu stays open while its item's request runs", async () => {
       if (skip()) return;
       const p = await openPage(browsers[name]);
@@ -324,22 +444,34 @@ describe.each(["chromium", "webkit"])(
       await p.context().close();
     });
 
+    it("a [popover] stays open with the error on failure", async () => {
+      if (skip()) return;
+      const p = await openPage(browsers[name]);
+      await p.evaluate(() => document.getElementById("pop")!.showPopover());
+      await hold(p, "#pop", "#p-go");
+      await answer(p, false);
+      await expectFailed(p, "#p-go", "#p-other");
+      expect(
+        await p.locator("#pop").evaluate((el) => el.matches(":popover-open")),
+      ).toBe(true);
+      await p.context().close();
+    });
+
+    it("the kit's popover stays open with the error on failure", async () => {
+      if (skip()) return;
+      const p = await openPage(browsers[name]);
+      await openKitPopover(p);
+      await hold(p, '[aria-label="Card"]', "#k-go");
+      await answer(p, false);
+      await expectFailed(p, "#k-go", "#k-other");
+      expect(await p.locator('[aria-label="Card"]').count()).toBe(1);
+      await p.context().close();
+    });
+
     it("the kit's popover stays open while held, and closes on success", async () => {
       if (skip()) return;
       const p = await openPage(browsers[name]);
-      await p.evaluate(() => {
-        const w = window as unknown as W;
-        const box = document.createElement("div");
-        box.innerHTML =
-          '<button id="k-go" type="button">Approve all</button> <button id="k-other" type="button">Later</button>';
-        box
-          .querySelector("#k-other")!
-          .addEventListener("click", () => w.log.push("k-other"));
-        w.openPopover(document.getElementById("kit-anchor")!, {
-          content: box,
-          label: "Card",
-        });
-      });
+      await openKitPopover(p);
       await hold(p, '[aria-label="Card"]', "#k-go");
       await p.mouse.click(600, 700);
       await p.keyboard.press("Escape");

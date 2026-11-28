@@ -229,6 +229,7 @@ const ACTIONS = 'button, a[href], summary, [role="menuitem"]';
 const holding = new WeakSet();
 
 export function holdOpen(c, work, opts = {}) {
+  if (opts.closeNow) return holdOpener(c, work, opts);
   const btn =
     opts.button ??
     (c.contains(document.activeElement) ? document.activeElement : null);
@@ -265,6 +266,11 @@ export function holdOpen(c, work, opts = {}) {
   const click = (e) => {
     if (e.target instanceof Node && c.contains(e.target)) stop(e);
   };
+  const down = (e) => {
+    const t = e.target;
+    if (!(t instanceof Node) || btn?.contains(t)) return;
+    if (c.contains(t) || c.matches?.(":modal")) e.preventDefault();
+  };
   const back = () =>
     setTimeout(() => {
       if (!holding.has(c) || !btn?.isConnected) return;
@@ -283,6 +289,7 @@ export function holdOpen(c, work, opts = {}) {
   c.addEventListener("toggle", reopen);
   c.addEventListener("focusout", back);
   document.addEventListener("keydown", key, true);
+  document.addEventListener("mousedown", down, true);
   globalThis.window?.addEventListener?.("click", click, true);
 
   const done = (shut) => {
@@ -294,6 +301,7 @@ export function holdOpen(c, work, opts = {}) {
     c.removeEventListener("toggle", reopen);
     c.removeEventListener("focusout", back);
     document.removeEventListener("keydown", key, true);
+    document.removeEventListener("mousedown", down, true);
     globalThis.window?.removeEventListener?.("click", click, true);
     if (own) delete c.close;
     release();
@@ -301,34 +309,86 @@ export function holdOpen(c, work, opts = {}) {
     if (shut) shutOf(c, opts.value ?? btn?.value ?? "");
   };
 
+  return settleHold(
+    work,
+    btn,
+    done,
+    (line) => {
+      const foot = c.tagName === "DIALOG" ? c.querySelector(".dk-ft") : null;
+      if (foot) {
+        line.className = "dk-err";
+        foot.before(line);
+      } else if (btn) btn.after(line);
+      else c.append(line);
+    },
+    opts,
+  );
+}
+
+function holdOpener(c, work, opts) {
+  const btn = opts.button;
+  shutOf(c, opts.value ?? "");
+  c.parentNode
+    ?.querySelectorAll(":scope > .dk-hold-err")
+    .forEach((n) => n.remove());
+  const release =
+    btn?.getAttribute("aria-busy") === "true" ? () => {} : holdFor(btn);
+  btn?.focus?.();
+  const shut = () => {
+    if (c.tagName === "DETAILS" ? c.open : c.matches?.(":popover-open"))
+      shutOf(c, "");
+  };
+  const key = (e) => {
+    if (document.activeElement === btn && e.key === "Escape")
+      e.preventDefault();
+  };
+  c.addEventListener("toggle", shut);
+  document.addEventListener("keydown", key, true);
+  let held = true;
+  const done = () => {
+    if (!held) return;
+    held = false;
+    c.removeEventListener("toggle", shut);
+    document.removeEventListener("keydown", key, true);
+    release();
+  };
+  return settleHold(work, btn, done, (line) => c.after(line), opts);
+}
+
+function settleHold(work, btn, done, place, opts) {
   if (work == null) {
-    const back = (e) => {
+    const watch =
+      btn && typeof MutationObserver === "function"
+        ? new MutationObserver(() => {
+            if (btn.getAttribute("aria-busy") === "true") return;
+            watch.disconnect();
+            done(false);
+          })
+        : null;
+    watch?.observe(btn, { attributes: true, attributeFilter: ["aria-busy"] });
+    const fromCache = (e) => {
       if (!e.persisted) return;
-      window.removeEventListener("pageshow", back);
+      window.removeEventListener("pageshow", fromCache);
+      watch?.disconnect();
       done(false);
     };
-    window.addEventListener("pageshow", back);
+    window.addEventListener("pageshow", fromCache);
     return new Promise(() => {});
   }
   const p = typeof work === "function" ? work() : work;
   return Promise.resolve(p).then(
     (value) => {
-      done(opts.close !== false);
+      done(true);
       return { ok: true, value };
     },
     (error) => {
       done(false);
-      const line = document.createElement("p");
-      line.setAttribute("role", "alert");
-      line.textContent = failedLine(error);
-      const foot = c.tagName === "DIALOG" ? c.querySelector(".dk-ft") : null;
-      if (foot) {
-        line.className = "dk-err";
-        foot.before(line);
-      } else {
+      if (opts.error !== false) {
+        const line = document.createElement("p");
+        line.setAttribute("role", "alert");
         line.className = "dk-hold-err";
-        if (btn) btn.after(line);
-        else c.append(line);
+        line.textContent = failedLine(error);
+        place(line);
       }
       btn?.focus?.();
       return { ok: false, error };

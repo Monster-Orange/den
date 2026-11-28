@@ -159,5 +159,10 @@ export type HoldResult<T> =
 export declare function holdOpen<T = unknown>(
   container: Element,
   work?: Promise<T> | (() => Promise<T>) | null,
-  opts?: { button?: Element | null; value?: string; close?: boolean },
+  opts?: {
+    button?: Element | null;
+    value?: string;
+    closeNow?: boolean;
+    error?: boolean;
+  },
 ): Promise<HoldResult<T>>;

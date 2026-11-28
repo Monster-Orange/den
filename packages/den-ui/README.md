@@ -517,16 +517,23 @@ when the request succeeds.
 - While it holds: Esc, cancel, a press outside, a press on the summary and
   the page's own `close()` leave it open. The other buttons, links and
   menu items in it are off, and their clicks never reach the page. Tab
-  keeps focus on the held button, and a press outside gives it back.
+  keeps focus on the held button: a press anywhere in it (or on a modal's
+  scrim) never moves focus, and a press outside gives it back.
 - On success it closes (a dialog with `opts.value`, else the button's
-  value). `close: false` keeps it open. On failure it stays open, the
+  value). On failure it stays open, the
   error beside the button in `.dk-hold-err` (`.dk-err` above a kit
   dialog's footer), `role="alert"`, and focus on the button.
 - It resolves `{ ok: true, value }` or `{ ok: false, error }`, and never
-  rejects.
-- With no request it holds until the page leaves, and lets go if the
-  browser brings the page back from its cache. A button `watchForms`
-  already holds keeps that hold.
+  rejects. `error: false` leaves the error to you (a toast, say).
+- A menu that shuts on a choice: `closeNow: true` with `button` its
+  opener (a `<details>`'s summary, a popover's anchor). The menu shuts at
+  once and the opener is held (`aria-busy`, `aria-disabled`, focused), so
+  a press, Enter or Esc on it does nothing until the answer. A failure
+  goes just after the menu, and focus stays on the opener.
+- With no request it holds until the page leaves, or until busy.js lets
+  the button go (a failed page post's pop-up), and lets go if the browser
+  brings the page back from its cache. A button `watchForms` already
+  holds keeps that hold.
 - `mountDialog`'s `onAction` runs on it. It now also hears a button in
   the dialog that posts a page form (`form="…"`).
 
