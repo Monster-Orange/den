@@ -646,7 +646,10 @@ button.den-gh > .den-bdg {
   font-weight: 600;
 }
 .den-bdg.warn.soft {
-  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  background: var(
+    --warn-tint,
+    color-mix(in srgb, var(--warn) 14%, var(--surface))
+  );
   color: var(--warn);
 }
 .den-bdg.bad.strong {
@@ -673,7 +676,7 @@ button.den-gh > .den-bdg {
 }
 .den-bdg.count.corner {
   position: absolute;
-  inset-block-start: 2px;
+  inset-block-start: var(--space-half, 2px);
   inset-inline-end: calc(-1 * var(--space-1));
   min-width: 16px;
   margin: 0;

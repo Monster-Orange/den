@@ -140,8 +140,8 @@ syncPinToggles, folds }`.
   {section}" (en, es, ja), with the folded entries' summed count
   (`.den-bdg`, `.bad` when one is) and a chevron turned -90° when folded.
 - The badge (`.den-bdg`, in shell.css): plain is muted, `.bad` a bad
-  tint, `.warn` the amber pill. `.warn.soft` is warn words on a faint
-  warn tint and `.bad.strong` on-accent on solid bad. `.count` is a count
+  tint, `.warn` the amber pill. `.warn.soft` is warn words on a solid
+  warn tint (`--warn-tint`, else 14% warn over `--surface`) and `.bad.strong` on-accent on solid bad. `.count` is a count
   inside a tab: a solid accent pill, 600 11px on an 18px line, at least
   1.6em wide, `.count.bad` when it needs the person, and `.count.corner`
   at the top end corner of an icon tab (the tab is `position: relative`).

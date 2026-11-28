@@ -39,6 +39,7 @@ const PAGE = `<!doctype html>
 <span class="den-bdg warn" data-testid="warn">3</span>
 <span class="den-bdg bad" data-testid="bad">3</span>
 <span class="den-bdg warn soft" data-testid="warn-soft">3</span>
+<span style="background: var(--sunken)"><span class="den-bdg warn soft" data-testid="warn-soft-on-sunken">3</span></span>
 <span class="den-bdg bad strong" data-testid="bad-strong">3</span>
 <button type="button">Comments <span class="den-bdg count" data-testid="count">7</span></button>
 <button type="button">Checks <span class="den-bdg count bad" data-testid="count-bad">1</span></button>
@@ -130,8 +131,28 @@ describe("the kit's badge: tints, solid bad, and a count in a tab (issue 1973)",
     const t = await tokens(p);
     const s = await look(p, "warn-soft");
     expect(s.color).toBe(t.warn);
-    expect(s.alpha).toBeGreaterThan(0);
-    expect(s.alpha).toBeLessThan(0.3);
+    expect(s.alpha).toBe(1);
+    expect(s.bg).not.toBe(t.warn);
+    await p.context().close();
+  });
+
+  it("warn soft: its tint is solid, the same over any backdrop", async () => {
+    if (skip()) return;
+    const p = await open();
+    const plain = await look(p, "warn-soft");
+    const onSunken = await look(p, "warn-soft-on-sunken");
+    expect(onSunken.bg).toBe(plain.bg);
+    expect(
+      await p.getByTestId("warn-soft").evaluate((e) => {
+        const probe = document.createElement("span");
+        probe.style.background =
+          "color-mix(in srgb, var(--warn) 14%, var(--surface))";
+        e.parentElement!.append(probe);
+        const want = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return want;
+      }),
+    ).toBe(plain.bg);
     await p.context().close();
   });
 
