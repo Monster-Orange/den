@@ -55,6 +55,12 @@ const OWN: {
     why: "the Report form itself",
   },
   {
+    file: "packages/den-ui/src/pager.js",
+    anchor: "den-pager-menu",
+    mark: null,
+    why: "the compact pager's small menu of page and per-page choices; it closes on any tap outside, and the page under it keeps its Report",
+  },
+  {
     file: "packages/den-ui/src/busy.js",
     anchor: "bz-dlg",
     mark: /btn\("report"\)/,
