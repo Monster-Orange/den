@@ -20,10 +20,11 @@ export function checksHtml(o = {}) {
       return (
         `<label class="den-checks-row" for="${esc(bid)}">` +
         `<input type="checkbox" class="den-checks-box" id="${esc(bid)}" value="${esc(it.value)}"` +
+        ` aria-labelledby="${esc(bid)}-name"` +
         (help ? ` aria-describedby="${esc(bid)}-help"` : "") +
         (on.has(String(it.value)) ? " checked" : "") +
         `${off} data-den-check>` +
-        `<span class="den-checks-text"><span class="den-checks-name">${esc(it.label)}</span>` +
+        `<span class="den-checks-text"><span class="den-checks-name" id="${esc(bid)}-name">${esc(it.label)}</span>` +
         (help
           ? `<span class="den-checks-help" id="${esc(bid)}-help">${esc(help)}</span>`
           : "") +
