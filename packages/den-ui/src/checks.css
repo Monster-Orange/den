@@ -57,8 +57,10 @@
   border-radius: 6px;
   cursor: pointer;
 }
-.den-checks-row:hover {
-  background: var(--sunken);
+@media (hover: hover) {
+  .den-checks-row:hover {
+    background: var(--sunken);
+  }
 }
 .den-checks-box {
   flex: none;
