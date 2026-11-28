@@ -562,6 +562,9 @@ never converted to HTML and back).
   next save. A failure shows "Not saved. Retrying…" with Copy text (what
   `copyText()` returns), retries at 2 s, 4 s and 8 s, then every 30 s, and
   at once when the browser is back online.
+- Copy text is a 44px (`--tap`) target on touch and at 480px wide or
+  less; with a mouse the line keeps its 20px. A product needs no rule of
+  its own for it.
 - A visually hidden polite region beside the line says only the error and
   its recovery; `aria-live="off"` keeps the routine "Saved" quiet.
 - Only the dot's colour moves, over `--dur-fast`; none under reduced
