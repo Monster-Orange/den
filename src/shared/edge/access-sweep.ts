@@ -7,28 +7,51 @@
  *
  * The raw file holds unmasked one-time tokens until a sweep, so the server
  * sweeps it before anything else at startup, and `rawAccessWarning` tells
- * doctor and `edge status` when sweeps have stopped (unmasked lines older
- * than 10 s, or more than 16 KB of them).
+ * doctor and `edge status` when no sweep (each touches access/swept) ran
+ * within 10 s, or ever; size alone (raw_warn_kb) never says it stopped.
  */
 import * as fs from "fs";
 import * as path from "path";
 import { product } from "../product.js";
-import { maskAccessLine, type AccessLogConfig } from "./access-log.js";
+import {
+  maskAccessLine,
+  RAW_WARN_KB_DEFAULT,
+  type AccessLogConfig,
+} from "./access-log.js";
 
 export const RAW_STALE_MS = 10_000;
-export const RAW_MAX_BYTES = 16 * 1024;
 
 export function accessPaths(stateDir: string): {
   dir: string;
   raw: string;
   log: string;
+  swept: string;
 } {
   const dir = path.join(stateDir, "access");
   return {
     dir,
     raw: path.join(dir, "access.json"),
     log: path.join(stateDir, "edge-access.log"),
+    swept: path.join(dir, "swept"),
   };
+}
+
+function touchSwept(file: string): void {
+  try {
+    fs.closeSync(fs.openSync(file, "a", 0o600));
+    const t = new Date();
+    fs.utimesSync(file, t, t);
+  } catch {
+    return;
+  }
+}
+
+function lastSweep(stateDir: string): number | null {
+  try {
+    return fs.statSync(accessPaths(stateDir).swept).mtimeMs;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -128,6 +151,7 @@ export function sweepAccessLog(
   } finally {
     fs.closeSync(fd);
   }
+  touchSwept(p.swept);
   return { kept, dropped };
 }
 
@@ -148,12 +172,13 @@ function unsweptBytes(file: string): number {
 }
 
 /**
- * A warning when the raw file is not being swept: unmasked lines older
- * than 10 s, or more than 16 KB of them. Null when it's empty or absent.
+ * A warning when the raw file isn't swept, isn't emptied, or is over
+ * `rawWarnKb` while swept. Null when it's empty or absent.
  */
 export function rawAccessWarning(
   stateDir: string,
   now: number = Date.now(),
+  rawWarnKb: number = RAW_WARN_KB_DEFAULT,
 ): string | null {
   let st: fs.Stats;
   try {
@@ -163,14 +188,27 @@ export function rawAccessWarning(
   }
   const bytes = st.size && unsweptBytes(accessPaths(stateDir).raw);
   if (bytes === 0) return null;
-  const age = now - st.mtimeMs;
-  if (bytes <= RAW_MAX_BYTES && age <= RAW_STALE_MS) return null;
+  const swept = lastSweep(stateDir);
+  const ago = (t: number) =>
+    `${Math.max(0, Math.round((now - t) / 1000))} s ago`;
+  if (swept !== null && now - swept <= RAW_STALE_MS) {
+    const age = now - st.mtimeMs;
+    if (age > RAW_STALE_MS)
+      return (
+        `the edge's raw access log has ${bytes} bytes of unmasked lines, last written ${ago(st.mtimeMs)}: ` +
+        `the sweep runs but isn't emptying it (last sweep ${ago(swept)}). A line the edge never finished is swept when the edge next writes.`
+      );
+    if (bytes <= rawWarnKb * 1024) return null;
+    return (
+      `the edge's raw access log holds ${Math.round(bytes / 1024)} KB of unmasked lines, over edge.access_log.raw_warn_kb (${rawWarnKb}). ` +
+      `${product().title} is sweeping it (last sweep ${ago(swept)}); lines arrive faster than one sweep a second empties them. ` +
+      `If this edge is this busy, raise edge.access_log.raw_warn_kb.`
+    );
+  }
   return (
     `the edge's raw access log has ${bytes} bytes of unmasked lines` +
-    (age > RAW_STALE_MS
-      ? `, last written ${Math.round(age / 1000)} s ago`
-      : "") +
-    `: nothing is masking it. Start Den (${product().cli} web up); it masks and empties the file first.`
+    (swept === null ? ", never swept" : `, last swept ${ago(swept)}`) +
+    `: nothing is masking it. Start ${product().title} (${product().cli} web up); it masks and empties the file first.`
   );
 }
 
@@ -187,17 +225,27 @@ export function edgeAccessHealthy(
   cfg: {
     args: string[];
     stateDir: string;
-    accessLog?: { enabled: boolean };
+    accessLog?: { enabled: boolean; rawWarnKb?: number };
   },
   now: number = Date.now(),
 ): string | null {
   if (cfg.accessLog?.enabled !== true) return null;
   if (edgeAccessWarnings(cfg, now).length) return null;
-  return `access log on: masked into ${accessPaths(cfg.stateDir).log}, and kept up with`;
+  const log = `access log on: masked into ${accessPaths(cfg.stateDir).log}`;
+  const swept = lastSweep(cfg.stateDir);
+  if (swept === null) return `${log}, and kept up with`;
+  const ago = `${Math.max(0, Math.round((now - swept) / 1000))} s ago`;
+  return now - swept <= RAW_STALE_MS
+    ? `${log}; ${product().title} is sweeping it (last sweep ${ago})`
+    : `${log}, and kept up with (last sweep ${ago})`;
 }
 
 export function edgeAccessWarnings(
-  cfg: { args: string[]; stateDir: string },
+  cfg: {
+    args: string[];
+    stateDir: string;
+    accessLog?: { rawWarnKb?: number };
+  },
   now: number = Date.now(),
 ): string[] {
   const out: string[] = [];
@@ -205,7 +253,7 @@ export function edgeAccessWarnings(
     out.push(
       "edge.args sets --accesslog: Traefik then logs every path and query as is, one-time tokens included, where Den can't mask them. Remove it and set edge.access_log: true; Den keeps a masked edge-access.log.",
     );
-  const raw = rawAccessWarning(cfg.stateDir, now);
+  const raw = rawAccessWarning(cfg.stateDir, now, cfg.accessLog?.rawWarnKb);
   if (raw) out.push(raw);
   return out;
 }

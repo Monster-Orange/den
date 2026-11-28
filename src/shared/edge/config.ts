@@ -31,7 +31,7 @@
  *     proxy_protocol:               # a TCP-passthrough front proxy that
  *       trusted_ips: [172.18.0.5]   # sends the PROXY protocol (SEC-2a)
  *     upstream_idle_seconds: 1      # idle upstream connections kept (#67)
- *     access_log: true              # or { mask_query, mask_paths, max_mb }:
+ *     access_log: true              # or { mask_query, mask_paths, max_mb, raw_warn_kb }:
  *                                   # masked into edge-access.log (#63)
  *   web:
  *     port: 7777             # the web UI; routed as `<brand name>`

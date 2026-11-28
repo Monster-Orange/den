@@ -35,7 +35,10 @@ export interface AccessLogConfig {
   maskPaths: string[];
   /** edge-access.log is rotated (one .1 kept) past this size. */
   maxMb: number;
+  rawWarnKb: number;
 }
+
+export const RAW_WARN_KB_DEFAULT = 1024;
 
 const QUERY_KEY = /^[A-Za-z0-9_.-]{1,64}$/;
 const PATH_PATTERN = /^\/[A-Za-z0-9_.~/-]*\*$/;
@@ -46,19 +49,28 @@ export function readAccessLogConfig(v: unknown): AccessLogConfig {
     maskQuery: [...DEFAULT_MASK_QUERY],
     maskPaths: [...DEFAULT_MASK_PATHS],
     maxMb: 20,
+    rawWarnKb: RAW_WARN_KB_DEFAULT,
   };
   if (v === undefined || v === null || v === false)
     return { enabled: false, ...base };
   if (v === true) return { enabled: true, ...base };
   if (typeof v !== "object" || Array.isArray(v))
     throw new Error(
-      "edge.access_log must be true, false, or a map: { enabled, mask_query, mask_paths, max_mb }",
+      "edge.access_log must be true, false, or a map: { enabled, mask_query, mask_paths, max_mb, raw_warn_kb }",
     );
   const m = v as Record<string, unknown>;
   for (const k of Object.keys(m))
-    if (!["enabled", "mask_query", "mask_paths", "max_mb"].includes(k))
+    if (
+      ![
+        "enabled",
+        "mask_query",
+        "mask_paths",
+        "max_mb",
+        "raw_warn_kb",
+      ].includes(k)
+    )
       throw new Error(
-        `edge.access_log: unknown key "${k}" (known: enabled, mask_query, mask_paths, max_mb)`,
+        `edge.access_log: unknown key "${k}" (known: enabled, mask_query, mask_paths, max_mb, raw_warn_kb)`,
       );
   const list = (x: unknown, key: string, ok: RegExp): string[] => {
     if (x === undefined || x === null) return [];
@@ -81,6 +93,16 @@ export function readAccessLogConfig(v: unknown): AccessLogConfig {
     maxMb > 1000
   )
     throw new Error("edge.access_log.max_mb must be a whole number, 1 to 1000");
+  const rawWarnKb = m.raw_warn_kb ?? RAW_WARN_KB_DEFAULT;
+  if (
+    typeof rawWarnKb !== "number" ||
+    !Number.isInteger(rawWarnKb) ||
+    rawWarnKb < 1 ||
+    rawWarnKb > 1_048_576
+  )
+    throw new Error(
+      "edge.access_log.raw_warn_kb must be a whole number of KB, 1 to 1048576",
+    );
   return {
     enabled: m.enabled !== false,
     maskQuery: [
@@ -98,6 +120,7 @@ export function readAccessLogConfig(v: unknown): AccessLogConfig {
       ]),
     ],
     maxMb,
+    rawWarnKb,
   };
 }
 

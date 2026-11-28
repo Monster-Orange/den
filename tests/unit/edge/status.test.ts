@@ -147,6 +147,7 @@ describe("edgeStatus", () => {
       accessLog: {
         enabled: false,
         log: "/nonexistent/edge-state/edge-access.log",
+        rawWarnKb: 1024,
         warnings: [],
       },
       https: {

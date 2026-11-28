@@ -3,6 +3,7 @@
  * it; the web server serves it at /api/edge (and through it the MCP
  * `edge_status` tool).
  */
+import { RAW_WARN_KB_DEFAULT } from "./access-log.js";
 import { accessPaths, edgeAccessWarnings } from "./access-sweep.js";
 import * as fs from "fs";
 import * as path from "path";
@@ -75,7 +76,12 @@ export interface EdgeStatus {
    * warnings (an unmasked `--accesslog` in edge.args; the raw file not
    * being swept).
    */
-  accessLog: { enabled: boolean; log: string; warnings: string[] };
+  accessLog: {
+    enabled: boolean;
+    log: string;
+    rawWarnKb: number;
+    warnings: string[];
+  };
 }
 
 export interface EdgeHttps {
@@ -190,6 +196,7 @@ export function edgeStatus(
     accessLog: {
       enabled: cfg.accessLog?.enabled === true,
       log: accessPaths(cfg.stateDir).log,
+      rawWarnKb: cfg.accessLog?.rawWarnKb ?? RAW_WARN_KB_DEFAULT,
       warnings: edgeAccessWarnings(cfg),
     },
   };

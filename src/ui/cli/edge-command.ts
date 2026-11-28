@@ -237,7 +237,7 @@ export async function cmdEdge(args: string[]): Promise<void> {
       );
       // #63: the masked access log, and whether Den is keeping up with it.
       console.log(
-        `  access log ${st.accessLog.enabled ? `on — masked into ${st.accessLog.log}` : "off (edge.access_log)"}`,
+        `  access log ${st.accessLog.enabled ? `on — masked into ${st.accessLog.log}; raw log warns past ${st.accessLog.rawWarnKb} KB (edge.access_log.raw_warn_kb)` : "off (edge.access_log)"}`,
       );
       for (const w of st.accessLog.warnings)
         console.log(chalk.yellow(`  ⚠  ${w}`));
