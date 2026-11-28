@@ -105,6 +105,36 @@ describe("Report on a tablet with touch", () => {
       await p.context().close();
     });
 
+  it("with the on-screen keyboard up, Next stays above it", async () => {
+    if (skip()) return;
+    const p = await tablet(1366, 1024);
+    await p.evaluate(() => {
+      const vv = new EventTarget() as EventTarget & {
+        height: number;
+        offsetTop: number;
+      };
+      vv.height = innerHeight;
+      vv.offsetTop = 0;
+      Object.defineProperty(window, "visualViewport", { value: vv });
+    });
+    await openWithShot(p);
+    const line = 1024 - 398;
+    await p.evaluate((h) => {
+      const vv = window.visualViewport as unknown as EventTarget & {
+        height: number;
+      };
+      vv.height = h;
+      vv.dispatchEvent(new Event("resize"));
+    }, line);
+    const next = await dlg(p)
+      .getByRole("button", { name: "Next: Include" })
+      .boundingBox();
+    expect(next).not.toBeNull();
+    expect(next!.y).toBeGreaterThanOrEqual(0);
+    expect(next!.y + next!.height).toBeLessThanOrEqual(line);
+    await p.context().close();
+  });
+
   it("a swipe on the screenshot scrolls the dialog instead of masking", async () => {
     if (skip()) return;
     const p = await tablet(1366, 1024);
