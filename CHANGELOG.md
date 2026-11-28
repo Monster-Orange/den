@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
+### Changed
+
+- The browser tab shows Den's icon from its SVG first, with favicon.ico (16, 32 and 48 px) as `sizes="any"` for browsers without SVG icons. Every icon URL in a page's head and in the app manifest carries `?v=<version>`, so a browser shows the new icon after Den updates instead of a cached one.
+
 ## [0.4.92] - unreleased
 
 ### Changed

@@ -43,11 +43,22 @@ describe("den-ui site head (issue 644)", () => {
   it("one snippet: the favicon (ico and svg), the touch icon, the manifest and the theme colour", () => {
     const html = read(path.join(SITE, "head.html"));
     expect(links(html)).toEqual({
-      icon: ["/favicon.ico", "/favicon.svg"],
+      icon: ["/favicon.svg", "/favicon.ico"],
       "apple-touch-icon": ["/apple-touch-icon.png"],
       manifest: ["/site.webmanifest"],
     });
-    expect(html).toContain(`<meta name="theme-color" content="${TILE}">`);
+    expect(html.split("\n")).toEqual([
+      '<link rel="icon" href="/favicon.svg" type="image/svg+xml">',
+      '<link rel="icon" href="/favicon.ico" sizes="any">',
+      '<link rel="apple-touch-icon" href="/apple-touch-icon.png">',
+      '<link rel="manifest" href="/site.webmanifest">',
+      `<meta name="theme-color" content="${TILE}">`,
+      "",
+    ]);
+    const ico = fs.readFileSync(path.join(SITE, "favicon.ico"));
+    expect(
+      Array.from({ length: ico.readUInt16LE(4) }, (_, i) => ico[6 + 16 * i]),
+    ).toEqual([16, 32, 48]);
     // Tags only: no comment, no script.
     expect(html).not.toMatch(/<!--|<script/i);
     // Every file it names is in the same folder.
