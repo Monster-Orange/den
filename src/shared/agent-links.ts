@@ -9,9 +9,10 @@ import { isServerScope } from "./agents/server-agent.js";
 import { isLoopbackUrl } from "./web/web-url-check.js";
 import { readWebUrl } from "./web/web-url.js";
 import type { UserConfig } from "./den-config.js";
+import { accountLink, settingsLink } from "./settings-links.js";
 
 /** The Settings page where the address (web.url) is set. */
-export const ADDRESS_SETTING_PAGE = "/settings#server.address";
+export const ADDRESS_SETTING_PAGE = settingsLink("server", "server.address");
 
 export const SERVER_AGENT_PAGE = "/server-agent";
 
@@ -112,7 +113,7 @@ export function agentLinks(
             `/agents?${new URLSearchParams({ project: ws }).toString()}`,
           ),
         }),
-    notifications: fullLink(at, "/settings#notifications"),
+    notifications: fullLink(at, accountLink("notifications")),
     allow: fullLink(at, allowPath(id, ws)),
   };
 }

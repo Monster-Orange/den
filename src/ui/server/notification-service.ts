@@ -41,6 +41,7 @@ import {
   type AgentStateDeps,
   type DoneAgent,
 } from "./agent-state.js";
+import { accountLink } from "../../shared/settings-links.js";
 
 let store: NotificationStore | null = null;
 let attention: Attention | null = null;
@@ -290,7 +291,7 @@ export function pushDeps(): {
         {
           title: product().title,
           body: ALERT_TEST_WORDS[uiLanguage(user.language)],
-          link: "/settings#notifications",
+          link: accountLink("notifications"),
           tag: `test-${crypto.randomUUID()}`,
         },
         {

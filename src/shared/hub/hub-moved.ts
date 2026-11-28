@@ -1,4 +1,5 @@
 import type { MovedProject } from "./hub-project-sync.js";
+import { settingsLink } from "../settings-links.js";
 
 export interface ArchivedLink {
   ws: string;
@@ -79,6 +80,6 @@ export function movedNote(m: MovedProject) {
     scope: `workspace/${m.workspace}`,
     text: `Project ${m.workspace} moved to ${hub}. Switch this install to that Hub to keep it linked.`,
     msg: { key: "bell.m.hubMoved", vars: { project: m.workspace, hub } },
-    link: "/settings#agents.hub",
+    link: settingsLink("hub", "agents.hub"),
   };
 }

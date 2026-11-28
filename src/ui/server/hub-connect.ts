@@ -96,6 +96,7 @@ import {
   liveHubSwitch,
   switchDays,
 } from "./hub-switch.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 /** How long a started connect waits for Hub to send the person back. */
 export const CONNECT_TTL_MS = 10 * 60_000;
@@ -1150,7 +1151,7 @@ export function callbackPage(
   title: string,
   result: { ok: boolean; message: string; reason?: string },
 ): string {
-  const next = `/settings?hub=${result.ok ? "connected" : (result.reason ?? "failed")}#agents.hub`;
+  const next = `${settingsLink("hub", "agents.hub")}&hub=${result.ok ? "connected" : (result.reason ?? "failed")}`;
   const esc = (s: string) =>
     s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>${esc(title)}: Hub</title></head><body style="font:15px system-ui,sans-serif;margin:2rem;max-width:40rem"><p data-hub-result="${result.ok ? "connected" : (result.reason ?? "failed")}">${esc(result.message)}</p><p><a href="${next}">Back to Settings</a></p><script>location.replace(${JSON.stringify(next)})</script></body></html>`;

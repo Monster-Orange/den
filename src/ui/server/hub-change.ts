@@ -35,6 +35,7 @@ import type {
 import type { WorkspacesFile } from "../../shared/types/index.js";
 import { pickNote } from "./hub-link-all-routes.js";
 import { clearHubSwitch, readHubSwitch } from "./hub-switch.js";
+import { settingsLink } from "../../shared/settings-links.js";
 
 export interface HubChangeDeps {
   stateDir: () => string;
@@ -57,7 +58,7 @@ export interface HubChangeDeps {
 }
 
 /** Where a person picks after a change: Settings › Hub, to Connect first. */
-export const HUB_CHANGE_PICK_LINK = "/settings#agents.hub";
+export const HUB_CHANGE_PICK_LINK = settingsLink("hub", "agents.hub");
 
 const HUB_KEYS = new Set([
   "bell.m.hub",
