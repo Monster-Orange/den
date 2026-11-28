@@ -9707,6 +9707,7 @@
     dlg: null,
     shown: null,
     later: {},
+    answered: {},
     busy: false,
     css: null,
     polling: false,
@@ -9963,6 +9964,7 @@
             apError(x.b.error || t("ap.failed", { error: x.b.code || "?" }));
             return;
           }
+          ap.answered[a.id] = 1;
           var res = x.b.result;
           if (decision === "allow" && res && res.ok === false)
             toast(t("ap.failed", { error: res.error || "?" }));
@@ -10113,7 +10115,7 @@
         apSignin(b);
         var list = (b && b.ok && b.pending) || [];
         var open = list.filter(function (a) {
-          return !ap.later[a.id];
+          return !ap.later[a.id] && !ap.answered[a.id];
         });
         if (!open.length) return apClose();
         var cur =
