@@ -784,7 +784,9 @@ export function renderPanel(el, sel) {
   </div><div class="dg-pbody" id="dg-pbody-${esc(st.tab)}"></div>${st.popped ? popReport() : ""}`;
   const tabsUi = hydrateTabs(el.querySelector(".dg-tabs .den-tabs"), {
     onChange: (id) => {
-      const had = el.querySelector(".dg-tabs")?.contains(document.activeElement);
+      const had = el
+        .querySelector(".dg-tabs")
+        ?.contains(document.activeElement);
       C.selectTab(id);
       if (had)
         el.querySelector('.dg-tabs .den-tab[aria-selected="true"]')?.focus();

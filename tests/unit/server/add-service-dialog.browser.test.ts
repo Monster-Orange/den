@@ -234,7 +234,7 @@ describe("issue 806: Add Service on the kit's dialog", () => {
     if (!browser) return;
     const { p, adds } = await open();
     await openDialog(p);
-    await p.click(`${DLG} .den-tab[data-id="gh"]`);
+    await p.click(`${DLG} [role="tab"][data-id="gh"]`);
     await p.locator(`${DLG} [data-as-gh="orchard"]`).click();
     await p.check(`${DLG} input[name="add-svc-mode"][value="managed"]`);
     await p.fill(`${DLG} #add-svc-branch`, "dev");
@@ -258,14 +258,16 @@ describe("issue 806: Add Service on the kit's dialog", () => {
     if (!browser) return;
     const { p } = await open();
     await openDialog(p);
-    const tabs = `${DLG} .den-tabs[data-den-tabs="panel"]`;
-    await p.locator(`${tabs} .den-tab[data-id="local"]`).focus();
+    const tabs = `${DLG} [data-den-tabs="panel"]`;
+    await p.locator(`${tabs} [role="tab"][data-id="local"]`).focus();
     await p.keyboard.press("ArrowRight");
-    const gh = p.locator(`${tabs} .den-tab[data-id="gh"]`);
+    const gh = p.locator(`${tabs} [role="tab"][data-id="gh"]`);
     await expect(gh.getAttribute("aria-selected")).resolves.toBe("true");
     expect(await gh.evaluate((b) => document.activeElement === b)).toBe(true);
     expect(await p.locator(`${DLG} #add-svc-panel-gh`).isHidden()).toBe(false);
-    expect(await p.locator(`${DLG} #add-svc-panel-local`).isHidden()).toBe(true);
+    expect(await p.locator(`${DLG} #add-svc-panel-local`).isHidden()).toBe(
+      true,
+    );
     expect(
       await p.locator(`${tabs} [role="tablist"]`).getAttribute("aria-label"),
     ).toBeTruthy();
@@ -284,7 +286,7 @@ describe("issue 806: Add Service on the kit's dialog", () => {
         : r.fallback(),
     );
     await openDialog(p);
-    await p.click(`${DLG} .den-tab[data-id="gh"]`);
+    await p.click(`${DLG} [role="tab"][data-id="gh"]`);
     await p.locator(`${DLG} [data-as-gh="orchard"]`).click();
     await p.click(`${DLG} [data-as="add"]`);
     await p

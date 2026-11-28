@@ -1,10 +1,3 @@
-/**
- * Issue 1977: Den's own tabs are the kit's tabs.js (panel kind). The
- * graph's details, My reports and the server agent's views each move on
- * → and Home/End, keep focus on the chosen tab after they redraw, and show
- * the chosen tab's panel. Every tab row is named. No English is asserted.
- * Needs Playwright's chromium; DEN_SKIP_BROWSER_TESTS=1 skips it.
- */
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { Browser, Page } from "playwright";
 import { signInPage } from "./helpers/signed-in.js";
@@ -54,7 +47,7 @@ async function open(route: string): Promise<Page> {
 }
 
 const chosen = (p: Page, row: string) =>
-  p.locator(`${row} .den-tab[aria-selected="true"]`);
+  p.locator(`${row} [role="tab"][aria-selected="true"]`);
 const focusedId = (p: Page) =>
   p.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.id);
 const tablistName = (p: Page, row: string) =>
@@ -64,12 +57,12 @@ describe("Den's tabs are the kit's (issue 1977)", () => {
   it("the graph's details: → moves, focus stays on the chosen tab, its panel shows", async () => {
     if (!browser) return;
     const p = await open("/graph?ws=north");
-    await p.click(".dg-card");
-    const row = '.dg-panel .dg-tabs .den-tabs[data-den-tabs="panel"]';
+    await p.click('#den-content [role="group"][data-id]');
+    const row = '[data-den-tabs="panel"]';
     await p.waitForSelector(row);
     expect(await tablistName(p, row)).toBeTruthy();
     const ids = await p
-      .locator(`${row} .den-tab`)
+      .locator(`${row} [role="tab"]`)
       .evaluateAll((ts) => ts.map((t) => (t as HTMLElement).dataset.id));
     expect(ids.length).toBeGreaterThan(1);
     await chosen(p, row).focus();
@@ -79,7 +72,7 @@ describe("Den's tabs are the kit's (issue 1977)", () => {
       ([r, f]) =>
         (
           document.querySelector(
-            `${r} .den-tab[aria-selected="true"]`,
+            `${r} [role="tab"][aria-selected="true"]`,
           ) as HTMLElement | null
         )?.dataset.id !== f,
       [row, from] as const,
@@ -93,7 +86,7 @@ describe("Den's tabs are the kit's (issue 1977)", () => {
       ([r, f]) =>
         (
           document.querySelector(
-            `${r} .den-tab[aria-selected="true"]`,
+            `${r} [role="tab"][aria-selected="true"]`,
           ) as HTMLElement | null
         )?.dataset.id === f,
       [row, ids[0]] as const,
@@ -110,12 +103,14 @@ describe("Den's tabs are the kit's (issue 1977)", () => {
         window as unknown as { denShell: { myReports: () => Promise<unknown> } }
       ).denShell.myReports(),
     );
-    const row = 'dialog.fb-my .fb-tabs .den-tabs[data-den-tabs="panel"]';
+    const row = 'dialog[open] [data-den-tabs="panel"]';
     await p.waitForSelector(row);
     expect(await tablistName(p, row)).toBeTruthy();
-    await p.locator(`${row} .den-tab[data-id="mine"]`).focus();
+    await p.locator(`${row} [role="tab"][data-id="mine"]`).focus();
     await p.keyboard.press("ArrowRight");
-    await p.waitForSelector(`${row} .den-tab[data-id="agents"][aria-selected="true"]`);
+    await p.waitForSelector(
+      `${row} [role="tab"][data-id="agents"][aria-selected="true"]`,
+    );
     expect(await focusedId(p)).toBe("agents");
     expect(await p.locator("#fb-my-panel-agents").isVisible()).toBe(true);
     await p.context().close();
@@ -124,12 +119,14 @@ describe("Den's tabs are the kit's (issue 1977)", () => {
   it("the server agent: → shows Coach and keeps it in the address", async () => {
     if (!browser) return;
     const p = await open("/server-agent");
-    const row = '#sa-tabs .den-tabs[data-den-tabs="panel"]';
+    const row = '#sa-tabs [data-den-tabs="panel"]';
     await p.waitForSelector(row);
     expect(await tablistName(p, row)).toBeTruthy();
-    await p.locator(`${row} .den-tab[data-id="terminal"]`).focus();
+    await p.locator(`${row} [role="tab"][data-id="terminal"]`).focus();
     await p.keyboard.press("ArrowRight");
-    await p.waitForSelector(`${row} .den-tab[data-id="coach"][aria-selected="true"]`);
+    await p.waitForSelector(
+      `${row} [role="tab"][data-id="coach"][aria-selected="true"]`,
+    );
     expect(await focusedId(p)).toBe("coach");
     expect(await p.locator("#sa-coach").isHidden()).toBe(false);
     expect(await p.locator("#sa-body").isHidden()).toBe(true);
