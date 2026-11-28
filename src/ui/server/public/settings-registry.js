@@ -652,7 +652,6 @@ export function issueWriteJobs(reg) {
 }
 
 export function issueWriteSave(ticked, saved, jobs) {
-  if (!ticked.length) return [];
   const boxed = new Set(jobs.map((j) => j.value));
   return issueWriteRoles([
     ...ticked,
@@ -723,7 +722,9 @@ function drawIssueWrites(host, ctx) {
       checked: saved,
       disabled: viewOnly,
       note: viewOnly ? words.view : "",
-      empty: words.empty,
+      empty: saved.every((r) => items.some((i) => i.value === r))
+        ? words.empty
+        : "",
       lang: () => document.documentElement.lang || "en",
       onSave: async (ticked) => {
         const next = issueWriteSave(ticked, saved, items);

@@ -53,7 +53,7 @@ export function checksHtml(o = {}) {
     rows +
     "</fieldset>" +
     `<p class="den-savestate den-checks-state" data-state="idle" role="status" aria-live="polite"></p>` +
-    `<p class="den-checks-note"${o.note ? "" : " hidden"}><span class="den-checks-note-t">${esc(o.note ?? "")}</span>${act}</p>` +
+    `<p class="den-checks-note" data-den-checks-note${o.note ? "" : " hidden"}><span class="den-checks-note-t">${esc(o.note ?? "")}</span>${act}</p>` +
     "</div>"
   );
 }

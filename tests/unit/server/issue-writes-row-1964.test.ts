@@ -119,8 +119,9 @@ describe("the saved list", () => {
     ).toEqual(["designer", "lead", "builder"]);
   });
 
-  it("is empty when nothing is ticked", () => {
-    expect(R.issueWriteSave([], ["planner", "lead"], jobs)).toEqual([]);
+  it("keeps the saved roles with no box when nothing is ticked", () => {
+    expect(R.issueWriteSave([], ["planner", "lead"], jobs)).toEqual(["lead"]);
+    expect(R.issueWriteSave([], ["planner"], jobs)).toEqual([]);
   });
 
   it("reads a list or comma text, trimmed, with no blanks or repeats", () => {

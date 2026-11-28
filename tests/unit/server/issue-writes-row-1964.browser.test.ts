@@ -167,6 +167,44 @@ describe("who writes GitHub issues, on the Settings page", () => {
     await ctx.close();
   });
 
+  it("unticking the last box keeps a saved role the row doesn't show, and says nobody only when none is left", async () => {
+    if (skip()) return;
+    const ctx = await context();
+    const p = await open(ctx);
+    const [first] = await values(p);
+    const set = (roles: string[]) =>
+      p.evaluate(
+        (r) =>
+          (
+            window as unknown as {
+              denShell: {
+                api(m: string, u: string, b: unknown): Promise<unknown>;
+              };
+            }
+          ).denShell
+            .api("POST", "/api/settings", { agent_issue_writes: { roles: r } })
+            .then(() => true),
+        roles,
+      );
+    expect(await set(["copy-desk", first])).toBe(true);
+    await p.reload();
+    await p.waitForSelector(`${ROW} fieldset`);
+    expect(await ticked(p)).toEqual([first]);
+    await p.locator(`${BOX}[value="${first}"]`).click();
+    await saved(p);
+    expect(await stored(p)).toEqual(["copy-desk"]);
+    const note = p.locator(`${ROW} [data-den-checks-note]`);
+    expect(await note.isVisible()).toBe(false);
+    expect(await set([first])).toBe(true);
+    await p.reload();
+    await p.waitForSelector(`${ROW} fieldset`);
+    await p.locator(`${BOX}[value="${first}"]`).click();
+    await saved(p);
+    expect(await stored(p)).toEqual([]);
+    expect(await note.isVisible()).toBe(true);
+    await ctx.close();
+  });
+
   it("at 390 every row is a 44px target, with no sideways scroll", async () => {
     if (skip()) return;
     const ctx = await context(390);
