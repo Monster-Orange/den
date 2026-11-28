@@ -13,6 +13,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- UI kit: the save-state line's Copy text is a 44px target on touch and at 480px wide or less, so a product no longer sizes `.den-savestate button` itself (issue 1976).
 - UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
 
 ## [0.4.92] - unreleased
