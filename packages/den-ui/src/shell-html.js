@@ -648,15 +648,18 @@ function crumbMenuHtml(c, lang) {
  * opens it), or true (the host opens its own: hydrateScope's onOpen).
  * `filter`: a type-to-filter field at the top of a list of links: by
  * default past 6 of them; a number sets that threshold; false, never.
- * `optional`: the first to give way on a narrow bar. `cls`: more classes;
- * `valueCls`: more classes on the value.
+ * `optional`: the first to give way on a narrow bar ("wide": from 1024px).
+ * `cls`, `valueCls`: more classes on the crumb, on its value.
  */
 export function scopeCrumbHtml(c, lang) {
   if (!c) return "";
   const id = crumbId(c);
   const title = c.title != null ? ' title="' + esc(c.title) + '"' : "";
   const hidden = c.hidden ? " hidden" : "";
-  const more = (c.cls ? " " + esc(c.cls) : "") + (c.optional ? " den-opt" : "");
+  const more =
+    (c.cls ? " " + esc(c.cls) : "") +
+    (c.optional ? " den-opt" : "") +
+    (c.optional === "wide" ? " den-opt-wide" : "");
   const key = '<span class="den-k">' + esc(c.label) + "</span> ";
   if (!c.menu)
     return (
@@ -706,11 +709,13 @@ export function scopeCrumbHtml(c, lang) {
  * hidden with it. `after`: the host's HTML at the group's end (a hidden
  * <select> its pages read, say). No crumbs: nothing at all.
  */
-export function scopeHtml({ crumbs, label, lang, after } = {}) {
+export function scopeHtml({ crumbs, label, lang, after, bare } = {}) {
   const list = (crumbs || []).filter(Boolean);
   if (!list.length) return "";
   let html =
-    '<div class="den-scope" role="group" aria-label="' +
+    '<div class="den-scope' +
+    (bare ? " den-crumbs-bare" : "") +
+    '" role="group" aria-label="' +
     esc(label ?? kitT(lang, "kit.scope")) +
     '"><span class="den-sep" aria-hidden="true">/</span>';
   // Each separator after a crumb comes and goes with it: host content.
@@ -725,7 +730,9 @@ export function scopeHtml({ crumbs, label, lang, after } = {}) {
       html +=
         '<span class="den-sep den-' +
         esc(c.key || "x") +
-        '-sep" data-nav-role="crumb-sep" aria-hidden="true"' +
+        "-sep" +
+        (c.optional === "wide" ? " den-opt-wide" : "") +
+        '" data-nav-role="crumb-sep" aria-hidden="true"' +
         (c.hidden ? " hidden" : "") +
         ">/</span>";
   });

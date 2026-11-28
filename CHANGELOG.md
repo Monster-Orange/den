@@ -13,6 +13,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- UI kit top bar: a crumb with `optional: "wide"` shows, with its separator, only from 1024px; `scopeHtml({ bare: true })` (class `den-crumbs-bare`) drops the crumbs' small labels and lets the last crumb give way; the bar's width settings may be set on `body`, so a product stops overriding `.den-top` and its crumbs (issue 1971).
 - UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
 
 - The approval dialog no longer brings back a request you just denied or allowed. A check of what waits that was already under way when you answered could open it again with that request. (issue 1898)

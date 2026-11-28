@@ -1062,7 +1062,9 @@ The top bar's search sits in the same place in every product (issue 303).
   the bell, the version and ◐ ▾, pinned to the right edge). The kit finds
   its search in `start` and puts it in its slot; a host's markup is
   unchanged.
-- **Settings** (custom properties on `.den-top`, with their defaults):
+- **Settings** (custom properties read by `.den-top`, with their defaults;
+  a host sets them on `body` or `:root`, in its own width bands, never on a
+  kit class: `100%` in a value is still the bar's width):
   `--den-top-left` (444px), `--den-top-search` (304px),
   `--den-top-left-min` (220px), `--den-top-search-min` (56px), and under 720px
   `--den-top-left-md`
@@ -1140,6 +1142,11 @@ hidden?, optional? }`. `label` is the small-caps word (COMPANY,
   the ▾. `menu: true` means the host opens its own menu: `onOpen(key,
 button)`. A crumb left out of the list draws nothing, and no separator
   either (a host with no ENV, say). `scopeCrumbHtml(crumb)` draws one crumb.
+  `optional: "wide"` shows a crumb, and its separator, only from 1024px
+  (a company crumb that waits for room). `scopeHtml({ …, bare: true })`
+  (class `den-crumbs-bare`, which a host may also toggle when a name would
+  end in "…") drops the small labels and lets the last crumb give way too,
+  so it never draws under the search.
   A kit-drawn list of more than 6 links gets a filter field at its top
   (`filter`: a number sets that threshold, `false` turns it off). The menu
   opens on the field. Typing hides the links that don't hold the text, and
