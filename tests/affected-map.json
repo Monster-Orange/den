@@ -1114,6 +1114,7 @@
         "src/ui/server/public/panel.js"
       ],
       "run": [
+        "tests/unit/den-ui/badge-kit.browser.test.ts",
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
@@ -1519,6 +1520,7 @@
     {
       "when": ["src/ui/server/public/agent-start.js"],
       "run": [
+        "tests/unit/den-ui/badge-kit.browser.test.ts",
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
@@ -1819,6 +1821,7 @@
     {
       "when": ["src/ui/server/public/ws-delete-agents.js"],
       "run": [
+        "tests/unit/den-ui/badge-kit.browser.test.ts",
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
@@ -1963,6 +1966,7 @@
         "src/ui/server/public/workspace-picker.js"
       ],
       "run": [
+        "tests/unit/den-ui/badge-kit.browser.test.ts",
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",
@@ -2365,6 +2369,7 @@
     {
       "when": ["src/ui/server/public/shell.js"],
       "run": [
+        "tests/unit/den-ui/badge-kit.browser.test.ts",
         "tests/unit/den-ui/bell-keep-rows-1024.browser.test.ts",
         "tests/unit/den-ui/bell-row-opens-420.browser.test.ts",
         "tests/unit/den-ui/busy-kit.browser.test.ts",

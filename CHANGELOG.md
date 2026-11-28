@@ -13,6 +13,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- UI kit badge: `.den-bdg.warn.soft` (a warn tint), `.bad.strong` (solid bad) and `.count` for a count inside a tab (`.count.bad`, `.count.corner` on an icon tab), sized by a host with `--den-bdg-fs`, `--den-bdg-lh`, `--den-bdg-pad` and `--den-bdg-min`, so a product stops restyling `.den-bdg` (issue 1973).
 - UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
 
 - The approval dialog no longer brings back a request you just denied or allowed. A check of what waits that was already under way when you answered could open it again with that request. (issue 1898)
