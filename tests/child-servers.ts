@@ -150,9 +150,12 @@ export async function stopServer(
   while (groupAlive(pgid) && Date.now() < deadline)
     await new Promise((r) => setTimeout(r, 50));
   if (groupAlive(pgid)) killGroup(pgid, "SIGKILL");
-  await stopSessionHost(STATE_DIRS.get(pgid), graceMs);
-  STATE_DIRS.delete(pgid);
-  forgetServer(child);
+  try {
+    await stopSessionHost(STATE_DIRS.get(pgid), graceMs);
+  } finally {
+    STATE_DIRS.delete(pgid);
+    forgetServer(child);
+  }
 }
 
 function stateDirOf(env: NodeJS.ProcessEnv): string | null {
@@ -176,24 +179,44 @@ async function stopSessionHost(
   const socket = stateDir ? sessionPaths(stateDir).socket : "";
   if (!socket || !fs.existsSync(socket)) return;
   let pid = 0;
+  let timer: NodeJS.Timeout | undefined;
+  const connecting = connectHost(socket);
   try {
     const c = await Promise.race([
-      connectHost(socket),
-      new Promise<never>((_, no) =>
-        setTimeout(() => no(new Error("no answer")), 2_000),
-      ),
+      connecting,
+      new Promise<never>((_, no) => {
+        timer = setTimeout(() => no(new Error("no answer in 2 s")), 2_000);
+      }),
     ]);
     pid = c.hostPid;
     await c.shutdown().catch(() => undefined);
     c.close();
-  } catch {
-    return;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "ECONNREFUSED" || code === "ENOENT") return;
+    connecting.then((c) => c.close()).catch(() => undefined);
+    throw new Error(
+      `stopServer: the session host of ${stateDir} did not answer (${(e as Error).message}); it would outlive its folder`,
+    );
+  } finally {
+    clearTimeout(timer);
   }
   if (!pid) return;
   const deadline = Date.now() + graceMs;
   while (pidAlive(pid) && Date.now() < deadline)
     await new Promise((r) => setTimeout(r, 50));
-  if (pidAlive(pid)) process.kill(pid, "SIGKILL");
+  if (!pidAlive(pid)) return;
+  console.warn(
+    `stopServer: the session host of ${stateDir} (pid ${pid}) was still running ${graceMs} ms after its shutdown; sending SIGKILL`,
+  );
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ESRCH") return;
+    throw new Error(
+      `stopServer: could not SIGKILL the session host of ${stateDir} (pid ${pid}): ${(e as Error).message}`,
+    );
+  }
 }
 
 /** Drop `child`'s record (its group was stopped some other way). */

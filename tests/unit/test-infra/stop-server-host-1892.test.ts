@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import { type ChildProcess } from "child_process";
 import * as fs from "fs";
+import * as net from "net";
 import * as os from "os";
 import * as path from "path";
 import { spawnServer, stopServer } from "../../child-servers.js";
@@ -68,5 +69,30 @@ describe("stopServer and the server's session host (issue 1892)", () => {
     expect(hostPid).toBeGreaterThan(0);
     await stopServer(server);
     expect(alive(hostPid)).toBe(false);
+  }, 30_000);
+
+  it("fails, naming the folder, when the host's socket never answers", async () => {
+    const home = path.join(tmp, "silent", ".den");
+    fs.mkdirSync(home, { recursive: true });
+    const held: net.Socket[] = [];
+    const mute = net.createServer((c) => held.push(c));
+    await new Promise<void>((r) =>
+      mute.listen(sessionPaths(home).socket, () => r()),
+    );
+    const quiet = spawnServer(
+      process.execPath,
+      ["-e", "setInterval(() => {}, 1 << 30)"],
+      {
+        cwd: tmp,
+        stdio: "ignore",
+        env: { ...process.env, DEN_HOME: home },
+      },
+    );
+    try {
+      await expect(stopServer(quiet)).rejects.toThrow(home);
+    } finally {
+      for (const c of held) c.destroy();
+      await new Promise<void>((r) => mute.close(() => r()));
+    }
   }, 30_000);
 });
