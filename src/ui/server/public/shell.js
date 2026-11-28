@@ -1195,7 +1195,7 @@
       "Settings for one project. They follow the project you view in the top bar.",
     "setc.agents": "Agents",
     "setc.agents.d":
-      "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
+      "The programs your agents run on, installed ones first. A path you set applies to this machine only. A path set for one project wins over the one set for every project.",
     "setc.access": "Access",
     "setc.access.d":
       "Reach this Den from your other devices: sign in with GitHub as its owner, or pair a device with a one-time link. On localhost nothing asks.",
@@ -2870,7 +2870,7 @@
     "set.job.designer": "Designer",
     "set.job.designer.d": "Designs flows and screens.",
     "set.job.install": "__DEN_TITLE__'s own agent",
-    "set.job.install.d": "Looks after this __DEN_TITLE__.",
+    "set.job.install.d": "Looks after __DEN_TITLE__ itself.",
     "set.jobs.lead":
       "Agents with these jobs can file and update GitHub issues in their own project without asking you, so bugs and follow-ups get written down.",
     "set.jobs.recorded":

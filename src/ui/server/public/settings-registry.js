@@ -96,7 +96,7 @@ export const DEN_SETTING_CATEGORIES = [
     label: "Agents",
     order: 55,
     description:
-      "The runtimes agents run on, installed first. Paths you set are this machine's only: everywhere (config/local/user.yml) or for one project (config/local/workspaces.yml), which wins.",
+      "The programs your agents run on, installed ones first. A path you set applies to this machine only. A path set for one project wins over the one set for every project.",
   },
   {
     // issue 267: Hub has a section of its own: its address, the connection,
@@ -620,7 +620,7 @@ const DEN_JOBS = {
   reviewer: ["Reviewer", "Reviews pull requests. Never merges."],
   tester: ["Tester", "Runs the tests and reports failures."],
   designer: ["Designer", "Designs flows and screens."],
-  install: ["__DEN_TITLE__'s own agent", "Looks after this __DEN_TITLE__."],
+  install: ["__DEN_TITLE__'s own agent", "Looks after __DEN_TITLE__ itself."],
 };
 
 export function issueWriteRoles(v) {

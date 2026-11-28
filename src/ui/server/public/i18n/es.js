@@ -1652,7 +1652,7 @@
     "set.job.designer": "Diseñador",
     "set.job.designer.d": "Diseña flujos y pantallas.",
     "set.job.install": "El agente propio de __DEN_TITLE__",
-    "set.job.install.d": "Cuida de este __DEN_TITLE__.",
+    "set.job.install.d": "Cuida del propio __DEN_TITLE__.",
     "set.jobs.lead":
       "Los agentes con estos trabajos pueden crear y actualizar issues de GitHub en su propio proyecto sin preguntarte, para que los errores y lo pendiente queden anotados.",
     "set.jobs.recorded":
@@ -4651,7 +4651,7 @@
       "Ajustes de un proyecto. Siguen al proyecto que ves en la barra superior.",
     "setc.agents": "Agentes",
     "setc.agents.d":
-      "Los runtimes en los que se ejecutan los agentes, primero los instalados. Las rutas que defines valen solo para esta máquina: en todas partes (config/local/user.yml) o para un proyecto (config/local/workspaces.yml), que tiene prioridad.",
+      "Los programas con los que funcionan tus agentes, primero los instalados. Una ruta que defines se aplica solo a esta máquina. La ruta definida para un proyecto tiene prioridad sobre la definida para todos.",
     "setc.access": "Acceso",
     "setc.access.d":
       "Accede a este Den desde tus otros dispositivos: inicia sesión con GitHub como su propietario o empareja un dispositivo con un enlace de un solo uso. En localhost no se pide nada.",

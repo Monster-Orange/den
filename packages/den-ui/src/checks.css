@@ -27,7 +27,7 @@
 .den-checks {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   min-width: 0;
   max-width: 32rem;
   margin: 0;
@@ -52,7 +52,13 @@
   display: flex;
   gap: 10px;
   align-items: flex-start;
+  margin: 0 -8px;
+  padding: 5px 8px;
+  border-radius: 6px;
   cursor: pointer;
+}
+.den-checks-row:hover {
+  background: var(--sunken);
 }
 .den-checks-box {
   flex: none;
@@ -96,11 +102,17 @@
 .den-checks[data-disabled] .den-checks-help {
   color: var(--faint);
 }
+.den-checks[data-disabled] .den-checks-row:hover {
+  background: none;
+}
 /* A phone: each row is a 44px target and the box is 22px. */
 @media (max-width: 720px), (pointer: coarse) {
   .den-checks-row {
+    box-sizing: border-box;
     min-height: var(--tap);
-    align-items: center;
+    gap: 12px;
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
   .den-checks-box {
     width: 22px;
