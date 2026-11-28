@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   cmdOsUser,
+  defaultOsUserDeps,
   osUserDoctorRow,
   type OsUserCommandDeps,
 } from "../../../src/ui/cli/os-user-command.js";
@@ -136,6 +137,16 @@ describe("issue 988: agents os-login setup", () => {
 
   it("this Den version still owes checks, so the real list isn't empty", () => {
     expect(OS_LOGIN_OWED.length).toBeGreaterThan(0);
+  });
+
+  it("with this Den version's own list, setup refuses and names the sandbox policy", async () => {
+    expect(defaultOsUserDeps("den").owed()).toBe(OS_LOGIN_OWED);
+    const r = rig({ yes: true, owed: [...OS_LOGIN_OWED] });
+    expect(await cmdOsUser(["setup"], r.d)).toBe(1);
+    expect(r.ran).toEqual([]);
+    expect(r.err.join("\n")).toContain(
+      "a sandbox policy for the agents' login",
+    );
   });
 
   it("Den's runtime the login could change: setup refuses before it asks, and runs nothing", async () => {

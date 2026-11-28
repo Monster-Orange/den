@@ -526,7 +526,13 @@ export interface OsUserFacts {
   };
   group: { exists: boolean; members?: string[] };
   personUid: number;
-  personHome: (StatFacts & { acl: string[] }) | null;
+  personHome:
+    | (StatFacts & {
+        acl: string[];
+        aclUnread?: boolean;
+        parents?: { path: string; acl: string[]; unread: boolean }[];
+      })
+    | null;
   sudoers: StatFacts | null;
   personRules: string[] | null;
   launcher: (StatFacts & { text: string }) | null;
@@ -534,6 +540,9 @@ export interface OsUserFacts {
   agentsDir: StatFacts | null;
   homeDir: StatFacts | null;
   stateDir: StatFacts | null;
+  logsDir?:
+    | (StatFacts & { path: string; acl: string[]; aclUnread?: boolean })
+    | null;
   dir: boolean;
   runtime?: string[];
 }
@@ -554,20 +563,56 @@ export function homeProblems(l: OsUserLayout, f: OsUserFacts): string[] {
   const h = f.personHome;
   if (!h) out.push(`your home ${l.personHome} couldn't be read`);
   else {
+    if (h.aclUnread)
+      out.push(
+        `the access lists on your home ${l.personHome} couldn't be read`,
+      );
     if ((h.mode & 0o077) !== 0)
       out.push(
         `your home ${l.personHome} is ${octal(h.mode)}: the agents' login could read your files (it should be 0700; \`agents os-login setup\` closes it)`,
       );
     for (const e of h.acl)
-      if (/\ballow\b/.test(e) && !e.startsWith(`user:${l.person} `))
+      if (aclLetsOthersIn(e, l.person))
         out.push(
           `your home ${l.personHome} has the ACL entry "${e}": it lets someone else in`,
         );
+    for (const x of h.parents ?? []) {
+      if (x.unread)
+        out.push(
+          `the access lists on ${x.path}, above your home, couldn't be read`,
+        );
+      for (const e of x.acl)
+        if (aclLetsOthersWrite(e))
+          out.push(
+            `${x.path}, above your home, has the ACL entry "${e}": someone else could change it`,
+          );
+    }
   }
   for (const r of [l.runtime.bin, l.runtime.script])
     if (inside(l.personHome, r))
       out.push(
         `Den's runtime ${r} is inside your home, which the agents' login must not read: install Den outside it`,
+      );
+  return out;
+}
+
+export function logsProblems(l: OsUserLayout, f: OsUserFacts): string[] {
+  const g = f.logsDir;
+  if (!g) return [];
+  const out: string[] = [];
+  if (g.uid !== f.personUid)
+    out.push(
+      `Den's service logs folder ${g.path} isn't yours (its owner is uid ${g.uid})`,
+    );
+  if (g.aclUnread) out.push(`can't read the ACL on the logs folder ${g.path}`);
+  if ((g.mode & 0o077) !== 0)
+    out.push(
+      `Den's service logs folder ${g.path} is ${octal(g.mode)}: the agents' login could read the logs (Den makes it 0700 when it starts)`,
+    );
+  for (const e of g.acl)
+    if (aclLetsOthersIn(e, l.person))
+      out.push(
+        `Den's service logs folder ${g.path} has the ACL entry "${e}": it lets someone else in`,
       );
   return out;
 }
@@ -593,9 +638,11 @@ export function osUserCheck(
     );
 
   if (o.on) problems.push(...homeProblems(l, f));
-  if (o.on || f.user.exists)
+  if (o.on || f.user.exists) {
     for (const r of f.runtime ?? [])
       problems.push(`Den's runtime: ${r}, and the agents' login runs it`);
+    problems.push(...logsProblems(l, f));
+  }
 
   const present = [
     f.user.exists && `the login ${n.user}`,
@@ -851,6 +898,7 @@ export function readOsUserFacts(
     homeDir: d.stat(p.home),
     personHome: personHomeFacts(l, d, ok),
     stateDir: d.stat(stateDir),
+    logsDir: logsDirFacts(l, path.join(stateDir, "logs"), d, ok),
     dir: d.stat(p.dir) !== null,
     ...(l.runtime.engineRoot && d.runtime
       ? {
@@ -887,6 +935,30 @@ function runtimeFacts(
   return check(r, { uid: user.uid as number, gids, name, groupNames });
 }
 
+const lsAcl = (
+  l: OsUserLayout,
+  p: string,
+  ok: (cmd: string, args: string[]) => string | null,
+): { acl: string[]; aclUnread: boolean } => {
+  if (l.platform !== "darwin") {
+    const ls = ok("ls", ["-ld", "--", p]);
+    if (ls === null) return { acl: [], aclUnread: true };
+    if (!(ls.trim().split(/\s+/)[0] ?? "").endsWith("+"))
+      return { acl: [], aclUnread: false };
+    const g = ok("getfacl", ["--absolute-names", "--omit-header", "--", p]);
+    return g === null
+      ? { acl: [], aclUnread: true }
+      : { acl: getfaclEntries(g), aclUnread: false };
+  }
+  const out = ok("/bin/ls", ["-led", "--", p]);
+  if (out === null) return { acl: [], aclUnread: true };
+  try {
+    return { acl: parseLsAcl(out, [p]).get(p) ?? [], aclUnread: false };
+  } catch {
+    return { acl: [], aclUnread: true };
+  }
+};
+
 function personHomeFacts(
   l: OsUserLayout,
   d: OsUserReadDeps,
@@ -894,14 +966,28 @@ function personHomeFacts(
 ): OsUserFacts["personHome"] {
   const st = d.stat(l.personHome);
   if (!st) return null;
-  const acl =
-    l.platform === "darwin"
-      ? (ok("/bin/ls", ["-led", l.personHome]) ?? "")
-          .split("\n")
-          .map((x) => /^\s*\d+:\s*(.+)$/.exec(x)?.[1]?.trim())
-          .filter((x): x is string => !!x)
-      : [];
-  return { ...st, acl };
+  const parents: { path: string; acl: string[]; unread: boolean }[] = [];
+  if (l.platform === "linux")
+    for (let x = path.dirname(l.personHome); ; x = path.dirname(x)) {
+      const a = lsAcl(l, x, ok);
+      parents.push({ path: x, acl: a.acl, unread: a.aclUnread });
+      if (x === path.dirname(x)) break;
+    }
+  return {
+    ...st,
+    ...lsAcl(l, l.personHome, ok),
+    ...(l.platform === "linux" ? { parents } : {}),
+  };
+}
+
+function logsDirFacts(
+  l: OsUserLayout,
+  p: string,
+  d: OsUserReadDeps,
+  ok: (cmd: string, args: string[]) => string | null,
+): OsUserFacts["logsDir"] {
+  const st = d.stat(p);
+  return st ? { ...st, path: p, ...lsAcl(l, p, ok) } : null;
 }
 
 export function machineReadDeps(): OsUserReadDeps {
@@ -947,7 +1033,12 @@ export const UID_UNREAD = "can't read the agents' login's uid";
 export const OWED_REFUSAL =
   "the agents' own login isn't ready on this Den version yet";
 export const OS_LOGIN_OWED: readonly string[] = [
-  "service logs private to the person's login",
+  "a sandbox policy for the agents' login",
+  "own/ files read without following links (O_NOFOLLOW)",
+  "the Linux end-to-end run as root in CI",
+  "the sign-in token passed by file handle, not the environment",
+  "access lists on the folders above the person's home on macOS",
+  "owner and mode of the folders above the person's home on Linux",
 ];
 
 const ACL_WRITES = new Set([
@@ -968,18 +1059,62 @@ export interface AclWho {
   groupNames?: string[];
 }
 
+const macAcl = (
+  entry: string,
+): { principal: string; kind: string; rights: string } | null => {
+  const m = /^(.+)\s+(allow|deny)\s+(\S+)$/.exec(entry.trim());
+  return m
+    ? {
+        principal: m[1]!.replace(/\s+inherited$/, ""),
+        kind: m[2]!,
+        rights: m[3]!,
+      }
+    : null;
+};
+
 export function aclLetsAgentsWrite(entry: string, who: AclWho): boolean {
-  const m = /^(.+?)\s+(?:inherited\s+)?(allow|deny)\s+(\S+)/.exec(entry.trim());
+  const m = macAcl(entry);
   if (!m) return true;
-  if (m[2] === "deny") return false;
-  if (!m[3]!.split(",").some((x) => ACL_WRITES.has(x))) return false;
+  if (m.kind === "deny") return false;
+  if (!m.rights.split(",").some((x) => ACL_WRITES.has(x))) return false;
   if (who.name === undefined || who.groupNames === undefined) return true;
-  const p = m[1]!;
+  const p = m.principal;
   if (p === "everyone" || p === "group:everyone") return true;
   if (p.startsWith("user:")) return p.slice(5) === who.name;
   if (p.startsWith("group:"))
     return /\s/.test(p) || who.groupNames.includes(p.slice(6));
   return true;
+}
+
+const linuxAcl = (entry: string) =>
+  /^(?:default:)?(user|group|mask|other):([^:]*):([rwx-]{3})$/.exec(entry);
+
+export function aclLetsOthersIn(entry: string, person: string): boolean {
+  const m = macAcl(entry);
+  if (m) return m.kind === "allow" && m.principal !== `user:${person}`;
+  const x = linuxAcl(entry);
+  if (!x) return true;
+  const named = (x[1] === "user" || x[1] === "group") && x[2] !== "";
+  return named && x[3] !== "---" && !(x[1] === "user" && x[2] === person);
+}
+
+const aclLetsOthersWrite = (entry: string): boolean => {
+  const x = linuxAcl(entry);
+  if (!x) return true;
+  const named = (x[1] === "user" || x[1] === "group") && x[2] !== "";
+  return named && x[3]!.includes("w");
+};
+
+export function getfaclEntries(out: string): string[] {
+  const entries: string[] = [];
+  for (const raw of out.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const [entry = "", ...rest] = line.split(/\s+/);
+    const eff = /#effective:([rwx-]{3})/.exec(rest.join(" "))?.[1];
+    entries.push(eff ? entry.replace(/:[rwx-]{3}$/, `:${eff}`) : entry);
+  }
+  return entries;
 }
 
 export function loginNames(): AclWho {
