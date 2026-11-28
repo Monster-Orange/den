@@ -33,6 +33,8 @@ export const UI_MODULES: readonly string[] = [
   "/bell.js",
   // Issue 172: alerts outside the bell (desktop notifications).
   "/alerts.js",
+  "/alert-sounds.js",
+  "/tab-count.js",
   // Issue 172 S2: the service worker that shows push alerts.
   "/den-sw.js",
   "/edge-page.js",
@@ -45,6 +47,18 @@ export const UI_MODULES: readonly string[] = [
   "/error-page.js",
   "/agents-section.js",
   "/agents-page.js",
+  "/agents-core.js",
+  "/agents-url.js",
+  "/agents-rows.js",
+  "/agents-list.js",
+  "/agents-data.js",
+  "/agents-layout.js",
+  "/agents-bar.js",
+  "/agents-term.js",
+  "/agents-panes.js",
+  "/agents-reorder.js",
+  "/agents-actions.js",
+  "/agents-start-dialog.js",
   // D32: an agent's helpers, and the shared read-only transcript view.
   "/agent-helpers.js",
   // Issue 96: where a move in a project's order goes.
@@ -92,6 +106,8 @@ export const UI_MODULES: readonly string[] = [
   // 0.4.46: one terminal pane connection, reconnecting on its own.
   "/pane-reconnect.js",
   "/term-pane.js",
+  "/peek.js",
+  "/peek.css",
   // Issue 448: which shell the rail's Terminal opens.
   "/shell-pick.js",
   // Issue 482: the Terminals list's rules.
@@ -206,6 +222,10 @@ export const KIT_FILES: readonly string[] = [
   // The shared update pill: a new version of Den, Reload.
   "update-pill.js",
   "update-pill.css",
+  "pager.js",
+  "pager.css",
+  "tabs.js",
+  "tabs.css",
   // Issue 95 (UI kit slice 1): the global shell (top bar, rail, pins,
   // collapse, ☰ drawer), the version chip, What's new, the Report form
   // and the kit's words, and the client entry (window.DenUI).

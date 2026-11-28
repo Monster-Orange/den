@@ -17,7 +17,7 @@
  *  - a peer that stops reading (more than `maxBacklogBytes` queued): the
  *    socket is destroyed, as the session host drops a slow client.
  * A ping goes out every `pingMs` (default 30 s); a peer that hasn't answered
- * the last one by the next is gone, and the socket is destroyed.
+ * the last one by the next is gone: it closes as going away, then is dropped.
  */
 import { createHash } from "crypto";
 import { EventEmitter } from "events";
@@ -107,6 +107,7 @@ export class WsConnection extends EventEmitter {
       ping > 0
         ? setInterval(() => {
             if (this.awaitingPong) {
+              this.finish(WS_CLOSE.goingAway, "no answer to ping");
               this.socket.destroy();
               return;
             }

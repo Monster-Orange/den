@@ -22,6 +22,7 @@ import {
 } from "../../shared/notifications.js";
 import { getStateDir } from "../../shared/paths.js";
 import { Attention, type StatusReport } from "./attention.js";
+import { AlertHandoff } from "./alert-handoff.js";
 import { noteActivity } from "../../shared/agents/activity.js";
 import { AlertFeed } from "./alert-feed.js";
 import { ALERT_TEST_WORDS, alertPrefs } from "./alerts.js";
@@ -304,6 +305,15 @@ export function pushDeps(): {
   };
 }
 
+let handoff: AlertHandoff | null = null;
+export function alertHandoff(): AlertHandoff {
+  handoff ??= new AlertHandoff({
+    windowMs: () => alertPrefs(readUserConfig()).tabFirstSeconds * 1000,
+    maxTabs: () => alertPrefs(readUserConfig()).maxStreams,
+  });
+  return handoff;
+}
+
 export function alertFeed(): AlertFeed {
   alerts ??= new AlertFeed({
     prefs: () => alertPrefs(readUserConfig()),
@@ -311,17 +321,29 @@ export function alertFeed(): AlertFeed {
     zone: () => timeZonePref(readUserConfig().time_zone),
     title: () => product().title,
     nameOf,
-    push: (a, prefs) =>
-      pushAll(
-        { title: a.title, body: a.body, link: a.link, tag: a.id },
-        {
-          subs: pushDeps().subs,
-          keys: () => vapidKeys(getStateDir()),
-          subject: pushSubject(),
-          timeoutMs: prefs.pushTimeoutSeconds * 1000,
-          ttlSeconds: prefs.pushTtlSeconds,
-        },
+    muted: (agent, workspace) =>
+      (store ?? notificationDeps().store).muted(
+        `agent:${agent}`,
+        `workspace/${workspace}`,
       ),
+    push: async (a, prefs) => {
+      const send = (only: string[]) =>
+        void pushAll(
+          { title: a.body, body: a.project, link: a.link, tag: a.id },
+          {
+            subs: pushDeps().subs,
+            keys: () => vapidKeys(getStateDir()),
+            subject: pushSubject(),
+            timeoutMs: prefs.pushTimeoutSeconds * 1000,
+            ttlSeconds: prefs.pushTtlSeconds,
+            only,
+          },
+        ).catch(() => undefined);
+      const all = pushDeps()
+        .subs.list()
+        .map((x) => x.endpoint);
+      if (all.length) alertHandoff().deliver(a, all, send);
+    },
   });
   return alerts;
 }
@@ -331,6 +353,7 @@ export function notificationDeps(): {
   attention: Attention;
   alerts: AlertFeed;
   push: ReturnType<typeof pushDeps>;
+  handoff: AlertHandoff;
   asks: { limit: AskLimit; perHour: () => number };
   prefs: () => BellPrefs;
   seen: ReturnType<typeof seenMarks>;
@@ -382,6 +405,7 @@ export function notificationDeps(): {
     timer.unref();
   }
   return {
+    handoff: alertHandoff(),
     store,
     attention,
     alerts: alertFeed(),

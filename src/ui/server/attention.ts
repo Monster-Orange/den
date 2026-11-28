@@ -31,6 +31,7 @@
  * page to say in its own language.
  * Agent state and output come from `deps` (tests use fakes).
  */
+import { agentPagePath } from "../../shared/agent-links.js";
 import type {
   NoteMsg,
   Notification,
@@ -173,7 +174,7 @@ export interface AttentionDeps {
   alert?: (n: {
     agent: string;
     workspace: string;
-    why: "permission" | "asked";
+    why: "permission" | "asked" | "finished";
   }) => void;
 }
 
@@ -395,7 +396,7 @@ export class Attention {
     const subject = `agent:${agent}`;
     const scope = `workspace/${workspace}`;
     const name = this.d.nameOf(agent);
-    const link = `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`;
+    const link = agentPagePath(workspace, agent);
     const seq = ++this.seq;
     try {
       if (ev.event !== "resumed") this.d.activity?.(agent, false);
@@ -486,6 +487,12 @@ export class Attention {
           : { key: "bell.m.turn", vars: { name } },
         link,
       });
+      if (!this.onScreen(agent))
+        try {
+          this.d.alert?.({ agent, workspace, why: "finished" });
+        } catch {
+          /* an alert is best effort: the bell has it */
+        }
       return;
     }
     const prev = this.waiting.get(agent);
@@ -844,7 +851,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : agentPagePath(workspace, agent),
     });
   }
 
@@ -872,7 +879,7 @@ export class Attention {
       link:
         w.url && /^https?:\/\//.test(w.url)
           ? w.url
-          : `/agents?project=${encodeURIComponent(workspace)}&agent=${encodeURIComponent(agent)}`,
+          : agentPagePath(workspace, agent),
     });
   }
 

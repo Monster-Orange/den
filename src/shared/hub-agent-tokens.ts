@@ -119,6 +119,16 @@ export function readAgentTokenProblems(stateDir: string): AgentTokenProblem[] {
   }
 }
 
+export function liveAgentTokenProblems(stateDir: string): AgentTokenProblem[] {
+  return readAgentTokenProblems(stateDir).filter((p) => {
+    try {
+      return !!readRecord(stateDir, p.agentId);
+    } catch {
+      return true;
+    }
+  });
+}
+
 function noteAgentTokenProblem(
   stateDir: string,
   id: string,
@@ -612,7 +622,10 @@ export async function unbindAgentHubToken(
   hub: () => Promise<HubInstall | null>,
   id: string,
 ): Promise<void> {
-  if (!readAgentHubToken(stateDir(), id)) return;
+  if (!readAgentHubToken(stateDir(), id)) {
+    noteAgentTokenProblem(stateDir(), id, null, new Date().toISOString());
+    return;
+  }
   const h = await hub().catch(() => null);
   await new HubAgentTokens({
     stateDir,

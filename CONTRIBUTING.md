@@ -218,7 +218,10 @@ node scripts/affected-tests.mjs origin/main HEAD
   guard, `package.json`, jest or test setup, CI) runs them all.
 
 `node scripts/affected-map.mjs` rewrites the map's page rules from the code
-(CI also adds them fresh, so a new spec is never left out).
+(CI also adds them fresh, so a new spec is never left out). It writes the
+file in prettier's form, so there is no formatting step after it, and the pr
+job runs `node scripts/affected-map.mjs --check`, which fails on a stale map
+or one in another form.
 `scripts/ci-replay.mjs` replays the last 30 days of red CI runs and fails if
 the subset would have missed a real failure;
 `tests/fixtures/ci-replay-cases.json` keeps those failures, and
@@ -242,6 +245,26 @@ browsers (`~/.cache/ms-playwright`) and apt's downloaded packages
 (`~/.cache/den-apt`). Once one job has them, later runs skip the Ubuntu mirror.
 The limits are settings: `CI_PW_DEPS_SECONDS` (default 240) and
 `CI_PW_INSTALL_SECONDS` (default 90).
+
+### Waiting in browser tests
+
+Wait for what the page does, never for a fixed time:
+
+- After a change the page saves, wait for the save's answer and then for the
+  page's own last step (its announcement, or the row back in the list). A list
+  shows a move before the server has it; a test that stops there leaves the
+  save in flight, and on a busy runner it lands in the next test.
+- A held button shows dots until its answer comes. For one request, that is
+  all: no pop-up (issue 1054). An action that names its steps, or one in
+  reconnect mode, opens the working pop-up after `DOTS_MS` (3 s, or
+  `configureBusy({ dotsMs })`), with the dots behind it. A button marked
+  `data-instant` shows no dots, and opens the pop-up after `OPEN_MS`
+  (300 ms) for any request. The pop-up stays at least `MIN_MS` (600 ms) and
+  takes the keyboard. These live in `packages/den-ui/src/busy.js`. A key
+  pressed before it closes goes to the pop-up, not the row. Waiting for the
+  page's last step covers this too.
+- Each test leaves nothing running: every request it started has answered
+  before it ends.
 
 ## Merging
 

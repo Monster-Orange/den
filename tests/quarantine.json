@@ -16,19 +16,6 @@
       }
     },
     {
-      "file": "tests/unit/server/agents-terminal.browser.test.ts",
-      "test": "an agent's pane as a terminal (AG-4b) D40: picking an agent puts the keyboard in its terminal a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (Shift+Tab)",
-      "issue": 1832,
-      "added": "2026-11-26",
-      "evidence": {
-        "failed_run": 45876385372,
-        "failed_job": 140106374303,
-        "job": "pr-shards (24.13.0, 15)",
-        "sha": "c90ac7fd3251599954ea42e80dab60392ccc73c6",
-        "note": "No CI run on this sha passed it (a red is never re-run). It failed with the pane holding the keyboard (Expected false, Received true at line 834). Only the Shift+Tab case failed; the click case passed in the same run."
-      }
-    },
-    {
       "file": "tests/unit/agents/server-agent.test.ts",
       "test": "the server agent running, a second start leaves it as it is; stopped, it resumes its conversation (AG-14)",
       "issue": 1833,
@@ -107,19 +94,6 @@
       }
     },
     {
-      "file": "tests/unit/server/agents-terminal.browser.test.ts",
-      "test": "an agent's pane as a terminal (AG-4b) D40: picking an agent puts the keyboard in its terminal a pick whose socket opens late doesn't take the keyboard once the person has gone elsewhere (click)",
-      "issue": 1832,
-      "added": "2026-11-26",
-      "evidence": {
-        "failed_run": 45878099265,
-        "failed_job": 140112164904,
-        "job": "pr-shards (24.13.0, 15)",
-        "sha": "1ef93a013b128efd333d63e927b5f9c3e9a4b5ff",
-        "note": "No CI run on this sha passed it (a red is never re-run). The pane took the keyboard after the person moved elsewhere (Expected false, Received true at the activeElement check). The Shift+Tab case of the same test is quarantined under issue 1832 already."
-      }
-    },
-    {
       "file": "tests/unit/server/bell-allow-review.browser.test.ts",
       "test": "the bell's Allow row: Review at 1440: a tap opens the lines and another closes them; Allow and Deny stay put",
       "issue": 1332,
@@ -133,29 +107,16 @@
       }
     },
     {
-      "file": "tests/unit/server/agents-terminal.browser.test.ts",
-      "test": "an agent's pane as a terminal (AG-4b) D40: picking an agent puts the keyboard in its terminal D58: a pointer on a tab puts the keyboard in its terminal; Enter on a tab keeps it on the tab",
-      "issue": 1832,
+      "file": "tests/unit/server/bell-allow-review.browser.test.ts",
+      "test": "the bell keeps the keyboard across a refresh that drops the row (issue 1332) the window losing and getting focus back meanwhile isn't moving on: Review still gets the keyboard",
+      "issue": 1332,
       "added": "2026-11-26",
       "evidence": {
-        "failed_run": 45895576358,
-        "failed_job": 140168520728,
-        "job": "repeat (24.13.0)",
-        "sha": "96e15c12d5abd4ecb9cc0d6f6ac3219c03dff366",
-        "note": "A repeat run on Chromium with the quarantine off: it failed in round 5 of 6 (Expected - 3, Received + 1), the same keyboard-focus family as the D40 cases. No passed_run on that sha is named, since a red is never re-run."
-      }
-    },
-    {
-      "file": "tests/unit/server/agents-terminal.browser.test.ts",
-      "test": "an agent's pane as a terminal (AG-4b) D40: picking an agent puts the keyboard in its terminal a pane already open: picking its row takes the keyboard there",
-      "issue": 1832,
-      "added": "2026-11-26",
-      "evidence": {
-        "failed_run": 45895576358,
-        "failed_job": 140168520728,
-        "job": "repeat (24.13.0)",
-        "sha": "96e15c12d5abd4ecb9cc0d6f6ac3219c03dff366",
-        "note": "A repeat run on Chromium with the quarantine off: it failed in round 5 of 6 (Expected - 3, Received + 1), the same keyboard-focus family as the D40 cases. No passed_run on that sha is named, since a red is never re-run."
+        "failed_run": 45922370620,
+        "failed_job": 140256986973,
+        "job": "pr-shards (24.13.0, 12)",
+        "sha": "021463e6caf5cfbd7ad7f328ed5f526b352c2060",
+        "note": "No CI run on this sha passed it (a red is never re-run). The change on that sha touched only label and help strings, not the bell. Review didn't have the keyboard before the row dropped: the page had focus, the panel was open and the same Review button was connected, but the active element was the body. Two other cases in this file are quarantined under the same issue."
       }
     }
   ]

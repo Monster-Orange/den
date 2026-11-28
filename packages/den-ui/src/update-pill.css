@@ -6,8 +6,8 @@
    Two knobs, set on .den-upd:
    --upd-pad-y : the pill's vertical padding (8px).
    --upd-top   : where the pill sits; the default centres a 50px pill on a
-                 48px bar (top -1px). */
-.den-upd { --upd-pad-y: 8px; --upd-top: calc(env(safe-area-inset-top, 0px) + (48px - 50px) / 2);
+                 48px bar (top -1px), or a host's --den-overlay-top. */
+.den-upd { --upd-pad-y: 8px; --upd-top: calc(env(safe-area-inset-top, 0px) + var(--den-overlay-top, (48px - 50px) / 2));
   position: fixed; z-index: 30; top: var(--upd-top); left: 16px; right: 16px; display: flex; justify-content: center; pointer-events: none; background: none; }
 .den-upd[hidden] { display: none; }
 .den-upd .upd-pill { pointer-events: auto; display: flex; align-items: center; gap: 16px; width: fit-content; max-width: 100%; box-sizing: border-box;

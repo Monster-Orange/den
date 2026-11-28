@@ -1,5 +1,6 @@
 import { spawnSync } from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 export type OsUserPlatform = "darwin" | "linux";
@@ -746,7 +747,7 @@ export interface OsUserReadDeps {
   chain: (p: string) => (StatFacts & { path: string })[];
   runtime?: (
     r: { bin: string; script: string; engineRoot: string },
-    agents: { uid: number; gids: number[] },
+    agents: { uid: number; gids: number[] } & AclWho,
   ) => string[];
 }
 
@@ -857,6 +858,8 @@ export function readOsUserFacts(
             { ...l.runtime, engineRoot: l.runtime.engineRoot },
             user,
             ok("id", ["-G", n.user]),
+            ok("id", ["-Gn", n.user]),
+            n.user,
             d.runtime,
           ),
         }
@@ -871,6 +874,8 @@ function runtimeFacts(
   r: { bin: string; script: string; engineRoot: string },
   user: OsUserFacts["user"],
   idG: string | null,
+  idGn: string | null,
+  name: string,
   check: NonNullable<OsUserReadDeps["runtime"]>,
 ): string[] {
   if (!user.exists) return check(r, { uid: NO_LOGIN_YET, gids: [] });
@@ -878,7 +883,8 @@ function runtimeFacts(
   const gids = (idG ?? "").trim().split(/\s+/).filter(Boolean).map(Number);
   if (!gids.length || gids.some((g) => !Number.isInteger(g)))
     return [GROUPS_UNREAD];
-  return check(r, { uid: user.uid as number, gids });
+  const groupNames = idGn?.trim().split(/\s+/).filter(Boolean);
+  return check(r, { uid: user.uid as number, gids, name, groupNames });
 }
 
 function personHomeFacts(
@@ -941,18 +947,107 @@ export const UID_UNREAD = "can't read the agents' login's uid";
 export const OWED_REFUSAL =
   "the agents' own login isn't ready on this Den version yet";
 export const OS_LOGIN_OWED: readonly string[] = [
-  "macOS access lists (ACLs) on Den's runtime files and folders",
   "service logs private to the person's login",
 ];
 
+const ACL_WRITES = new Set([
+  "write",
+  "append",
+  "delete",
+  "add_file",
+  "add_subdirectory",
+  "delete_child",
+  "writeattr",
+  "writeextattr",
+  "writesecurity",
+  "chown",
+]);
+
+export interface AclWho {
+  name?: string;
+  groupNames?: string[];
+}
+
+export function aclLetsAgentsWrite(entry: string, who: AclWho): boolean {
+  const m = /^(.+?)\s+(?:inherited\s+)?(allow|deny)\s+(\S+)/.exec(entry.trim());
+  if (!m) return true;
+  if (m[2] === "deny") return false;
+  if (!m[3]!.split(",").some((x) => ACL_WRITES.has(x))) return false;
+  if (who.name === undefined || who.groupNames === undefined) return true;
+  const p = m[1]!;
+  if (p === "everyone" || p === "group:everyone") return true;
+  if (p.startsWith("user:")) return p.slice(5) === who.name;
+  if (p.startsWith("group:"))
+    return /\s/.test(p) || who.groupNames.includes(p.slice(6));
+  return true;
+}
+
+export function loginNames(): AclWho {
+  const r = spawnSync("id", ["-Gn"], { encoding: "utf-8", timeout: 10_000 });
+  const groupNames =
+    r.status === 0 ? r.stdout.trim().split(/\s+/).filter(Boolean) : undefined;
+  try {
+    return { name: os.userInfo().username, groupNames };
+  } catch {
+    return {};
+  }
+}
+
+export function parseLsAcl(
+  out: string,
+  paths: string[],
+): Map<string, string[]> {
+  const byLength = [...paths].sort((a, b) => b.length - a.length);
+  const acls = new Map<string, string[]>();
+  const listed = new Set<string>();
+  let at: string | null = null;
+  for (const line of out.split("\n")) {
+    const e = /^\s*\d+:\s*(.+)$/.exec(line)?.[1]?.trim();
+    if (e) {
+      if (at === null) throw new Error(`ls -le gave "${e}" under no path`);
+      acls.set(at, [...(acls.get(at) ?? []), e]);
+      continue;
+    }
+    if (!line.trim()) continue;
+    at =
+      byLength.find(
+        (p) => line.endsWith(` ${p}`) || line.includes(` ${p} -> `),
+      ) ?? null;
+    if (at === null)
+      throw new Error(`ls -le listed a path it wasn't asked for`);
+    listed.add(at);
+  }
+  const missed = paths.find((p) => !listed.has(p));
+  if (missed !== undefined) throw new Error(`ls -le didn't list ${missed}`);
+  return acls;
+}
+
+export function darwinAcls(paths: string[]): Map<string, string[]> {
+  const acls = new Map<string, string[]>();
+  for (let i = 0; i < paths.length; i += 1000) {
+    const batch = paths.slice(i, i + 1000);
+    const r = spawnSync("/bin/ls", ["-led", "--", ...batch], {
+      encoding: "utf-8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    if (r.status !== 0)
+      throw new Error(`ls -le exited ${r.status ?? r.signal ?? "?"}`);
+    for (const [p, e] of parseLsAcl(r.stdout, batch)) acls.set(p, e);
+  }
+  return acls;
+}
+
 export function runtimeProblemsOrUnread(
   r: { bin: string; script: string; engineRoot: string },
-  agents: { uid: number; gids: number[] },
+  agents: { uid: number; gids: number[] } & AclWho,
+  d: { acl?: (paths: string[]) => Map<string, string[]> } = {
+    acl: process.platform === "darwin" ? darwinAcls : undefined,
+  },
 ): string[] {
   if (agents.uid !== NO_LOGIN_YET && !agents.gids.length)
     return [GROUPS_UNREAD];
   try {
-    return runtimeWritableProblems(r, agents);
+    return runtimeWritableProblems(r, agents, d);
   } catch (e) {
     return [`it couldn't be read (${(e as Error).message})`];
   }
@@ -960,8 +1055,11 @@ export function runtimeProblemsOrUnread(
 
 export function runtimeWritableProblems(
   r: { bin: string; script: string; engineRoot: string },
-  agents: { uid: number; gid?: number; gids?: number[] },
-  d: { stat?: (p: string) => { uid: number; gid: number; mode: number } } = {},
+  agents: { uid: number; gid?: number; gids?: number[] } & AclWho,
+  d: {
+    stat?: (p: string) => { uid: number; gid: number; mode: number };
+    acl?: (paths: string[]) => Map<string, string[]>;
+  } = {},
 ): string[] {
   const groups = new Set([
     ...(agents.gids ?? []),
@@ -1040,5 +1138,11 @@ export function runtimeWritableProblems(
   above(fs.realpathSync(r.script));
   walk(root);
   above(root);
+  for (const [p, entries] of d.acl?.([...seen]) ?? [])
+    for (const e of entries)
+      if (aclLetsAgentsWrite(e, agents))
+        problems.push(
+          `${p} has the ACL entry "${e}": the agents' login could change it`,
+        );
   return problems;
 }

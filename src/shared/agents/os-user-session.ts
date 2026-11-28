@@ -3,6 +3,7 @@ import * as path from "path";
 import { getEngineRoot } from "../paths.js";
 import { OWN_FOLDER, readAgentLaunch } from "./os-user-launch-files.js";
 import {
+  loginNames,
   OS_LOGIN_OWED,
   OWED_REFUSAL,
   runtimeProblemsOrUnread,
@@ -187,6 +188,7 @@ export function defaultAgentSessionDeps(
           uid: typeof process.getuid === "function" ? process.getuid() : -2,
           gids:
             typeof process.getgroups === "function" ? process.getgroups() : [],
+          ...loginNames(),
         },
       ),
   };

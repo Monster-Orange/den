@@ -48,17 +48,13 @@ const LEGACY: Record<string, number> = {
  * kit's frame (dialogHtml, mountDialog, askConfirm).
  *
  * Issue 806: Add Service moved onto the kit's frame (add-service.js), so
- * local-dev.html is off this list and may never come back. The two left
- * were reviewed then and stay, each for the reason it gives.
+ * local-dev.html is off this list and may never come back. The one left
+ * was reviewed then and stays, for the reason it gives.
  */
 const OVERLAYS: Record<string, { n: number; why: string }> = {
   "shell.js": {
     n: 1,
     why: "the command palette (.den-pal-wrap): a search field and its list over the page, not a dialog with a footer; it sets its own font (reviewed in issue 806)",
-  },
-  "graph.css": {
-    n: 1,
-    why: "the graph's details panel popped out (.dg-modal-back): the same side panel, moved, keeping the graph's own state, menus and Esc; inside the graph's .dg root, which sets the font (reviewed in issue 806)",
   },
 };
 

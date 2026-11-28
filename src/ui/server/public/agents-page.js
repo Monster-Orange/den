@@ -95,13 +95,7 @@
  * and Start fresh. A running one says "Handoff due" or "Ready to relaunch"
  * as a tag.
  */
-import {
-  followRestarts,
-  restartAllHtml,
-  restartNow,
-  restartRowHtml,
-  waitsOnPerson,
-} from "/restart-result.js";
+import { followRestarts, restartNow, waitsOnPerson } from "/restart-result.js";
 import {
   quarantinedHtml,
   quarantineNext,
@@ -110,85 +104,31 @@ import {
   runtimeOptions,
   wireQuarantine,
 } from "/agent-start.js";
-import {
-  PROJECT_COLOURS_KEY,
-  projectColour,
-  projectLabel,
-} from "/workspace-picker.js";
-import {
-  groupsLineHtml,
-  groupsOffered,
-  groupsViewHtml,
-  toolsRestartButton,
-  toolsRestartHtml,
-  toolsStale,
-  viewSwitchHtml,
-} from "/agent-groups.js";
-import { focusBack, refindKey } from "/transcript-view.js";
+import { PROJECT_COLOURS_KEY } from "/workspace-picker.js";
+
+
 import { OPEN_MS } from "/kit/busy.js";
-import { formatTime, timeHtml } from "/kit/time.js";
+import { timeHtml } from "/kit/time.js";
 import { dismissable } from "/popover.js";
 import { startGateChip } from "/gate-chip.js";
 import { latestShell } from "/shell-pick.js";
-import {
-  belongsOn,
-  lastUsedProject,
-  movedNoteHtml,
-  newTerminalChoices,
-  terminalGroups,
-  terminalRowHtml,
-  terminalsCountText,
-} from "/terminals-list.js";
-import {
-  startFailTail,
-  startFailText,
-  terminalFailText,
-} from "/pty-refusal.js";
+import { belongsOn, newTerminalChoices } from "/terminals-list.js";
+import { startFailTail, startFailText } from "/pty-refusal.js";
 import { askConfirm } from "/dialog-den.js";
 import { reconnectOptions } from "/pane-reconnect.js";
-import { termPane } from "/term-pane.js";
+
 import { makeComposer } from "/agent-composer.js";
-import { dropTo, orderable, orderGroup, orderTo } from "/agent-order.js";
-import {
-  attnSub,
-  bandGroup,
-  bandsOf,
-  byNeed,
-  chipHtml,
-  markHtml,
-  metaHtml,
-  needsWhy,
-  personOrdered,
-  railNeeds,
-  rowState,
-  sinceShort,
-  tagHtml,
-} from "/agent-bands.js";
-import {
-  attachFiles,
-  guardPageDrops,
-  pickFiles,
-  wireDrop,
-} from "/term-drop.js";
-import {
-  helperBadgeHtml,
-  helperCountSaid,
-  helperBarButtonHtml,
-  helperRowsHtml,
-  helperToggleHtml,
-  openHelpers,
-  wireHelperRows,
-} from "/agent-helpers.js";
+import { dropTo, orderTo, orderable } from "/agent-order.js";
+
+import { attachFiles, guardPageDrops, pickFiles } from "/term-drop.js";
+import { openHelpers, wireHelperRows } from "/agent-helpers.js";
 import {
   commandProblem,
   filterBarHtml,
   modelOptionsHtml,
   normalizeData,
-  openPersonaEditor,
-  overrideTagsHtml,
-  ownModeLabel,
-  modeLabel,
   openAgentModeMenu,
+  openPersonaEditor,
   permBlockHtml,
   personaDetail,
   personaDetailHtml,
@@ -202,818 +142,36 @@ import {
   versionLabel,
   versionOptionsHtml,
 } from "/persona-ui.js";
-import {
-  editorUrl,
-  findPaths,
-  isMac,
-  isWebUrl,
-  layoutKeyIndex,
-  linkModifier,
-  linkOpen,
-  imeOnce,
-  softNewlineKey,
-} from "/term-input.js";
+import { layoutKeyIndex } from "/term-input.js";
+import { BY, CLI, LAYOUTS, MAX_NAME, PHONE, SERVER_WS, UNDO_MS, agd, agentPath, api, esc, restartKey, rowOf, st, t } from "/agents-core.js";
+import { PAGE, deepLinkOf, layoutFromUrl, linkedAgentAsked, openFromUrl, rememberedOpen, shellUsed, shownLayout, urlWorkspace, viewWorkspaces, visibleIds, writeUrl } from "/agents-url.js";
+import { displayName, exitedShell, groupOf, inStopped, isStopped, isToday, markOpened, modeName, paneName, rotFromText, rotationOf, rotationWhy, sayLooking, stateTone, stopReason, stoppedChip } from "/agents-rows.js";
 
-const t = (key, vars) => window.denShell?.t?.(key, vars) ?? key;
-const esc = (s) =>
-  String(s ?? "").replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
-        c
-      ],
-  );
-const api = (method, url, body, opts) =>
-  window.denShell.api(method, url, body, opts);
-const CLI = "__DEN_CLI__";
-const TITLE = "__DEN_TITLE__";
-/** ON-6: the server agent's scope (no workspace), shared/agents/server-agent.ts. */
-const SERVER_WS = "den-server";
-/** How long Remove's Undo stays offered (AG-14.1b). */
-export const UNDO_MS = 10_000;
-
-/** The most panes at once (the prototype's 2x2). */
-export const MAX_PANES = 4;
-
-/** The layouts (AG-4b), in the switch's order (⌃⇧1, ⌃⇧2, ⌃⇧3). */
-export const LAYOUTS = ["focus", "tabs", "tile"];
-/** At or below this width Focus and Tile are Tabs (the shell's phone width). */
-const PHONE = "(max-width: 720px)";
-/** The longest name a tab takes (records.ts MAX_DISPLAY_NAME). */
-const MAX_NAME = 40;
-const REFRESH_MS = 5_000;
-
-const BY = ["need", "project", "group"];
-
-const st = {
-  root: null,
-  seenNow: new Map(),
-  loadFailed: false,
-  /**
-   * Issue 1407: each agent's answer to a restart for its tools (ws\0id →
-   * now, turn, job with what and how long, unknown), shown under its row
-   * until its tools are current.
-   */
-  restarts: new Map(),
-  /** Issue 96: the row being dragged (the list isn't redrawn meanwhile). */
-  drag: null,
-  /** Issue 96: a drag just ended, so the click it makes is swallowed. */
-  dragClick: false,
-  /** Issue 226: on a phone, whether the Stopped group's agents show them. */
-  reorderStopped: false,
-  reorderBand: null,
-  /** 0.4.46: panes.* (GET /api/settings panes_reconnect). */
-  reconnect: reconnectOptions(undefined),
-  /** 0.4.45: /api/workspaces, for the projects' names (projName). */
-  projects: null,
-  projectsAt: 0,
-  scope: "all",
-  /** Issue 750: Hub's groups (GET /api/hub/groups), or null until read. */
-  groupsRead: null,
-  groupsAt: 0,
-  /** Issue 750: the list by project (as before) or by group. */
-  by: savedBy(),
-  scopeLabel: "",
-  data: null,
-  signedOut: false,
-  open: [],
-  panes: new Map(),
-  // AG-18: agents (ws\0id) whose persona change started fresh, for the
-  // pane's line once it follows them.
-  fresh: new Set(),
-  timer: null,
-  xterm: null,
-  // Issue 128: failed loads of the terminal code so far.
-  xtermFails: 0,
-  csrf: null,
-  docWired: false,
-  // AG-4b: the person's layout, the pane in front, and in Focus the panes
-  // Shift-clicked in alongside it.
-  layout: "focus",
-  cur: null,
-  side: new Set(),
-  // D40: the pane whose terminal takes the keyboard once its socket opens,
-  // and the one whose terminal last had it.
-  focusOnOpen: null,
-  // D58: whether that focus is a link's: only for a keyboard on nothing yet.
-  focusIfIdle: false,
-  // D54/D58: whether that pick also sizes the PTY (a pick from the list
-  // does; a link that opens the page only puts the keyboard there).
-  claimOnOpen: false,
-  // Issue 1315: a person picked a pane (a tab, a row) while the page was
-  // still opening its ?open= panes: their pick stays in front. Cleared
-  // once start-up has opened them.
-  picked: false,
-  keyPane: null,
-  // #80: ?open= ids of other projects' sessions, left out of this
-  // project's tabs (one line offers them in All active).
-  hiddenOpen: [],
-  // #80: the project a deliberate open left (its "Back to" line), or null.
-  switchedFrom: null,
-  // #80: agents (ws\0id) whose helpers badge is open. Closed by default;
-  // kept while the page is open, never across a reload.
-  helpersOpen: new Set(),
-  // #80: how many running helpers an open badge shows (agents.helpers_shown).
-  helpersShown: 3,
-  // AG-4b: where a path link opens (Settings editor_open).
-  editorOpen: "none",
-  // Issue 103: the deep link this page opened on, until its agent opens.
-  deep: null,
-};
-
-/** ?layout=, when it names one; else null. */
-export function layoutFromUrl(search) {
-  const l = new URLSearchParams(search).get("layout");
-  return LAYOUTS.includes(l) ? l : null;
-}
-
-const phone = () => !!window.matchMedia?.(PHONE).matches;
-
-/** The layout drawn: the person's, except at phone width (Tabs). */
-function shownLayout() {
-  return phone() ? "tabs" : st.layout;
-}
-
-/** The panes in sight, in the URL's order. */
-function visibleIds() {
-  const l = shownLayout();
-  if (l === "tile") return [...st.open];
-  if (!st.open.includes(st.cur)) st.cur = st.open.at(-1) ?? null;
-  if (l === "tabs") return st.cur ? [st.cur] : [];
-  return st.open.filter((id) => id === st.cur || st.side.has(id));
-}
+export { UNDO_MS, MAX_PANES, LAYOUTS } from "/agents-core.js";
+export {
+  compactingHtml,
+  compactingTag,
+  exitedShell,
+  hubWorkHtml,
+  inStopped,
+  instructionsTag,
+  isStopped,
+  modeDriftOf,
+  modeTagHtml,
+  stopReason,
+} from "/agents-rows.js";
+import { MOVED_KEY, STOPPED_OPEN_KEY, fitListFloor, inView, loadGroups, paintList, placeHelperToggles, showProject, switchToProjectOf, visibleRows } from "/agents-list.js";
+import { freshLine, refresh, repaintNames } from "/agents-data.js";
+import { focusTerm, paintLayout, termTheme } from "/agents-layout.js";
+import { VIEWS_KEY, claimSize, connect, keepInTab, refit, remeasure } from "/agents-term.js";
+import { bringShell, closePane, closeShell, dropOpts, newShell, openPane, openTerminal } from "/agents-panes.js";
+export { deepLinkOf, layoutFromUrl, openFromUrl };
 
 // ── the URL ─────────────────────────────────────────────────────────────
 
-/** The ids ?open= names (at most MAX_PANES, in order, no repeats). */
-export function openFromUrl(search) {
-  const raw = new URLSearchParams(search).get("open") ?? "";
-  const ids = [];
-  for (const id of raw.split(",").map((s) => s.trim())) {
-    if (id && !ids.includes(id)) ids.push(id);
-  }
-  return ids.slice(-MAX_PANES);
-}
-
-/**
- * Issue 103: a deep link, /p/<project>/agents/<id>[?context=<url>]: the
- * page's own address for it (?agent=<id>&ws=<project>, which D43 opens),
- * and the context for the composer. Null when the path isn't one. The
- * server checked the project, the agent and the context before the page.
- */
-export function deepLinkOf(pathname, search) {
-  const m = /^\/p\/([^/]+)\/agents\/([^/]+)\/?$/.exec(pathname || "");
-  if (!m) return null;
-  let ws, agent;
-  try {
-    ws = decodeURIComponent(m[1]);
-    agent = decodeURIComponent(m[2]);
-  } catch {
-    return null;
-  }
-  const q = new URLSearchParams(search || "");
-  const context = q.get("context");
-  q.delete("context");
-  q.set("agent", agent);
-  q.set("ws", ws);
-  return { ws, agent, context, href: `/agents?${q.toString()}` };
-}
-
-/**
- * Issue 482: which page this is: "terminal" (the Terminals page, served
- * from this file at /terminals) or "agents". Each lists its own kind.
- */
-const PAGE =
-  typeof document !== "undefined" &&
-  document.getElementById?.("den-shell")?.dataset?.page === "terminal"
-    ? "terminal"
-    : "agents";
-
-/** D73: the panes this browser has open, so a Terminal link adds a tab. */
-// Issue 482: each page keeps its own.
-const OPEN_KEY = PAGE === "terminal" ? "den-terminals-open" : "den-agents-open";
-
-function rememberedOpen() {
-  try {
-    return openFromUrl(`?open=${localStorage.getItem(OPEN_KEY) ?? ""}`);
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Issue 448: when this browser last used each shell (a person clicked or
- * typed in its pane), so the rail's Terminal opens the one used last. The
- * server keeps when each was last typed in from any browser (inputAt);
- * this adds a click here. A shell never used counts from its start.
- */
-const SHELL_USED_KEY = "den-shell-used";
-
-function shellUsed() {
-  try {
-    const v = JSON.parse(localStorage.getItem(SHELL_USED_KEY) ?? "{}");
-    return v && typeof v === "object" ? v : {};
-  } catch {
-    return {};
-  }
-}
-
-function markShellUsed(id) {
-  const r = rowOf(id);
-  if (r?.kind !== "session") return;
-  const was = shellUsed();
-  // Every key calls here: once a second is enough.
-  if (typeof was[id] === "number" && Date.now() - was[id] < 1000) return;
-  const live = new Set((st.data?.sessions ?? []).map((x) => x.id));
-  const used = {};
-  for (const [k, v] of Object.entries(was))
-    if (live.has(k) && typeof v === "number") used[k] = v;
-  used[id] = Date.now();
-  try {
-    localStorage.setItem(SHELL_USED_KEY, JSON.stringify(used));
-  } catch {
-    /* none: the newest shell instead */
-  }
-}
-
-function writeUrl() {
-  try {
-    // #80: the browser's tabs, every project's: a project's view only
-    // leaves the others out (st.hiddenOpen), so a Terminal link brings
-    // them back in All active.
-    localStorage.setItem(
-      OPEN_KEY,
-      [...new Set([...st.hiddenOpen, ...st.open])].join(","),
-    );
-  } catch {
-    /* none: the URL alone */
-  }
-  const u = new URL(location.href);
-  if (st.open.length) u.searchParams.set("open", st.open.join(","));
-  else u.searchParams.delete("open");
-  // #80: the tab in front, so a reload keeps the pane the keyboard was in.
-  if (st.open.length > 1 && st.open.includes(st.cur))
-    u.searchParams.set("front", st.cur);
-  else u.searchParams.delete("front");
-  u.searchParams.set("layout", st.layout);
-  u.searchParams.delete("start");
-  u.searchParams.delete("folder");
-  u.searchParams.delete("service");
-  u.searchParams.delete("agent");
-  u.searchParams.delete("terminal");
-  u.searchParams.delete("fresh");
-  const s = u.searchParams.toString().replace(/%2C/gi, ",");
-  history.replaceState(history.state, "", u.pathname + (s ? `?${s}` : ""));
-  paintSub();
-}
-
 // ── the list ────────────────────────────────────────────────────────────
 
-/** A link that names one agent (?agent=): it picks the pane itself. */
-const linkedAgentAsked = () =>
-  new URLSearchParams(location.search).has("agent");
-
-/** ?ws=: the one workspace the page was asked for, or null. */
-const urlWorkspace = () => {
-  // #80: ?project=, with ?ws= read as its old name.
-  const q = new URLSearchParams(location.search);
-  return q.get("project") || q.get("ws");
-};
-
-/**
- * The workspaces to show: ?ws= (always that one, even when it isn't active
- * or isn't known: never All in its place), else the scope bar's view.
- */
-function viewWorkspaces() {
-  return pickedWorkspace() ? [pickedWorkspace()] : (st.data?.workspaces ?? []);
-}
-
-function pickedWorkspace() {
-  const all = st.data?.workspaces ?? [];
-  const ws = urlWorkspace();
-  if (ws) return ws;
-  if (st.scope && st.scope !== "all" && all.includes(st.scope)) return st.scope;
-  return null;
-}
-
-function stateTone(r) {
-  // The shell's dot: plain is the good one (the repo table's look).
-  if (r.state === "running") return "";
-  if (r.state === "stopping") return "pending";
-  if (/^exited \((?!0\))/.test(r.state)) return "bad";
-  return "off";
-}
-
-function stateText(state) {
-  const m = /^exited(?: \((-?\d+)\))?$/.exec(state);
-  if (m)
-    return m[1] === undefined
-      ? t("ag.state.exited")
-      : t("ag.state.exitedCode", { code: m[1] });
-  return ["running", "stopping", "stopped", "ended", "interrupted"].includes(
-    state,
-  )
-    ? t(`ag.state.${state}`)
-    : state;
-}
-
-function displayName(r) {
-  if (r.kind !== "agent") return r.label;
-  return r.displayName || (r.persona ?? r.label);
-}
-
-/**
- * A row's name: the name a person gave it (AG-4b), then its persona and
- * id; else its persona, then its id (when they differ).
- */
-function nameHtml(r) {
-  const extra = sessionExtra(r);
-  if (r.displayName)
-    return `${esc(r.displayName)} <span class="id">${esc([r.persona, r.label, extra].filter(Boolean).join(" · "))}</span>`;
-  const id = [r.persona && r.persona !== r.label ? r.label : "", extra]
-    .filter(Boolean)
-    .join(" · ");
-  return `${esc(displayName(r))}${id ? ` <span class="id">${esc(id)}</span>` : ""}`;
-}
-
-/**
- * The session's name (AG-4b: the runtime's /rename or Den's, the later),
- * where it says more than the agent's own name: not empty, not the
- * persona, not the name already shown. Else "".
- */
-function sessionExtra(r) {
-  const n = r?.kind === "agent" ? (r.sessionTitle ?? "").trim() : "";
-  if (!n || n === r.persona || n === paneName(r) || n === displayName(r))
-    return "";
-  return n;
-}
-
-// A pane's title and its Close: the agent's display name (AG-10.8), else
-// its id, never the persona. There is no display name before AG-10.
-function paneName(r) {
-  return r.kind === "agent" ? r.displayName || r.agent || r.label : r.label;
-}
-
-/** An agent that isn't running: stopped, interrupted or exited (AG-14). */
-export function isStopped(r) {
-  return r.kind === "agent" && r.state !== "running" && r.state !== "stopping";
-}
-
-/** 0.4.45: a shell that exited (it has nothing to resume). */
-export const exitedShell = (r) => r?.kind === "session" && r.exited === true;
-
-/** 0.4.45: what the Stopped group holds: stopped agents, exited shells. */
-export const inStopped = (r) => isStopped(r) || exitedShell(r);
-
-/** issue 206: true when `iso` is today in the person's own zone. */
-function isToday(iso) {
-  const day = formatTime(iso, { style: "date" });
-  return !!day && day === formatTime(Date.now(), { style: "date" });
-}
-
-/** "7:52 PM" today, else "Nov 6, 7:52 PM": the person's zone (issue 206). */
-function when(iso) {
-  return formatTime(iso, { style: isToday(iso) ? "time" : "datetime" });
-}
-
-/** Why a stopped agent stopped (AG-14.1). */
-export function stopReason(r) {
-  // Issue 659: its folder-trust question was declined: it never started.
-  if (r.trustDeclined) return t("ag.why.trustDeclined");
-  // Issue 631: it didn't come back after a restart (its terminal host's
-  // too), and why.
-  if (r.restartFailed?.why)
-    return t("ag.why.restartFailed", { why: r.restartFailed.why });
-  if (r.state === "interrupted")
-    return t("ag.why.interrupted", { name: TITLE });
-  if (r.state === "stopped")
-    return t("ag.why.stopped", { time: when(r.stoppedAt ?? "") }).trim();
-  const m = /^exited(?: \((-?\d+)\))?$/.exec(r.state);
-  if (m)
-    return m[1] === undefined
-      ? t("ag.why.exited")
-      : t("ag.why.exitedCode", { code: m[1] });
-  return stateText(r.state);
-}
-
-/** Why it rotates, in words: "3 compactions", "PR merged" (den#4). */
-function rotationWhy(rot) {
-  if (rot.due === "pr-merged") return t("ag.rot.merged");
-  return t(
-    rot.compactions === 1 ? "ag.rot.compactions.one" : "ag.rot.compactions",
-    {
-      n: rot.compactions,
-    },
-  );
-}
-
-/** The Workspaces page, focused on workspace `ws` (0.4.17). */
-function wsHref(ws) {
-  const nav = window.denShell?.nav?.() ?? [];
-  const base = nav.find((n) => n.id === "local-dev")?.href ?? "/local-dev";
-  return `${base}?project=${encodeURIComponent(ws)}`;
-}
-
-/**
- * 0.4.45: a project's name as the header's picker shows it: Hub's when it
- * is linked to a Hub project, else its own (workspace-picker.js). From
- * /api/workspaces, read with the list now and then (st.projects).
- */
-function projName(ws) {
-  return projectLabel(st.projects, ws);
-}
-
-/**
- * Issue 168: ` data-pc="<colour>"` for what belongs to project `ws` (its
- * agents' rows, tabs and pane inherit its colour), or "" for none (the
- * server agent: neutral grey). The colour is in CSS (shell.js, --pc).
- */
-function pcAttr(ws) {
-  const c = projectColour(st.projects, ws);
-  return c ? ` data-pc="${esc(c)}"` : "";
-}
-
-/**
- * Issue 168: an agent's letter tile, in its project's colour. The letter
- * is drawn by CSS (data-l), so the row's and the bar's text stay the
- * agent's name alone, as screen readers and copies read it.
- */
-function tileHtml(name) {
-  const ch = [...String(name ?? "").trim()][0] ?? "";
-  return ch
-    ? `<span class="agtile" data-l="${esc(ch.toLocaleUpperCase())}" aria-hidden="true"></span>`
-    : "";
-}
-
-/** Workspace `ws` as a link to it on Workspaces. */
-function wsLinkHtml(ws) {
-  // ON-6: the server agent belongs to no workspace: its group is "Server".
-  if (ws === SERVER_WS)
-    return `<span class="wslink" data-server>${esc(t("ag.server"))}</span>`;
-  const name = projName(ws);
-  // Issue 168: its colour beside its name, never colour alone.
-  return `<span class="den-pc"${pcAttr(ws)} aria-hidden="true"></span><a class="wslink" href="${esc(wsHref(ws))}" title="${esc(t("ag.goWs", { ws: name }))}">${esc(name)}</a>`;
-}
-
-/**
- * D20: where its session runs, as a tag: "Stops at logout" (the desktop
- * session) or "No GUI" (outside it: kept across logout). `button`: a
- * button that says why when tapped (the pane bar); else a span (a row,
- * itself a button). "" when the host didn't say (off macOS, older host).
- */
-function whereTag(r, button = false) {
-  const s = r?.launchd;
-  const logout = s === "Aqua" || s === "LoginWindow";
-  if (!logout && s !== "Background" && s !== "System") return "";
-  const key = logout ? "ag.where.logout" : "ag.where.bg";
-  const tip = t(`${key}Tip`, { cli: CLI });
-  const cls = `tagx${logout ? " warn" : ""}`;
-  const where = logout ? "logout" : "bg";
-  return button
-    ? `<button type="button" class="${cls}" data-act="where" data-where="${where}" title="${esc(tip)}" aria-label="${esc(`${t(key)}: ${tip}`)}">${logout ? "⚠ " : ""}${esc(t(key))}</button>`
-    : `<span class="${cls}" data-where="${where}" title="${esc(tip)}">${logout ? "⚠ " : ""}${esc(t(key))}</span>`;
-}
-
-/**
- * D65 v2: "<project> › <repo>" in the pane bar, with Change; a repo that
- * is no longer its project's says so, with Re-link. Read from its record,
- * never its folder.
- */
-function linkTag(r) {
-  if (r?.kind !== "agent" || r.server) return "";
-  const project = projName(r.project || r.workspace);
-  const path = r.repo ? `${project} › ${r.repo}` : project;
-  return (
-    `<span class="aglink" data-link><span class="mono">${esc(path)}</span>` +
-    (r.repoMissing
-      ? `<span class="tagx warn" data-repo-missing>${esc(t("ag.link.missing"))}</span>`
-      : "") +
-    `<button type="button" class="den-lnk" data-act="link" aria-label="${esc(t("ag.link.changeName", { id: r.agent }))}">${esc(t(r.repoMissing ? "ag.link.relink" : "ag.link.change"))}</button></span>`
-  );
-}
-
-/**
- * den#3: what its subagents run on, and where that came from: the pane
- * bar's tag. Nothing for a runtime that takes no subagent model.
- */
-function subagentTag(r) {
-  if (r?.kind !== "agent" || !r.subagentModel) return "";
-  const inherit = r.subagentModel === "inherit";
-  const model = inherit ? t("ag.subagents.inherit") : r.subagentModel;
-  const from = r.subagentModelFrom || "default";
-  // inherit: Den sets none, said plainly (not "runs on the runtime's").
-  const tip = inherit
-    ? t(`ag.subagents.inheritFrom.${from === "persona" ? "persona" : "org"}`)
-    : t(`ag.subagents.from.${from}`, { model });
-  return `<span class="tagx" data-subagents="${esc(r.subagentModel)}" title="${esc(tip)}">${esc(t("ag.subagents", { model }))}</span>`;
-}
-
-/**
- * Issue 340: the vendor account it runs on under the always-on service, by
- * its label (never an email): the pane bar's tag. Nothing without one.
- */
-function signInTag(r) {
-  if (r?.kind !== "agent" || !r.signIn) return "";
-  return `<span class="tagx" data-signin title="${esc(t("ag.signIn.tip", { label: r.signIn }))}">${esc(t("ag.signIn", { label: r.signIn }))}</span>`;
-}
-
-function hubBoundTag(r) {
-  if (r?.kind !== "agent" || typeof r.hubBound !== "boolean") return "";
-  const [word, tip] = r.hubBound
-    ? [t("ag.hub.bound"), t("ag.hub.bound.tip")]
-    : [t("ag.hub.unbound"), t("ag.hub.unbound.tip")];
-  return `<span class="tagx" data-hub-bound="${r.hubBound}" title="${esc(tip)}">${esc(word)}</span>`;
-}
-
-/** Its rotation, when one is due: "ready" or "due" (den#4). */
-function rotationOf(r) {
-  // D28: on_due off: nothing will happen, so nothing is shown.
-  if (!r.rotation?.due || r.rotation.onDue === "off") return "";
-  return r.rotation.ready ? "ready" : "due";
-}
-
-/** D28: Settings › Agents (its Rotation row). */
-function settingsHref() {
-  const nav = window.denShell?.nav?.() ?? [];
-  const base = nav.find((n) => n.id === "settings")?.href ?? "/settings";
-  return `${base}?q=rotation#agents`;
-}
-
-/**
- * D28: what happens to a due agent, in words, from its on_due (auto: Den
- * asks for the handoff at idle and relaunches it; ask; auto that gave up
- * asking). Older servers send no on_due: as ask.
- */
-function rotMessage(r) {
-  const rot = r.rotation;
-  const why = rotationWhy(rot);
-  const auto = rot.onDue === "auto" && !rot.fellBack;
-  // Issue 914: its turn is over, but background work it started still runs.
-  if (rot.waiting > 0)
-    return t(rot.waiting === 1 ? "ag.rc.waiting.one" : "ag.rc.waiting", {
-      why,
-      n: rot.waiting,
-    });
-  if (rot.relaunchWanted && !rot.ready) return t("ag.rc.wanted", { why });
-  if (auto && !isStopped(r))
-    return t(rot.ready ? "ag.rc.autoReady" : "ag.rc.autoAsk", { why });
-  if (rot.fellBack && !rot.ready)
-    return t(
-      rot.handoff === "invalid" ? "ag.rc.fellBackBad" : "ag.rc.fellBack",
-      { why },
-    );
-  return t(
-    rot.ready
-      ? "ag.rc.ready"
-      : rot.handoff === "invalid"
-        ? "ag.rc.bad"
-        : "ag.rc.missing",
-    { why },
-  );
-}
-
-/**
- * D28: the rotation callout's buttons, wherever it shows (a row, the pane
- * bar): Relaunch now (from the handoff, or asking for it first), Write
- * handoff (a running agent without one), Keep this conversation with
- * "don't ask again", and Settings. "" when nothing is due or on_due is off.
- */
-function rotActionsHtml(r) {
-  const rot = r.rotation;
-  if (!rot?.due || rot.onDue === "off") return "";
-  const id = r.agent;
-  const now = `<button type="button" class="den-btn sm primary" data-act="relaunch" aria-label="${esc(t("ag.relaunchName", { id }))}">${esc(t("ag.relaunch"))}</button>`;
-  const write =
-    !isStopped(r) && !rot.ready && !rot.relaunchWanted
-      ? `<button type="button" class="den-btn sm" data-act="rot-write" aria-label="${esc(t("ag.rc.writeName", { id }))}">${esc(t("ag.rc.write"))}</button>`
-      : "";
-  const keep = `<button type="button" class="den-btn sm" data-act="rot-keep" aria-label="${esc(t("ag.rc.keepName", { id }))}">${esc(t("ag.rc.keep"))}</button>`;
-  const never = `<label class="agnever"><input type="checkbox" data-rot-never> ${esc(t("ag.rc.never"))}</label>`;
-  const settings = `<a class="lnk" data-rot-settings href="${esc(settingsHref())}">${esc(t("ag.rc.settings"))}</a>`;
-  return now + write + keep + never + settings;
-}
-
-/** D28: the effective settings and where each comes from, in words. */
-function rotFromText(rot) {
-  if (!rot?.from) return "";
-  return t(
-    rot.after === 0
-      ? "ag.rc.fromNever"
-      : rot.after === 1
-        ? "ag.rc.from.one"
-        : "ag.rc.from",
-    {
-      n: rot.after,
-      src: rot.from.after_compactions,
-      mode: t(`ag.rc.mode.${rot.onDue}`),
-      src2: rot.from.on_due,
-    },
-  );
-}
-
-/** D28: the callout under a row: the message, its line of settings, the buttons. */
-function rotCalloutHtml(r) {
-  const acts = rotActionsHtml(r);
-  if (!acts) return "";
-  const from = rotFromText(r.rotation);
-  return (
-    `<span class="agcant" data-rot-msg data-handoff="${esc(r.rotation.handoff)}">${esc(rotMessage(r))}</span>` +
-    (from
-      ? `<span class="agcant agfrom" data-rot-from>${esc(from)}</span>`
-      : "") +
-    acts
-  );
-}
-
-/** D37: "10:13 PM" today, else "Nov 6": short, a <time> (issue 206). */
-function whenShort(iso) {
-  return timeHtml(iso, { style: isToday(iso) ? "time" : "date" });
-}
-
-/** D37: a not-running agent's chip: Stopped, Exited or Interrupted. */
-function stoppedChip(r) {
-  if (r.state === "interrupted") return t("ag.chip.interrupted");
-  if (/^exited\b/.test(r.state)) return t("ag.chip.exited");
-  return t("ag.chip.stopped");
-}
-
-/** D37: what a stopped row leaves out, for its tooltip. */
-function stoppedTip(r) {
-  const who = [r.persona, r.agent].filter(Boolean).join(" · ");
-  const meta = [r.runtime, cwdText(r)].filter(Boolean).join(" · ");
-  const cant =
-    !r.resumable && r.noResume
-      ? r.noResume.startsWith(`${r.runtime} `)
-        ? t("ag.noResume", { runtime: r.runtime })
-        : r.noResume
-      : "";
-  return [who, meta, stopReason(r), cant].filter(Boolean).join("\n");
-}
-
-/**
- * A stopped agent's row (D37): one line. A hollow dot, its name, a chip
- * (Stopped, Exited, Interrupted), when, then Resume and ⋯ (Start fresh,
- * Remove). Its persona, id, runtime and folder are in its tooltip and its
- * pane. No Rename (a running agent's), no helpers (D34: only a running
- * agent's active ones). A runtime that can't resume: Start fresh instead
- * of Resume, and ⋯ has Remove. D28: a due rotation's callout stays.
- */
-function stoppedHtml(r, wsTag = false) {
-  const open = st.open.includes(r.id);
-  const name = displayName(r);
-  // Its own name, else its id: short, and unique (the persona is in the
-  // tooltip; several stopped agents often share one).
-  const label = r.displayName || r.agent || name;
-  const who = esc(r.agent);
-  const rot = rotationOf(r);
-  const callout = rotCalloutHtml(r);
-  const at = whenShort(r.stoppedAt ?? r.endedAt ?? "");
-  const chip =
-    rot === "ready"
-      ? t("ag.rot.ready", { why: rotationWhy(r.rotation) })
-      : stoppedChip(r);
-  const first = r.resumable
-    ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
-    : `<button type="button" class="den-btn sm" data-act="fresh" aria-label="${esc(t("ag.freshName", { id: r.agent }))}">${esc(t("ag.fresh"))}</button>`;
-  const more = `<button type="button" class="den-btn sm" data-act="row-more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`;
-  return (
-    `<div class="agst agst1" data-agent="${who}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
-    // D45: a click (or Enter) opens its details, with Resume in them.
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="agent" data-state="${esc(r.state)}"${pcAttr(r.workspace)} data-details=""` +
-    ` aria-haspopup="dialog" aria-expanded="${agd.r?.id === r.id}"` +
-    ` title="${esc(stoppedTip(r))}"` +
-    ` aria-label="${esc(t("ag.det.label", { id: `${r.workspace} / ${name}` }))}">` +
-    gripHtml(r) +
-    `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
-    `<span class="nm">${tileHtml(label)}${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
-    `<span class="stchip" title="${esc(chip)}">${esc(chip)}</span>` +
-    (at ? `<span class="when">${at}</span>` : "") +
-    `</button>` +
-    `<span class="agacts">${first}${more}</span>` +
-    (callout ? `<div class="agcallout">${callout}</div>` : "") +
-    // Issue 278: deliveries still held after a loop: Clear.
-    (compactingHtml(r)
-      ? `<div class="agcallout">${compactingHtml(r)}</div>`
-      : "") +
-    hubWorkHtml(r) +
-    `</div>`
-  );
-}
-
-/**
- * 0.4.45: an exited shell in Stopped: its name, "Exited", and Remove. A
- * click opens its pane, where its last output still reads.
- */
-function exitedShellHtml(r, wsTag = false) {
-  const label = r.label || r.name;
-  return (
-    `<div class="agst agst1" data-shell="${esc(r.id)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}">` +
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="session" data-state="${esc(r.state)}"${pcAttr(r.workspace)}` +
-    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${label}` }))}">` +
-    `<span class="den-dot ${stateTone(r)} hollow" aria-hidden="true"></span>` +
-    `<span class="nm">${tileHtml(label)}${esc(label)}${wsTag ? ` <span class="id">${esc(r.workspace)}</span>` : ""}</span>` +
-    `<span class="stchip">${esc(stoppedChip(r))}</span>` +
-    `</button>` +
-    `<span class="agacts"><button type="button" class="den-btn sm" data-act="remove-shell" aria-label="${esc(t("ag.removeShell", { id: label }))}">${esc(t("ag.remove"))}</button></span>` +
-    `</div>`
-  );
-}
-
-/**
- * 0.4.40: "Working on N Hub comments · <artifact>" (its turn has them), or
- * "N Hub comments wait for it" (stopped, or mid-turn); the artifact links
- * to Hub. Under the row (never inside its button).
- */
-export function hubWorkHtml(r, tr = t) {
-  const w = r?.kind === "agent" ? r.hubWork : null;
-  if (!w || !(w.working > 0 || w.queued > 0)) return "";
-  const n = w.working > 0 ? w.working : w.queued;
-  const key = w.working > 0 ? "ag.hub.working" : "ag.hub.queued";
-  const url =
-    typeof w.url === "string" && /^https?:\/\//.test(w.url) ? w.url : "";
-  const art = w.artifact
-    ? url
-      ? ` · <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(w.artifact)}</a>`
-      : ` · ${esc(w.artifact)}`
-    : "";
-  // Issue 664: why the queued ones wait, when Den knows.
-  const why =
-    w.working > 0 || w.held !== "not_at_prompt"
-      ? ""
-      : ` · <span data-held="not_at_prompt">${esc(tr("ag.hub.notAtPrompt"))}</span>`;
-  return (
-    `<div class="aghub" data-hubwork="${w.working > 0 ? "working" : "queued"}">` +
-    `<span class="den-dot ${w.working > 0 ? "ok" : "warn"}" aria-hidden="true"></span> ` +
-    `${esc(tr(key, { n }))}${art}${why}</div>`
-  );
-}
-
-/** Issue 278: "840 KB" (whole KB; under 1 KB: bytes). */
-function sizeText(bytes) {
-  return bytes < 1024 ? `${bytes} B` : `${Math.round(bytes / 1024)} KB`;
-}
-
-/**
- * Issue 278: the agent's instruction files were over the share of its
- * context at its last start: a tag, its tooltip naming the largest file.
- */
-export function instructionsTag(r, tr = t) {
-  const i = r?.kind === "agent" ? r.instructions : null;
-  if (!i) return "";
-  const tip = tr("ag.ins.tip", {
-    size: sizeText(i.totalBytes),
-    share: i.sharePercent,
-    path: i.largest?.path ?? "",
-    big: sizeText(i.largest?.bytes ?? 0),
-  });
-  return `<span class="tagx warn" data-instructions title="${esc(tip)}">${esc(tr("ag.ins.tag"))}</span>`;
-}
-
-/** Issue 278: "Compacting repeatedly" (a loop now) as a tag. */
-export function compactingTag(r, tr = t) {
-  const c = r?.kind === "agent" ? r.compacting : null;
-  if (!c?.active) return "";
-  return `<span class="tagx warn" data-compacting title="${esc(tr("ag.ctx.looping", { n: c.count }))}">${esc(tr("ag.ctx.tag"))}</span>`;
-}
-
-/**
- * Issue 278: under the row of an agent stuck compacting: what is
- * happening, the likely cause (its instruction files, when its start's
- * check warned), Stop (the same Stop as its pane's) and, when Den holds its
- * deliveries, Clear. Nothing when there is neither a loop nor a hold.
- */
-export function compactingHtml(r, tr = t, { withStop = true } = {}) {
-  const c = r?.kind === "agent" ? r.compacting : null;
-  if (!c || !(c.active || c.paused)) return "";
-  const i = r.instructions;
-  const cause = i
-    ? tr("ag.ctx.causeFiles", {
-        size: sizeText(i.totalBytes),
-        share: i.sharePercent,
-        path: i.largest?.path ?? "",
-        big: sizeText(i.largest?.bytes ?? 0),
-      })
-    : tr("ag.ctx.causeOther");
-  const said = [
-    c.active ? tr("ag.ctx.looping", { n: c.count }) : "",
-    c.active ? cause : "",
-    c.paused ? tr("ag.ctx.held") : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const stop =
-    withStop && c.active && (r.state === "running" || r.state === "stopping")
-      ? `<button type="button" class="den-btn sm" data-act="stop" aria-label="${esc(tr("ag.stopName", { id: r.agent }))}">${esc(tr("ag.stop"))}</button>`
-      : "";
-  const clear = `<button type="button" class="den-btn sm" data-act="ctx-clear" aria-label="${esc(tr("ag.ctx.clearName", { id: r.agent }))}">${esc(tr(c.paused ? "ag.ctx.clearHeld" : "ag.ctx.clear"))}</button>`;
-  return (
-    `<span class="agcant" data-compacting-msg>${esc(said)}</span>` +
-    stop +
-    clear
-  );
-}
-
-/** Issue 278: a person looked: the loop is over for now; held deliveries go. */
+/** A person looked: the loop is over for now; held deliveries go. */
 async function clearCompacting(r, button) {
   await window.denShell.busyAction(
     "save",
@@ -1027,515 +185,6 @@ async function clearCompacting(r, button) {
   await refresh();
 }
 
-/** NT-3b: what the "waiting" badge says: why, when the server knows. */
-function waitingText(r) {
-  const k = r.waitingWhy ? `ag.waiting.${r.waitingWhy}` : "";
-  const s = k ? t(k) : "";
-  return s && s !== k ? s : t("ag.waiting");
-}
-
-function seenMap() {
-  const out = new Map(st.seenNow);
-  if (typeof document !== "undefined" && document.visibilityState !== "hidden")
-    for (const id of visibleIds()) {
-      const r = rowOf(id);
-      if (r?.attn === "done") out.set(id, r.attnSince);
-    }
-  return out;
-}
-
-function markOpened(id) {
-  const r = rowOf(id);
-  if (!r || r.kind !== "agent") return;
-  if (r.attn === "done") st.seenNow.set(id, r.attnSince);
-  sayLooking([r.agent]);
-}
-
-function sayLooking(agents) {
-  // busy-ok: a background ping while the tab is looked at; no button
-  if (agents.length)
-    void api("POST", "/api/notifications/looking", { agents }).catch(() => {});
-}
-
-function allProjects() {
-  return viewWorkspaces().length > 1;
-}
-
-function attnParts(r, attn) {
-  const ago = (iso) =>
-    iso && Number.isFinite(Date.parse(iso))
-      ? formatTime(iso, { style: "relative" })
-      : "";
-  if (r.kind !== "agent") return { detail: cwdText(r) };
-  if (attn === "needs") {
-    const w = needsWhy(r);
-    return {
-      detail: w && !w.startsWith("ag.whyLong.") ? w : waitingText(r),
-      time: r.attnSince ? sinceShort(r.attnSince) : "",
-    };
-  }
-  if (attn === "done")
-    return {
-      detail: r.attnSince
-        ? t("ag.meta.finished", { ago: ago(r.attnSince) })
-        : "",
-    };
-  if (attn === "working")
-    return { detail: r.attnSince ? sinceShort(r.attnSince) : "" };
-  if (r.attn === "done") return { detail: t("ag.meta.seen") };
-  return { detail: r.attnSince ? ago(r.attnSince) : cwdText(r) };
-}
-
-function rowHtml(r) {
-  if (isStopped(r)) return stoppedHtml(r);
-  const open = st.open.includes(r.id);
-  const nm =
-    r.kind === "agent"
-      ? nameHtml(r)
-      : `${esc(r.label)} <span class="sbdg">${esc(t("ag.session"))}</span>`;
-  const seen = seenMap();
-  const attn = rowState(r, seen);
-  const right = chipHtml(r, seen);
-  const meta = metaHtml({
-    runtime: r.runtimeLabel || r.runtime,
-    ...attnParts(r, attn),
-  });
-  const ptag = tagHtml(r, {
-    all: allProjects(),
-    name: projName,
-    pc: (ws) => projectColour(st.projects, ws),
-  });
-  // D62: the helpers chip is on line 2, before the meta, never in the dot's
-  // column (it pushed this row's name right of the others').
-  const chip = r.kind === "agent" ? helperBadgeHtml(r) : "";
-  const said = r.kind === "agent" ? helperCountSaid(r) : "";
-  const rot = rotationOf(r);
-  const rotTag = rot
-    ? `<span class="tagx warn" data-rotation="${rot}">${esc(
-        t(rot === "ready" ? "ag.rot.ready" : "ag.rot.due", {
-          why: rotationWhy(r.rotation),
-        }),
-      )}</span>`
-    : "";
-  const revokedTag = r.tokenRevoked
-    ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
-    : "";
-  const ovTags = r.kind === "agent" ? overrideTagsHtml(r) : "";
-  const wTag = whereTag(r);
-  const mTag = mcpStaleTag(r, false);
-  const modeTag = modeTagHtml(r, false);
-  // Issue 144: this agent holds (or waits for) the machine's gate slot.
-  const gateText =
-    r.kind === "agent" ? (st.gate?.tagFor(`agent:${r.agent}`) ?? "") : "";
-  const gateTag = gateText
-    ? `<span class="tagx" data-gate-tag>${esc(gateText)}</span>`
-    : "";
-  // Issue 278: compacting repeatedly; instruction files over the share.
-  const ctxTags = compactingTag(r) + instructionsTag(r);
-  const tags =
-    rotTag ||
-    revokedTag ||
-    ovTags ||
-    wTag ||
-    mTag ||
-    modeTag ||
-    gateTag ||
-    ctxTags
-      ? `<span class="agtags">${ctxTags}${revokedTag}${mTag}${modeTag}${gateTag}${rotTag}${wTag}${ovTags}</span>`
-      : "";
-  const button =
-    `<button type="button" class="agr" data-id="${esc(r.id)}" data-kind="${esc(r.kind)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${pcAttr(r.workspace)}` +
-    ` aria-pressed="${open}"${open && r.id === st.cur ? ' aria-current="true"' : ""}${r.attachable ? "" : ' aria-disabled="true"'}` +
-    ` data-attn="${attn}"` +
-    ` aria-label="${esc(t("ag.openName", { id: `${r.workspace} / ${displayName(r)}` }) + ` · ${t(`ag.chip.${attn}`)}` + (said ? ` · ${said}` : ""))}">` +
-    gripHtml(r) +
-    markHtml(attn) +
-    `<span class="nm">${tileHtml(r.kind === "agent" ? displayName(r) : r.label)}${nm}</span>${right}` +
-    (chip
-      ? `<span class="agl2">${chip}${meta || ptag ? `<span class="meta" data-meta>${ptag}${meta}</span>` : ""}</span>`
-      : meta || ptag
-        ? `<span class="meta" data-meta>${ptag}${meta}</span>`
-        : "") +
-    tags +
-    (attn ? `<span class="agchev" data-chev aria-hidden="true">›</span>` : "") +
-    `</button>`;
-  // D28: a running agent whose rotation is due: its callout, with buttons
-  // (before, only a tag: nothing to press).
-  // MODE-3: Restart to apply, under a row whose mode differs.
-  // Issue 278: compacting repeatedly: why, Stop, and Clear.
-  const callout =
-    r.kind === "agent"
-      ? rotCalloutHtml(r) +
-        modeApplyHtml(r) +
-        // Issues 750 and 1223: Restart for its tools, on the row too.
-        // Issue 1407: once asked, its own answer (and Restart now).
-        restartAnswerHtml(r) +
-        compactingHtml(r)
-      : "";
-  // D32: the helpers it started in its own session, under it. #80: only
-  // once its badge is opened (closed by default, the agent in front too).
-  const hOpen = r.kind === "agent" && st.helpersOpen.has(helperKey(r));
-  const helpers =
-    r.kind === "agent" ? helperRowsHtml(r, hOpen, st.helpersShown) : "";
-  // #80: the badge is a button beside the row's (laid over its place).
-  const toggle = r.kind === "agent" ? helperToggleHtml(r, hOpen) : "";
-  const row = toggle ? `<div class="agrw">${button}${toggle}</div>` : button;
-  const hub = hubWorkHtml(r);
-  if (!callout) return row + hub + helpers;
-  return (
-    `<div class="agst" data-agent="${esc(r.agent)}" data-state="${esc(r.state)}" data-ws="${esc(r.workspace)}"${rot ? ` data-rotation="${rot}"` : ""}>` +
-    row +
-    `<div class="agacts">${callout}</div>` +
-    hub +
-    `</div>` +
-    helpers
-  );
-}
-
-/** #80: an agent's key in st.helpersOpen. */
-const helperKey = (r) => `${r.workspace}\0${r.agent}`;
-
-/**
- * #80: each helpers badge sits over its placeholder on its row's second
- * line (the row is a button, and a button can't hold one).
- */
-function placeHelperToggles(root) {
-  for (const w of root.querySelectorAll(".agrw")) {
-    const ph = w.querySelector(".agr-hp-ph");
-    const b = w.querySelector(":scope > .agr-hpb");
-    if (!ph || !b) continue;
-    const a = w.getBoundingClientRect();
-    const r = ph.getBoundingClientRect();
-    b.style.left = `${Math.round(r.left - a.left)}px`;
-    b.style.top = `${Math.round(r.top - a.top)}px`;
-  }
-}
-
-/** Where focus was in the list, as a selector that finds it again once
- * the list is redrawn: a helper row or button, an agent's row, a link. */
-function listFocusKey(el) {
-  const key = refindKey(el);
-  if (key) return key;
-  const q = (v) => CSS.escape(String(v ?? ""));
-  if (el.matches(".agr-hpb[data-agent]"))
-    return `#agl .agr-hpb[data-agent="${q(el.dataset.agent)}"][data-ws="${q(el.dataset.ws)}"]`;
-  if (el.matches("button.agr[data-id]"))
-    return `#agl button.agr[data-id="${q(el.dataset.id)}"]`;
-  if (el.matches("[data-act]")) {
-    // Issue 96: a phone's Up and Down sit in the row's .agord, beside .agst.
-    const row = el.closest(".agst[data-agent], .agord[data-agent]");
-    const cls = row?.classList.contains("agord") ? "agord" : "agst";
-    const act = `[data-act="${q(el.dataset.act)}"]`;
-    return row
-      ? `#agl .${cls}[data-agent="${q(row.dataset.agent)}"][data-ws="${q(row.dataset.ws)}"] ${act}`
-      : `#agl ${act}`;
-  }
-  return "";
-}
-
-/** The list's HTML, written only when it changed; focus inside it is kept
- * (the refresh poll redraws it every few seconds). */
-function setList(el, html) {
-  // Issue 96: never under a drag (its rows and drop line would go); a drop or
-  // its end paints the list again.
-  if (st.drag) return;
-  if (el.denHtml === html) return;
-  el.denHtml = html;
-  const had = el.contains(document.activeElement)
-    ? document.activeElement
-    : null;
-  const key = had ? listFocusKey(had) : "";
-  el.innerHTML = html;
-  placeHelperToggles(el);
-  if (had) focusBack(had, key);
-}
-
-function paintList() {
-  const el = st.root.querySelector("#agl");
-  el.removeAttribute("aria-busy");
-  const notes = [];
-  if (st.signedOut || st.data?.io?.allowed === false)
-    notes.push(
-      `<div class="signin" data-note="signin">${esc(t("ag.signin", { cli: CLI }))}</div>`,
-    );
-  else if (st.data && st.data.backend?.available === false)
-    notes.push(
-      `<div class="agnote" data-note="backend">${esc(t("ag.noBackend", { cli: CLI }))}</div>`,
-    );
-  // den#156: the host didn't answer in time: this list may be old.
-  if (st.hostDown)
-    notes.push(
-      `<div class="agnote" data-note="host" role="status">${esc(t("ag.hostDown"))}</div>`,
-    );
-  if (!st.data) {
-    setList(
-      el,
-      notes.join("") +
-        (st.loadFailed
-          ? `<div class="agnote" data-note="load-failed" role="status">${esc(t("ag.list.failed"))} <button type="button" class="den-btn sm" data-act="retry-list">${esc(t("ag.list.retry"))}</button> ${esc(t("ag.list.keepRunning"))}</div>`
-          : `<div class="agskel" role="status" aria-label="${esc(t("ag.list.loading"))}"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>`),
-    );
-    return;
-  }
-  // D71: agents whose workspace was deleted, under its old name.
-  const orphans = st.data.sessions.filter(
-    (s) => s.orphan && belongsOn(PAGE, s),
-  );
-  const shown = [
-    ...new Set([
-      ...(!pickedWorkspace() && st.data.sessions.some((s) => s.server)
-        ? [SERVER_WS]
-        : []),
-      ...viewWorkspaces(),
-      ...orphans.map((s) => s.workspace),
-    ]),
-  ];
-  if (orphans.length)
-    notes.push(
-      `<div class="agnote" data-note="orphan" role="status">` +
-        esc(
-          t(orphans.length === 1 ? "ag.orphan.one" : "ag.orphan.many", {
-            n: orphans.length,
-            // The agent, not its persona: its given name, else its id.
-            names: orphans.map((r) => r.displayName || r.agent).join(", "),
-          }),
-        ) +
-        `</div>`,
-    );
-  // #80: an agent opened on purpose switched the project: say so.
-  const now = viewWorkspaces();
-  if (st.switchedFrom && now.length === 1 && now[0] !== st.switchedFrom)
-    notes.push(
-      `<div class="agnote" data-note="switched" role="status">` +
-        esc(t("ag.switchedTo", { ws: now[0] })) +
-        ` · <button type="button" class="lnk" data-act="switch-back">${esc(t("ag.backTo", { ws: st.switchedFrom }))}</button></div>`,
-    );
-  // #80: tabs ?open= named from other projects, left out of this view.
-  if (st.hiddenOpen.length)
-    notes.push(
-      `<div class="agnote" data-note="other-tabs" role="status">` +
-        esc(
-          t("ag.otherTabs", {
-            n: st.hiddenOpen.length,
-          }),
-        ) +
-        ` · <button type="button" class="lnk" data-act="show-all">${esc(t("ag.showAllActive"))}</button></div>`,
-    );
-  // ?ws= names a workspace that isn't active: say so, and offer the switch.
-  const asked = st.data.requested;
-  if (asked && !asked.active)
-    notes.push(
-      `<div class="agnote" data-note="inactive" role="status">` +
-        esc(t("ag.inactive", { ws: asked.workspace })) +
-        (asked.known
-          ? ` · <button type="button" class="lnk" data-act="switch-ws">${esc(t("ag.switchWs", { ws: asked.workspace }))}</button>`
-          : ` ${esc(t("ag.unknownWs"))}`) +
-        `</div>`,
-    );
-  // AG-14.3: one line after a restart, for the agents it interrupted.
-  const hit = visibleRows().filter((r) => r.state === "interrupted");
-  if (hit.length)
-    notes.push(
-      `<div class="agnote" data-note="interrupted" role="status">` +
-        `${esc(t(hit.length === 1 ? "ag.interrupted.one" : "ag.interrupted", { n: hit.length, name: TITLE }))}` +
-        (hit.some((r) => r.resumable)
-          ? ` · <button type="button" class="lnk" data-act="resume-all">${esc(t("ag.resumeAll"))}</button>`
-          : "") +
-        ` · <button type="button" class="lnk" data-act="review">${esc(t("ag.review"))}</button></div>`,
-    );
-  // Issue 482: the Agents page says once where the shells went.
-  if (PAGE !== "terminal") notes.push(movedNote());
-  const inView = shown.flatMap((ws) =>
-    st.data.sessions.filter((s) => s.workspace === ws && belongsOn(PAGE, s)),
-  );
-  const stopped = inView.filter(inStopped);
-  if (PAGE !== "terminal") {
-    const bar = toolsBarHtml(inView);
-    if (bar) notes.push(bar);
-  }
-  const gLine = PAGE === "terminal" ? "" : groupsLineHtml(st.groupsRead, t);
-  if (gLine) notes.push(gLine);
-  const running = inView.filter((s) => !inStopped(s));
-  const need = (xs) => byNeed(xs, { seenNow: seenMap() });
-  const byGroup =
-    PAGE !== "terminal" && st.by === "group" && groupsOffered(st.groupsRead);
-  const byProject = PAGE !== "terminal" && st.by === "project";
-  const none = `<div class="none">${esc(t("ag.none.scope", { scope: st.scopeLabel }))}</div>`;
-  let body;
-  if (PAGE === "terminal") body = terminalsBodyHtml();
-  else if (byGroup)
-    body = groupsViewHtml(inView, st.groupsRead.groups, {
-      t,
-      rowHtml,
-      groupsUrl: st.groupsRead.groupsUrl,
-      order: need,
-    });
-  else if (byProject) {
-    const groups = shown
-      .map((ws) => ({
-        ws,
-        rows: need(running.filter((s) => s.workspace === ws)),
-      }))
-      .filter((g) => g.rows.length > 0);
-    body =
-      groups.length || stopped.length
-        ? groups
-            .map(
-              (g, i) =>
-                `<div class="wsg" data-ws="${esc(g.ws)}"${pcAttr(g.ws)} role="group" aria-labelledby="agp-${i}"><div class="wsh"><span id="agp-${i}">${wsLinkHtml(g.ws)}</span><span>${esc(g.rows.length)}</span></div>` +
-                g.rows.map((r) => rowHtml(r)).join("") +
-                `</div>`,
-            )
-            .join("") + stoppedGroupHtml(stopped)
-        : none;
-  } else {
-    const bands = bandsOf(running, { seenNow: seenMap() });
-    body =
-      bands.length || stopped.length
-        ? bands
-            .map(
-              (b) =>
-                `<div class="wsg agband" data-band="${b.state}" role="group" aria-labelledby="agb-${b.state}"><div class="wsh"><span id="agb-${b.state}">${esc(t(`ag.band.${b.state}`))}</span><span class="n" data-count>${esc(b.rows.length)}</span></div>` +
-                reorderBandHtml(b) +
-                b.rows
-                  .map((r) =>
-                    orderRowHtml(
-                      rowHtml(r),
-                      r,
-                      phone() &&
-                        st.reorderBand === b.state &&
-                        runningMovable(r),
-                    ),
-                  )
-                  .join("") +
-                `</div>`,
-            )
-            .join("") + stoppedGroupHtml(stopped)
-        : none;
-  }
-  setList(
-    el,
-    notes.join("") +
-      viewSwitchHtml(st.groupsRead, st.by, t) +
-      body +
-      `<div class="aghint" id="agl-hint">${esc(t(`ag.hint.${shownLayout()}`))} ${esc(t("ag.hint.keys"))}</div>`,
-  );
-  const clear = st.root.querySelector("#ag-clear");
-  if (clear)
-    clear.hidden = PAGE === "terminal" || !visibleRows().some(inStopped);
-  // No such workspace: nothing to start an agent in.
-  const start = st.root.querySelector("#ag-start");
-  if (start) start.hidden = st.data.requested?.known === false;
-  fitListFloor();
-}
-
-/** How many whole rows the list keeps in view over an open pane (narrow). */
-const LIST_FLOOR_ROWS = 3;
-/** The floor's least, as before (6rem): the list scrolls under it. */
-const LIST_FLOOR_MIN_PX = 96;
-
-/**
- * On a narrow screen the list sits above the panes, and its height has a
- * floor (agents.html: --agl-floor). The floor holds the list's notes and
- * its view switch, then LIST_FLOOR_ROWS whole rows: the notes never take
- * the rows' room. But an open pane keeps its own minimum (its To line stays
- * above the runs dock shut, with no page scroll): where both
- * don't fit, the list gets what's left, never less than 6rem, and scrolls.
- * With the dock open the page scrolls to the To line anyway: the list keeps
- * its first whole row. Measured after
- * each paint and on resize; the CSS caps it.
- */
-function fitListFloor() {
-  const agx = st.root?.querySelector("#agx");
-  const el = st.root?.querySelector("#agl");
-  if (!agx || !el) return;
-  // The floor is used at 860px and below only: wider, read no layout.
-  if (!matchMedia("(max-width: 860px)").matches) {
-    agx.style.removeProperty("--agl-floor");
-    return;
-  }
-  // Only rows that are drawn: not those in a shut Stopped (n), which some
-  // engines still give a box (content-visibility), nor any hidden one.
-  const rows = Array.from(el.querySelectorAll(".agr")).filter(
-    (r) => !r.closest("details:not([open])") && r.getClientRects().length > 0,
-  );
-  if (!rows.length) {
-    agx.style.removeProperty("--agl-floor");
-    return;
-  }
-  const top = el.getBoundingClientRect().top - el.scrollTop;
-  const border = el.offsetHeight - el.clientHeight;
-  const upTo = (r) =>
-    Math.ceil(r.getBoundingClientRect().bottom - top + border);
-  let px = upTo(rows[Math.min(LIST_FLOOR_ROWS, rows.length) - 1]);
-  const right = agx.querySelector("#agr");
-  const pane = right?.querySelector(".pane:not([hidden])");
-  if (pane) {
-    if (document.querySelector(".den-dock.open"))
-      px = Math.max(LIST_FLOOR_MIN_PX, upTo(rows[0]));
-    const gap = parseFloat(getComputedStyle(agx).rowGap) || 0;
-    // The right side's least: the pane's minimum, plus what sits beside it
-    // there (the tab strip in Tabs).
-    const beside =
-      right.getBoundingClientRect().height -
-      pane.getBoundingClientRect().height;
-    const room =
-      agx.clientHeight -
-      gap -
-      Math.max(0, beside) -
-      (parseFloat(getComputedStyle(pane).minHeight) || 0);
-    px = Math.max(LIST_FLOOR_MIN_PX, Math.min(px, Math.floor(room)));
-  }
-  agx.style.setProperty(
-    "--agl-floor",
-    `${Math.max(LIST_FLOOR_MIN_PX, Math.ceil(px))}px`,
-  );
-}
-
-/**
- * Issue 482: the Terminals page's list: Running, then Exited, each by
- * last used, newest first; under All projects each row names its
- * project. Empty: says so, and how to open one.
- */
-function terminalsBodyHtml() {
-  const used = shellUsed();
-  const { running, exited } = terminalGroups(visibleRows(), used);
-  if (!running.length && !exited.length)
-    return (
-      `<div class="none tmnone"><strong>${esc(t("tm.none"))}</strong>` +
-      `<span>${esc(t("tm.noneP", { scope: st.scopeLabel }))}</span></div>`
-    );
-  const view = viewWorkspaces();
-  const showProject = view.length !== 1;
-  const row = (r) =>
-    terminalRowHtml(r, {
-      t,
-      when: agoPlain,
-      showProject,
-      open: st.open.includes(r.id),
-      current: r.id === st.cur,
-      used,
-    });
-  const group = (key, list) =>
-    list.length
-      ? `<div class="wsg tmg" data-tm="${key}"><div class="wsh"><span>${esc(t(`tm.${key}`, { n: list.length }))}</span></div>` +
-        list.map(row).join("") +
-        `</div>`
-      : "";
-  return group("running", running) + group("exited", exited);
-}
-
-/** Issue 482: the Agents page's note, once per browser (until dismissed). */
-const MOVED_KEY = "den-terminals-moved-seen";
-
-function movedSeen() {
-  try {
-    return localStorage.getItem(MOVED_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
 function markMovedSeen() {
   try {
     localStorage.setItem(MOVED_KEY, "1");
@@ -1544,30 +193,12 @@ function markMovedSeen() {
   }
 }
 
-function movedNote() {
-  if (movedSeen()) return "";
-  const view = viewWorkspaces();
-  const n = (st.data?.sessions ?? []).filter(
-    (s) => s.kind === "session" && view.includes(s.workspace),
-  ).length;
-  return movedNoteHtml(n, t);
-}
-
 /** Issue 482: the Terminals page, in the project in view. */
 function terminalsHref() {
   const view = viewWorkspaces();
   return view.length === 1
     ? `/terminals?project=${encodeURIComponent(view[0])}`
     : "/terminals";
-}
-
-function savedBy() {
-  try {
-    const v = localStorage.getItem("den-agents-by");
-    return BY.includes(v) ? v : "need";
-  } catch {
-    return "need";
-  }
 }
 
 function setBy(by) {
@@ -1580,41 +211,6 @@ function setBy(by) {
   paintList();
 }
 
-/** Issue 750: how often the page asks Den for Hub's groups again (ms). */
-const GROUPS_EVERY_MS = 30_000;
-
-/**
- * Issue 750: Hub's groups for the By group view (Den reads them from Hub,
- * keeps them in memory only). `fresh`: Try again, past Den's copy.
- */
-async function loadGroups(fresh = false) {
-  st.groupsAt = Date.now();
-  try {
-    const r = await fetch(`/api/hub/groups${fresh ? "?fresh=1" : ""}`, {
-      headers: { accept: "json" },
-    });
-    const b = r.ok ? await r.json() : null;
-    st.groupsRead = b?.state ? b : { state: "unreachable" };
-  } catch {
-    st.groupsRead = { state: "unreachable" };
-  }
-  if (st.data) paintList();
-}
-
-const STOPPED_OPEN_KEY = "den-agents-stopped-open";
-
-/** D37: whether "Stopped (n)" is open: as a person left it, else open
- * for 3 or fewer. */
-function stoppedOpen(n) {
-  try {
-    const v = localStorage.getItem(STOPPED_OPEN_KEY);
-    if (v === "1" || v === "0") return v === "1";
-  } catch {
-    /* none: the default */
-  }
-  return n <= 3;
-}
-
 function saveStoppedOpen(open) {
   try {
     localStorage.setItem(STOPPED_OPEN_KEY, open ? "1" : "0");
@@ -1623,73 +219,7 @@ function saveStoppedOpen(open) {
   }
 }
 
-/** D37: the agents that aren't running, one line each, in one group. */
-function stoppedGroupHtml(rows) {
-  if (!rows.length) return "";
-  // More than one workspace among them: each row names its own.
-  const wsTag = new Set(rows.map((r) => r.workspace)).size > 1;
-  return (
-    `<details class="wsg agstg" data-stopped${stoppedOpen(rows.length) ? " open" : ""}>` +
-    `<summary class="wsh" title="${esc(t("ag.stoppedGroupTip"))}"><span>${esc(t("ag.stoppedGroup", { n: rows.length }))}</span></summary>` +
-    reorderStoppedHtml(rows) +
-    rows
-      .map((r) =>
-        exitedShell(r)
-          ? exitedShellHtml(r, wsTag)
-          : // Issue 226: a phone's Reorder gives stopped agents Up and Down too.
-            orderRowHtml(
-              stoppedHtml(r, wsTag),
-              r,
-              phone() && st.reorderStopped && stoppedMovable(r),
-            ),
-      )
-      .join("") +
-    `</details>`
-  );
-}
-
-/**
- * #80: whether session `s` belongs in this view: the view's projects, the
- * server agent (it spans projects; in All projects only) and an agent whose project was deleted
- * (D71). 0.4.44 added the open tabs' projects too, which mixed another
- * project's agents into a project's list; a tab from another project is
- * now left out instead (hideOtherProjects), so the list always has the
- * session in front.
- */
-function inView(s) {
-  if (!s) return false;
-  // Issue 482: a shell is on the Terminals page, an agent on Agents.
-  if (!belongsOn(PAGE, s)) return false;
-  if (s.server || s.workspace === SERVER_WS) return !pickedWorkspace();
-  if (s.orphan) return true;
-  return viewWorkspaces().includes(s.workspace);
-}
-
-function visibleRows() {
-  return (st.data?.sessions ?? []).filter(inView);
-}
-
-/**
- * #80: the open panes of sessions outside this view leave the tabs (and
- * ?open=), kept in st.hiddenOpen for "Show in All active".
- */
-function hideOtherProjects() {
-  if (!st.data) return;
-  const out = st.open.filter((id) => {
-    const r = rowOf(id);
-    return r && !inView(r);
-  });
-  if (!out.length) return;
-  // Issue 482: the other page's kind leaves quietly (it is on its page).
-  const other = out.filter((id) => belongsOn(PAGE, rowOf(id)));
-  st.hiddenOpen = [...new Set([...st.hiddenOpen, ...other])];
-  for (const id of out)
-    if (st.panes.has(id)) closePane(id, { quiet: true });
-    else st.open = st.open.filter((x) => x !== id);
-  writeUrl();
-}
-
-/** #80: All active, with the hidden tabs back. */
+/** All active, with the hidden tabs back. */
 async function showAllActive() {
   try {
     // busy-ok: the stored view follows the page; the reload is its answer
@@ -1707,38 +237,6 @@ async function showAllActive() {
   location.assign(
     u.pathname + "?" + u.searchParams.toString().replace(/%2C/gi, ","),
   );
-}
-
-/**
- * #80: opening another project's session from elsewhere (a link, ⌘K, a
- * bell item) switches this page to that project first.
- */
-async function switchToProjectOf(r) {
-  if (!r || inView(r)) return;
-  const was = viewWorkspaces();
-  st.switchedFrom = was.length === 1 ? was[0] : null;
-  await showProject(r.workspace);
-}
-
-/** This page shows project `ws`: the address, the stored view, the top bar. */
-async function showProject(ws) {
-  const u = new URL(location.href);
-  u.searchParams.delete("ws");
-  u.searchParams.set("project", ws);
-  history.replaceState(history.state, "", u.pathname + u.search);
-  st.scope = ws;
-  try {
-    // busy-ok: the stored view follows the page, which shows it already
-    await window.denShell?.api?.("POST", "/api/scope", { scope: ws });
-  } catch {
-    /* the address still says it, for this page */
-  }
-  try {
-    await (await import("/header.js")).refreshWorkspacePill?.();
-  } catch {
-    /* the top bar repaints on the next load */
-  }
-  await refresh();
 }
 
 /** #80: "Back to <project>": the project left, its tabs back. */
@@ -1782,24 +280,6 @@ async function paneFollowsProject() {
   if (latest) await openPane(latest.id);
 }
 
-function paintSub() {
-  const rows = visibleRows();
-  const count = st.root.querySelector("#ag-count");
-  if (count)
-    count.textContent =
-      PAGE === "terminal"
-        ? terminalsCountText(rows.length, st.scopeLabel, t)
-        : attnSub(
-            rows.filter((r) => !inStopped(r)),
-            st.scopeLabel,
-            seenMap(),
-          );
-  const url = st.root.querySelector("#ag-url");
-  if (url) url.textContent = location.pathname + location.search;
-  // Issue 482: the rail lights the page's own item (Terminals or Agents):
-  // each page holds only its own kind.
-}
-
 /**
  * The person's layout (GET /api/settings agents_layout), else Focus; and
  * where a path link opens (editor_open), else none.
@@ -1828,447 +308,7 @@ async function loadScope() {
   }
 }
 
-function scopeLabelFor(shown) {
-  const ws = urlWorkspace();
-  if (ws && shown.length === 1 && shown[0] === ws) return projName(ws);
-  return st.scope === "all" ? t("ag.all") : projName(st.scope);
-}
-
-/** 0.4.45: the projects' names changed: everything that says them. */
-function repaintNames() {
-  st.scopeLabel = scopeLabelFor(viewWorkspaces());
-  paintList();
-  paintSub();
-  for (const pane of st.panes.values()) paintBar(pane);
-  const strip = st.root?.querySelector("#agr > .agtabs");
-  if (strip) paintTabs(strip);
-}
-
-/**
- * den#156: the list again, then the next one, always: an answer that never
- * comes (a host that doesn't answer) can't stop the list for good.
- */
-async function refresh() {
-  clearTimeout(st.timer);
-  try {
-    await refreshOnce();
-  } finally {
-    nextRefresh();
-  }
-}
-
-/** den#156: until a list says otherwise (agents_list.refresh_timeout_seconds). */
-const LIST_WAIT_S = 15;
-
-async function refreshOnce() {
-  try {
-    const ws = urlWorkspace();
-    // den#156: a list that doesn't come in time is a problem the page
-    // says out loud (paintList), not a wait that holds it.
-    const ac = new AbortController();
-    const wait = setTimeout(
-      () => ac.abort(),
-      (st.listWaitS ?? LIST_WAIT_S) * 1000,
-    );
-    let r;
-    try {
-      r = await fetch(
-        ws ? `/api/sessions?ws=${encodeURIComponent(ws)}` : "/api/sessions",
-        { headers: { accept: "json" }, signal: ac.signal },
-      );
-    } catch (e) {
-      st.hostDown = true;
-      throw e;
-    } finally {
-      clearTimeout(wait);
-    }
-    // 0.4.45: the projects' names (a rename in Hub shows here within
-    // 30 s of reaching this install). The first list waits for them, so
-    // nothing paints a slug first.
-    if (!st.projectsAt || Date.now() - st.projectsAt > 30_000) {
-      st.projectsAt = Date.now();
-      const names = fetch("/api/workspaces", { headers: { accept: "json" } })
-        .then((x) => (x.ok ? x.json() : null))
-        .then((d) => {
-          if (!d) return false;
-          // Issue 168: a colour change repaints too, not only a name.
-          const key = (x) =>
-            JSON.stringify([x?.workspaces ?? null, x?.projectColours ?? null]);
-          const was = key(st.projects);
-          st.projects = d;
-          return key(d) !== was;
-        })
-        .catch(() => false);
-      // At most 3 s: a slow answer paints the slugs, then the names.
-      if (!st.projects)
-        await Promise.race([
-          names.then((changed) => {
-            if (changed && st.data) repaintNames();
-          }),
-          new Promise((r) => setTimeout(r, 3000)),
-        ]);
-      else
-        void names.then((changed) => {
-          if (changed) repaintNames();
-        });
-    }
-    // Issue 750: Hub's groups, now and then (Den keeps its own copy too).
-    if (!st.groupsAt || Date.now() - st.groupsAt > GROUPS_EVERY_MS)
-      void loadGroups();
-    if (r.status === 401) {
-      st.signedOut = true;
-    } else if (r.ok) {
-      st.data = await r.json();
-      st.signedOut = false;
-      // den#156: the host didn't answer (or couldn't be reached): say so.
-      st.hostDown = !!st.data?.hostError;
-      if (typeof st.data?.refreshTimeoutSeconds === "number")
-        st.listWaitS = st.data.refreshTimeoutSeconds;
-      toastAutoRelaunches(st.data?.sessions ?? []);
-    }
-  } catch {
-    /* the last list stays; the next ask may answer */
-  }
-  st.loadFailed = !st.data && !st.signedOut;
-  followAgents();
-  window.denShell?.setState?.({
-    helpersRunning: (st.data?.sessions ?? []).reduce(
-      (n, r) => n + (r.helpers?.running ?? 0),
-      0,
-    ),
-    agentsNeedYou: railNeeds(
-      (st.data?.sessions ?? []).filter((r) => !inStopped(r)),
-    ),
-  });
-  for (const [id, at] of st.seenNow) {
-    const r = rowOf(id);
-    if (!r || r.attn !== "done" || r.attnSince !== at) st.seenNow.delete(id);
-  }
-  st.scopeLabel = scopeLabelFor(viewWorkspaces());
-  hideOtherProjects();
-  paintList();
-  paintSub();
-  for (const p of st.panes.values()) {
-    // D66: each pane keeps its soft newline for when its row is gone.
-    const seq = rowOf(p.id)?.softNewline;
-    if (typeof seq === "string" && seq) p.softNewline = seq;
-    paintBar(p);
-  }
-  const strip = st.root.querySelector("#agr > .agtabs");
-  if (strip) paintTabs(strip);
-}
-
-function nextRefresh() {
-  if (!st.root?.isConnected) return;
-  // A pane whose session just ended may have a new one soon (a persona
-  // change, a resume): look again every second for a while.
-  const soon = Date.now() < (st.followUntil ?? 0);
-  st.timer = setTimeout(
-    () => {
-      if (!document.hidden) void refresh();
-      else st.timer = setTimeout(refresh, REFRESH_MS);
-    },
-    soon ? FOLLOW_MS : REFRESH_MS,
-  );
-}
-
-const rowOf = (id) => st.data?.sessions?.find((s) => s.id === id) ?? null;
-
-/** How often, and how long, the list is read after a pane's session ends. */
-const FOLLOW_MS = 1_000;
-const FOLLOW_FOR_MS = 15_000;
-
-/**
- * A pane follows its agent, not a session (AG-18): when the agent's
- * session changes (Change persona, Resume, a rotation), the pane moves to
- * the new one in the same slot, its scrollback kept.
- */
-function followAgents() {
-  for (const p of [...st.panes.values()]) {
-    const r = knowAgent(p);
-    if (!p.agent || p.closed || r?.state === "running") continue;
-    const next = st.data?.sessions?.find(
-      (x) =>
-        x.kind === "agent" &&
-        x.agent === p.agent &&
-        x.workspace === p.agentWs &&
-        x.id !== p.id &&
-        x.state === "running",
-    );
-    if (next && !st.panes.has(next.id)) retarget(p, next);
-  }
-}
-
-/**
- * Pane `p` notes its agent from its row, while the row is there; its row
- * goes when its session ends. Issue 202: a pane opened after a list read
- * learns it at once, not at the next read: a session ended before then
- * (Change persona) left the pane on the old one for good.
- */
-function knowAgent(p) {
-  const r = rowOf(p.id);
-  if (r?.kind === "agent" && r.agent) {
-    p.agent = r.agent;
-    p.agentWs = r.workspace;
-  }
-  return r;
-}
-
-/** The pane's line for a resume that had nothing to continue (AG-14). */
-function freshLine(p) {
-  p.term?.write(`\x1b[2m${t("ag.freshLine")}\x1b[0m\r\n`);
-}
-
-/** Move pane `p` to session row `row`, where it was. */
-function retarget(p, row) {
-  const old = p.id;
-  // Another session: a connection of its own.
-  p.conn?.stop();
-  p.conn = null;
-  p.sock = null;
-  p.recon = null;
-  st.panes.delete(old);
-  p.id = row.id;
-  st.panes.set(row.id, p);
-  st.open = st.open.map((x) => (x === old ? row.id : x));
-  if (st.side.delete(old)) st.side.add(row.id);
-  if (st.cur === old) st.cur = row.id;
-  p.el.dataset.id = row.id;
-  p.el.setAttribute("aria-label", row.label ?? row.id);
-  p.exited = false;
-  p.lost = false;
-  p.term?.write(
-    `\r\n\x1b[2m${t("ag.switched", { p: row.persona ?? row.agent })}\x1b[0m\r\n`,
-  );
-  if (st.fresh.delete(`${p.agentWs}\u0000${p.agent}`)) freshLine(p);
-  paintBar(p);
-  paintLayout();
-  writeUrl();
-  void connect(p);
-}
-
 // ── the panes ───────────────────────────────────────────────────────────
-
-async function loadXterm() {
-  // Issue 128: the browser keeps a module that failed to load as failed,
-  // so a try after a failure asks for it at a new address.
-  if (st.xterm) return st.xterm;
-  // Issue 231: the address already carries Den's version (?v=), so the
-  // try number joins it.
-  const again = (u) =>
-    st.xtermFails
-      ? `${u}${u.includes("?") ? "&" : "?"}try=${st.xtermFails}`
-      : u;
-  const loading = (st.xterm = Promise.all([
-    import(again("/vendor/xterm.mjs")),
-    import(again("/vendor/addon-fit.mjs")),
-    import(again("/vendor/addon-web-links.mjs")),
-  ]).then(([x, f, w]) => {
-    // 0.4.45: xterm's own words (its input's label, the screen reader's
-    // overflow note) through the catalog, xterm's English when it has none.
-    const tE = (key, en) => {
-      const v = t(key);
-      return v && v !== key ? v : en;
-    };
-    x.Terminal.strings.promptLabel = tE("term.input", "Terminal input");
-    x.Terminal.strings.tooMuchOutput = tE(
-      "term.tooMuch",
-      "Too much output to announce, navigate to rows manually to read",
-    );
-    return {
-      Terminal: x.Terminal,
-      FitAddon: f.FitAddon,
-      WebLinksAddon: w.WebLinksAddon,
-    };
-  }));
-  // Issue 128: a failed load (Den restarted, the network blipped) is not
-  // kept, so the next pane tries again.
-  loading.catch(() => {
-    if (st.xterm === loading) st.xterm = null;
-    st.xtermFails += 1;
-  });
-  return loading;
-}
-
-async function csrf(fresh) {
-  if (st.csrf && !fresh) return st.csrf;
-  try {
-    const r = await fetch("/api/session", { credentials: "same-origin" });
-    const b = r.ok ? await r.json() : null;
-    st.csrf = typeof b?.csrf === "string" ? b.csrf : null;
-  } catch {
-    st.csrf = null;
-  }
-  return st.csrf;
-}
-
-function cssVar(name) {
-  const v = getComputedStyle(document.documentElement)
-    .getPropertyValue(name)
-    .trim();
-  return v || undefined;
-}
-
-/** The terminal's colours, from the theme's tokens (xterm's own when unset). */
-function termTheme() {
-  const bg = cssVar("--sunken");
-  const fg = cssVar("--text");
-  const theme = {
-    background: bg,
-    foreground: fg,
-    cursor: cssVar("--accent") ?? fg,
-    cursorAccent: bg,
-    selectionBackground: cssVar("--border-strong"),
-  };
-  for (const k of Object.keys(theme))
-    if (theme[k] === undefined) delete theme[k];
-  return theme;
-}
-
-/** A tab's words: the agent's name, then its persona and workspace. */
-function tabWords(id) {
-  const r = rowOf(id);
-  const p = st.panes.get(id);
-  const wsName = (ws) =>
-    !ws ? "" : ws === SERVER_WS ? t("ag.server") : projName(ws);
-  if (!r) return { name: p?.label || id, meta: wsName(p?.workspace) };
-  if (r.kind !== "agent")
-    return {
-      name: r.label,
-      meta: [t("ag.session"), wsName(r.workspace)].join(" · "),
-    };
-  return {
-    name: paneName(r),
-    meta: [r.persona, wsName(r.workspace), sessionExtra(r)]
-      .filter(Boolean)
-      .join(" · "),
-  };
-}
-
-/** The tab strip (AG-4b Tabs): one tab per open pane, its × beside it. */
-function paintTabs(strip) {
-  // A tab being renamed keeps its input.
-  if (strip.querySelector("input")) return;
-  const have = [...strip.querySelectorAll(":scope > .agtab-w")].map(
-    (w) => w.dataset.id,
-  );
-  // The same tabs: changed in place, so a double-click's target stays.
-  if (have.join("\n") === st.open.join("\n")) {
-    for (const w of strip.querySelectorAll(":scope > .agtab-w")) {
-      const id = w.dataset.id;
-      const r = rowOf(id);
-      const words = tabWords(id);
-      const on = id === st.cur;
-      const tab = w.querySelector('[role="tab"]');
-      tab.setAttribute("aria-selected", String(on));
-      tab.tabIndex = on ? 0 : -1;
-      tab.querySelector(".den-dot").className =
-        `den-dot ${r?.waiting ? "warn" : r ? stateTone(r) : "pending"}`;
-      tab.querySelector(".tn").textContent = words.name;
-      tab.querySelector(".tm").textContent = words.meta;
-      const sr = tab.querySelector(".den-sr");
-      if (sr) {
-        sr.hidden = !r?.waiting;
-        if (r?.waiting) sr.textContent = `${waitingText(r)}: `;
-      }
-      w.querySelector(".agtab-x").setAttribute(
-        "aria-label",
-        t("ag.detachName", { id: words.name }),
-      );
-    }
-    return;
-  }
-  strip.innerHTML = st.open
-    .map((id) => {
-      const r = rowOf(id);
-      const w = tabWords(id);
-      const on = id === st.cur;
-      const tone = r?.waiting ? "warn" : r ? stateTone(r) : "pending";
-      const rename =
-        r?.kind === "agent" ? ` title="${esc(t("ag.renameTip"))}"` : "";
-      return (
-        `<span class="agtab-w" data-id="${esc(id)}">` +
-        `<button type="button" role="tab" class="agtab" data-id="${esc(id)}"${r ? pcAttr(r.workspace) : ""} aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-keyshortcuts="Delete"${rename}>` +
-        `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
-        `<span class="den-sr"${r?.waiting ? "" : " hidden"}>${esc(r?.waiting ? waitingText(r) : t("ag.waiting"))}: </span>` +
-        `<span class="tn">${esc(w.name)}</span><span class="tm mono">${esc(w.meta)}</span></button>` +
-        // Issue 297: a tablist owns only tabs, so × is the pointer's
-        // (out of the tab order and the accessibility tree); the keyboard
-        // closes a tab with Delete on it.
-        `<button type="button" class="agtab-x" data-act="close" data-id="${esc(id)}" tabindex="-1" aria-hidden="true" aria-label="${esc(t("ag.detachName", { id: w.name }))}" title="${esc(t("ag.detach"))}">×</button>` +
-        `</span>`
-      );
-    })
-    .join("");
-}
-
-function paintLayout() {
-  const box = st.root.querySelector("#agr");
-  const n = st.open.length;
-  paintSwitch();
-  if (n === 0) {
-    box.className = "agempty";
-    delete box.dataset.layout;
-    delete box.dataset.ws;
-    const view = st.data ? viewWorkspaces() : [];
-    box.innerHTML = `<div>${esc(PAGE === "terminal" ? t("tm.empty") : view.length === 1 && view[0] !== SERVER_WS ? t("ag.pickIn", { ws: view[0] }) : t("ag.empty"))}</div>`;
-    return;
-  }
-  const layout = shownLayout();
-  const shown = visibleIds();
-  box.className = `agp n${Math.max(1, shown.length)}${layout === "tabs" ? " tabs" : ""}`;
-  box.dataset.layout = layout;
-  // The front agent's workspace: ⌘K lists it first (0.4.17).
-  const front = rowOf(st.cur)?.workspace;
-  if (front) box.dataset.ws = front;
-  else delete box.dataset.ws;
-  const empty = box.querySelector(":scope > div:not(.pane):not(.agtabs)");
-  if (empty) empty.remove();
-  let strip = box.querySelector(":scope > .agtabs");
-  if (layout === "tabs") {
-    if (!strip) {
-      strip = document.createElement("div");
-      strip.className = "agtabs";
-      strip.setAttribute("role", "tablist");
-      strip.setAttribute("aria-label", t("ag.tabs"));
-    }
-    box.prepend(strip);
-    paintTabs(strip);
-    // The tab in front is in sight in the strip (it scrolls sideways;
-    // the page itself never scrolls for it).
-    const on = strip.querySelector('[role="tab"][aria-selected="true"]');
-    const w = on?.parentElement;
-    if (w && strip.clientWidth > 0) {
-      const left = w.offsetLeft - strip.offsetLeft;
-      if (left < strip.scrollLeft) strip.scrollLeft = left;
-      else if (left + w.offsetWidth > strip.scrollLeft + strip.clientWidth)
-        strip.scrollLeft = left + w.offsetWidth - strip.clientWidth;
-    }
-  } else strip?.remove();
-  // Panes in the URL's order; those out of sight stay attached, hidden.
-  for (const id of st.open) {
-    const p = st.panes.get(id);
-    if (!p) continue;
-    p.el.hidden = !shown.includes(id);
-    p.el.classList.toggle("in-tabs", layout === "tabs");
-    const x = p.el.querySelector('.bar2 [data-act="close"]');
-    if (x) x.hidden = layout === "tabs";
-    box.appendChild(p.el);
-  }
-  // Each pane in sight fits its new box (a hidden one is never measured).
-  requestAnimationFrame(() => {
-    for (const id of shown) {
-      const p = st.panes.get(id);
-      if (p) refit(p);
-    }
-  });
-}
-
-/** The header's switch: the person's layout pressed (AG-4b). */
-function paintSwitch() {
-  for (const b of st.root.querySelectorAll("[data-layouts] button"))
-    b.setAttribute("aria-pressed", String(b.dataset.layout === st.layout));
-}
 
 /**
  * Switch the layout (the header's switch, ⌘1-3): drawn at once, the URL
@@ -2290,31 +330,6 @@ function setLayout(layout) {
 }
 
 /**
- * D40: put the keyboard in pane `id`'s terminal once it can take keys: now
- * when its socket is open, else when it opens (connect). Never a pane
- * whose session ended.
- */
-function focusTerm(id, claim = true, { ifIdle = false } = {}) {
-  const p = st.panes.get(id);
-  if (!p || p.exited || p.closed) return;
-  st.claimOnOpen = claim;
-  st.focusIfIdle = ifIdle;
-  if (p.term && p.sock?.readyState === WebSocket.OPEN && p.heardSession) {
-    st.focusOnOpen = null;
-    // After the click that picked it has finished with the row; never
-    // over a field the person went to since (a double-click's rename).
-    const idle = st.focusIfIdle;
-    st.focusIfIdle = false;
-    requestAnimationFrame(() => {
-      if (p.closed || p.exited || inField()) return;
-      // D58: a link's focus is only for a keyboard that went nowhere yet.
-      if (idle && !keyboardIdle()) return;
-      p.term?.focus();
-    });
-  } else st.focusOnOpen = id;
-}
-
-/**
  * D40: a pick waiting for its socket is the person's latest choice only
  * until they choose something else. Their press or Tab outside that pane
  * (another row, a stopped row, a field) cancels it, so a socket that opens
@@ -2322,12 +337,12 @@ function focusTerm(id, claim = true, { ifIdle = false } = {}) {
  * counts: the page moving focus back to a row it redrew does not.
  */
 function dropStalePick(e) {
-  const id = st.focusOnOpen;
+  const id = st.focusOnOpen ?? st.focusSoon;
   if (!id || !e.isTrusted) return;
   // Typing straight after a pick is for the picked agent; Tab moves away.
   if (e.type === "keydown" && e.key !== "Tab") return;
   const at = e.type === "keydown" ? document.activeElement : e.target;
-  if (!st.panes.get(id)?.el?.contains(at)) st.focusOnOpen = null;
+  if (!st.panes.get(id)?.el?.contains(at)) st.focusOnOpen = st.focusSoon = null;
 }
 document.addEventListener("pointerdown", dropStalePick, true);
 document.addEventListener("keydown", dropStalePick, true);
@@ -2386,21 +401,6 @@ function addFocus(back, id) {
   else if (shown.includes(id)) focusTerm(id);
 }
 
-/** Double-click a tab: its name becomes an input (Enter saves, Esc doesn't). */
-/** Whether the keyboard is still on nothing (the page as it loaded). */
-function keyboardIdle() {
-  const a = document.activeElement;
-  return !a || a === document.body || a === document.documentElement;
-}
-
-/** Whether the keyboard is in a field on the page (not a terminal's). */
-function inField() {
-  const a = document.activeElement;
-  return !!a?.matches?.(
-    'input, select, textarea:not(.xterm-helper-textarea), [contenteditable="true"]',
-  );
-}
-
 function renameTab(tab) {
   const id = tab.dataset.id;
   const r = rowOf(id);
@@ -2455,92 +455,6 @@ function renameTab(tab) {
 }
 
 /**
- * D47: on a running agent's pane, the services it reaches only through
- * their API; on a runtime that can't be held to it, that it isn't.
- */
-function apiOnlyTag(r) {
-  const names = Array.isArray(st.data?.apiOnly) ? st.data.apiOnly : [];
-  if (!names.length || r?.kind !== "agent" || isStopped(r)) return "";
-  const list = names.join(", ");
-  return r.runtime === "den-claude"
-    ? `<span class="tagx" data-api-only title="${esc(t("ag.apiOnlyTip", { names: list }))}">${esc(t("ag.apiOnly", { names: list }))}</span>`
-    : `<span class="tagx warn" data-api-only="off" title="${esc(t("ag.apiOnlyOffTip", { names: list }))}">${esc(t("ag.apiOnlyOff"))}</span>`;
-}
-
-/**
- * D44: a running agent whose MCP servers are out of date (Hub connected or
- * disconnected since it launched): a tag, and on the pane bar Restart (at
- * its next idle, same conversation). Issue 749: so does one whose session
- * failed to load a server's tools, with the error in the tag's title.
- */
-function mcpStaleTag(r, withButton) {
-  const why = toolsStale(r);
-  if (!why) return "";
-  // Issue 193: Den restarts it to load Hub's new tools (no button: under way).
-  if (why === "restarting")
-    return `<span class="tagx warn" data-tools-restarting="1" title="${esc(t("ag.mcp.reloadingTip"))}">${esc(t("ag.mcp.reloading"))}</span>`;
-  let tag;
-  if (why === "failed") {
-    // Issue 749: its session didn't get a server's tools (the error says why).
-    const fx = r.mcpFailed[0];
-    const tip = t("ag.mcp.failedTip", { error: String(fx?.error ?? "") });
-    tag = `<span class="tagx warn" data-mcp-failed="${esc(String(fx?.server ?? ""))}" title="${esc(tip)}">${esc(t("ag.mcp.failed"))}</span>`;
-  } else if (why === "den") {
-    // Issue 1223: its Den tools are an older Den's (Den updated since).
-    const v = {
-      from: String(r.mcpStale.den.from),
-      to: String(r.mcpStale.den.to),
-    };
-    tag = `<span class="tagx warn" data-mcp-stale="den" title="${esc(t("ag.mcp.denTip", v))}">${esc(t("ag.mcp.den", v))}</span>`;
-  } else {
-    tag = `<span class="tagx warn" data-mcp-stale="${why}" title="${esc(t(`ag.mcp.${why}Tip`))}">${esc(t(`ag.mcp.${why}`))}</span>`;
-  }
-  if (!withButton) return tag;
-  return `<span class="agstale">${tag}${toolsRestartButton(r, t)}</span>`;
-}
-
-/**
- * MODE-3 (0.4.48): a running agent's mode differs from the one its
- * process runs in (a mode chosen while it ran; MODE-2 restarts it after
- * its turn, unless that waits on something): { want, running }, else null.
- */
-export function modeDriftOf(r) {
-  if (r?.kind !== "agent" || isStopped(r) || !r.mode || !r.modeRunning)
-    return null;
-  return r.mode === r.modeRunning
-    ? null
-    : { want: r.mode, running: r.modeRunning };
-}
-
-const modeName = (m) => t(`pm.name.${m}`);
-
-/**
- * MODE-3: its mode on its row and its pane bar ("mode: Auto"); on a
- * mismatch, "Set to Auto, running Ask", and in the pane bar Restart to
- * apply beside it (the row has it under the row: modeApplyHtml).
- */
-export function modeTagHtml(r, withButton) {
-  if (r?.kind !== "agent" || isStopped(r) || !r.mode) return "";
-  const d = modeDriftOf(r);
-  // Issue 199: a mode of its own says so, and the project's it doesn't follow.
-  // Issue 225: every mode says where it comes from.
-  const own = ownModeLabel(r);
-  const src = r.modeSource ? ` data-mode-source="${esc(r.modeSource)}"` : "";
-  if (!d)
-    return `<span class="tagx${r.mode === "all" || own ? " warn" : ""}" data-mode="${esc(r.mode)}"${src}${own ? ' data-mode-own="1"' : ""}>${esc(modeLabel(r))}</span>`;
-  const tag = `<span class="tagx warn" data-mode-drift="${esc(d.want)}">${esc(t("ag.mode.drift", { want: modeName(d.want), running: modeName(d.running) }))}</span>`;
-  return withButton
-    ? `<span class="agmode">${tag}${modeApplyHtml(r)}</span>`
-    : tag;
-}
-
-/** MODE-3: Restart to apply, a person's one click (a mismatch only). */
-function modeApplyHtml(r) {
-  if (!modeDriftOf(r)) return "";
-  return `<button type="button" class="den-btn sm primary" data-act="mode-apply" aria-label="${esc(t("ag.mode.applyName", { id: r.agent }))}">${esc(t("ag.mode.apply"))}</button>`;
-}
-
-/**
  * MODE-3: restart it now, on the same conversation; it starts in its mode
  * (the server reads it again at every start). Only a person's page can
  * (the restart route refuses an agent).
@@ -2557,47 +471,6 @@ async function applyMode(r, button) {
     },
   );
   await refresh();
-}
-
-const restartKey = (ws, id) => `${ws}\0${id}`;
-
-/**
- * Issue 1407: agent `r`'s answer under its row, once a restart for its
- * tools was asked (now, turn, job with what and how long, unknown, with
- * Restart now for the last two); else its Restart. Gone once its tools
- * are current.
- */
-function restartAnswerHtml(r) {
-  const k = restartKey(r.workspace, r.agent);
-  const a = st.restarts.get(k);
-  const why = toolsStale(r);
-  if (a && (!why || why === "restarting") && a.state !== "failed") {
-    st.restarts.delete(k);
-    return toolsRestartHtml(r, t);
-  }
-  return a ? restartRowHtml(a, t) : toolsRestartHtml(r, t);
-}
-
-/**
- * Issue 1407: above the list, when two or more agents in view need a
- * restart for their tools: how many, Restart all at their next idle, and
- * Restart all now for those that wait on the person.
- */
-function toolsBarHtml(rows) {
-  const stale = rows.filter((r) => {
-    const why = toolsStale(r);
-    return why && why !== "restarting";
-  });
-  if (stale.length < 2) return "";
-  const asked = stale
-    .map((r) => st.restarts.get(restartKey(r.workspace, r.agent)))
-    .filter(Boolean);
-  return (
-    `<div class="agnote" data-note="tools-stale" role="status">${esc(t("rs.bar", { n: stale.length }))} ` +
-    `<button type="button" class="den-btn sm" data-act="tools-restart-all">${esc(t("rs.barBtn", { n: stale.length }))}</button>` +
-    restartAllHtml(asked, t) +
-    `</div>`
-  );
 }
 
 /**
@@ -2657,11 +530,14 @@ let restartFollow = null;
  * stale bar drops an agent the moment it is back.
  */
 function followAgentRestarts() {
-  if (restartFollow || !st.restarts.size) return;
+  if (restartFollow || (!st.restarts.size && !st.restartRun)) return;
   restartFollow = followRestarts({
     api,
-    onRows: (rows) => {
-      if (!st.root?.isConnected || !st.restarts.size) {
+    onRows: (rows, run) => {
+      const before = JSON.stringify(st.restartRun);
+      st.restartRun = run ?? null;
+      if (JSON.stringify(st.restartRun) !== before) void refresh();
+      if (!st.root?.isConnected || (!st.restarts.size && !st.restartRun)) {
         restartFollow?.stop();
         restartFollow = null;
         return;
@@ -2677,7 +553,7 @@ function followAgentRestarts() {
           changed = true;
         }
       }
-      if (!st.restarts.size) {
+      if (!st.restarts.size && !st.restartRun) {
         restartFollow?.stop();
         restartFollow = null;
       }
@@ -2698,8 +574,19 @@ async function restartAllForTools(button) {
   );
   for (const a of Array.isArray(out?.agents) ? out.agents : [])
     st.restarts.set(restartKey(a.workspace, a.id), a);
+  st.restartRun = out?.run ?? null;
   await refresh();
   followAgentRestarts();
+}
+
+async function resumeRestartRun() {
+  try {
+    const r = await api("GET", "/api/agents/restart-status");
+    st.restartRun = r?.run ?? null;
+  } catch {
+    st.restartRun = null;
+  }
+  if (st.restartRun) followAgentRestarts();
 }
 
 /** Issue 1407: Restart now (ends a job), one agent's or all that wait. */
@@ -2721,364 +608,7 @@ async function restartNowFor(buttons) {
   followAgentRestarts();
 }
 
-/** Which of the bar's controls `el` is: its data-act, or its place. */
-function barKey(bar, el) {
-  const c = el.closest("button, a, [tabindex]");
-  if (!c || !bar.contains(c)) return null;
-  if (c.dataset.act) return { act: c.dataset.act };
-  const all = Array.from(bar.querySelectorAll("button, a, [tabindex]"));
-  return { at: all.indexOf(c) };
-}
-
-function barFind(bar, k) {
-  if (k.act) return bar.querySelector(`[data-act="${CSS.escape(k.act)}"]`);
-  return bar.querySelectorAll("button, a, [tabindex]")[k.at] ?? null;
-}
-
-/**
- * Issue 1311: "N messages waiting" on a pane whose person is typing a
- * message: Den holds its own until theirs is sent or cleared.
- */
-function draftWaitingTag(p) {
-  const n = p.draftWaiting ?? 0;
-  if (n <= 0) return "";
-  return `<span class="tagx" role="status" data-draft-waiting="${n}" title="${esc(t("ag.draftWaitingTip"))}">${esc(t("ag.draftWaiting", { n }))}</span>`;
-}
-
-function paintBar(p) {
-  const r = rowOf(p.id);
-  const bar = p.el.querySelector(".bar2");
-  const name = r ? paneName(r) : p.label || p.id;
-  // AG-4b: the session's name last, when it says more. The workspace is a
-  // link to it on Workspaces (0.4.17).
-  const ws = r ? r.workspace : p.workspace || "";
-  // D37: a stopped agent's pane has what its one-line row leaves out.
-  const rest = r
-    ? (isStopped(r)
-        ? [r.persona, r.agent, r.runtime, cwdText(r)]
-        : [r.runtime, sessionExtra(r)]
-      )
-        .filter(Boolean)
-        .join(" · ")
-    : "";
-  // 0.4.44: the project stays whole; the runtime and the rest are cut.
-  const where =
-    (ws ? `<span class="wsn">${wsLinkHtml(ws)}</span>` : "") +
-    (rest ? `<span class="rt">${ws ? " · " : ""}${esc(rest)}</span>` : "");
-  const tone = r ? stateTone(r) : p.exited ? "off" : "pending";
-  const stop =
-    r?.kind === "agent" && (r.state === "running" || r.state === "stopping")
-      ? `<button type="button" class="den-btn sm" data-act="stop" aria-label="${esc(t("ag.stopName", { id: r.agent }))}">${esc(t("ag.stop"))}</button>`
-      : "";
-  // The 0.4.39 gate's note: a shell is closed here, not only with `exit`.
-  const closeShell =
-    r?.kind === "session" && !r.exited
-      ? `<button type="button" class="den-btn sm" data-act="close-shell" title="${esc(t("ag.closeShellTip"))}">${esc(t("ag.closeShell"))}</button>`
-      : "";
-  // Issue 448: a second shell on purpose (the rail's Terminal reopens this).
-  const newShell =
-    r?.kind === "session"
-      ? `<button type="button" class="den-btn sm" data-act="new-shell" title="${esc(t("ag.newShellTip"))}">${esc(t("ag.newShell"))}</button>`
-      : "";
-  // The mock's pane bar: Resume (primary) on an ended agent that can.
-  const resume =
-    r && isStopped(r) && r.resumable
-      ? `<button type="button" class="den-btn sm primary" data-act="resume" aria-label="${esc(t("ag.resumeName", { id: r.agent }))}">${esc(t("ag.resume"))}</button>`
-      : "";
-  const reconnect = reconnectHtml(p);
-  // AG-DROP: Attach (a touch screen has no drop): a live session's only.
-  const attach =
-    !p.lost && !p.exited && !(r && isStopped(r))
-      ? `<button type="button" class="den-btn sm" data-act="attach" aria-label="${esc(t("ag.up.attachName", { id: name }))}" title="${esc(t("ag.up.attachTip"))}">${esc(t("ag.up.attach"))}</button>`
-      : "";
-  // AG-18: ⋯, its menu: Rename… (D25, every agent), Change persona… (a
-  // runtime that can resume).
-  const more =
-    r?.kind === "agent"
-      ? `<button type="button" class="den-btn sm" data-act="more" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("ag.more", { id: r.agent }))}" title="${esc(t("ag.more", { id: r.agent }))}">⋯</button>`
-      : "";
-  // Issue 170: the tags in one box. Beside the name on a wide pane; on a
-  // phone a line of their own, so they never cut the project's name.
-  const tags =
-    (r?.tokenRevoked
-      ? `<span class="tagx warn" title="${esc(t("ag.revokedTip"))}">${esc(t("ag.revoked"))}</span>`
-      : "") +
-    apiOnlyTag(r) +
-    // Issue 278: compacting repeatedly; instructions. Why and Clear are
-    // on a line of their own below (Stop is the bar's own).
-    compactingTag(r) +
-    instructionsTag(r) +
-    mcpStaleTag(r, true) +
-    modeTagHtml(r, true) +
-    whereTag(r, true) +
-    linkTag(r) +
-    subagentTag(r) +
-    signInTag(r) +
-    hubBoundTag(r) +
-    draftWaitingTag(p);
-  const html =
-    `<span class="den-dot ${tone}" aria-hidden="true"></span>` +
-    // Issue 168: the agent's letter tile, in its project's colour.
-    (r?.kind === "agent" ? tileHtml(name) : "") +
-    `<b>${esc(name)}</b>${where ? '<span class="sep" aria-hidden="true">·</span>' : ""}<span class="where mono">${where}</span>` +
-    (r && isStopped(r)
-      ? `<span class="why" data-why title="${esc(stoppedTip(r))}">${esc(stopReason(r))}</span>`
-      : "") +
-    (tags ? `<span class="agtags" data-tags>${tags}</span>` : "") +
-    (r?.kind === "agent" && rotActionsHtml(r)
-      ? `<span class="agrot" data-rot-bar title="${esc(rotMessage(r))}"><span class="tagx warn" data-rotation="${rotationOf(r)}">${esc(t(rotationOf(r) === "ready" ? "ag.rot.ready" : "ag.rot.due", { why: rotationWhy(r.rotation) }))}</span>${rotActionsHtml(r)}</span>`
-      : "") +
-    (r?.kind === "agent" && compactingHtml(r, t, { withStop: false })
-      ? `<span class="agctx" data-compacting-bar>${compactingHtml(r, t, { withStop: false })}</span>`
-      : "") +
-    `<span class="x">${r?.kind === "agent" ? helperBarButtonHtml(r) : ""}${reconnect}${attach}${stop}${newShell}${closeShell}${resume}${more}<button type="button" class="den-btn sm" data-act="close" aria-label="${esc(t("ag.detachName", { id: name }))}" title="${esc(t("ag.detach"))}">×</button></span>`;
-  // A refresh (a helper's update, the list's poll) redraws only what
-  // changed, and never takes the keyboard off the bar: a button there that
-  // had focus has it again after a redraw.
-  if (p.barHtml !== html) {
-    const had = bar.contains(document.activeElement)
-      ? barKey(bar, document.activeElement)
-      : null;
-    bar.innerHTML = html;
-    p.barHtml = html;
-    if (had) barFind(bar, had)?.focus();
-  } else {
-    // Unchanged: a button an action turned off while it ran (Stop, Write
-    // handoff) comes back, as a redraw used to bring it back. The bar's
-    // own HTML never turns one off.
-    for (const b of bar.querySelectorAll("button:disabled")) b.disabled = false;
-  }
-  // 0.4.44: who the keyboard types to, under the terminal, in the
-  // project's colour (a message once went to the wrong agent's tab).
-  const to = p.el.querySelector(".agto");
-  if (to) {
-    const said = ws
-      ? t("ag.to", {
-          name,
-          ws: ws === SERVER_WS ? t("ag.server") : projName(ws),
-        })
-      : t("ag.toName", { name });
-    if (to.textContent !== said) to.textContent = said;
-  }
-  // Issue 168: the pane's band and To line in its project's colour (the
-  // server agent's: none, neutral grey).
-  const pc = projectColour(st.projects, ws);
-  if (pc) {
-    if (p.el.dataset.pc !== pc) p.el.dataset.pc = pc;
-  } else if (p.el.dataset.pc) delete p.el.dataset.pc;
-  // Tabs: the tab's × closes it; the pane's bar has none.
-  const x = bar.querySelector('[data-act="close"]');
-  if (x) x.hidden = shownLayout() === "tabs";
-}
-
-function send(p, obj) {
-  if (p.sock?.readyState === WebSocket.OPEN) p.sock.send(JSON.stringify(obj));
-}
-
-/** The smallest size a pane ever asks for (a pane not laid out yet). */
-const MIN_COLS = 2;
-const MIN_ROWS = 2;
-
-/** Shown: the page is visible and the pane has a box. */
-function paneShown(p) {
-  return (
-    !document.hidden &&
-    p.el.isConnected &&
-    p.el.offsetWidth > 0 &&
-    p.el.offsetHeight > 0
-  );
-}
-
-/** Fit the terminal to its pane (its own cols and rows; nothing is sent). */
-function refit(p) {
-  const box = p.el.querySelector(".term");
-  if (!p.fit || !p.el.isConnected || !box || box.clientWidth <= 0) return;
-  // D54: a pane another view sizes draws at the PTY's size, never its own
-  // box's: Claude Code redraws its prompt by moving the cursor up as many
-  // lines as it wrapped at the PTY's width, so any other width leaves a
-  // copy of the prompt behind on each redraw.
-  if (p.following && p.pty) {
-    followPty(p);
-    return;
-  }
-  try {
-    p.fit.fit();
-  } catch {
-    /* not laid out yet */
-  }
-  markSize(p);
-}
-
-/** D54: this pane at the PTY's size (another view sets it). */
-function followPty(p) {
-  const term = p.term;
-  if (!term || !p.pty) return;
-  if (term.cols !== p.pty.cols || term.rows !== p.pty.rows)
-    term.resize(p.pty.cols, p.pty.rows);
-  markSize(p);
-  paintFollow(p);
-}
-
-/**
- * D54: the chip on a pane another view sizes: "Sized by another view",
- * and Take over (this pane's size, as typing does).
- */
-function paintFollow(p) {
-  const box = p.el.querySelector(".term");
-  if (!box) return;
-  p.el.classList.toggle("following", !!p.following);
-  let chip = box.querySelector(".agfollow");
-  if (!p.following) {
-    chip?.remove();
-    return;
-  }
-  if (!chip) {
-    chip = document.createElement("div");
-    chip.className = "agfollow";
-    chip.setAttribute("role", "status");
-    chip.innerHTML =
-      `<span class="agfollow-t"></span>` +
-      `<button type="button" class="den-btn sm" data-act="take-size"></button>`;
-    chip.querySelector("button").addEventListener("click", (e) => {
-      e.preventDefault();
-      claimSize(p, true);
-      p.term?.focus();
-    });
-    box.append(chip);
-  }
-  chip.querySelector(".agfollow-t").textContent = t("ag.size.follow", {
-    cols: p.pty?.cols ?? "?",
-    rows: p.pty?.rows ?? "?",
-  });
-  chip.querySelector("button").textContent = t("ag.size.take");
-}
-
-/**
- * The pane's size and the PTY's, on the pane (data-cols, data-pty-cols),
- * and the cell size xterm drew with (data-cell-w, data-cell-h: its
- * renderer's CSS cell, sub-pixel), so a check can tell a missed row from
- * a fit's remainder.
- */
-function markSize(p) {
-  if (!p.term) return;
-  p.el.dataset.cols = String(p.term.cols);
-  p.el.dataset.rows = String(p.term.rows);
-  let cell = null;
-  try {
-    cell = p.term._core?._renderService?.dimensions?.css?.cell ?? null;
-  } catch {
-    cell = null;
-  }
-  if (cell?.width > 0 && cell?.height > 0) {
-    p.el.dataset.cellW = String(cell.width);
-    p.el.dataset.cellH = String(cell.height);
-  }
-  if (p.pty) {
-    p.el.dataset.ptyCols = String(p.pty.cols);
-    p.el.dataset.ptyRows = String(p.pty.rows);
-  }
-}
-
-/**
- * Whether this pane must say its size before a keystroke: the PTY is known
- * to have another size, or the host never says the PTY's size (an older
- * session host that outlived an upgrade sends no size frames), so another
- * viewer may have resized it unseen. Saying the same size again is free:
- * the PTY only redraws when the size really changes.
- */
-function outOfStep(p) {
-  if (!p.term) return false;
-  if (!p.heardSize) return true;
-  return !!p.pty && (p.pty.cols !== p.term.cols || p.pty.rows !== p.term.rows);
-}
-
-/**
- * Say this pane's size to the session (the PTY takes it: last writer
- * wins). Never from a hidden pane, never under 2x2.
- */
-function sendSize(p, claim = false) {
-  const term = p.term;
-  if (!term || p.sock?.readyState !== WebSocket.OPEN || !paneShown(p))
-    return false;
-  if (term.cols < MIN_COLS || term.rows < MIN_ROWS) return false;
-  // D54: a following pane never sizes the PTY (no ping-pong between views).
-  if (p.following || !p.decided) return false;
-  send(p, {
-    type: "resize",
-    cols: term.cols,
-    rows: term.rows,
-    ...(claim ? { claim: true } : {}),
-  });
-  // D54: until the host says this size back, an older frame (the size on
-  // attach) is not another view taking it. The host says a size only when
-  // it changes, so an unchanged one is never said back: that is no wait.
-  // The same size said again (a claim's refit says it, then the claim)
-  // keeps the wait the first one started.
-  const at = (z) => !!z && z.cols === term.cols && z.rows === term.rows;
-  if (!(at(p.awaiting) && Date.now() < p.awaiting.until))
-    p.awaiting = at(p.pty)
-      ? null
-      : { cols: term.cols, rows: term.rows, until: Date.now() + 3000 };
-  if (claim) p.claimedAt = Date.now();
-  // What the PTY will be: the server's frame follows (or another
-  // viewer's, if it resized after).
-  p.pty = { cols: term.cols, rows: term.rows };
-  markSize(p);
-  return true;
-}
-
-/** D54: whether the data xterm just gave came from the person (a key, a paste). */
-const PERSON_INPUT_MS = 1000;
-function personTyped(p) {
-  return (
-    p.inputAt !== undefined && performance.now() - p.inputAt < PERSON_INPUT_MS
-  );
-}
-
-/**
- * This pane is in use (typed in, Take over, just opened): it leads. Fit it
- * to its box and make the PTY its size; any other view follows.
- */
-function claimSize(p, claim = false) {
-  p.following = false;
-  if (claim) p.otherHolds = false;
-  if (claim && !p.decided) p.claimLater = true;
-  paintFollow(p);
-  refit(p);
-  sendSize(p, claim);
-}
-
-function follow(p) {
-  p.following = true;
-  if (p.pty) followPty(p);
-  else paintFollow(p);
-}
-
-const VIEWS_KEY = "den-views";
-function keepInTab(k, v) {
-  try {
-    sessionStorage.setItem(k, v);
-    return true;
-  } catch {
-    return false;
-  }
-}
 const VIEWS_LIVE = "den-views-live";
-
-function newViewId() {
-  const a = new Uint8Array(12);
-  crypto.getRandomValues(a);
-  return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function paneView(id) {
-  st.views ??= {};
-  if (!st.views[id]) {
-    st.views[id] = newViewId();
-    keepInTab(VIEWS_KEY, JSON.stringify(st.views));
-  }
-  return st.views[id];
-}
 
 function loadViews() {
   let live = false;
@@ -3117,630 +647,11 @@ function loadViews() {
   });
 }
 
-/**
- * Measure the cells again (xterm measures them once, when the font is
- * set) and refit: a web font that arrived after the first fit, or a theme
- * whose --mono is another font. A change the PTY hears via onResize.
- */
-function remeasure(p) {
-  const term = p.term;
-  if (!term) return;
-  const family = cssVar("--mono") ?? "monospace";
-  // Setting the same family is a no-op in xterm: set another first (never
-  // drawn: the theme's family is back before the refit).
-  if (term.options["fontFamily"] === family)
-    Object.assign(term.options, { fontFamily: `${family}, monospace` });
-  Object.assign(term.options, { fontFamily: family });
-  refit(p);
-}
-
 function remeasureAll() {
   for (const p of st.panes.values()) remeasure(p);
 }
 
-/** The bar's reconnect part: a quiet line while it tries, else a button. */
-function reconnectHtml(p) {
-  const s = p.recon;
-  const btn = `<button type="button" class="den-btn sm" data-act="reconnect">${esc(t("ag.reconnect"))}</button>`;
-  if (s?.kind === "retrying")
-    return `<span class="ag-recon" role="status">${esc(t("ag.reconnecting"))}</span>`;
-  if (s?.kind === "tripped")
-    return `<span class="ag-recon" role="status">${esc(t("ag.reconnectGaveUp", { n: s.tries, min: Math.round(st.reconnect.windowMs / 60000) }))}${s.why ? ` (${esc(s.why)})` : ""}</span>${btn}`;
-  return p.lost ? btn : "";
-}
-
-/** The words a refused terminal gives (term-pane.js refusalOf). */
-const PANE_WORDS = {
-  signin: () => t("ag.signin", { cli: CLI }),
-  refusedUnknown: () => t("ag.refusedUnknown"),
-  refusedStatus: (status) => t("ag.refusedStatus", { status }),
-  notAnswering: () => t("ag.notAnswering"),
-};
-
-/**
- * Pane `p`'s connection to its session (term-pane.js, shared with the
- * __DEN_TITLE__ agent's page): it reconnects on its own after a drop.
- */
-function connect(p) {
-  if (p.closed) return;
-  p.conn ??= termPane({
-    id: p.id,
-    view: () => paneView(p.id),
-    term: () => p.term,
-    csrf: (fresh) => csrf(fresh),
-    settings: st.reconnect,
-    words: PANE_WORDS,
-    paint: (r) => {
-      p.recon = r;
-      p.lost = r.kind === "tripped" || r.kind === "refused";
-      paintBar(p);
-    },
-    onOpen: (sock) => {
-      p.sock = sock;
-      p.heardSession = false;
-      p.pty = null;
-      p.heardSize = false;
-      // D54: who sizes the PTY is decided on the session frame (it says
-      // how many view it); until then, this pane waits.
-      p.following = false;
-      p.decided = false;
-      p.claimLater = false;
-      refit(p);
-    },
-    onText: (msg) => paneText(p, msg),
-    onClose: ({ opened, refused, why }) => {
-      p.sock = null;
-      if (!opened) void refresh();
-      if (refused) p.term?.write(`\r\n${t("ag.lost", { why })}\r\n`);
-    },
-  });
-  return (st.viewsReady ?? Promise.resolve()).then(() => p.conn?.connect());
-}
-
-/** A JSON frame from pane `p`'s session. */
-function paneText(p, msg) {
-  if (msg?.type === "size") {
-    if (Number.isInteger(msg.cols) && Number.isInteger(msg.rows)) {
-      p.heardSize = true;
-      const said = (z) => !!z && z.cols === msg.cols && z.rows === msg.rows;
-      if (msg.lead === false) {
-        if (p.claimedAt && Date.now() - p.claimedAt < 3000) return;
-        p.awaiting = null;
-      }
-      const w = p.awaiting && Date.now() < p.awaiting.until ? p.awaiting : null;
-      p.pty = { cols: msg.cols, rows: msg.rows };
-      let mine = false;
-      if (p.following) p.awaiting = null;
-      else if (w) {
-        // Still waiting for this pane's own size: an older frame. The
-        // PTY will be this pane's.
-        mine = true;
-        if (said(w)) p.awaiting = null;
-        else p.pty = { cols: w.cols, rows: w.rows };
-      } else {
-        p.awaiting = null;
-        mine = said(p.term);
-      }
-      // D54: another view set it: draw at its size until typed in.
-      // Alone, a size this pane didn't say is only an older one (a
-      // hidden pane that couldn't say its own yet): never a reason to
-      // follow.
-      if (!mine && ((p.viewers ?? 1) > 1 || msg.lead === false))
-        p.following = true;
-      if (p.following) followPty(p);
-      else markSize(p);
-    }
-  } else if (msg?.type === "session") {
-    p.label = msg.label;
-    p.workspace = msg.workspace;
-    p.exited = !!msg.exited;
-    p.heardSession = true;
-    paintBar(p);
-    if (!p.decided) {
-      p.decided = true;
-      // D54: a lone viewer, or the pane the person just opened, sizes
-      // the PTY; another view of a session already in use follows
-      // its size until typed in, so opening one never redraws the
-      // other. An older server says no count: this pane leads.
-      p.viewers = Number.isInteger(msg.viewers) ? msg.viewers : 1;
-      const alone = p.viewers <= 1;
-      const meant =
-        (st.deliberate?.id === p.id || st.deliberate?.id === "*") &&
-        Date.now() - st.deliberate.at < 10_000;
-      if (meant) st.deliberate = null;
-      p.otherHolds = msg.held === true && msg.lead === false;
-      if (meant || p.claimLater) claimSize(p, true);
-      else if (typeof msg.lead === "boolean") {
-        if (msg.lead) claimSize(p);
-        else follow(p);
-      } else if (alone) claimSize(p);
-      else follow(p);
-    }
-    // D40: the pane the person picked takes the keyboard once the
-    // server says its session is live (the first frame), never one
-    // that has ended.
-    if (st.focusOnOpen === p.id) {
-      if (p.exited) st.focusOnOpen = null;
-      else focusTerm(p.id, st.claimOnOpen, { ifIdle: st.focusIfIdle });
-    }
-  } else if (msg?.type === "waiting") {
-    // Issue 1311: messages held while the person's draft is on the line.
-    const n = Number.isInteger(msg.n) && msg.n > 0 ? msg.n : 0;
-    if (n !== (p.draftWaiting ?? 0)) {
-      p.draftWaiting = n;
-      paintBar(p);
-    }
-  } else if (msg?.type === "viewers") {
-    // D54: the view that sized the PTY went away: this one, alone now,
-    // sizes it.
-    if (Number.isInteger(msg.n)) {
-      p.viewers = msg.n;
-      if (p.el) p.el.dataset.viewers = String(msg.n);
-      if (msg.n <= 1 && p.following && !p.otherHolds) claimSize(p);
-    }
-  } else if (msg?.type === "lead") {
-    p.otherHolds = !msg.yours && !!msg.held;
-    if (msg.yours) {
-      if (p.following) claimSize(p);
-    } else if (!p.following && !(p.claimedAt > Date.now() - 3000)) follow(p);
-  } else if (msg?.type === "exit") {
-    p.exited = true;
-    // Its agent may continue in a new session (followAgents).
-    st.followUntil = Date.now() + FOLLOW_FOR_MS;
-    const code = typeof msg.exitCode === "number" ? ` (${msg.exitCode})` : "";
-    p.term?.write(`\r\n${t("ag.exitedLine", { code })}\r\n`);
-    void refresh();
-  }
-}
-
 // ── links and keys in a pane (AG-4b) ───────────────────────────────────
-
-/**
- * What Shift+Enter sends to a pane's session: its row's (the server sends
- * every kind's; a plain session's is Enter). D66: a pane whose row the list
- * no longer has (another workspace in scope, mid-restart) keeps the one it
- * last had, and never knowing one, gets the catalog default, ESC CR. Never
- * a bare CR: that sent the prompt.
- */
-const SOFT_NEWLINE_DEFAULT = "\u001b\r";
-function softNewlineOf(id) {
-  const seq = rowOf(id)?.softNewline;
-  const p = st.panes.get(id);
-  if (typeof seq === "string" && seq) {
-    if (p) p.softNewline = seq;
-    return seq;
-  }
-  return p?.softNewline || SOFT_NEWLINE_DEFAULT;
-}
-
-/**
- * A URL or an OSC 8 link clicked: with ⌘ (Ctrl elsewhere), an http or
- * https one opens in a new tab, noopener. A plain click opens nothing
- * (it selects); every other scheme (javascript:, data:, file:) nothing.
- *
- * D35: xterm tells on mouseup; Safari blocks window.open there. The link
- * waits for the click that follows (a gesture Safari honours) and opens
- * as a real link (linkOpen); no click within a moment: it opens anyway.
- */
-let pendingWeb = null;
-function openWeb(e, uri) {
-  if (!linkModifier(e) || !isWebUrl(uri)) return;
-  e?.preventDefault?.();
-  if (pendingWeb) clearTimeout(pendingWeb.timer);
-  pendingWeb = {
-    uri,
-    timer: setTimeout(() => {
-      const p = pendingWeb;
-      pendingWeb = null;
-      if (p) linkOpen(p.uri);
-    }, 300),
-  };
-}
-
-function takePendingWeb() {
-  const p = pendingWeb;
-  if (!p) return;
-  pendingWeb = null;
-  clearTimeout(p.timer);
-  linkOpen(p.uri);
-}
-
-/** D35: how to open a console link, on its hover: "⌘-click to open". */
-function linkHint(p, on) {
-  const el = p.el.querySelector(".term");
-  if (!el) return;
-  if (on) el.title = t("ag.linkHint", { key: isMac() ? "⌘" : "Ctrl" });
-  else el.removeAttribute("title");
-}
-
-/** The most paths asked about at once (agent-paths.ts MAX_PATHS). */
-const MAX_ASK = 64;
-
-/**
- * Which of `paths` are links for agent row `r`: absolute path or null,
- * each asked once per pane (GET …/agents/<id>/paths: the server resolves
- * them against its cwd, inside its workspace; stat only).
- */
-async function pathLinks(p, r, paths) {
-  p.paths ??= new Map();
-  const ask = [...new Set(paths)].filter((x) => !p.paths.has(x));
-  for (let i = 0; i < ask.length; i += MAX_ASK) {
-    const batch = ask.slice(i, i + MAX_ASK);
-    const q = batch.map((x) => `p=${encodeURIComponent(x)}`).join("&");
-    const got = fetch(`${agentPath(r, "paths")}?${q}`, {
-      headers: { accept: "json" },
-    })
-      .then((res) => (res.ok ? res.json() : null))
-      .catch(() => null);
-    for (const x of batch)
-      p.paths.set(
-        x,
-        got.then((b) => {
-          const v = b?.paths?.[x];
-          return typeof v === "string" ? v : null;
-        }),
-      );
-  }
-  const out = new Map();
-  for (const x of paths) out.set(x, await p.paths.get(x));
-  return out;
-}
-
-/** xterm asks for line `y`'s links (1-based): its paths that exist. */
-async function providePathLinks(p, y, done) {
-  try {
-    const r = rowOf(p.id);
-    const line = p.term?.buffer.active.getLine(y - 1)?.translateToString(true);
-    if (r?.kind !== "agent" || !r.agent || !line) return done(undefined);
-    const found = findPaths(line);
-    if (!found.length) return done(undefined);
-    const abs = await pathLinks(
-      p,
-      r,
-      found.map((m) => m.path),
-    );
-    const links = found
-      .filter((m) => abs.get(m.path))
-      .map((m) => ({
-        text: m.text,
-        range: { start: { x: m.start + 1, y }, end: { x: m.end, y } },
-        decorations: { pointerCursor: true, underline: true },
-        activate: (e) => void openPath(e, p, r, abs.get(m.path), m.line, m.col),
-        hover: () => linkHint(p, true),
-        leave: () => linkHint(p, false),
-      }));
-    done(links.length ? links : undefined);
-  } catch {
-    done(undefined);
-  }
-}
-
-const EDITOR_NAMES = { vscode: "VS Code", cursor: "Cursor", zed: "Zed" };
-
-/**
- * A path link clicked with ⌘ (Ctrl elsewhere): a menu at the pointer.
- * Download (AG-DROP-2: the file to this browser's machine, which may not
- * be the agent's), Open in the editor set in Settings (editor_open, at
- * the line, by its URL scheme), Copy path.
- */
-function openPath(e, p, r, abs, line, col) {
-  if (!linkModifier(e) || !abs || !r?.agent) return;
-  e?.preventDefault?.();
-  const url = editorUrl(st.editorOpen, abs, line, col);
-  window.denShell?.openMenu?.(pathAnchor(p, e), {
-    label: abs,
-    items: [
-      {
-        label: t("ag.path.download"),
-        onSelect: () => void downloadPath(r, abs),
-      },
-      ...(url
-        ? [
-            {
-              label: t("ag.path.open", {
-                ed: EDITOR_NAMES[st.editorOpen] ?? st.editorOpen,
-              }),
-              // D35: the same tab, to the editor's own scheme (zed://,
-              // vscode://): a navigation, not a new window, so no popup
-              // blocker stands in it.
-              onSelect: () => window.open(url, "_self"),
-            },
-          ]
-        : []),
-      { label: t("ag.path.copy"), onSelect: () => void copyPath(abs) },
-    ],
-  });
-}
-
-async function copyPath(abs) {
-  try {
-    await navigator.clipboard.writeText(abs);
-    window.denShell?.toast?.(t("ag.copied"));
-  } catch (err) {
-    window.denShell?.errorToast?.(err);
-  }
-}
-
-/**
- * AG-DROP-2: the file at `abs` downloads to this browser, from the agent's
- * workspace, cwd or uploads (the server checks; it says so when not).
- */
-async function downloadPath(r, abs) {
-  const url = `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/file?p=${encodeURIComponent(abs)}`;
-  const name = abs.split("/").pop() || abs;
-  try {
-    const h = await fetch(url, { method: "HEAD", credentials: "same-origin" });
-    if (!h.ok) throw new Error(t("ag.path.noFile", { name }));
-  } catch (err) {
-    window.denShell?.errorToast?.(err);
-    return;
-  }
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.hidden = true;
-  document.body.append(a);
-  a.click();
-  a.remove();
-  window.denShell?.toast?.(t("ag.path.downloading", { name }));
-}
-
-/**
- * Where a path's menu opens: a point at the click, made once. Focus that
- * comes back to it (Esc) goes on to the pane's terminal.
- */
-function pathAnchor(p, e) {
-  let a = document.getElementById("ag-path-anchor");
-  if (!a) {
-    a = document.createElement("span");
-    a.id = "ag-path-anchor";
-    a.tabIndex = -1;
-    a.setAttribute("aria-hidden", "true");
-    a.style.cssText =
-      "position:fixed;width:1px;height:1px;pointer-events:none;opacity:0";
-    a.addEventListener("focus", () =>
-      st.panes.get(a.dataset.pane)?.term?.focus(),
-    );
-    document.body.append(a);
-  }
-  a.dataset.pane = p.id;
-  a.style.left = `${Math.round(e?.clientX ?? 0)}px`;
-  a.style.top = `${Math.round(e?.clientY ?? 0)}px`;
-  return a;
-}
-
-async function openPane(id, { front = true } = {}) {
-  markOpened(id);
-  if (st.panes.has(id)) {
-    st.panes.get(id).term?.focus();
-    return;
-  }
-  if (front) st.cur = id;
-  if (st.open.length >= MAX_PANES) {
-    const oldest = st.open[0];
-    window.denShell?.toast?.(
-      t("ag.cap", { id: rowOf(oldest)?.label ?? oldest }),
-    );
-    closePane(oldest, { quiet: true });
-  }
-  const el = document.createElement("section");
-  el.className = "pane";
-  el.dataset.id = id;
-  // xterm opens in .tbox, the .term's content box: the fit measures its
-  // parent's height and width as they are, so the .term's padding must
-  // not be in it (AG-4b: every terminal fits its pane).
-  el.innerHTML = `<div class="bar2"></div><div class="term"><div class="tbox"></div></div><div class="agto" data-to data-toast-clear></div>`;
-  const p = {
-    id,
-    el,
-    term: null,
-    fit: null,
-    sock: null,
-    closed: false,
-    // The PTY's size as last heard (the server's size frame), or null.
-    pty: null,
-  };
-  knowAgent(p);
-  st.panes.set(id, p);
-  st.open.push(id);
-  paintBar(p);
-  paintLayout();
-  writeUrl();
-  paintList();
-  el.setAttribute("aria-label", rowOf(id)?.label ?? id);
-  let lib;
-  try {
-    lib = await loadXterm();
-  } catch (err) {
-    // Issue 128: the failed pane goes, so a click on the agent tries again.
-    if (!p.closed) closePane(id, { quiet: true });
-    window.denShell?.errorToast?.(err);
-    return;
-  }
-  if (p.closed) return;
-  const term = new lib.Terminal({
-    fontFamily: cssVar("--mono") ?? "monospace",
-    fontSize: 12,
-    lineHeight: 1.25,
-    cursorBlink: false,
-    scrollback: 5000,
-    theme: termTheme(),
-    allowProposedApi: false,
-    // OSC 8 links (AG-4b): ⌘/Ctrl-click, http and https only, no confirm.
-    linkHandler: {
-      activate: (e, uri) => void openWeb(e, uri),
-      hover: () => linkHint(p, true),
-      leave: () => linkHint(p, false),
-      allowNonHttpProtocols: false,
-    },
-  });
-  const fit = new lib.FitAddon();
-  term.loadAddon(fit);
-  // Plain URLs (AG-4b): the same rule as OSC 8.
-  term.loadAddon(
-    new lib.WebLinksAddon((e, uri) => void openWeb(e, uri), {
-      hover: () => linkHint(p, true),
-      leave: () => linkHint(p, false),
-    }),
-  );
-  // D35: the click after xterm's mouseup opens a waiting link.
-  el.querySelector(".term").addEventListener("click", takePendingWeb, true);
-  term.open(el.querySelector(".term .tbox"));
-  p.term = term;
-  p.fit = fit;
-  const enc = new TextEncoder();
-  const typeIn = (d) => {
-    if (p.sock?.readyState !== WebSocket.OPEN) return;
-    // The one typing wins: another viewer resized the PTY since. Only a
-    // person's typing: xterm's own answers to the agent's questions (its
-    // kind, the cursor's place: a TUI asks on start, and a view that
-    // opens replays them) come here too, and go to the agent as they are.
-    if (personTyped(p) && (p.following || outOfStep(p))) claimSize(p, true);
-    p.sock.send(enc.encode(d));
-  };
-  // D54: what a person did in this pane (a key, a paste, IME), heard
-  // before xterm turns it into data.
-  for (const ev of [
-    "keydown",
-    "paste",
-    "beforeinput",
-    "compositionend",
-    "drop",
-  ])
-    el.addEventListener(
-      ev,
-      (e) => {
-        if (!e.isTrusted) return;
-        p.inputAt = performance.now();
-        markShellUsed(p.id);
-      },
-      true,
-    );
-  imeOnce(el, typeIn);
-  term.onData(typeIn);
-  p.typeIn = typeIn;
-  // AG-DROP: a file dropped or pasted here goes to the server; its path is
-  // typed at the cursor.
-  wireDrop(el, dropOpts(p));
-  // AG-4b: Shift+Enter is the runtime's soft newline, never a CR; the
-  // layout keys (⌃⇧1-3) are the page's, never the agent's.
-  term.attachCustomKeyEventHandler((e) => {
-    if (e.ctrlKey && e.shiftKey && /^Digit[123]$/.test(e.code ?? ""))
-      return false;
-    if (
-      e.key === "Enter" &&
-      e.shiftKey &&
-      !e.ctrlKey &&
-      !e.altKey &&
-      !e.metaKey
-    ) {
-      if (e.isComposing) return true;
-      e.preventDefault();
-      if (softNewlineKey(e)) typeIn(softNewlineOf(p.id));
-      return false;
-    }
-    return true;
-  });
-  // File paths (AG-4b): links only where the server says they exist in
-  // the agent's workspace.
-  term.registerLinkProvider({
-    provideLinks: (y, done) => void providePathLinks(p, y, done),
-  });
-  term.onResize(() => sendSize(p));
-  // Focused: the keyboard's pane (D40). D54: focus alone never takes the
-  // PTY's size (a look at another tab must not redraw the one in use);
-  // the first keystroke does.
-  el.addEventListener("focusin", () => {
-    if (!p.following) claimSize(p);
-    st.keyPane = p.id;
-  });
-  // Issue 448: used means a person's click or key here, never the focus
-  // the page gives a pane itself (a load puts the front tab's terminal in
-  // focus, which must not make it the one used last).
-  el.addEventListener(
-    "pointerdown",
-    (e) => {
-      if (e.isTrusted) markShellUsed(p.id);
-    },
-    true,
-  );
-  p.ro = new ResizeObserver(() => refit(p));
-  p.ro.observe(el.querySelector(".term"));
-  refit(p);
-  // The theme's font may still be loading: measure again once it has.
-  document.fonts?.ready?.then(() => {
-    if (!p.closed) remeasure(p);
-  });
-  void connect(p);
-}
-
-/** AG-DROP: what a pane's drop, paste and Attach need. */
-function dropOpts(p) {
-  return {
-    // The pane's session now: a restart moves the pane to a new one.
-    get id() {
-      return p.id;
-    },
-    t,
-    csrf,
-    name: () => {
-      const r = rowOf(p.id);
-      return r ? paneName(r) : p.label || p.id;
-    },
-    // A live session only: its terminal is open and it is running.
-    can: () => attachable(p),
-    why: () => {
-      const r = rowOf(p.id);
-      const name = r ? paneName(r) : p.label || p.id;
-      return p.exited || p.closed || (r && isStopped(r))
-        ? t("ag.up.cant", { name })
-        : t("ag.up.cantConn", { name });
-    },
-    say: (msg) => window.denShell?.toast?.(msg),
-    typeIn: (text) => {
-      p.typeIn?.(text);
-      p.term?.focus();
-    },
-  };
-}
-
-/** A pane that takes a file now: connected, its session not ended. */
-function attachable(p) {
-  const r = rowOf(p.id);
-  return (
-    !p.closed &&
-    !p.lost &&
-    !p.exited &&
-    p.sock?.readyState === WebSocket.OPEN &&
-    !(r && isStopped(r))
-  );
-}
-
-function closePane(id, { quiet = false } = {}) {
-  const p = st.panes.get(id);
-  if (!p) return;
-  p.closed = true;
-  p.conn?.stop();
-  st.panes.delete(id);
-  st.open = st.open.filter((x) => x !== id);
-  st.side.delete(id);
-  if (st.cur === id) st.cur = st.open.at(-1) ?? null;
-  try {
-    p.sock?.close(1000, "closed");
-  } catch {
-    /* already closed */
-  }
-  p.ro?.disconnect();
-  p.term?.dispose();
-  p.el.remove();
-  if (!quiet)
-    window.denShell?.toast?.(
-      t("ag.detached", { id: rowOf(id)?.label ?? p.label ?? id }),
-    );
-  paintLayout();
-  writeUrl();
-  paintList();
-}
 
 function stopAgent(p, button) {
   const r = rowOf(p.id);
@@ -3772,92 +683,11 @@ async function stopAgentNow(r, button) {
   }
 }
 
-/**
- * Close a shell: the server ends it as closing its terminal does (HUP,
- * then KILL) and forgets it; its pane closes.
- */
-async function closeShell(p, button) {
-  const r = rowOf(p.id);
-  if (!r || r.kind !== "session") return;
-  const release = window.denShell?.holdDots
-    ? window.denShell.holdDots(button)
-    : () => {};
-  try {
-    await api("POST", `/api/sessions/${encodeURIComponent(r.id)}/close`);
-    // Quiet: the pane's own "it keeps running" toast would be wrong here.
-    closePane(p.id, { quiet: true });
-    window.denShell?.toast?.(t("ag.shellClosed", { id: r.label ?? r.name }));
-  } catch (err) {
-    window.denShell?.errorToast?.(err);
-  } finally {
-    void release();
-  }
-  await refresh();
-}
-
-/** Issue 448: the shell bar's New terminal: another shell in its project. */
-async function newShell(r, button) {
-  await openTerminal(r.workspace, { fresh: true, button });
-}
-
 // ── Stopped agents (AG-14) ──────────────────────────────────────────────
-
-const agentPath = (r, verb) =>
-  `/api/workspaces/${encodeURIComponent(r.workspace)}/agents/${encodeURIComponent(r.agent)}/${verb}`;
 
 // ── Issue 96: a project's agents in the person's order ─────────────────
 // A grip and a pointer drag (mouse, pen and touch), ⋯ Move up, Move down
 // and Move to top, Alt+↑ and Alt+↓ on a row, and on a phone Reorder in
-
-const groupOf = (r) =>
-  inStopped(r)
-    ? orderGroup(st.data?.sessions ?? [], r, inStopped)
-    : bandGroup(
-        (st.data?.sessions ?? []).filter((s) => !inStopped(s)),
-        r,
-        { seenNow: seenMap() },
-      );
-
-/** The grip a pointer drags a row by (any pointer: mouse, pen, touch). */
-const gripHtml = (r) =>
-  orderable(r, SERVER_WS) && (inStopped(r) || groupOf(r).length > 0)
-    ? `<span class="agrip" data-grip="" role="img" aria-label="${esc(t("ag.ord.gripOne", { id: displayName(r) }))}" title="${esc(t("ag.ord.grip"))}">⠿</span>`
-    : "";
-
-const runningMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
-
-function reorderBandHtml(b) {
-  if (!phone() || !personOrdered(b.state) || !b.rows.some(runningMovable))
-    return "";
-  const on = st.reorderBand === b.state;
-  const band = t(`ag.band.${b.state}`);
-  return `<div class="agord-sb"><button type="button" class="den-btn sm agord-t" data-act="reorder" data-band="${esc(b.state)}" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderBand", { band }))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button></div>`;
-}
-
-/**
- * Issue 226: a phone's Reorder (or Done) for the Stopped group, when one
- * of its projects has two stopped agents to order.
- */
-function reorderStoppedHtml(rows) {
-  if (!phone() || !rows.some(stoppedMovable)) return "";
-  const on = st.reorderStopped;
-  return `<div class="agord-sb"><button type="button" class="den-btn sm agord-t" data-act="reorder" data-stopped="" aria-pressed="${on}" aria-label="${esc(on ? t("ag.ord.done") : t("ag.ord.reorderStopped"))}">${esc(on ? t("ag.ord.done") : t("ag.ord.reorder"))}</button></div>`;
-}
-
-/** Issue 226: a stopped row that can move: its group has two or more. */
-const stoppedMovable = (r) => orderable(r, SERVER_WS) && groupOf(r).length >= 2;
-
-/** `html`, the row of `r`; with its Up and Down beside it when `on`. */
-function orderRowHtml(html, r, on) {
-  if (!on) return html;
-  const ids = groupOf(r);
-  const btn = (dir, key, sign) =>
-    `<button type="button" class="den-btn sm" data-act="ord-${dir}" aria-label="${esc(t(key, { id: displayName(r) }))}"${orderTo(ids, r.agent, dir) ? "" : ' aria-disabled="true"'}>${sign}</button>`;
-  return (
-    `<div class="agord" data-agent="${esc(r.agent)}" data-ws="${esc(r.workspace)}"><div class="agord-r">${html}</div>` +
-    `<span class="agord-b">${btn("up", "ag.ord.upOne", "↑")}${btn("down", "ag.ord.downOne", "↓")}</span></div>`
-  );
-}
 
 /** ⋯'s Move up, Move down and Move to top, those that can move it. */
 function orderItems(r, focusRow) {
@@ -4294,40 +1124,6 @@ async function keepConversation(r, button) {
   }
 }
 
-/**
- * D28: a relaunch Den did by itself since the last look: a toast saying
- * so, and that the old conversation is kept. The first look only notes
- * what is there.
- */
-function toastAutoRelaunches(rows) {
-  const seen = (st.rotSeen ??= new Map());
-  const first = !st.rotLooked;
-  st.rotLooked = true;
-  for (const r of rows) {
-    const last = r.kind === "agent" ? r.lastRotation : undefined;
-    if (!last) continue;
-    const key = `${r.workspace}/${r.agent}`;
-    if (seen.get(key) === last.at) continue;
-    seen.set(key, last.at);
-    if (first || !last.auto) continue;
-    window.denShell?.toast?.(
-      t("ag.rc.autoRelaunched", {
-        id: r.agent,
-        why:
-          last.reason === "pr-merged"
-            ? t("ag.rot.merged")
-            : t(
-                last.compactions === 1
-                  ? "ag.rot.compactions.one"
-                  : "ag.rot.compactions",
-                { n: last.compactions },
-              ),
-        old: last.conversation ?? "?",
-      }),
-    );
-  }
-}
-
 /** Undo: the removed agents come back (POST /api/agents/restore). */
 async function undoRemove(ids) {
   try {
@@ -4630,26 +1426,11 @@ function bringPick() {
   return c && !c.open && !c.agent ? c : null;
 }
 
-/** D56: where an agent runs, saying so when that is outside its project. */
-function cwdText(r) {
-  return r.outside && r.cwd ? t("ag.outside", { folder: r.cwd }) : r.cwd;
-}
-
 /** "3 minutes ago", "2 hours ago", or the date: a <time> (issue 206). */
 function agoText(iso) {
   const ms = Date.now() - Date.parse(iso);
   if (!Number.isFinite(ms)) return "";
   return timeHtml(iso, { style: ms < 48 * 3600_000 ? "relative" : "date" });
-}
-
-/**
- * Issue 482: agoText as plain text, for a time inside a translated
- * sentence ("Last used 3 minutes ago"), in the person's zone.
- */
-function agoPlain(iso) {
-  const ms = Date.now() - Date.parse(iso);
-  if (!Number.isFinite(ms)) return "";
-  return formatTime(iso, { style: ms < 48 * 3600_000 ? "relative" : "date" });
 }
 
 /** The folder a conversation ran in, inside the workspace's when it is. */
@@ -5985,6 +2766,75 @@ function modeItems(r, opener) {
   ];
 }
 
+function skillPackItems(r, opener) {
+  if (r?.kind !== "agent" || r.server) return [];
+  const own = r.skillPacks ?? null;
+  const now =
+    own === "off"
+      ? t("ag.packs.off")
+      : own === null
+        ? t("ag.packs.default")
+        : t("ag.packs.on");
+  return [
+    {
+      label: t("ag.packs.item", { v: now }),
+      onSelect: () => openSkillPackMenu(opener, r, own),
+    },
+  ];
+}
+
+function openSkillPackMenu(anchor, r, own) {
+  const sh = window.denShell;
+  const id = r.displayName || r.agent;
+  const pick = (value) => {
+    if (value === own) return;
+    void sh
+      .busyAction(
+        "agent-skill-packs",
+        (headers) =>
+          sh.api(
+            "POST",
+            "/api/settings",
+            {
+              skill_packs: {
+                key: `agents.${r.agent}.skill_packs`,
+                value,
+              },
+            },
+            { headers },
+          ),
+        {
+          button: anchor,
+          vars: { name: id },
+          success: () => t("ag.packs.set", { id }),
+        },
+      )
+      .then((x) => {
+        if (x !== undefined && x !== null) void refresh();
+      });
+  };
+  sh.openMenu(anchor, {
+    label: t("ag.packs.menu", { id }),
+    items: [
+      {
+        label: t("ag.packs.default"),
+        checked: own === null,
+        onSelect: () => pick(null),
+      },
+      {
+        label: t("ag.packs.off"),
+        checked: own === "off",
+        onSelect: () => pick("off"),
+      },
+      {
+        label: t("ag.packs.on"),
+        checked: own === "on",
+        onSelect: () => pick("on"),
+      },
+    ],
+  });
+}
+
 /** D37: a stopped agent's ⋯: Start fresh (when Resume is its button), Remove. */
 function stoppedMenuItems(r, opener) {
   return [
@@ -6017,16 +2867,6 @@ function stoppedMenuItems(r, opener) {
 
 /** Under this width the details are a bottom sheet (as the service panel). */
 const DET_SHEET = "(max-width: 639px)";
-/** The open details: the row, its opener, the pop-over and its scrim. */
-const agd = {
-  r: null,
-  opener: null,
-  el: null,
-  scrim: null,
-  det: null,
-  release: null,
-};
-
 // Issue 1085: its actions are the kit's small row-action size (den-btn sm),
 // as the stopped rows' own: Remove is never the one large button.
 function detailsHtml(r, det) {
@@ -6563,6 +3403,7 @@ export async function mountAgentsPage(root) {
             : [
                 { label: t("ag.rn.item"), onSelect: () => openRename(r, b) },
                 ...modeItems(r, b),
+                ...skillPackItems(r, b),
                 restartResumeItem(r),
                 { label: t("ag.mv.item"), onSelect: () => openMove(r, b) },
                 ...orderItems(r, false),
@@ -6680,6 +3521,7 @@ export async function mountAgentsPage(root) {
   const [, saved] = await Promise.all([loadScope(), savedLayout()]);
   // A link's &layout= wins for this page; else the person's.
   st.layout = linked ?? saved;
+  await resumeRestartRun();
   await refresh();
   paintLayout();
   // An id the list no longer has (removed, another distribution's) is
@@ -6744,79 +3586,6 @@ export async function mountAgentsPage(root) {
   if (linkedAgent) await openLinkedAgent(linkedAgent, urlWorkspace());
   if (termWs !== null) await openTerminal(termWs, { fresh: freshAsked });
   if (startAsked) void openStart();
-}
-
-/**
- * D73: /agents?terminal=1 (the rail's Terminal, a project's Terminal
- * here): a plain shell in the project's folder (?ws=, else the one in
- * view), in a pane like an agent's. The pane is in ?open=, so a reload
- * keeps it, and the shell outlives a Den restart (the sessions host).
- * Used once: the URL drops ?terminal=.
- *
- * Issue 448: a shell already running in that project opens again (the
- * one used last) and takes the keyboard; a new one starts only when none
- * runs, or with `fresh` (the shell bar's New terminal).
- */
-async function openTerminal(asked = "", { fresh = false, button = null } = {}) {
-  // Issue 448: decide on the server's list as it is now (a shell may have
-  // ended since this page's last list), and on when each was last typed in.
-  if (!fresh) await refresh().catch(() => {});
-  const all = st.data?.workspaces ?? [];
-  const used = shellUsed();
-  // Issue 448: no project named or in view (every project shows): the
-  // shell used last, in any of them, before the first project.
-  const ws =
-    asked ||
-    urlWorkspace() ||
-    (st.scope && st.scope !== "all" && all.includes(st.scope)
-      ? st.scope
-      : (fresh ? null : latestShell(visibleRows(), null, used)?.workspace) ||
-        // Issue 482: none running: the project a terminal was used in last.
-        lastUsedProject(st.data?.sessions ?? [], used, all));
-  if (!ws) {
-    window.denShell?.toast?.(t("ag.term.failed", { e: t("ag.term.noWs") }));
-    return;
-  }
-  const running = fresh ? null : latestShell(st.data?.sessions ?? [], ws, used);
-  if (running) {
-    await switchToProjectOf(running);
-    await bringShell(running.id);
-    return;
-  }
-  // Issue 1054: the pressed New terminal (when one was) holds the kit's dots.
-  const release = window.denShell?.holdDots
-    ? window.denShell.holdDots(button)
-    : () => {};
-  try {
-    const r = await api(
-      "POST",
-      `/api/workspaces/${encodeURIComponent(ws)}/sessions`,
-    );
-    window.denShell?.toast?.(t("ag.term.started", { w: ws }));
-    await refresh();
-    // #80: a shell in another project: this page switches to it first.
-    if (r?.session?.id) await switchToProjectOf(rowOf(r.session.id));
-    if (r?.session?.id) await bringShell(r.session.id);
-  } catch (err) {
-    // Issue 503: never silent; no PTY has its own words.
-    window.denShell?.toast?.(terminalFailText(err, t));
-  } finally {
-    void release();
-  }
-}
-
-/**
- * Issue 448: shell `id`'s pane in front (opened as a tab when it is not
- * open), with the keyboard once its terminal can take keys.
- */
-async function bringShell(id) {
-  if (st.panes.has(id)) {
-    st.cur = id;
-    paintLayout();
-    paintList();
-    writeUrl();
-  } else await openPane(id);
-  focusTerm(id);
 }
 
 /**

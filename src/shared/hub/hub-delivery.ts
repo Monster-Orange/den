@@ -11,7 +11,11 @@
 import fs from "node:fs";
 import { writeFileAtomic } from "../atomic-write.js";
 
-export type Verified = "hub_session" | "hub_token";
+export type Verified = "hub_session" | "hub_token" | "fixture";
+
+export interface ReadOpts {
+  testInstall?: boolean;
+}
 
 export interface DeliveryAuthor {
   id: string;
@@ -147,13 +151,16 @@ function safeUrl(v: unknown): string {
   return "";
 }
 
-function readAuthor(v: unknown): DeliveryAuthor | null {
+function readAuthor(v: unknown, o: ReadOpts): DeliveryAuthor | null {
   if (!v || typeof v !== "object") return null;
   const a = v as Record<string, unknown>;
   const id = s(a.id);
   const verified = a.verified;
-  if (!id || (verified !== "hub_session" && verified !== "hub_token"))
-    return null;
+  const known =
+    verified === "hub_session" ||
+    verified === "hub_token" ||
+    (verified === "fixture" && o.testInstall === true);
+  if (!id || !known) return null;
   const login = line(s(a.login));
   return {
     id,
@@ -230,12 +237,15 @@ function readReplyWith(v: unknown): ReplyWith[] | undefined {
   return out.length ? out : undefined;
 }
 
-export function parseDelivery(v: unknown): Delivery | null {
+export function parseDelivery(
+  v: unknown,
+  opts: ReadOpts = {},
+): Delivery | null {
   if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
   const id = s(r.id, 64);
   const agent = s(r.agent, 128);
-  const author = readAuthor(r.author);
+  const author = readAuthor(r.author, opts);
   if (!id || !agent || !author) return null;
   const th = (r.thread ?? {}) as Record<string, unknown>;
   const artifact = line(s(th.artifact, 200));
@@ -280,7 +290,7 @@ export function parseDelivery(v: unknown): Delivery | null {
   const rw = readReplyWith(r.reply_with);
   if (rw) d.replyWith = rw;
   const f = r.forwarded as Record<string, unknown> | undefined;
-  const fa = f ? readAuthor(f.author) : null;
+  const fa = f ? readAuthor(f.author, opts) : null;
   if (f && fa)
     d.forwarded = {
       author: fa,
@@ -437,7 +447,7 @@ export function approvalNoticeText(d: Delivery, o: DeliveryOwner): string {
 
 /** Whether `a` is the install's own person in Hub. */
 export function isOwner(a: DeliveryAuthor, o: DeliveryOwner): boolean {
-  if (a.kind !== "person") return false;
+  if (a.kind !== "person" || a.verified === "fixture") return false;
   if (o.ownerId) return a.id === o.ownerId;
   return (
     !!o.ownerLogin &&
@@ -454,6 +464,12 @@ function who(a: DeliveryAuthor, o: DeliveryOwner): string {
 
 const via = (v: Verified) =>
   v === "hub_session" ? "Hub session" : "Hub token"; // words-ok: the agreed SEC-3 header the agent reads
+
+function byLine(a: DeliveryAuthor, o: DeliveryOwner): string {
+  if (a.verified === "fixture")
+    return `test fixture, not verified: ${a.login || a.name}`;
+  return `${a.name} (${who(a, o)} · verified by ${via(a.verified)})`;
+}
 
 /** Quoted: every line starts "> ", so nothing in it reads as a header. */
 const quote = (t: string) =>
@@ -475,9 +491,10 @@ export function isEditRequest(d: Delivery, o: DeliveryOwner): boolean {
 export function deliveryText(d: Delivery, o: DeliveryOwner): string {
   if (d.kind && d.kind !== "comment") return decisionText(d, o);
   const a = d.author;
-  let head = `from: ${a.name} (${who(a, o)} · verified by ${via(a.verified)})`;
-  if (d.forwarded)
-    head += ` · forwarding a comment by ${d.forwarded.author.name} (${who(d.forwarded.author, o)})`;
+  let head = `from: ${byLine(a, o)}`;
+  const fa = d.forwarded?.author;
+  if (fa)
+    head += ` · forwarding a comment by ${fa.verified === "fixture" ? byLine(fa, o) : `${fa.name} (${who(fa, o)})`}`;
   head += ` · via: Hub comment ${d.thread.url || "(no link)"}`;
   if (d.createdAt) head += ` · at ${d.createdAt}`;
   const on = d.thread.artifact ? ` on "${d.thread.artifact}"` : "";
@@ -530,15 +547,13 @@ function decisionText(d: Delivery, o: DeliveryOwner): string {
   const art = d.thread.artifact ? `"${d.thread.artifact}"` : "your artifact";
   const ver = d.version !== undefined ? `, version ${d.version}` : "";
   const link = d.thread.url || "(no link)";
-  const by = `${a.name} (${who(a, o)} · verified by ${via(a.verified)})`;
+  const by = byLine(a, o);
   const at = d.createdAt ? ` · at ${d.createdAt}` : "";
   const note = stripLookalikes(d.body).trim();
   const out: string[] = [];
   if (d.kind === "approve" || d.kind === "request_changes") {
     const verb = d.kind === "approve" ? "approved" : "asked for changes to";
-    out.push(
-      `from: ${a.name} (${who(a, o)} · verified by ${via(a.verified)}) · via: Hub decision ${link}${at}`,
-    );
+    out.push(`from: ${by} · via: Hub decision ${link}${at}`);
     out.push(`${a.name} ${verb} ${art}${ver}. Link: ${link}`);
     if (note) out.push("Their note:", quote(note));
     else out.push("They left no note.");

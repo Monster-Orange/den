@@ -123,7 +123,12 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   // den#156: the Agents list's waits.
   agents_list: { host_timeout_seconds: true, refresh_timeout_seconds: true },
   // Issue 1373: the agents' limits (user.yml agents.*, over den.yml).
-  agents_limits: { max_concurrent: true, max_per_project: true },
+  agents_limits: {
+    max_concurrent: true,
+    max_per_project: true,
+    max_subagents: true,
+    subagents_respect_load_hold: true,
+  },
   // Issue 403: how long a filed report's screenshot is kept.
   reports: {
     screenshot_keep_days: true,
@@ -171,6 +176,11 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     quiet_to: true,
     push_timeout_seconds: true,
     push_ttl_seconds: true,
+    finished: true,
+    sound: true,
+    tab_count: true,
+    tab_first_seconds: true,
+    max_streams: true,
   },
   // Issue 415: how long a Report destination's visibility is kept, waited for.
   feedback: {
@@ -196,6 +206,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     close_grace_seconds: true,
     size_claim_grace_seconds: true,
     size_leave_grace_seconds: true,
+    io_ping_seconds: true,
     pty_close_seconds: true,
     pty_warn_above: true,
     pty_machine_warn_percent: true,
@@ -222,6 +233,7 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
   held_writes: { wait_minutes: true },
   // Issue 1022: how often the page polls health, visible and hidden.
   health_poll: { visible_seconds: true, hidden_seconds: true },
+  menu_load: { timeout_ms: true },
   git_reads: { at_once: true },
   // Issue 750: groups from Hub (user.yml hub.groups, groups_cache_seconds).
   hub_groups: { mode: true, cache_seconds: true },
@@ -388,6 +400,9 @@ describe("the settings inventory (R21)", () => {
         "agents_list.refresh_timeout_seconds",
         // Issue 1373: the agents' limits.
         "agents_limits.max_concurrent",
+        "agents_limits.max_subagents",
+        "agents_limits.subagents_respect_load_hold",
+        "skill_packs",
         "agents_limits.max_per_project",
         // Issue 403: how long a filed report's screenshot is kept.
         "reports.screenshot_keep_days",
@@ -434,6 +449,11 @@ describe("the settings inventory (R21)", () => {
         // Issue 367: how long a push may take, and a push service keeps it.
         "alerts.push_timeout_seconds",
         "alerts.push_ttl_seconds",
+        "alerts.finished",
+        "alerts.sound",
+        "alerts.tab_count",
+        "alerts.tab_first_seconds",
+        "alerts.max_streams",
         // Issue 334: an app key's reads, one audit line per window.
         "embed.app_key_audit_window_seconds",
         // Issue 160: the install's approval policy.
@@ -465,6 +485,7 @@ describe("the settings inventory (R21)", () => {
         "sessions.pty_warn_above",
         "sessions.size_claim_grace_seconds",
         "sessions.size_leave_grace_seconds",
+        "sessions.io_ping_seconds",
         // Issue 609: how agents' hooks wait for Den, and retry.
         "agent_hooks.timeout_seconds",
         "agent_hooks.retries",
@@ -474,6 +495,7 @@ describe("the settings inventory (R21)", () => {
         // Issue 1022: how often the page polls health, visible and hidden.
         "health_poll.visible_seconds",
         "health_poll.hidden_seconds",
+        "menu_load.timeout_ms",
         "git_reads.at_once",
         // Issue 750: groups from Hub.
         "hub_groups.mode",

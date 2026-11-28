@@ -220,7 +220,7 @@ expect_in "agents personas: planner is listed" "$WORK/agents-personas.out" "plan
 expect_in "doctor: the runtime kind is listed" "$WORK/doctor.out" "den-claude (implicit)"
 # Den's guardrails (den#5) ship in the package: the default pack's hooks,
 # their settings fragment and the shared persona instructions.
-for f in pretooluse.mjs stop-hook.ts attention-hook.ts hooks.json instructions.md; do
+for f in pretooluse.mjs env-mask.mjs stop-hook.ts attention-hook.ts hooks.json instructions.md; do
   [ -f "$ENGINE/src/shared/agents/guardrails/$f" ] && ok "guardrails ship: $f" || bad "guardrails missing from the package: $f"
 done
 # The PreToolUse hook runs from the install and blocks a polling loop.
@@ -310,7 +310,7 @@ else bad "GET /health-rollup.js is not src/shared/health/rollup-rule.js"; fi
 # The Agents tab (AG-4a-term): its page and xterm.js from the install (no
 # CDN); its list answers with or without the PTY module (without it,
 # backend.available is false and the page says so).
-for m in agents agents-page.js agent-start.js vendor/xterm.mjs vendor/xterm.css vendor/addon-fit.mjs vendor/addon-web-links.mjs term-input.js term-drop.js; do
+for m in agents agents-page.js agents-core.js agents-url.js agents-rows.js agents-list.js agents-data.js agents-layout.js agents-bar.js agents-term.js agents-panes.js agents-reorder.js agents-actions.js agents-start-dialog.js agent-start.js vendor/xterm.mjs vendor/xterm.css vendor/addon-fit.mjs vendor/addon-web-links.mjs term-input.js term-drop.js; do
   curl -fsS "http://localhost:$PORT/$m" -o /dev/null && ok "GET /$m" || bad "GET /$m failed"
 done
 if curl -fsS "http://localhost:$PORT/api/sessions" -o "$WORK/sessions.json"; then

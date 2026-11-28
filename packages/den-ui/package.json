@@ -1,6 +1,6 @@
 {
   "name": "@monster-orange/den-ui",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "Den's UI kit: tokens, fonts and shared components, framework-free",
   "license": "MIT",
   "repository": {
@@ -46,6 +46,10 @@
     "./popover.css": "./src/popover.css",
     "./switch": "./src/switch.js",
     "./switch.css": "./src/switch.css",
+    "./pager": "./src/pager.js",
+    "./pager.css": "./src/pager.css",
+    "./tabs": "./src/tabs.js",
+    "./tabs.css": "./src/tabs.css",
     "./preview": "./src/preview.js",
     "./preview-frame": "./src/preview-frame.js",
     "./filter-bar": "./src/filter-bar.js",

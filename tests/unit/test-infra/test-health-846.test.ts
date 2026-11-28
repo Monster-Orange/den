@@ -4,8 +4,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as yaml from "yaml";
+import { tempDirs } from "../../temp-dirs";
 
 const ROOT = path.join(__dirname, "../../..");
+const tmp = tempDirs();
 const SCRIPT = path.join(ROOT, "scripts", "test-health.mjs");
 const REPO = "o/r";
 const NOW = "2026-11-30T16:00:00Z";
@@ -156,7 +158,7 @@ function fakeApi(): Record<string, unknown> {
 }
 
 function bedDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-health-bed-"));
+  const dir = tmp("den-health-bed-");
   const put = (name: string, startedAt: string, wallMs: number) => {
     fs.mkdirSync(path.join(dir, name));
     fs.writeFileSync(
@@ -174,10 +176,7 @@ function bedDir(): string {
 }
 
 function health(bed: string | null): Health {
-  const data = path.join(
-    fs.mkdtempSync(path.join(os.tmpdir(), "den-health-")),
-    "api.json",
-  );
+  const data = path.join(tmp("den-health-"), "api.json");
   fs.writeFileSync(data, JSON.stringify(fakeApi()));
   const js = `
     import * as fs from "node:fs";

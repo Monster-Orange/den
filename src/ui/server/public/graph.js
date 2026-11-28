@@ -51,6 +51,7 @@ import {
   runAction,
 } from "/panel.js";
 import { ownersLabel } from "/workspace-picker.js";
+import { dialogHtml, mountDialog } from "/dialog-den.js";
 
 /**
  * 0.4.45: the page's words through the shell's catalog, the English (with
@@ -784,30 +785,85 @@ function openDetail(sel, keepTab) {
   let target = side;
   if (st.popped) {
     side.hidden = true;
-    let back = document.querySelector(".dg-modal-back");
-    if (!back) {
-      back = document.createElement("div");
-      back.className = "dg dg-modal-back";
-      back.innerHTML = `<aside class="dg-panel" role="dialog" aria-modal="true" aria-label="${esc(gT("gr.details", "Details"))}"></aside>`;
-      document.body.appendChild(back);
-      back.addEventListener("click", (e) => {
-        if (e.target === back) closeDetail();
-        else onClick(e);
-      });
-    }
-    target = back.querySelector(".dg-panel");
-  } else {
-    document.querySelector(".dg-modal-back")?.remove();
-  }
+    target = popFrame(sel).dialog.querySelector(".dg-pop-root .dg-panel");
+  } else unpop("dock");
   if (!renderPanel(target, sel)) {
     closeDetail();
     return;
+  }
+  if (st.popped && pop) {
+    pop.dialog.querySelector(".dk-hd h2").textContent =
+      target.dataset.title || gT("gr.details", "Details");
   }
   if (!st.popped) {
     side.hidden = false;
     side.style.width = st.panelW + "px";
     requestAnimationFrame(() => keepVisible(sel));
   }
+}
+let pop = null;
+function cardOf(sel) {
+  if (!sel || !host) return null;
+  const k = sel.repo
+    ? `[data-repo="${CSS.escape(sel.repo)}"]`
+    : `[data-id="${CSS.escape(sel.id)}"]`;
+  return host.querySelector(`.dg-card${k}`);
+}
+function popFrame(sel) {
+  if (pop) return pop;
+  const dock = gT("gr.dock", "Dock as side panel");
+  const frame = mountDialog(
+    dialogHtml({
+      kind: "panel",
+      id: "dg-pop",
+      className: "dg-pop",
+      title: gT("gr.details", "Details"),
+      headActions: [
+        {
+          label: "⇲",
+          type: "button",
+          className: "dg-ib",
+          attrs: { "data-popout": true, title: dock, "aria-label": dock },
+        },
+      ],
+      body: `<div class="dg dg-pop-root"><div class="dg-panel"></div></div>`,
+    }),
+    {
+      opener: cardOf(sel),
+      onClose: (value) => {
+        if (pop !== frame) return;
+        pop = null;
+        if (value !== "dock") closeDetail();
+      },
+    },
+  );
+  const d = frame.dialog;
+  d.addEventListener("click", (e) => {
+    if (e.target.closest?.("[data-dk]")) return;
+    onClick(e);
+  });
+  d.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key !== "Escape") return;
+      const m = openMenus()[0];
+      if (!m) return;
+      const more = menuOwner.get(m) ?? m.previousElementSibling;
+      closeMenus();
+      more?.focus();
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    },
+    true,
+  );
+  pop = frame;
+  return frame;
+}
+function unpop(value) {
+  const f = pop;
+  if (!f) return;
+  if (value === "dock") pop = null;
+  f.close(value);
 }
 function keepVisible(sel) {
   const a = layoutAbs[nodeKey(sel)];
@@ -834,7 +890,9 @@ function closeDetail() {
   st.sel = null;
   const side = $(".dg-panel");
   if (side) side.hidden = true;
-  document.querySelector(".dg-modal-back")?.remove();
+  const f = pop;
+  pop = null;
+  f?.close("close");
   applyFocus();
 }
 
@@ -944,12 +1002,13 @@ async function recheck(services) {
 const menuOwner = new WeakMap(); // menu -> its More button
 const ownMenu = new WeakMap(); // More button -> its menu, while in the layer
 function menuLayer() {
-  let l = document.querySelector("body > .dg-layer");
+  const home = pop?.dialog ?? document.body;
+  let l = home.querySelector(":scope > .dg-layer");
   if (!l) {
     l = document.createElement("div");
     l.className = "dg-layer";
-    l.addEventListener("click", onClick);
-    document.body.appendChild(l);
+    if (home === document.body) l.addEventListener("click", onClick);
+    home.appendChild(l);
   }
   return l;
 }
@@ -976,16 +1035,26 @@ function closeMenus(except) {
 function placeMenu(more, m) {
   menuOwner.set(m, more);
   ownMenu.set(more, m);
-  menuLayer().appendChild(m);
+  const layer = menuLayer();
+  layer.appendChild(m);
   const r = more.getBoundingClientRect();
-  const below = window.innerHeight - r.bottom - 12,
-    above = r.top - 12;
+  const box =
+    layer.parentElement === document.body
+      ? {
+          left: 0,
+          top: 0,
+          right: window.innerWidth,
+          bottom: window.innerHeight,
+        }
+      : layer.parentElement.getBoundingClientRect();
+  const below = box.bottom - r.bottom - 12,
+    above = r.top - box.top - 12;
   const up = below < 260 && above > below;
   Object.assign(m.style, {
-    right: Math.max(8, window.innerWidth - r.right) + "px",
+    right: Math.max(8, box.right - r.right) + "px",
     left: "auto",
-    top: up ? "auto" : r.bottom + 4 + "px",
-    bottom: up ? window.innerHeight - r.top + 4 + "px" : "auto",
+    top: up ? "auto" : r.bottom - box.top + 4 + "px",
+    bottom: up ? box.bottom - r.top + 4 + "px" : "auto",
     maxHeight: (up ? above : below) + "px",
   });
 }

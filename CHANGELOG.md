@@ -4,6 +4,86 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
+## [0.4.93] - 2026-11-28
+
+### Added
+
+- UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", icon buttons for First, Previous, Next and Last (each word is the button's name and tooltip, and the icons mirror right to left), a page picker ("Page 3 of 17") and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's. More mode can hand its press to `onNavigate` (a list that redraws itself whole), and the 44px size follows a phone-width window or a touch screen, never the width of the box the pager sits in. The ⋯ menu and the short "3 / 17" picker appear only when the pager's box is 600px wide or less, in place of the full controls; above that the full row shows, in two lines when it must. A More list redrawn whole after its last chunk can keep its row with "All N shown" (`loaded: true`). A compact kind for a list inside a card (`compact: true`): ‹ [2] / 25 ›, with First and Last on a row wider than 600px. With `perDefault`, a list that fits one page keeps its row when the person chose another page size, so they can switch back.
+- UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps. Every word is the host's. A row that doesn't fit scrolls sideways, with « and » at its ends shown only while tabs are hidden on that side (a red dot when a hidden tab has an alert), and keeps the chosen and focused tab in view; only when even one tab can't fit between the arrows does it fold into one select with the same choices and a visible label.
+
+### Fixed
+
+- A `den` command that outlives its folder, such as a terminal host whose state folder was removed, no longer creates the folder again when it records its run in `.dev-metrics/events.jsonl`. Den's tests also stop their server's terminal host, and wait for it to end, before they remove its folder. (issue 1892)
+
+- UI kit: the save-state line's Copy text is a 44px target on touch and at 480px wide or less, so a product no longer sizes `.den-savestate button` itself (issue 1976).
+- On the Graph page, a service's details popped out are now a dialog like Den's other pop-ups: named by the service, with Close, Esc, Report, and the keyboard back on the card when it shuts. Dock puts them back at the side.
+- UI kit: the Markdown editor takes size hooks a host sets on any ancestor: `--md-editor-min-height`, `--md-editor-max-height`, `--md-editor-grow` (fill a flex column) and `--md-font-size` and `--md-line-height`, so a product stops styling `.md-field` and `.cm-editor` itself (issue 1975).
+- UI kit badge: `.den-bdg.warn.soft` (a solid warn tint, `--warn-tint`; a rail entry's `badge.soft`, at regular weight) and `.count` for a count inside a tab (`.count.bad`, `.count.corner` on an icon tab), sized by a host with `--den-bdg-fs`, `--den-bdg-lh`, `--den-bdg-pad` and `--den-bdg-min`, so a product stops restyling `.den-bdg` (issue 1973).
+- UI kit: the update pill ("A new version … is available") was half above the window on a page with no top bar, such as a focus mode that hides it. With no top bar it now sits 8px down, and a bar shorter than the pill never puts it above the window; a 48px bar is unchanged. A host can place it below its own bars with `--den-overlay-top` on `body` or `:root`.
+
+- The approval dialog no longer brings back a request you just denied or allowed. A check of what waits that was already under way when you answered could open it again with that request. (issue 1898)
+
+- After Change persona, the agent's pane keeps its "Switched to …" and "started fresh" lines when its connection drops and comes back. Before, the reconnect cleared them. (issue 1903)
+
+### Changed
+
+- Den's other pages and tools no longer stall just after the server starts on an install with agents from before the project link. The one-time link migration now gives other requests a turn after each record it writes. Before, with 140 agents to link, `/api/server-info` waited about 0.7 s.
+
+- A browser tab that goes away without closing its terminal (a crash, a sleeping laptop, a lost network) no longer keeps an agent's terminal at its size for up to a minute and a half. Den now checks every 10 s that each terminal window still answers. A window that misses a check is gone by the next one, and it hands the size on as a closed page does. The interval is a new Setting, Terminal connection check (`sessions.io_ping_seconds`). (issue 1913)
+
+- Removing an agent whose Hub token was never made (Hub refused it) now clears its row in `den doctor`. Before, the row stayed after the agent was gone. `den doctor` also skips such a row for an agent that no longer exists. (issue 1907)
+
+- When Peek loses its connection to an agent's terminal, it now says it's connecting until it's back, and stops saying that typing goes to the agent. Before, it kept looking live for the second before it reconnected, and a key typed then was lost with no sign. (issue 1902)
+
+- The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
+
+## [0.4.92] - unreleased
+
+### Changed
+
+- A pull request that changes `shell.js` or a data file at the top of `tests/` (such as `tests/affected-map.json`) no longer runs every test. A `shell.js` change runs every browser spec, the tests that read it and the tests that use a helper that reads it; a data file runs the tests that read it, and the map runs its own tests. The CI replay now picks the tests that read a changed file by path, as CI does. (issue 1805)
+
+- The agents list no longer waits for every agent's helpers after a restart or a wave of new agents. It answers within `agents.helpers.list_wait_seconds` (0.25 s), shows "Counting helpers…" on agents not read yet, and fills them in on the next look, a second later. While helpers are read, Den's other pages and tools keep answering: the reader pauses `agents.helpers.reader_rest_ms` (2 ms) between agents. Before, the first list over 140 unread agents took about 7 s and slowed the server for about 2.7 s.
+
+- Claude Code agents get the pstack skills from Den's own pinned copy, with no download at launch. Every file is checked against its pinned hash before an agent starts, and an agent can't edit the copy. Choose the skills per install, persona or agent with `skill_packs` (the whole pack by default, without the skills the pin leaves out). An agent of a person who installed pstack themselves uses their copy instead. `den doctor` checks the installed copy against its pin, says which copy is in use, and lists the agents with packs off and what turned them off. Settings › Agents has a Skill packs switch and a pstack row (its licence, pin, skills on, context cost, and a checkbox per skill), `den config skill_packs` prints the same summary, and `den config` and `setting_change` read and write each `skill_packs` key: turning a pack off runs at once, and turning one back on asks on a strict install. Each agent's ⋯ menu has Skill packs (the install's default, off or on), and a change to an agent's packs, however it is made (Settings, `den config`, `setting_change`), restarts it after its turn, on the same conversation, with no step from the person. The persona editor and `persona_update` set a persona's Skill packs to Off or back to the install's default. A `skill_packs` block in den.yml is now read. (issue 1631) Den leaves out pstack's poteto-mode, its help skill and its guide: poteto-mode tells agents never to ask a person, to add no review, and that external actions proceed without asking, the opposite of Den's held writes and reviews. A test fails if any vendored file says so or points at poteto-mode. Den checks the folder it built for an agent against the pin each time it reuses it, and rebuilds it on any difference.
+
+- A subagent limit for the whole machine: `agents.max_subagents` (unset: twice `agents.max_concurrent`) caps the subagents all agents run at once, and with `agents.subagents_respect_load_hold` (on by default) no new subagent starts while the machine is over the agents' load ceiling. A refused start tells the agent which setting refused it. Both are in Settings › Agents, `den config` and `setting_change`. (issue 1631)
+
+- The edge runs with Traefik's API and dashboard off. `edge.args` now takes only the options Den lists: any other entry is refused, with a line naming it. `edge.include` files that sort before Den's own file or reuse its names, and `edge.mounts` into the dynamic folder, are refused too. Den makes a new edge proof at its first start after the update. See docs/distributions.md.
+- Restart all agents with out-of-date tools now restarts them through Den's restart queue, a batch at a time (`agents.resume.batch`, every `agents.resume.gap_seconds`, held back while the machine is busy), instead of every idle agent at once. Pressing it again while a wave runs adds nothing. The button shows "Restarting N of M…" and stays disabled until the wave is done, after a page reload too.
+
+- After you pick an agent, clicking or pressing Tab somewhere else in the moment its terminal becomes ready no longer pulls the keyboard back into that terminal. The move into the terminal waited one screen frame (about 16 ms, longer on a busy page) and didn't check whether you'd gone elsewhere, so keys you typed afterwards went to the agent. It has been there since at least 0.4.40; it's not new in 0.4.91.
+
+- A terminal host that has shut down no longer puts back a state folder that was removed. A session that ended just after the host stopped used to recreate `<state>/sessions` to save its record. While the folder is there, that record is still saved.
+
+- Agents can be kept from seeing secret-looking environment variables (`*_TOKEN`, `*_SECRET`, `*_KEY`, `*_PASSWORD`, `OP_SESSION_*`): set `agents.env_hold` in config/local/user.yml, or use a strict install, which holds them back by default. A name an agent needs goes in `agents.env_allow`. `env`, `printenv` and `set` in an agent's shell show those values masked. Agents started before keep theirs until you pick Keep these or Remove in the bell, and `den doctor` lists what is held back, by name only. (issue 974) It was held back from 0.4.91: on 0.4.91-dev.1 its live check (gate/974) failed because of a bug in the check itself (it sent multi-line shell probes, and read a cut-off copy of settings.json), not in the env hold. The fixed check is the proof: on that same build it passed with the hold on and with it off.
+- `nice`, `timeout`, `stdbuf` and `xargs` in front of `env` or `printenv`, and `env` running one of them (`-S` included), now show secret-looking values masked too. (issue 1837)
+- An agent's sandbox now hides each Hub token file Den keeps: the per-Hub token files Connect makes (`hub/token-<slot>`), the agents' own Hub tokens (`hub/agents/`) and tokens waiting for a revoke (`hub/unrevoked/`), on macOS and Linux, even if a read rule were to name their folder. On Linux the old `hub/token` is now masked in that case too.
+
+- Every link Den gives to the server agent (a bell row, its question, a notification, the link in its own replies, its held write's Allow) opens the server agent's page. Before, each opened an Agents page for a project nobody can see, with nothing to answer (issue 1811)
+- The Agents list's switch now says Need, Project and Group, without "By" (es: Urgencia, Proyecto, Grupo; ja: プロジェクト, グループ), so it takes less room.
+
+- The server agent can watch pull request checks and workflow runs with `github_watch` (and list or cancel its watches), as other agents do. Den tells the server agent's own session once, when they finish. An MCP server that is no agent's is still refused.
+
+- Peek: a click on an agent's row in the bell opens that agent's live terminal in a panel over the page you are on, so you can answer it without leaving your view. Esc closes it and puts focus back on the row; the row's "Open in Agents" link still goes to the Agents page (issue 791).
+- Peek also opens the server agent's terminal from its bell row, and its small link (named after the server agent) and Open in layout go to the server agent's page. A project agent with the same name as the server agent is never shown in its place (issue 1821).
+
+- On a personal install, `den doctor` now says whether agents can read the activity trail. If the older trail written before redaction hasn't been set aside, and Den is running, it warns that agents can't read the trail and says to restart Den (Den's log says why if it fails again). Before Den's first start it says the trail is set aside then. A strict install shows no such row, since its agents never read the trail. (issue 1399)
+
+- Server info says when the edge start has settled.
+
+- A test stack's fixture person can now reach an agent through Hub on a test install. Den reads a Hub comment whose author is marked `verified: "fixture"` only when this install is a test install, and drops it on any other install as before. The agent sees `from: test fixture, not verified: <login>`, never "your person" or a Hub session or token, and a fixture author never counts as the install's person: its comment is never an edit request or an approval, and it answers no question the agent asked. (issue 1816)
+
+- A browser that reaches Den through the edge while Den is starting sees "Den is starting" and tries again by itself, instead of a sign-in page.
+
+- Browser alerts for finished turns: an open Den tab can play a sound when an agent finishes or needs you, and shows how many agents need you in its title and icon. Settings › Notifications has "Sounds" and "Count in the tab" (`alerts.sound`, `alerts.tab_count`). When a Den tab is open and visible on a device that also gets push, the tab shows the alert and that device's push is skipped; if the tab hasn't shown it within `alerts.tab_first_seconds` (3 by default), the push goes (issue 774).
+
+- Agents page: after an agent restarts, its pane no longer shows the old session's terminal size while the new session connects.
+
+- With `DEN_LOGIN_SHELL=off`, `den doctor` and the server no longer start the person's shell to list the names in its environment. Den's tests set it, so a test no longer runs the developer's shell profile. (issue 1857)
+
+- Top bar: a project menu load that stalls (no answer, or headers with no body) now counts as failed after a while and is tried again, so the menu no longer stays hidden until a reload. The wait is a Setting, Settings › Server › Project menu load wait (`web.menu_load_timeout_ms`, 8 s by default, 1 s to 10 min). (issues 1051, 1044)
+
 ## [0.4.91] - 2026-11-26
 
 - With one agent open in two browsers, the terminal keeps the size of the window that last set it: the one you typed in, pressed Take over in, or opened it from. An idle window (an iPad coming back from another app, a reload, a dropped connection) no longer takes the size back; it follows until you type or press Take over there. A window whose connection drops keeps the size for **Terminal size hold** (`sessions.size_claim_grace_seconds`, 30 s) in Settings › Server. A window whose page closes or reloads keeps it for **Terminal size hold after a page closes** (`sessions.size_leave_grace_seconds`, 3 s), so a reload keeps the size and a closed page hands it to the window left. If that window comes back within the 30 s, it takes the size back, unless someone typed or pressed Take over in the other window meanwhile. A pane you close hands it on at once. (issue 1724)

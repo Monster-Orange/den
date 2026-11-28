@@ -83,7 +83,25 @@ function listTests(dir = "tests") {
     .sort();
 }
 
-/** The public files a page or module loads (not shell.js: it is "everything"). */
+export function helpersNaming(name, dir = "tests") {
+  return fs
+    .readdirSync(path.join(ROOT, dir), { withFileTypes: true })
+    .flatMap((e) => {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory())
+        return e.name === "fixtures" || e.name === "node_modules"
+          ? []
+          : helpersNaming(name, p);
+      return p.includes("/helpers/") &&
+        /\.[cm]?[jt]s$/.test(e.name) &&
+        read(p).includes(name)
+        ? [p]
+        : [];
+    })
+    .sort();
+}
+
+/** The public files a page or module loads (not shell.js: it has its own rule). */
 function imports(file) {
   const out = new Set();
   for (const m of read(`${PUB}/${file}`).matchAll(
@@ -386,6 +404,28 @@ export function buildRules(map = readMap()) {
       why: "tests that read examples/",
     },
     {
+      when: [`${PUB}/shell.js`],
+      run: [...specs, ...others.filter((t) => read(t).includes("shell.js"))],
+      importers: helpersNaming("shell.js"),
+      why: "the shared shell: every spec, and the tests and helpers that read it",
+    },
+    ...fs
+      .readdirSync(path.join(ROOT, "tests"), { withFileTypes: true })
+      .filter((e) => e.isFile() && !/\.[cm]?[jt]s$/.test(e.name))
+      .map((e) => e.name)
+      .sort()
+      .map((f) => ({
+        when: [`tests/${f}`],
+        run: [
+          ...(f === "affected-map.json"
+            ? [SELF, "tests/unit/test-infra/queue-merge-tests.test.ts"]
+            : []),
+          ...others.filter((t) => read(t).includes(f)),
+        ],
+        why: `tests that read tests/${f}`,
+      }))
+      .filter((r) => r.run.length),
+    {
       when: ["gate/**"],
       run: tests.filter((t) => t.startsWith("tests/unit/test-infra/gate-")),
       why: "the live checks' own tests (runners, shape, clauses)",
@@ -440,7 +480,28 @@ export function buildRules(map = readMap()) {
   return rules.filter((r) => r.run.length);
 }
 
-function main(argv) {
+export async function mapText(map) {
+  const prettier = await import("prettier");
+  const config = (await prettier.resolveConfig(MAP)) ?? {};
+  return prettier.format(JSON.stringify(map, null, 2) + "\n", {
+    ...config,
+    filepath: MAP,
+  });
+}
+
+export async function formIssue(text) {
+  let map;
+  try {
+    map = JSON.parse(text);
+  } catch (err) {
+    return `tests/affected-map.json is not JSON (${err.message})`;
+  }
+  return (await mapText(map)) === text
+    ? null
+    : "tests/affected-map.json is not in the generator's form: run node scripts/affected-map.mjs";
+}
+
+async function main(argv) {
   const map = readMap();
   const rules = buildRules(map);
   if (argv.includes("--check")) {
@@ -458,14 +519,21 @@ function main(argv) {
         `${t} is on "subjectless" but has a subject now (or starts no Den): take it off`,
       );
     if (missing.length || stale.length || empty.length) return 1;
-    if (JSON.stringify(map.rules) === JSON.stringify(rules)) return 0;
-    console.error(
-      "tests/affected-map.json is out of date: run node scripts/affected-map.mjs (then prettier)",
-    );
-    return 1;
+    if (JSON.stringify(map.rules) !== JSON.stringify(rules)) {
+      console.error(
+        "tests/affected-map.json is out of date: run node scripts/affected-map.mjs",
+      );
+      return 1;
+    }
+    const issue = await formIssue(fs.readFileSync(MAP, "utf-8"));
+    if (issue) {
+      console.error(issue);
+      return 1;
+    }
+    return 0;
   }
   map.rules = rules;
-  fs.writeFileSync(MAP, JSON.stringify(map, null, 2) + "\n");
+  fs.writeFileSync(MAP, await mapText(map));
   return 0;
 }
 
@@ -473,5 +541,5 @@ if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  process.exitCode = main(process.argv.slice(2));
+  process.exitCode = await main(process.argv.slice(2));
 }

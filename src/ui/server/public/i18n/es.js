@@ -760,6 +760,10 @@
     "busy.restartS": "{name} reiniciado.",
     "busy.restartF": "No se pudo reiniciar {name}.",
     "busy.modeW": "Cambiando el modo de {name}…",
+    "busy.packsW": "Configurando los paquetes de habilidades de {name}…",
+    "busy.packsS": "Los paquetes de habilidades de {name} están configurados.",
+    "busy.packsF":
+      "No se pudieron configurar los paquetes de habilidades de {name}. Nada cambió.",
     "busy.modeS": "Modo de {name} cambiado.",
     "busy.modeF": "No se pudo cambiar el modo de {name}. Nada cambió.",
     "keep.label": "Mantener los agentes al cerrar sesión",
@@ -913,6 +917,9 @@
     "err.421.lead":
       "Este servidor solo responde en sus propias direcciones, así que una página con otro nombre no puede alcanzarlo.",
     "err.421.open": "Abrir en localhost",
+    "err.starting.title": "Den se está iniciando",
+    "err.starting.lead":
+      "Den acaba de iniciarse y todavía no está listo para esta dirección. Esta página lo intentará de nuevo sola en un momento.",
     "err.link.title": "Este enlace al agente no se puede abrir",
     "err.link.project": "No hay ningún proyecto {project} en este Den.",
     "err.link.agent":
@@ -1141,6 +1148,9 @@
     "set.server.lookup_retry": "Espera del reintento de la búsqueda",
     "set.server.lookup_retry.d":
       "Cuánto espera el segundo intento cuando el primero se quedó sin tiempo. Una máquina ocupada puede tardar en responder. __DEN_CLI__ config process_lookup.retry_seconds=20",
+    "set.server.menu_load_timeout": "Espera de carga del menú de proyectos",
+    "set.server.menu_load_timeout.d":
+      "Cuánto espera la barra superior de cada página a que cargue su menú de proyectos antes de darlo por fallido y volver a intentarlo. Así una conexión lenta o detenida nunca oculta el menú hasta recargar. __DEN_CLI__ config web.menu_load_timeout_ms=8000",
     "set.server.address_check_timeout":
       "Espera de la comprobación de dirección",
     "set.server.address_check_timeout.d":
@@ -1438,6 +1448,27 @@
     "set.agents.list_host_wait": "Espera al host de terminales",
     "set.agents.list_host_wait.d":
       "Cuánto espera la lista de agentes al host de terminales. Pasado este tiempo, la lista dice que no pudo contactarlo y lo intenta de nuevo. __DEN_CLI__ config agents_list.host_timeout_seconds=10",
+    "set.agents.max_subagents": "Subagentes a la vez",
+    "set.agents.max_subagents.d":
+      "Cuántos subagentes pueden ejecutar a la vez, en total, los agentes de esta máquina. Un inicio por encima de esto se rechaza, y al agente se le dice el nombre de este ajuste. Sin definir, el doble de Agentes a la vez. __DEN_CLI__ config agents.max_subagents=8",
+    "set.agents.subagents_respect_load_hold":
+      "Sin subagentes nuevos bajo carga",
+    "set.agents.subagents_respect_load_hold.d":
+      "Activado, mientras la carga de la máquina supere el techo de carga de los agentes, se rechaza un subagente nuevo, y al agente se le dice el nombre de este ajuste. Desactivado, los subagentes se inician sea cual sea la carga. __DEN_CLI__ config agents.subagents_respect_load_hold=true",
+    "set.agents.skill_packs": "Paquetes de habilidades",
+    "set.agents.skill_packs.d":
+      "Paquetes de habilidades que Den da a sus agentes. Cada uno va incluido en Den en una versión fijada y nunca se descarga. __DEN_CLI__ config skill_packs.on=false",
+    "set.agents.skill_packs.pstack": "pstack",
+    "set.agents.skill_packs.pstack.d":
+      "Habilidades de código abierto para agentes de programación. Elige cuáles reciben los agentes de Den. __DEN_CLI__ config skill_packs",
+    "set.ui.skillPackOn": "Activado",
+    "set.ui.skillPackLicence": "Licencia",
+    "set.ui.skillPackPin": "fijado en",
+    "set.ui.skillPackOnCount": "{n} habilidades activadas",
+    "set.ui.skillPackCost": "Añade unos {n} tokens al inicio de cada agente",
+    "set.ui.skillPackSkills": "Habilidades",
+    "set.ui.skillPackAll": "Todas",
+    "set.ui.skillPackNone": "Ninguna",
     "set.agents.max_concurrent": "Agentes a la vez",
     "set.agents.max_concurrent.d":
       "Cuántos agentes pueden funcionar a la vez en esta máquina. Las terminales simples nunca cuentan. Un inicio por encima de esto se rechaza, y lo dice. Esto prevalece sobre el valor de la distribución. __DEN_CLI__ config agents.max_concurrent=4",
@@ -1458,6 +1489,9 @@
       "Retención del tamaño de la terminal al cerrar una página",
     "set.server.sessions_size_leave_grace.d":
       "Cuánto tiempo conserva el tamaño de una terminal la ventana que lo fijó por última vez después de que su página se cierra o se recarga, para que una recarga conserve el tamaño y una página cerrada lo pase a otra ventana. Dentro de la retención del tamaño de la terminal, esa ventana recupera el tamaño al volver, salvo que alguien haya escrito o tomado el control en otra ventana mientras tanto. 0 lo pasa de inmediato. __DEN_CLI__ config sessions.size_leave_grace_seconds=3",
+    "set.server.sessions_io_ping": "Comprobación de conexión de la terminal",
+    "set.server.sessions_io_ping.d":
+      "Cada cuánto comprueba Den que cada ventana de terminal abierta sigue respondiendo. Una ventana que no responde a una comprobación se da por perdida en la siguiente, así que una pestaña que desapareció sin cerrarse (un cierre inesperado, un portátil en reposo, una red perdida) deja de conservar el tamaño de la terminal en el doble de este tiempo. Se aplica a las ventanas que se conectan después del cambio. __DEN_CLI__ config sessions.io_ping_seconds=10",
     "set.server.sessions_pty_close": "Cierre de terminal tras salir",
     "set.server.sessions_pty_close.d":
       "Cuánto tiempo después de que termina el programa de una terminal se cierra su terminal. 0 la cierra al instante. Su historial sigue legible en ambos casos. Se aplica la próxima vez que arranque el host de terminales. __DEN_CLI__ config sessions.pty_close_seconds=0",
@@ -1853,7 +1887,7 @@
       "Activado, cada agente que Den inicia en un proyecto conectado a Hub recibe el ciclo de entrega en sus instrucciones: documentos de requisitos en Hub, issues enlazados completos, revisión y comentarios en los hilos de Hub, estado desde git. Desactivado para todos los proyectos de aquí, salvo que un proyecto lo active. Llega a un agente en su próximo inicio.",
     "set.agents.hub_groups": "Grupos de Hub",
     "set.agents.hub_groups.d":
-      "Si la página Agentes muestra los grupos de tu Hub (Por grupo, junto a Por proyecto). Automático: cuando tu Den Hub admite grupos. Desactivado: Den nunca se los pide a Hub. __DEN_CLI__ config hub.groups=auto",
+      "Si la página Agentes muestra los grupos de tu Hub (Grupo, junto a Proyecto en el selector de la lista). Automático: cuando tu Den Hub admite grupos. Desactivado: Den nunca se los pide a Hub. __DEN_CLI__ config hub.groups=auto",
     "set.agents.hub_groups.o.auto": "Automático",
     "set.agents.hub_groups.o.on": "Activado",
     "set.agents.hub_groups.o.off": "Desactivado",
@@ -1866,7 +1900,8 @@
     "set.workspace.hub_delivery_loop.o.install": "Como en todas partes",
     "set.workspace.hub_delivery_loop.o.on": "Activado",
     "set.workspace.hub_delivery_loop.o.off": "Desactivado",
-    "set.workspace.agents_max_per_project": "Agentes por proyecto: este proyecto",
+    "set.workspace.agents_max_per_project":
+      "Agentes por proyecto: este proyecto",
     "set.workspace.agents_max_per_project.d":
       "Cuántos agentes de este proyecto pueden funcionar a la vez. Vacío o 0 usa Agentes por proyecto. Solo puede ser más bajo que eso. Un inicio por encima de esto se rechaza, y dice qué límite lo frena.",
     "set.workspace.hub_delivery_loop_extra":
@@ -2240,9 +2275,9 @@
     "ag.mcp.restart": "Reiniciar",
     "ag.mcp.restartName": "Reiniciar {id} cuando quede libre",
     "ag.by.label": "Mostrar la lista",
-    "ag.by.need": "Por urgencia",
-    "ag.by.project": "Por proyecto",
-    "ag.by.group": "Por grupo",
+    "ag.by.need": "Urgencia",
+    "ag.by.project": "Proyecto",
+    "ag.by.group": "Grupo",
     "ag.grp.noHub": "Los grupos vienen con Den Hub.",
     "ag.grp.connect": "Conectar Den Hub",
     "ag.grp.notInPlan":
@@ -2341,7 +2376,8 @@
     "ap.det.den_sandbox_on.off":
       "Un agente puesto en off en user.yml sigue en off.",
     "ap.do.repo_clone": "Clonar {source} en {path}",
-    "ap.do.project_agent_cap": "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
     "ap.det.project_agent_cap.now": "Ahora: {v}",
     "ap.det.project_agent_cap.then": "Después: {v}",
     "ap.do.project_mode":
@@ -2559,6 +2595,20 @@
       "Está en marcha: Den lo reinicia después de su turno, en la misma conversación, en {mode}.",
     "ap.det.agent_mode.stopped":
       "Está detenido: su próximo arranque es en {mode}.",
+    "ap.do.den_env_hold_on":
+      "Retener las variables que parecen secretos de {count} agentes iniciados antes (cada uno en su próximo inicio): {names}",
+    "ap.do.den_env_allow_keep":
+      "Conservar {names} para todos los agentes y retener el resto de {count} agentes iniciados antes",
+    "ap.det.den_env_hold_on.sets":
+      "Pone agents.env_hold_existing: true en config/local/user.yml.",
+    "ap.det.den_env_hold_on.next":
+      "Cada agente las pierde en su próximo inicio; uno que ya está en marcha las conserva hasta entonces.",
+    "ap.det.den_env_hold_on.allow":
+      "Los nombres que conserva por agents.env_allow se quedan.",
+    "ap.det.den_env_allow_keep.adds":
+      "Añade {names} a agents.env_allow en config/local/user.yml: todos los agentes de aquí las reciben.",
+    "ap.det.den_env_allow_keep.on":
+      "Pone agents.env_hold_existing: true: las demás variables que parecen secretos se retienen de cada agente en su próximo inicio.",
     "ap.det.agent_sandbox_set.self":
       "{agent} lo pide para sí mismo: quiere su propio sandbox en {value}.",
     "ap.det.agent_sandbox_set.on":
@@ -2722,6 +2772,13 @@
     "ag.mode.src.default": "el valor integrado de Den",
     "ag.mode.item": "Modo: {m}",
     "ag.mode.menu": "Modo de {id}",
+    "ag.packs.item": "Paquetes de habilidades: {v}",
+    "ag.packs.menu": "Paquetes de habilidades de {id}",
+    "ag.packs.default": "Lo predeterminado de la instalación",
+    "ag.packs.off": "Desactivados",
+    "ag.packs.on": "Activados",
+    "ag.packs.set":
+      "Los paquetes de habilidades de {id} están configurados. Se reinicia tras su turno, en la misma conversación.",
     "ag.mode.pick": "Cambiar el modo de {id}",
     "ag.mode.follow": "Seguir el proyecto",
     "ag.mode.setS":
@@ -2912,6 +2969,8 @@
     "pe.runtime": "Runtime predeterminado",
     "pe.model": "Modelo",
     "pe.ver": "Versión",
+    "pe.packs": "Paquetes de habilidades",
+    "pe.packsList": "La lista de su archivo: {list}",
     "pe.rtDefault": "el predeterminado del runtime",
     "pe.perms": "Modo de permisos",
     "pe.noneCmd": "ninguno",
@@ -3069,6 +3128,27 @@
     "bell.updates": "Novedades ({n})",
     "bell.rep": "{n} más como este",
     "bell.stop": "Dejar de mostrar este tipo",
+    "bell.openInAgents": "Abrir en Agentes",
+    "peek.openInLayout": "Abrir en la vista",
+    "peek.close": "Cerrar (Esc)",
+    "peek.back": "Volver a las notificaciones",
+    "peek.chipNeed": "Te necesita · {why}",
+    "peek.chipNeedPlain": "Te necesita",
+    "peek.chipDone": "Terminado",
+    "peek.chipStopped": "Detenido",
+    "peek.chipRunning": "En marcha",
+    "peek.connecting": "Conectando con {name}…",
+    "peek.noConnect": "No se pudo conectar con la terminal de {name}.",
+    "peek.retry": "Reintentar",
+    "peek.finished":
+      "{name} terminó mientras mirabas. Ahora está inactivo para ti.",
+    "peek.stopped": "{name} se detuvo. No hay nada que responder.",
+    "peek.restart": "Reiniciar",
+    "peek.next": "{name} ({project}) también te necesita: {why}",
+    "peek.whyWaiting": "te espera",
+    "peek.switch": "Cambiar a {name}",
+    "peek.footType": "Esc cierra · lo que escribes va a {name}",
+    "peek.footEsc": "Esc cierra",
     "bell.askT": "¿Dejar de mostrar «{kind}»?",
     "bell.askB":
       "Solo este tipo. El registro de actividad lo sigue anotando. Puedes volver a activarlo en Ajustes.",
@@ -3195,6 +3275,7 @@
     "rs.none": "Ningún agente necesita reiniciarse.",
     "rs.bar": "{n} agentes necesitan reiniciarse para cargar sus herramientas.",
     "rs.barBtn": "Reiniciar los {n} en su próxima pausa",
+    "rs.barBusy": "Reiniciando {done} de {total}…",
     "rs.allName": "los agentes",
     "rs.done": "{id}: reiniciado, en la misma conversación.",
     "rs.timedOut":
@@ -3399,6 +3480,7 @@
     "hp.rowRunning.one": "{n} ayudante en marcha",
     "hp.runningN": "{n} en marcha",
     "hp.chip": "{n} ayudantes",
+    "hp.counting": "Contando ayudantes…",
     "hp.chip.one": "{n} ayudante",
     "hp.groupOf": "Ayudantes de {name}",
     "hp.open": "{what}, {status}: abrir su transcripción",
@@ -4723,13 +4805,33 @@
     "set.notifications.push_ttl": "Push guardado durante",
     "set.notifications.push_ttl.d":
       "Cuánto guarda un servicio de push un aviso para un dispositivo apagado o sin conexión, en segundos. 86400 es un día; 0 lo descarta si el dispositivo no está encendido ahora. __DEN_CLI__ config alerts.push_ttl_seconds=86400",
+    "set.notifications.tab_first": "Primero la pestaña abierta",
+    "set.notifications.tab_first.d":
+      "Cuando una pestaña de __DEN_TITLE__ está abierta y al frente en un dispositivo que también recibe push, la pestaña muestra el aviso y se omite el push a ese dispositivo. Si la pestaña no lo ha mostrado en estos segundos, el push se envía. __DEN_CLI__ config alerts.tab_first_seconds=3",
+    "set.notifications.max_streams": "Pestañas abiertas que reciben avisos",
+    "set.notifications.max_streams.d":
+      "Cuántas pestañas abiertas de __DEN_TITLE__ reciben avisos a la vez. Pasado este número, la más antigua deja de recibirlos hasta que se recarga. __DEN_CLI__ config alerts.max_streams=20",
     "set.notifications.desktop": "Avisos en el escritorio",
     "set.notifications.desktop.d":
       "Cuando un agente te necesita (un permiso, una pregunta, un Permitir), este navegador muestra una notificación, aunque __DEN_TITLE__ esté en segundo plano. Haz clic para abrir el agente. El navegador pregunta una vez.",
     "set.notifications.desktop.denied":
       "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto.",
     "set.notifications.desktop.none":
-      "Este navegador no puede mostrar notificaciones.",
+      "Este navegador no puede mostrar notificaciones aquí. En iPhone, añade __DEN_TITLE__ a tu pantalla de inicio y ábrelo desde allí. La campana y el contador de la pestaña siguen funcionando.",
+    "set.notifications.desktop.blocked":
+      "Este navegador bloquea las notificaciones de esta página. Permítelas en la configuración del sitio y activa esto. La campana y el contador de la pestaña siguen funcionando.",
+    "set.notifications.alert_finished":
+      "Avisarme también cuando un agente termina",
+    "set.notifications.alert_finished.d":
+      "Una notificación cuando un agente termina un turno y no lo estás mirando. Desactivado por defecto. Un agente que silenciaste nunca avisa.",
+    "set.notifications.alert_sound": "Sonidos",
+    "set.notifications.alert_sound.d":
+      "Un sonido corto con cada aviso en el escritorio, uno para “te necesita” y otro más suave para “terminó”. Solo suena con una pestaña de __DEN_TITLE__ abierta; una pestaña cerrada o un teléfono usan su propio sonido de aviso.",
+    "set.notifications.alert_sound.needs": "▶ Te necesita",
+    "set.notifications.alert_sound.finished": "▶ Terminó",
+    "set.notifications.tab_count": "Contador en la pestaña",
+    "set.notifications.tab_count.d":
+      "Muestra el número de agentes que te necesitan en el título y el icono de la pestaña (no el número de la campana). Con cero no muestra nada.",
     "hp.showAll": "Mostrar todos ({n})",
     "set.agents.runtimes.d":
       "El estado y la versión de cada runtime, la ruta en uso y de dónde viene. Definir ruta… ejecuta antes su comando de versión y rechaza una ruta que no sea ese runtime.",

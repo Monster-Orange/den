@@ -485,6 +485,7 @@ export class SessionHost {
   }
 
   private persist(s: Session): void {
+    if (this.closed && !fs.existsSync(this.paths.dir)) return;
     const rec = {
       id: s.info.ref.id,
       name: s.info.name,
@@ -633,14 +634,16 @@ export class SessionHost {
         const s = this.session(req.ref);
         if (!isInt(req.cols, 1, 10_000) || !isInt(req.rows, 1, 10_000))
           throw new Refusal("bad-request", "resize needs whole cols and rows");
-        if (s.pty && !s.info.exited) {
+        // Last writer wins: every viewer that asked hears the new size,
+        // so one out of step knows to say its own again.
+        if (
+          s.pty &&
+          !s.info.exited &&
+          (s.size?.cols !== req.cols || s.size?.rows !== req.rows)
+        ) {
           s.pty.resize(req.cols, req.rows);
-          // Last writer wins: every viewer that asked hears the new size,
-          // so one out of step knows to say its own again.
-          if (s.size?.cols !== req.cols || s.size?.rows !== req.rows) {
-            s.size = { cols: req.cols, rows: req.rows };
-            this.sendSize(s);
-          }
+          s.size = { cols: req.cols, rows: req.rows };
+          this.sendSize(s);
         }
         return {};
       }

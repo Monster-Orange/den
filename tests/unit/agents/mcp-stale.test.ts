@@ -8,11 +8,19 @@
  * A real host on a temp socket with a scripted PTY: nothing runs. A temp
  * CLAUDE_CONFIG_DIR, never ~/.claude. Invented names only.
  */
-import { afterEach, describe, expect, it } from "@jest/globals";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 import * as fs from "fs";
 import * as http from "http";
 import type { AddressInfo } from "net";
-import * as os from "os";
+import os from "os";
 import * as path from "path";
 import { writeApiOnlyRules } from "../../../src/shared/agents/api-only.js";
 import { readRecord, writeRecord } from "../../../src/shared/agents/records.js";
@@ -42,6 +50,9 @@ import {
 import { setPrincipal } from "../../../src/ui/server/request-guard.js";
 import { listedSessions } from "../../../src/ui/server/session-routes.js";
 import { DEN_BASE, cleanupRigs, rig, settle, type Rig } from "./helpers/rig.js";
+import { tempDirs } from "../../temp-dirs.js";
+
+const tempDir = tempDirs();
 import { connectHost } from "../../../src/shared/sessions/client.js";
 import { sessionPaths } from "../../../src/shared/sessions/paths.js";
 import { actorTokenOf } from "../../../src/shared/actor-token.js";
@@ -60,8 +71,10 @@ const TOKEN = "hubi_TESTONLY_d44_token";
 const agents = (r: Rig, ...args: string[]) => cmdAgents(args, r.deps);
 
 describe("D44: an agent's MCP servers against Hub now", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "den-d44-"));
-  afterEach(() => undefined);
+  let dir = "";
+  beforeAll(() => {
+    dir = tempDir("den-d44-");
+  });
   const files = (servers: Record<string, unknown> | null) => {
     const d = fs.mkdtempSync(path.join(dir, "a-"));
     if (servers)
@@ -495,6 +508,24 @@ describe("D44: Restart keeps the conversation and never cuts a turn", () => {
 });
 
 describe("D44: the routes", () => {
+  let running: (() => Promise<string[]>) | null = null;
+  let load: { mockRestore(): void } | null = null;
+  beforeAll(() => {
+    load = jest.spyOn(os, "loadavg").mockReturnValue([0, 0, 0]);
+  });
+  afterAll(() => load?.mockRestore());
+  afterEach(async () => {
+    let left: string[] = [];
+    for (let i = 0; i < 250 && running; i++) {
+      left = await running();
+      if (!left.length) break;
+      await settle(20);
+    }
+    running = null;
+    expect({ restartsStillRunning: left }).toEqual({
+      restartsStillRunning: [],
+    });
+  });
   async function api(r: Rig) {
     const server = http.createServer((req, res) => {
       jsonApiErrors(res, newRequestId());
@@ -542,7 +573,7 @@ describe("D44: the routes", () => {
     servers.push(server);
     await new Promise<void>((res) => server.listen(0, "localhost", res));
     const port = (server.address() as AddressInfo).port;
-    return async (
+    const call = async (
       method: string,
       p: string,
       body?: unknown,
@@ -558,6 +589,17 @@ describe("D44: the routes", () => {
         json: (await res.json()) as Record<string, unknown>,
       };
     };
+    running = async () =>
+      (
+        (
+          await call("GET", "/api/agents/restart-status", undefined, {
+            "x-test-as": "person",
+          })
+        ).json.agents as { id: string; state: string }[]
+      )
+        .filter((a) => a.state === "now" || a.state === "turn")
+        .map((a) => a.id);
+    return call;
   }
 
   it("issue 1223: only: hub restarts the Hub-stale only (Settings' Hub offer); an agent on an older Den's tools waits for the bell's", async () => {

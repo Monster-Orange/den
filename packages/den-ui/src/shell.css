@@ -645,6 +645,44 @@ button.den-gh > .den-bdg {
   color: var(--bg);
   font-weight: 600;
 }
+.den-bdg.warn.soft {
+  background: var(
+    --warn-tint,
+    color-mix(in srgb, var(--warn) 14%, var(--surface))
+  );
+  color: var(--warn);
+}
+.den-ni .den-bdg.warn.soft {
+  font-weight: 400;
+}
+.den-bdg.count {
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: var(--den-bdg-min, 1.6em);
+  margin-inline-start: var(--space-half, 2px);
+  padding: var(--den-bdg-pad, 0 var(--space-half, 2px));
+  border-radius: 999px;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  font: 600 var(--den-bdg-fs, var(--fs-2xs, 11px)) / var(--den-bdg-lh, 18px)
+    var(--sans);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.den-bdg.count.bad {
+  background: var(--bad);
+  color: var(--on-accent);
+}
+.den-bdg.count.corner {
+  position: absolute;
+  inset-block-start: var(--space-half, 2px);
+  inset-inline-end: calc(-1 * var(--space-1));
+  min-width: 16px;
+  margin: 0;
+  padding: 0 var(--space-half, 2px);
+  line-height: 16px;
+  pointer-events: none;
+}
 /* Issue 307: a pin's or a cross-app link's kind (PROJECT, DEN, SERVICE,
    HUB, an artifact's word), at the row's end. Its look is the scope
    labels' (.den-k); this only places it. */
@@ -794,7 +832,11 @@ body.den-rail-collapsed .den-rail .den-bdg {
 }
 body.den-has-shell .den-upd {
   --upd-top: calc(
-    env(safe-area-inset-top, 0px) + (var(--den-top-h) - 50px) / 2
+    env(safe-area-inset-top, 0px) +
+      var(
+        --den-overlay-top,
+        max((var(--den-top-h) - 50px) / 2, -1px, 8px - var(--den-top-h))
+      )
   );
   font-family: var(--sans);
 }
