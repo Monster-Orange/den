@@ -20,6 +20,7 @@ import {
   browserSlotRefusal,
 } from "../../shared/gates/browser-container.js";
 import { gateBoxTools } from "./gate-box-tools.js";
+import { doctorTool, type DoctorRun } from "./doctor-tool.js";
 import { getStateDir } from "../../shared/paths.js";
 import {
   MCP_ACTIONS,
@@ -109,6 +110,8 @@ export interface ToolContext {
    * only this Den tells the agent about it. Default getStateDir().
    */
   install?: string;
+  /** Issue 329: how the doctor tool runs `<cli> doctor`; tests pass a fake. */
+  doctor?: DoctorRun;
 }
 
 type Args = Record<string, unknown>;
@@ -1077,6 +1080,8 @@ const READ_TOOLS: DenTool[] = [
       return api.get(`/api/report/shots/${id}`);
     },
   ),
+  // Issue 329: run doctor now, every check (the server agent's, read-only).
+  doctorTool,
 ];
 
 /** The `path` argument, or a refusal before anything is asked. */

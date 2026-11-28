@@ -125,6 +125,8 @@ Reads (they change nothing):
 - `report_screenshot`: the masked screenshot of a report filed from this
   Den, by the report id its issue names. Only you and your person may read
   it; a project agent is refused, so it asks you.
+- `doctor`: run doctor now and get every check, the passing ones too
+  (read-only). A project agent can't run it, so it asks you.
 - `ask_human`: ask your person a question.
 - `notifications_list`: your person's bell.
 - `approval_check`: where one of your held asks stands.
