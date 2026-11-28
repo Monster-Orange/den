@@ -1229,6 +1229,10 @@
       "負荷で待っているテストは、この分数が過ぎると開始し、混雑したマシンで始まったことを記録します。既定は 10 です。0 にすると負荷が下がるまで待ちます。__DEN_CLI__ gate settings --max-start-wait-minutes 10",
     "set.server.gate_reap_grace_seconds":
       "残ったプロセスを強制終了するまでの秒数",
+    "set.server.gate_lock_no_pid_seconds":
+      "詰まったキューのロックを取り戻すまでの秒数",
+    "set.server.gate_lock_no_pid_seconds.d":
+      "テストがキューのロックを取った瞬間に強制終了されると、ロックは保持者の番号がないまま残り、すべてのテストが待ちます。この秒数が過ぎると取り戻します。既定は 10 です。__DEN_CLI__ gate settings --lock-no-pid-seconds 10",
     "set.server.gate_reap_grace_seconds.d":
       "テストが終わったとき、またはそのフォルダーが削除されたとき、まだ動いている起動したプロセスに停止を求め、この秒数後に強制終了します。テストの外のものには触れません。既定は 10 です。__DEN_CLI__ gate settings --reap-grace-seconds 10",
     "set.server.gate_local_browser": "このマシンで同時に動かすブラウザーテスト",

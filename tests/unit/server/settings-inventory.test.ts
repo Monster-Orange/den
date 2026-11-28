@@ -74,6 +74,8 @@ const BLOCKS: Record<string, Record<string, unknown>> = {
     max_start_load: true,
     max_start_wait_minutes: true,
     reap_grace_seconds: true,
+    // Issue 1440: a lock left with no pid file is taken back after this.
+    lock_no_pid_seconds: true,
     // Issue 1274: memory free under which new runs here wait; VM share.
     memory_free_min_percent: true,
     vm_memory_share: true,
@@ -370,6 +372,7 @@ describe("the settings inventory (R21)", () => {
         "gate_slots.cpu_slots_beside_release_browser",
         "gate_slots.load_hold_per_core",
         "gate_slots.local_browser_slots",
+        "gate_slots.lock_no_pid_seconds",
         "gate_slots.max_start_load",
         "gate_slots.max_start_wait_minutes",
         "gate_slots.mcp_grace_minutes",

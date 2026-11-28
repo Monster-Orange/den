@@ -3890,6 +3890,20 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ gate_slots: { reap_grace_seconds: v } }),
   },
   {
+    // Issue 1440: a lock left with no pid file is taken back after this.
+    id: "server.gate_lock_no_pid_seconds",
+    category: "server",
+    label: "Seconds before a stuck queue lock is taken back",
+    description:
+      "If a test run is stopped hard just as it takes the queue's lock, the lock is left without its holder's number and every run waits. After this many seconds it is taken back. The default is 10. __DEN_CLI__ gate settings --lock-no-pid-seconds 10",
+    keywords: ["gate", "slot", "tests", "queue", "lock", "stuck"],
+    scope: "user",
+    keys: ["gate_slots.lock_no_pid_seconds"],
+    control: { type: "number", min: 1, max: 30, step: 1 },
+    read: (ctx) => ctx.data.gate_slots?.lockNoPidSeconds ?? 10,
+    write: (v, ctx) => ctx.post({ gate_slots: { lock_no_pid_seconds: v } }),
+  },
+  {
     // Browser runs that may hold this machine at once (each in a container).
     id: "server.gate_local_browser",
     category: "server",

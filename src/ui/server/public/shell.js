@@ -2503,6 +2503,10 @@
     "set.server.gate_max_start_wait_minutes.d":
       "A run held by the load starts anyway after this many minutes, and its record says it started on a busy machine. The default is 10. 0 means it waits however long. __DEN_CLI__ gate settings --max-start-wait-minutes 10",
     "set.server.gate_reap_grace_seconds": "Seconds before leftovers are killed",
+    "set.server.gate_lock_no_pid_seconds":
+      "Seconds before a stuck queue lock is taken back",
+    "set.server.gate_lock_no_pid_seconds.d":
+      "If a test run is stopped hard just as it takes the queue's lock, the lock is left without its holder's number and every run waits. After this many seconds it is taken back. The default is 10. __DEN_CLI__ gate settings --lock-no-pid-seconds 10",
     "set.server.gate_reap_grace_seconds.d":
       "When a test run ends, or its folder is deleted, whatever it started that is still running is asked to stop, then killed after this many seconds. Nothing outside the run is touched. The default is 10. __DEN_CLI__ gate settings --reap-grace-seconds 10",
     "set.server.gate_local_browser": "Browser runs at once on this machine",

@@ -102,6 +102,7 @@ describe("gate-slot routes", () => {
       maxStartLoad: GATE_DEFAULTS.maxStartLoad,
       maxStartWaitMinutes: 10,
       reapGraceSeconds: 10,
+      lockNoPidSeconds: 10,
       memoryFreeMinPercent: 10,
       memoryReadingKeepSeconds: 30,
       swapHoldGb: 8,

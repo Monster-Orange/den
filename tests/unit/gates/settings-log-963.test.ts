@@ -137,6 +137,7 @@ describe("issue 963: each setting says what it means", () => {
     "max_start_load",
     "max_start_wait_minutes",
     "reap_grace_seconds",
+    "lock_no_pid_seconds",
     "local_browser_slots",
     "overrun_margin_minutes",
     "remote_renew_seconds",

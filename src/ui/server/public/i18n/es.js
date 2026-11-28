@@ -1266,6 +1266,10 @@
       "Una prueba detenida por la carga empieza igualmente tras estos minutos, y su registro dice que empezó con la máquina ocupada. El valor predeterminado es 10. 0 significa que espera lo que haga falta. __DEN_CLI__ gate settings --max-start-wait-minutes 10",
     "set.server.gate_reap_grace_seconds":
       "Segundos antes de cerrar a la fuerza lo que queda",
+    "set.server.gate_lock_no_pid_seconds":
+      "Segundos antes de recuperar un bloqueo atascado de la cola",
+    "set.server.gate_lock_no_pid_seconds.d":
+      "Si una prueba se detiene a la fuerza justo cuando toma el bloqueo de la cola, el bloqueo queda sin el número de quien lo tenía y todas las pruebas esperan. Tras estos segundos se recupera. El valor predeterminado es 10. __DEN_CLI__ gate settings --lock-no-pid-seconds 10",
     "set.server.gate_reap_grace_seconds.d":
       "Cuando una prueba termina, o se borra su carpeta, lo que inició y sigue en marcha recibe la orden de parar y, tras estos segundos, se cierra a la fuerza. Nada fuera de la prueba se toca. El valor predeterminado es 10. __DEN_CLI__ gate settings --reap-grace-seconds 10",
     "set.server.gate_local_browser":
