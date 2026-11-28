@@ -14,6 +14,7 @@ config and manifest changes a distribution must make to move to it under
 
 ### Changed
 
+- The UI kit (den-ui 0.23.1): `holdOpen(container, work)` keeps a dialog, a menu, a popover or a page form's dialog open, its button showing the wait, until the request ends. It closes on success and keeps the error beside the button on failure. A box shut before its request ended showed no wait at all since 0.22. `mountDialog`'s `onAction` now also holds a button that posts a page form. (issue 2013)
 - Service logs are private to you: Den writes each one readable by your login only, in a folder only your login can open, and closes older logs the same way when the server starts.
 
 ## [0.4.93] - 2026-11-28

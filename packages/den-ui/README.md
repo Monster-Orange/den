@@ -493,6 +493,43 @@ opens (Check again). A failure opens the failure pop-up.
   (`.bz-lbl`, `.bz-dots`, `@keyframes bz-dot`). Reduced motion: still
   dots.
 
+### Keep the box open while it waits: `holdOpen` (issue 2013)
+
+The held button is the only wait signal, so a flow that shuts its dialog,
+menu or popover before the request ends shows nothing at all. Don't close
+it yourself: hand the request to `holdOpen` (`dialog.js`), which closes it
+when the request succeeds.
+
+    import { holdOpen } from "@monster-orange/den-ui/dialog";
+
+    item.addEventListener("click", async () => {
+      const r = await holdOpen(menu, () => fetch("/step", { method: "POST" }), {
+        button: item,
+      });
+      if (r.ok) location.reload();
+    });
+
+    // A page form that posts (the next page answers): hold until it leaves.
+    form.addEventListener("submit", () => holdOpen(dlg));
+
+- It takes a `<dialog>`, a `<details>` menu, a `[popover]` or the kit's
+  popover (`openPopover(...).el`).
+- While it holds: Esc, cancel, a press outside, a press on the summary and
+  the page's own `close()` leave it open. The other buttons, links and
+  menu items in it are off, and their clicks never reach the page. Tab
+  keeps focus on the held button, and a press outside gives it back.
+- On success it closes (a dialog with `opts.value`, else the button's
+  value). `close: false` keeps it open. On failure it stays open, the
+  error beside the button in `.dk-hold-err` (`.dk-err` above a kit
+  dialog's footer), `role="alert"`, and focus on the button.
+- It resolves `{ ok: true, value }` or `{ ok: false, error }`, and never
+  rejects.
+- With no request it holds until the page leaves, and lets go if the
+  browser brings the page back from its cache. A button `watchForms`
+  already holds keeps that hold.
+- `mountDialog`'s `onAction` runs on it. It now also hears a button in
+  the dialog that posts a page form (`form="…"`).
+
 ## The Markdown editor (0.7.5)
 
 `src/markdown-editor.js` and `src/markdown-editor.css` (exports

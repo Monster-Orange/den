@@ -194,8 +194,10 @@
   min-height: var(--tap-min);
   padding: 0 var(--space-3);
 }
-/* Issue 1054: why a held action failed, above the footer. */
-.dk-err {
+/* Issue 1054: why a held action failed, above the footer; 2013: beside
+   the button holdOpen held, in a menu or popover. */
+.dk-err,
+.dk-hold-err {
   margin: 0;
   color: var(--bad);
   font-size: var(--fs-s);
