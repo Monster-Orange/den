@@ -51,6 +51,8 @@ export const clauses = [
   "a message from the page to an agent showing a dialog for its person answers 409 dialog_open and types nothing",
 ];
 export const timeoutMs = 420000;
+const NO_SEND_TO =
+  /^hub comment: (the doc's Send to names the person @|the doc page has no Send to box)/;
 
 const SERVER = "server";
 const SAY = "gate-629-say";
@@ -372,6 +374,13 @@ function hubRow(h) {
       ok: null,
       skip: "needs-hub",
       detail: "the bed has no Hub and no way to queue a comment for an agent",
+    };
+  if (NO_SEND_TO.test(h.postThrew ?? ""))
+    return {
+      clause: clauses[1],
+      ok: null,
+      skip: "needs-fixture-comment",
+      detail: `the bed's test doc offers no agent to send a comment to, so none was posted: ${h.postThrew}`,
     };
   if (h.running && h.noDialog)
     return {

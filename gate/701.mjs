@@ -281,6 +281,14 @@ export async function teardown(ctx, s) {
   }
 }
 
+const NO_SEND_TO =
+  /^hub comment: (the doc's Send to names the person @|the doc page has no Send to box)/;
+const notSent = (x) => ({
+  ok: null,
+  skip: "needs-fixture-comment",
+  detail: `the bed's test doc offers no agent to send a comment to, so none was posted: ${x.postThrew}`,
+});
+
 const NO_HUB = {
   ok: null,
   skip: "needs-hub",
@@ -310,8 +318,10 @@ export function expect(r) {
     qBase ??
     `asked in the bell ${q.askedMs} ms (${JSON.stringify(q.bellAsked)}); comment ${q.id}; typed ${q.typedMs} ms, ${q.typedTimes} time(s); Den saw it from ${JSON.stringify(q.from)}; Hub then ${JSON.stringify(q.delivery)}`;
 
+  const qNotSent = NO_SEND_TO.test(q.postThrew ?? "");
   let row2;
-  if (c1 && !q.own)
+  if (qNotSent) row2 = notSent(q);
+  else if (c1 && !q.own)
     row2 = {
       ok: null,
       skip: "needs-owner-comment",
@@ -327,7 +337,8 @@ export function expect(r) {
     };
 
   let row3;
-  if (h.running && h.noDialog)
+  if (NO_SEND_TO.test(h.postThrew ?? "")) row3 = notSent(h);
+  else if (h.running && h.noDialog)
     row3 = {
       ok: null,
       skip: "needs-dialog",
@@ -355,7 +366,9 @@ export function expect(r) {
     };
   }
   return [
-    { clause: clauses[0], ok: c1, detail: d1 },
+    qNotSent
+      ? { clause: clauses[0], ...notSent(q) }
+      : { clause: clauses[0], ok: c1, detail: d1 },
     { clause: clauses[1], ...row2 },
     { clause: clauses[2], ...row3 },
   ];
