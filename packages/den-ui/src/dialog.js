@@ -220,6 +220,191 @@ globalThis.window?.addEventListener?.(
   true,
 );
 
+/**
+ * Keeps a dialog, <details> menu, [popover] or kit popover open, its button
+ * held, until `work` settles; with no work, until the page leaves. README:
+ * "Keep the box open while it waits".
+ */
+const ACTIONS = 'button, a[href], summary, [role="menuitem"]';
+const holding = new WeakSet();
+
+export function holdOpen(c, work, opts = {}) {
+  if (opts.closeNow) return holdOpener(c, work, opts);
+  const btn =
+    opts.button ??
+    (c.contains(document.activeElement) ? document.activeElement : null);
+  holding.add(c);
+  c.setAttribute("data-dk-hold", "true");
+  c.querySelectorAll(".dk-hold-err").forEach((n) => n.remove());
+  if (c.tagName === "DIALOG") c.querySelector(".dk-err")?.remove();
+  const off = [...c.querySelectorAll(ACTIONS)]
+    .filter((x) => x !== btn && !x.contains(btn))
+    .map((x) => {
+      if (x.tagName === "BUTTON") {
+        if (x.disabled) return null;
+        x.disabled = true;
+        return () => (x.disabled = false);
+      }
+      if (x.getAttribute("aria-disabled") === "true") return null;
+      x.setAttribute("aria-disabled", "true");
+      return () => x.removeAttribute("aria-disabled");
+    })
+    .filter(Boolean);
+  const release =
+    btn?.getAttribute("aria-busy") === "true" ? () => {} : holdFor(btn);
+  btn?.focus?.();
+
+  const stop = (e) => {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  };
+  const key = (e) => {
+    const at = document.activeElement;
+    if (at && at !== document.body && !c.contains(at)) return;
+    if (e.key === "Escape" || e.key === "Tab") stop(e);
+  };
+  const click = (e) => {
+    if (e.target instanceof Node && c.contains(e.target)) stop(e);
+  };
+  const down = (e) => {
+    const t = e.target;
+    if (!(t instanceof Node) || btn?.contains(t)) return;
+    if (c.contains(t) || c.matches?.(":modal")) e.preventDefault();
+  };
+  const back = () =>
+    setTimeout(() => {
+      if (!holding.has(c) || !btn?.isConnected) return;
+      reopen();
+      if (document.activeElement !== btn) btn.focus?.();
+    }, 0);
+  const reopen = () => {
+    if (c.tagName === "DETAILS" && !c.open) c.open = true;
+    else if (c.hasAttribute("popover") && !c.matches(":popover-open"))
+      c.showPopover?.();
+  };
+  const own = c.tagName === "DIALOG" ? { close: c.close } : null;
+  if (own) c.close = () => {};
+  c.addEventListener("cancel", stop, true);
+  c.addEventListener("submit", stop, true);
+  c.addEventListener("toggle", reopen);
+  c.addEventListener("focusout", back);
+  document.addEventListener("keydown", key, true);
+  document.addEventListener("mousedown", down, true);
+  globalThis.window?.addEventListener?.("click", click, true);
+
+  const done = (shut) => {
+    if (!holding.has(c)) return;
+    holding.delete(c);
+    c.removeAttribute("data-dk-hold");
+    c.removeEventListener("cancel", stop, true);
+    c.removeEventListener("submit", stop, true);
+    c.removeEventListener("toggle", reopen);
+    c.removeEventListener("focusout", back);
+    document.removeEventListener("keydown", key, true);
+    document.removeEventListener("mousedown", down, true);
+    globalThis.window?.removeEventListener?.("click", click, true);
+    if (own) delete c.close;
+    release();
+    off.forEach((f) => f());
+    if (shut) shutOf(c, opts.value ?? btn?.value ?? "");
+  };
+
+  return settleHold(
+    work,
+    btn,
+    done,
+    (line) => {
+      const foot = c.tagName === "DIALOG" ? c.querySelector(".dk-ft") : null;
+      if (foot) {
+        line.className = "dk-err";
+        foot.before(line);
+      } else if (btn) btn.after(line);
+      else c.append(line);
+    },
+    opts,
+  );
+}
+
+function holdOpener(c, work, opts) {
+  const btn = opts.button;
+  shutOf(c, opts.value ?? "");
+  c.parentNode
+    ?.querySelectorAll(":scope > .dk-hold-err")
+    .forEach((n) => n.remove());
+  const release =
+    btn?.getAttribute("aria-busy") === "true" ? () => {} : holdFor(btn);
+  btn?.focus?.();
+  const shut = () => {
+    if (c.tagName === "DETAILS" ? c.open : c.matches?.(":popover-open"))
+      shutOf(c, "");
+  };
+  const key = (e) => {
+    if (document.activeElement === btn && e.key === "Escape")
+      e.preventDefault();
+  };
+  c.addEventListener("toggle", shut);
+  document.addEventListener("keydown", key, true);
+  let held = true;
+  const done = () => {
+    if (!held) return;
+    held = false;
+    c.removeEventListener("toggle", shut);
+    document.removeEventListener("keydown", key, true);
+    release();
+  };
+  return settleHold(work, btn, done, (line) => c.after(line), opts);
+}
+
+function settleHold(work, btn, done, place, opts) {
+  if (work == null) {
+    const watch =
+      btn && typeof MutationObserver === "function"
+        ? new MutationObserver(() => {
+            if (btn.getAttribute("aria-busy") === "true") return;
+            watch.disconnect();
+            done(false);
+          })
+        : null;
+    watch?.observe(btn, { attributes: true, attributeFilter: ["aria-busy"] });
+    const fromCache = (e) => {
+      if (!e.persisted) return;
+      window.removeEventListener("pageshow", fromCache);
+      watch?.disconnect();
+      done(false);
+    };
+    window.addEventListener("pageshow", fromCache);
+    return new Promise(() => {});
+  }
+  const p = typeof work === "function" ? work() : work;
+  return Promise.resolve(p).then(
+    (value) => {
+      done(true);
+      return { ok: true, value };
+    },
+    (error) => {
+      done(false);
+      if (opts.error !== false) {
+        const line = document.createElement("p");
+        line.setAttribute("role", "alert");
+        line.className = "dk-hold-err";
+        line.textContent = failedLine(error);
+        place(line);
+      }
+      btn?.focus?.();
+      return { ok: false, error };
+    },
+  );
+}
+
+function shutOf(c, value) {
+  if (c.tagName === "DIALOG") c.close(value);
+  else if (c.tagName === "DETAILS") {
+    c.open = false;
+    c.querySelector(":scope > summary")?.focus?.();
+  } else if (c.hasAttribute("popover")) c.hidePopover?.();
+  else c.dispatchEvent(new CustomEvent("dk-close"));
+}
+
 /** The product's language, words and Report (see the top of this file). */
 export function configureDialog(h) {
   Object.assign(hook, h ?? {});
@@ -512,13 +697,9 @@ function startOf(d, sel) {
  *     remove,      take it off the page once closed (default: true for
  *                  HTML, false for an element)
  *     show,        false: mount only; show() later
- *     onAction,    issue 1054: (value, dialog, button) on a press of an
- *                  action that closes it. A promise back keeps it open, the
- *                  button held (configureDialog's hold) and the others
- *                  off, until it settles: then it closes with that value;
- *                  a rejection says its message in the dialog (.dk-err,
- *                  role=alert) and gives the buttons back. Esc does
- *                  nothing meanwhile.
+ *     onAction,    (value, dialog, button) on a press of an action that
+ *                  closes it, a page form's too; a promise back runs
+ *                  holdOpen on the dialog with that value.
  *   }) → { dialog, show(opener?), close(value?), closed }
  *
  * `closed` is a promise of the value, renewed on each show().
@@ -540,47 +721,24 @@ export function mountDialog(target, o = {}) {
   let settle = null;
   let gone = false;
   let shown = false;
-  let waiting = false;
   const handle = { dialog: d, show, close, closed: Promise.resolve("") };
 
-  // Issue 1054: an action whose request runs while the dialog stays open.
-  d.addEventListener("submit", (e) => {
-    if (waiting) {
+  // On the document: a button in it may post a page form through form=.
+  const onSubmit = (e) => {
+    const btn = e.submitter ?? null;
+    if (!(d.contains(e.target) || (btn && d.contains(btn)))) return;
+    if (holding.has(d)) {
       e.preventDefault();
       return;
     }
     if (typeof o.onAction !== "function") return;
-    const btn = e.submitter ?? null;
     const value = btn?.value ?? "";
     const p = o.onAction(value, d, btn);
     if (!p || typeof p.then !== "function") return;
     e.preventDefault();
-    waiting = true;
-    const others = [...d.querySelectorAll(".dk-ft button")].filter(
-      (x) => x !== btn && !x.disabled,
-    );
-    others.forEach((x) => (x.disabled = true));
-    const release = holdFor(btn);
-    d.querySelector(".dk-err")?.remove();
-    Promise.resolve(p).then(
-      async () => {
-        await release();
-        waiting = false;
-        close(value);
-      },
-      async (err) => {
-        await release();
-        waiting = false;
-        others.forEach((x) => (x.disabled = false));
-        const line = document.createElement("p");
-        line.className = "dk-err";
-        line.setAttribute("role", "alert");
-        line.textContent = failedLine(err);
-        d.querySelector(".dk-ft")?.before(line);
-        btn?.focus?.();
-      },
-    );
-  });
+    void holdOpen(d, p, { button: btn, value });
+  };
+  document.addEventListener("submit", onSubmit, true);
 
   function close(value = "cancel") {
     if (gone) return;
@@ -619,14 +777,14 @@ export function mountDialog(target, o = {}) {
 
   d.addEventListener("cancel", (e) => {
     e.preventDefault();
-    if (!waiting) close("cancel");
+    if (!holding.has(d)) close("cancel");
   });
   d.addEventListener("keydown", (e) => {
     if (e.isComposing) return;
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      if (!waiting) close("cancel");
+      if (!holding.has(d)) close("cancel");
       return;
     }
     if (e.key === "Tab") {
@@ -680,6 +838,7 @@ export function mountDialog(target, o = {}) {
     opener = null;
     if (remove) {
       gone = true;
+      document.removeEventListener("submit", onSubmit, true);
       watch?.disconnect();
       d.remove();
     }

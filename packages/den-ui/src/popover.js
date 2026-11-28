@@ -142,6 +142,7 @@ export function openPopover(anchor, o = {}) {
     document.removeEventListener("pointerdown", down, true);
     document.removeEventListener("keydown", key, true);
     el.removeEventListener("focusout", out);
+    el.removeEventListener("dk-close", shut);
     window.removeEventListener("scroll", place, true);
     window.removeEventListener("resize", place);
     el.remove();
@@ -162,7 +163,10 @@ export function openPopover(anchor, o = {}) {
       const now = document.activeElement;
       if (anchor.isConnected && (!now || now === document.body)) anchor.focus();
     }, 0);
+  const holding = () => el.hasAttribute("data-dk-hold");
+  const shut = () => close(true);
   function down(e) {
+    if (holding()) return;
     const t = e.target;
     if (!(t instanceof Node) || el.contains(t)) return;
     if (anchor.contains(t)) {
@@ -197,7 +201,7 @@ export function openPopover(anchor, o = {}) {
     after.focus();
   }
   function key(e) {
-    if (e.defaultPrevented) return;
+    if (e.defaultPrevented || holding()) return;
     if (e.key === "Tab" && !e.altKey && !e.ctrlKey && !e.metaKey) return tab(e);
     if (e.key !== "Escape") return;
     const a = document.activeElement;
@@ -207,6 +211,7 @@ export function openPopover(anchor, o = {}) {
     close(true);
   }
   function out(e) {
+    if (holding()) return;
     const to = e.relatedTarget;
     if (to instanceof Node && el.contains(to)) return;
     close(false);
@@ -218,6 +223,7 @@ export function openPopover(anchor, o = {}) {
   document.addEventListener("pointerdown", down, true);
   document.addEventListener("keydown", key, true);
   el.addEventListener("focusout", out);
+  el.addEventListener("dk-close", shut);
   window.addEventListener("scroll", place, true);
   window.addEventListener("resize", place);
   const first = el.querySelector(FOCUSABLE);

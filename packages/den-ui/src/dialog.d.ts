@@ -151,3 +151,18 @@ export declare function focusWhenFree(el: HTMLElement | null | undefined): void;
 
 /** Issue 1054: a held action's failure line: its message, else the kit's words. */
 export declare function failedLine(err: unknown): string;
+
+export type HoldResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; error: unknown };
+
+export declare function holdOpen<T = unknown>(
+  container: Element,
+  work?: Promise<T> | (() => Promise<T>) | null,
+  opts?: {
+    button?: Element | null;
+    value?: string;
+    closeNow?: boolean;
+    error?: boolean;
+  },
+): Promise<HoldResult<T>>;
