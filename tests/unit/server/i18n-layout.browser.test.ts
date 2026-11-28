@@ -221,7 +221,7 @@ describe("translated pages fit", () => {
       // Issue 448: Terminal reopens a running shell (no toast then), so
       // each case starts its own and ends it: the toast is its "started".
       const before = s!.made.length;
-      const p = await open(lang, width, "/agents?terminal=1");
+      const p = await open(lang, width, "/agents?terminal=1&fresh=1");
       await p.waitForSelector(".den-toast");
       await p.waitForSelector(".agto[data-toast-clear]");
       // The toast looks again 0.5 s after it shows (the line may come later).
@@ -237,13 +237,15 @@ describe("translated pages fit", () => {
 
   it("a toast up before the terminal's To line shows moves off it when the line comes", async () => {
     if (!browser) return;
+    const before = s!.made.length;
     const r = await fetch(`${s!.base}/api/workspaces/north/sessions`, {
       method: "POST",
       headers: { ...denAuth(s!.stateDir), "content-type": "application/json" },
       body: "{}",
     });
     const { session } = (await r.json()) as { session: { id: string } };
-    const pty = s!.made.at(-1)!;
+    const ptyThisPostMade = s!.made[before];
+    if (!ptyThisPostMade) throw new Error(`no shell was started for session ${session.id}`);
     // Issue 482: a shell's row is on the Terminals page.
     const p = await open("ja", 1280, "/terminals?ws=north");
     const row = p.locator(`#agl .agr[data-id="${session.id}"]`);
@@ -269,7 +271,7 @@ describe("translated pages fit", () => {
     await p.waitForTimeout(400);
     const overlap = await toastOverTo(p);
     await p.close();
-    pty.exit(0);
+    ptyThisPostMade.exit(0);
     expect(overlap).toBe(0);
   }, 60_000);
 });
