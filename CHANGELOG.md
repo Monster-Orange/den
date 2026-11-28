@@ -17,6 +17,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The approval dialog no longer brings back a request you just denied or allowed. A check of what waits that was already under way when you answered could open it again with that request. (issue 1898)
 
+### Changed
+
+- Removing an agent whose Hub token was never made (Hub refused it) now clears its row in `den doctor`. Before, the row stayed after the agent was gone. `den doctor` also skips such a row for an agent that no longer exists. (issue 1907)
+
 ## [0.4.92] - unreleased
 
 ### Changed
