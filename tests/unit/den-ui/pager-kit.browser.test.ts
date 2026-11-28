@@ -34,7 +34,7 @@ const PAGE = (script: boolean) => `<!doctype html>
 <ul id="list"><li tabindex="0" id="row">row</li></ul><div id="a"></div>
 <div id="r" dir="rtl"></div><div id="one"></div>
 <div id="narrow" style="width:480px"></div>
-<div id="k1" style="width:360px"></div><div id="k2" style="width:700px"></div>
+<div id="k1" style="width:360px"></div><div id="k3" style="width:360px"></div><div id="k2" style="width:700px"></div>
 <script type="module">
 import { pagerHtml, hydratePager } from "/pager.js";
 const W = { range: "{from}–{to} of {total}", label: "Pages", first: "First",
@@ -65,6 +65,7 @@ put("r", { from: 101, to: 150, total: 809, per: 50, page: 3, href: href(3, 17) }
 put("narrow", { from: 101, to: 150, total: 809, per: 50, page: 3, href: href(3, 17) });
 put("k1", { compact: true, from: 6, to: 10, total: 125, per: 5, page: 2, href: href(2, 25, 5) });
 put("k2", { compact: true, from: 6, to: 10, total: 125, per: 5, page: 2, href: href(2, 25, 5) });
+put("k3", { compact: true, from: 6, to: 10, hasNext: true, per: 5, page: 2, href: href(2, 0, 5) });
 window.ready = true;
 </script></body></html>`;
 
@@ -218,13 +219,8 @@ describe("pager in a browser", () => {
     expect(await shown(p, "#a .den-pager-side")).toBe(0);
     await role(p, "#a", "button", "More").click();
     await p.waitForFunction(
-      "document.querySelector('#a .den-pager-menu').matches(':popover-open')",
+      "document.querySelector('#a .den-pager-menu').matches(':popover-open.den-pager-sheet')",
     );
-    expect(
-      await p.evaluate(
-        "[...document.querySelector('#a .den-pager-menu').classList]",
-      ),
-    ).toContain("den-pager-sheet");
     expect(await shown(p, "#a .den-pager-menu select")).toBe(1);
     await p.keyboard.press("Escape");
     await p.context().close();
@@ -245,6 +241,17 @@ describe("pager in a browser", () => {
     await role(p, "#k1", "spinbutton", "Page 2 of 25").press("Enter");
     expect((await navs(p)).map((x) => [x[0], x[2], x[3]])).toEqual([
       ["k1", '{"page":25}', "/list?state=open&page=25#list"],
+    ]);
+    await p.context().close();
+  });
+
+  it("compact with no total: Enter in the page field goes to the page typed", async () => {
+    if (skip()) return;
+    const p = await open();
+    await role(p, "#k3", "spinbutton", "Page 2 of 2").fill("7");
+    await role(p, "#k3", "spinbutton", "Page 2 of 2").press("Enter");
+    expect((await navs(p)).map((x) => [x[0], x[2], x[3]])).toEqual([
+      ["k3", '{"page":7}', "/list?state=open&page=7#list"],
     ]);
     await p.context().close();
   });
