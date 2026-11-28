@@ -8,6 +8,7 @@
   width: min(640px, calc(100vw - 32px));
   max-width: 100%;
   max-height: calc(100vh - 32px);
+  max-height: calc(var(--fb-vh, 100dvh) - 32px);
   padding: 0;
   border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
   border-radius: 12px;
@@ -15,6 +16,11 @@
   color: var(--text);
   box-shadow: var(--shadow);
   overflow: auto;
+}
+.fb-dlg[data-fb-kb] {
+  top: var(--fb-top, 16px);
+  bottom: auto;
+  transform: none;
 }
 .fb-dlg::backdrop {
   background: var(--kit-backdrop);
@@ -175,6 +181,14 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
+  position: sticky;
+  bottom: -16px;
+  z-index: 1;
+  padding: 8px 0 16px;
+  background: var(--raised, var(--surface, var(--bg)));
+}
+.fb-maskmode {
+  display: none;
 }
 .fb-btns button,
 .fb-btns a {
@@ -410,6 +424,58 @@
   .fb-shot-wait {
     width: min(100%, calc(45vh * var(--shot-k)));
     margin-inline: auto;
+  }
+}
+@media (pointer: coarse) {
+  .fb-shot {
+    text-align: center;
+  }
+  .fb-shot canvas,
+  .fb-shot img {
+    max-height: 45vh;
+    width: auto;
+    max-width: 100%;
+    display: inline-block;
+    touch-action: pan-y pinch-zoom;
+  }
+  .fb-shot[data-masking] canvas {
+    touch-action: none;
+    outline: 2px solid var(--focus-ring, var(--accent));
+  }
+  .fb-shot-wait {
+    width: min(100%, calc(45vh * var(--shot-k)));
+    margin-inline: auto;
+  }
+  .fb-maskmode {
+    display: inline-flex;
+  }
+  .fb-maskmode[aria-pressed="true"] {
+    background: var(--accent-fill, var(--accent));
+    border-color: var(--accent-fill, var(--accent));
+    color: var(--on-accent);
+  }
+  .fb-dlg
+    :is(
+      button,
+      select,
+      input:not([type="checkbox"], [type="radio"]),
+      .fb-btns a
+    ) {
+    min-height: var(--tap, 44px);
+  }
+  .fb-dlg button:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+  }
+  .fb-dlg :is(input[type="checkbox"], input[type="radio"]) {
+    width: 20px;
+    height: 20px;
+  }
+  .fb-dlg label:has(> input[type="checkbox"], > input[type="radio"]),
+  .fb-dlg .fb-lk {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap, 44px);
   }
 }
 @media (min-width: 601px) {

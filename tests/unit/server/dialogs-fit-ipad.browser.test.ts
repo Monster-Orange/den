@@ -185,8 +185,8 @@ async function closeAll(p: Page, sel: string): Promise<void> {
   }, sel);
 }
 
-const SHORT = ["confirm", "busy", "report", "ag-rn", "ag-mv", "persona"];
-const TALL = ["confirm-tall", "bare-tall"];
+const SHORT = ["confirm", "busy", "ag-rn", "ag-mv", "persona"];
+const TALL = ["confirm-tall", "bare-tall", "report"];
 
 const CASES: Array<{ device: string; noDvh: boolean }> = [
   { device: "iPad Pro 11", noDvh: false },

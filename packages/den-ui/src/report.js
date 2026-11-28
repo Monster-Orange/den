@@ -493,7 +493,7 @@ export async function openReport(opts = {}) {
       return `<div class="fb-shot" data-shot-box data-wait${late}${where === "write" && st.noShot ? " hidden" : ""}><div class="fb-shot-wait"><span class="fb-fine" role="status" data-shot-wait>${esc(t("kit.report.shotWait"))}</span></div></div>`;
     if (where === "review")
       return `<div class="fb-shot" data-shot-box${late}><img data-shot-review alt="${esc(late ? t("kit.report.shotNotIn") : t("kit.report.revShot", { n: st.masks.length }))}" src="${maskedShot().toDataURL("image/png")}"></div>`;
-    return `<div class="fb-shot" data-shot-box${st.noShot ? " hidden" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>`;
+    return `<div class="fb-shot" data-shot-box${st.noShot ? " hidden" : ""}${st.maskMode ? " data-masking" : ""}><canvas data-shot role="img" aria-label="${esc(t("kit.report.shot"))}"></canvas></div>`;
   }
   /**
    * The first step's screenshot part, drawn whole at once: its note, its
@@ -506,7 +506,7 @@ export async function openReport(opts = {}) {
     if (st.shot) st.shotSeen = true;
     return `<div data-shot-area><p class="fb-fine">${esc(t("kit.report.shotNote"))}</p>
 ${shotBoxHtml()}
-<div class="fb-tools">${st.noShot ? "" : btn("undo", t("kit.report.undo"))}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("kit.report.masks", { n: st.masks.length }))}</span></div>
+<div class="fb-tools">${st.noShot ? "" : btn("undo", t("kit.report.undo"))}${st.noShot ? "" : `<button type="button" class="fb-maskmode" data-act="maskmode" aria-pressed="${st.maskMode ? "true" : "false"}">${esc(t("kit.report.maskMode"))}</button>`}<label><input type="checkbox" data-f="noshot"${st.noShot ? " checked" : ""}> ${esc(t("kit.report.nos"))}</label><span class="fb-fine" aria-live="polite">${st.noShot ? "" : esc(t("kit.report.masks", { n: st.masks.length }))}</span></div>
 ${
   st.noShot
     ? ""
@@ -1020,9 +1020,10 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
       y: (e.clientY - r.top) / r.height,
     };
   };
+  const touchy = () => matchMedia("(pointer: coarse)").matches;
   dlg.addEventListener("pointerdown", (e) => {
     const c = e.target.closest?.("canvas[data-shot]");
-    if (!c) return;
+    if (!c || (touchy() && !st.maskMode)) return;
     e.preventDefault();
     c.setPointerCapture?.(e.pointerId);
     st.drag = { a: frac(e, c), b: null };
@@ -1052,6 +1053,10 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
         return render();
       }
       return go("include");
+    }
+    if (act === "maskmode") {
+      st.maskMode = !st.maskMode;
+      return render('[data-act="maskmode"]');
     }
     if (act === "undo") {
       st.masks.pop();
@@ -1136,8 +1141,24 @@ ${st.link ? `<p class="fb-fine">${esc(t("kit.report.siAlt"))} ${linkBtn(st.link,
     }
   });
 
+  const vv = window.visualViewport;
+  const fit = () => {
+    if (!dlg.isConnected) {
+      vv.removeEventListener("resize", fit);
+      vv.removeEventListener("scroll", fit);
+      return;
+    }
+    dlg.style.setProperty("--fb-vh", `${vv.height}px`);
+    dlg.style.setProperty("--fb-top", `${vv.offsetTop + 16}px`);
+    dlg.toggleAttribute("data-fb-kb", vv.height < window.innerHeight - 80);
+  };
+  if (vv) {
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+  }
   render();
   dlg.showModal();
+  if (vv) fit();
   render();
   return self;
 }
