@@ -8291,91 +8291,94 @@ export async function restartAgent(
   const release = opts.slot ? await opts.slot() : undefined;
   try {
     return await lockAgent(d, rec.id, async () => {
-    const cur = agentRecord(d, rec.id, rec.workspace);
-    const now = await withClient(d, async (c) =>
-      sessionOf(await c.list(), cur),
-    );
-    const live = now && !now.exited ? now : undefined;
-    // Issue 216: a new session, started after this request: another
-    // request restarted it. Done; never a second restart. This holds
-    // when this request saw none at all, too: another restart had
-    // already stopped it then, and resumed it while this one waited.
-    if (
-      live &&
-      live.ref.id !== seen?.ref.id &&
-      Date.parse(live.startedAt) >= asked - 1_000
-    )
-      return alreadyRestarted(cur, live);
-    if (seen) {
-      // It ran when asked and runs no more: someone stopped it (or it
-      // ended). A restart never undoes a stop.
-      if (!live)
-        throw refused(
-          `${where}: agent ${rec.id} stopped while this restart waited; not restarted`,
-          [`Resume it: ${d.cli} agents resume ${rec.id}`],
-        );
-    }
-    await notQuarantined(d, cur.runtime, cur.workspace);
-    let stopped: Stopped;
-    try {
-      stopped = await stopAgent(
-        d,
-        rec.id,
-        rec.workspace,
-        seen ? { only: seen.ref.id } : {},
-      );
-    } catch (e) {
-      // Issue 218: the session it saw was gone when the stop reached it.
-      // A newer one, started after this request: restarted elsewhere.
-      if (!(seen && e instanceof HostError && e.code === "not-found")) throw e;
       const cur = agentRecord(d, rec.id, rec.workspace);
       const now = await withClient(d, async (c) =>
         sessionOf(await c.list(), cur),
       );
+      const live = now && !now.exited ? now : undefined;
+      // Issue 216: a new session, started after this request: another
+      // request restarted it. Done; never a second restart. This holds
+      // when this request saw none at all, too: another restart had
+      // already stopped it then, and resumed it while this one waited.
       if (
-        !now ||
-        now.exited ||
-        now.ref.id === seen.ref.id ||
-        Date.parse(now.startedAt) < asked - 1_000
+        live &&
+        live.ref.id !== seen?.ref.id &&
+        Date.parse(live.startedAt) >= asked - 1_000
       )
-        throw e;
-      return alreadyRestarted(cur, now);
-    }
-    // Issue 193 (0.4.57): its session takes longer to end than stop's own
-    // wait. Den stopped it, so Den waits for the stop to finish (at most
-    // agents.restart_wait_minutes), then resumes; never left stopped.
-    if (stopped.stillStopping && stopped.session) {
-      const mins = Math.round(restartWaitOf(d) / 60_000);
-      if (!(await sessionEnded(d, stopped.session.ref.id, restartWaitOf(d)))) {
-        const why = `still stopping after ${mins} min`;
-        notBackAfterRestart(d, rec.id, rec.workspace, why);
-        throw refused(`${where}: agent ${rec.id} is ${why}; not resumed`, [
-          `Resume it: ${d.cli} agents resume ${rec.id}`,
-        ]);
+        return alreadyRestarted(cur, live);
+      if (seen) {
+        // It ran when asked and runs no more: someone stopped it (or it
+        // ended). A restart never undoes a stop.
+        if (!live)
+          throw refused(
+            `${where}: agent ${rec.id} stopped while this restart waited; not restarted`,
+            [`Resume it: ${d.cli} agents resume ${rec.id}`],
+          );
       }
-    }
-    // Issue 124: a resume that fails never leaves it stopped by Den.
-    let out: Resumed;
-    try {
-      // Issue 923: its rotation is ready, so a resume is bound to be
-      // refused. Den stopped it: it relaunches from its handoff instead.
-      out =
-        (await relaunchIfReady(d, rec.id, rec.workspace)) ??
-        (await resumeAgent(d, rec.id, rec.workspace));
-    } catch (e) {
-      if (stopped.session)
-        notBackAfterRestart(d, rec.id, rec.workspace, (e as Error).message);
-      else restoreStopped(d, rec.id, rec.workspace, cur.stoppedAt);
-      throw e;
-    }
-    if (out.early && stopped.session)
-      notBackAfterRestart(
-        d,
-        rec.id,
-        rec.workspace,
-        `exited at once${out.early.exitCode === undefined ? "" : ` (code ${out.early.exitCode})`}`,
-      );
-    return out;
+      await notQuarantined(d, cur.runtime, cur.workspace);
+      let stopped: Stopped;
+      try {
+        stopped = await stopAgent(
+          d,
+          rec.id,
+          rec.workspace,
+          seen ? { only: seen.ref.id } : {},
+        );
+      } catch (e) {
+        // Issue 218: the session it saw was gone when the stop reached it.
+        // A newer one, started after this request: restarted elsewhere.
+        if (!(seen && e instanceof HostError && e.code === "not-found"))
+          throw e;
+        const cur = agentRecord(d, rec.id, rec.workspace);
+        const now = await withClient(d, async (c) =>
+          sessionOf(await c.list(), cur),
+        );
+        if (
+          !now ||
+          now.exited ||
+          now.ref.id === seen.ref.id ||
+          Date.parse(now.startedAt) < asked - 1_000
+        )
+          throw e;
+        return alreadyRestarted(cur, now);
+      }
+      // Issue 193 (0.4.57): its session takes longer to end than stop's own
+      // wait. Den stopped it, so Den waits for the stop to finish (at most
+      // agents.restart_wait_minutes), then resumes; never left stopped.
+      if (stopped.stillStopping && stopped.session) {
+        const mins = Math.round(restartWaitOf(d) / 60_000);
+        if (
+          !(await sessionEnded(d, stopped.session.ref.id, restartWaitOf(d)))
+        ) {
+          const why = `still stopping after ${mins} min`;
+          notBackAfterRestart(d, rec.id, rec.workspace, why);
+          throw refused(`${where}: agent ${rec.id} is ${why}; not resumed`, [
+            `Resume it: ${d.cli} agents resume ${rec.id}`,
+          ]);
+        }
+      }
+      // Issue 124: a resume that fails never leaves it stopped by Den.
+      let out: Resumed;
+      try {
+        // Issue 923: its rotation is ready, so a resume is bound to be
+        // refused. Den stopped it: it relaunches from its handoff instead.
+        out =
+          (await relaunchIfReady(d, rec.id, rec.workspace)) ??
+          (await resumeAgent(d, rec.id, rec.workspace));
+      } catch (e) {
+        if (stopped.session)
+          notBackAfterRestart(d, rec.id, rec.workspace, (e as Error).message);
+        else restoreStopped(d, rec.id, rec.workspace, cur.stoppedAt);
+        throw e;
+      }
+      if (out.early && stopped.session)
+        notBackAfterRestart(
+          d,
+          rec.id,
+          rec.workspace,
+          `exited at once${out.early.exitCode === undefined ? "" : ` (code ${out.early.exitCode})`}`,
+        );
+      return out;
     });
   } finally {
     release?.();
@@ -8572,6 +8575,12 @@ export async function moveAgent(
   });
 }
 
+const afterTurnMoves = new Set<Promise<unknown>>();
+
+export async function afterTurnMovesSettled(): Promise<void> {
+  await Promise.allSettled([...afterTurnMoves]);
+}
+
 /** D71: a workspace's agents, for its delete to name. */
 export interface WorkspaceAgent {
   id: string;
@@ -8637,14 +8646,18 @@ export async function disposeWorkspaceAgents(
       } else {
         // Its turn may be long: it moves when it ends.
         // Never left behind: if Den can't wait for it, it stops and moves.
-        void moveAgent(d, a.id, ws, to, "after-turn").catch(async () => {
-          try {
-            await stopAgent(d, a.id, ws);
-            await moveAgent(d, a.id, ws, to, "now");
-          } catch {
-            /* it shows under No workspace, with Move */
-          }
-        });
+        const moving = moveAgent(d, a.id, ws, to, "after-turn").catch(
+          async () => {
+            try {
+              await stopAgent(d, a.id, ws);
+              await moveAgent(d, a.id, ws, to, "now");
+            } catch {
+              /* it shows under No workspace, with Move */
+            }
+          },
+        );
+        afterTurnMoves.add(moving);
+        void moving.finally(() => afterTurnMoves.delete(moving));
         done.moved.push({ id: a.id, pending: true });
       }
     }
