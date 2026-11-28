@@ -926,25 +926,40 @@ own parts or names.
 
 Three pieces, data in, the kit's words out (en, es, ja).
 
-- **The general button** (issue 556): `src/button.css` and `src/button.js`
-  (exports `./button.css`, `./button`). `.den-btn` for any page, inside the
-  frame or not: secondary is the base, `.primary` the accent fill,
-  `.danger` a step that takes something away (red words), `.sm` the small
-  size; a link drawn as a button is `a.den-btn`. Its words and an icon sit
-  in a row, 6px apart. A visible focus ring, and a 44px tap on a touch
-  screen (its box unchanged). These are the values Den's frame drew and
-  the second product's shipped button (issue 673). It is the one button:
-  the kit's dialogs and the working pop-up draw `.den-btn` too, and
-  `den-ui-parity` counts a product's own `.btn` as a copy. A page that
-  links `dialog.css` (or `busy.css`) must link `button.css` beside it:
-  `.dk-btn` sets only the size, so without it the dialog's buttons have
-  no look. Neither imports it, so it is asked for by one URL (issue 231).
+- **The general button** (issue 556; DS component #7): `src/button.css`
+  and `src/button.js`. One `.den-btn` for both products and the kit's own
+  dialogs; `den-ui-parity` counts a product's own `.btn` as a copy. A page
+  that links `dialog.css` (or `busy.css`) links `button.css` beside it.
 
-      buttonHtml({ label, variant: "primary", size: "sm", href?, type?,
-                   disabled?, id?, attrs: { "data-…": …, "aria-…": … } })
+      buttonHtml({ label, variant, primary?, size?, href?, type?, icon?,
+                   disabled?, disabledWhy?, pressed?, expanded?, as?,
+                   id?, attrs: { "data-…": …, "aria-…": … } })
 
-  A disabled link has no href and `aria-disabled`. Any other variant,
-  size or attribute is dropped.
+  - Variants: `secondary` (the base), `primary` (one per row, last),
+    `danger` (an outline that starts a destructive act), `danger` with
+    `primary: true` (filled: only a dialog's confirm), `ghost`, `link`
+    and `icon` (square; with no label it needs `attrs["aria-label"]`, or
+    nothing is drawn).
+  - Sizes: `sm` 28px, `md` 36px (the base), `lg` 44px. A page never sets
+    its own height. At 600px or less md is 44px; with a coarse pointer
+    every button gets a 44px hit area without changing its look.
+  - `href` draws an `<a>`, `as: "summary"` a `<summary>`; all look the
+    same. `icon` is a kit icon's name (`close` is ×), drawn before
+    the label; a host never passes its own drawing, so a missing icon is
+    added to the kit. A label over 32 characters goes in `title`;
+    `hydrateButtons(root)` sets `title` whenever a label is cut off on
+    screen and takes it off when it fits again.
+  - `pressed` sets `aria-pressed`; `expanded` sets `aria-expanded` and
+    adds a ▾ that turns while open. `disabled` is a native disabled;
+    `disabledWhy` keeps the button focusable, puts the reason in `title`
+    and `aria-describedby`, and the kit stops its clicks.
+  - Disabled looks the same both ways, in both themes, with no opacity:
+    secondary, primary, danger and the filled danger confirm take a
+    `--sunken` fill, a `--border` edge and `--faint` text; ghost, link and
+    icon stay boxless with `--faint` text. No hover, and no pointer.
+  - `holdButton(el, { instant? })` holds it busy (`aria-busy` and
+    `aria-disabled`, never `disabled`; the kit's dots at the same width,
+    or none when instant) and returns the release.
 
 - **The page action menu** (issue 555), in `shell-html.js` and
   `shell-client.js` (its look in `shell.css`, More in `button.css`):

@@ -95,43 +95,31 @@ describe("button.css", () => {
       const body = c.slice(c.indexOf("{", from) + 1, c.indexOf("}", from));
       return body.trim();
     };
-    // Den's values, value for value (they were in Den's frame script),
-    // and issue 673: the second product's shipped button lays its words
-    // and icon out in a row, 6px apart, as Den's error page did.
+    // DS component #7: fixed heights, tokens for padding and type.
     expect(rule(".den-btn")).toBe(
-      "border: 1px var(--edge-style, solid) var(--border); background: var(--surface); border-radius: var(--radius-button); padding: 6px 12px; cursor: pointer; font: inherit; font-weight: 500; white-space: nowrap; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;",
+      "--den-btn-h: var(--tap-min); border: 1px var(--edge-style, solid) var(--border-strong); background: var(--surface); border-radius: var(--radius-button); box-sizing: border-box; height: var(--den-btn-h); max-width: 100%; padding: 0 var(--space-3); cursor: pointer; font: inherit; font-size: var(--fs-s); font-weight: 500; line-height: 1; white-space: nowrap; color: var(--text); text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); list-style: none; transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);",
     );
-    // A row of its own must not undo [hidden].
     expect(rule(".den-btn[hidden]")).toBe("display: none;");
-    // Issue 673: danger, the second product's shipped values.
-    // Kept on hover: the second product's danger comes after its hover.
-    expect(
-      rule('.den-btn.danger, .den-btn.danger:not([aria-busy="true"]):hover'),
-    ).toBe(
-      // Issue 1137: and its edge's width and style, as tokens.
-      "color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, var(--border)); border-width: var(--danger-edge-width, 1px); border-style: var(--danger-edge-style, var(--edge-style, solid));",
-    );
-    // Issue 699: a held button (aria-busy) has no hover change.
-    expect(rule('.den-btn:not([aria-busy="true"]):hover')).toBe(
-      "border-color: var(--border-strong);",
+    expect(rule(".den-btn.danger")).toBe(
+      "color: var(--bad); border-color: var(--bad); border-width: var(--danger-edge-width, 1px); border-style: var(--danger-edge-style, var(--edge-style, solid));",
     );
     expect(rule(".den-btn.primary")).toBe(
       "background: var(--primary-bg, var(--accent-fill)); border-color: var(--primary-border, var(--accent-fill)); color: var(--primary-text, var(--on-accent));",
     );
-    expect(rule(".den-btn.sm")).toBe("padding: 2px 9px; font-size: 12.5px;");
-    // Issue 1434: a held link (aria-busy too) keeps its full look.
+    expect(rule(".den-btn.sm")).toBe(
+      "--den-btn-h: 28px; padding: 0 var(--space-2); font-size: var(--fs-xs);",
+    );
     expect(
       rule(
-        '.den-btn:disabled, a.den-btn[aria-disabled="true"]:not([aria-busy="true"])',
+        '.den-btn:disabled, .den-btn[aria-disabled="true"]:not([aria-busy="true"])',
       ),
     ).toBe(
-      // Issue 1137: the opacity and label colour are tokens (today's values).
-      "opacity: var(--btn-disabled-opacity, 0.6); cursor: default; color: var(--btn-disabled-text, var(--text));",
+      "cursor: not-allowed; color: var(--btn-disabled-text, var(--faint));",
     );
-    // The link drawn as a button: the base already lays it out (673).
     expect(rule("a.den-btn")).toBeNull();
-    expect(rule(".den-btn:focus-visible")).toBe(
-      // Issue 1137: the ring's colour and offset are tokens (today's values).
+    expect(
+      rule('.den-btn:focus-visible, .den-btn[data-den-force~="focus"]'),
+    ).toBe(
       "outline: 2px solid var(--focus-ring, var(--accent)); outline-offset: var(--focus-offset, 2px);",
     );
   });

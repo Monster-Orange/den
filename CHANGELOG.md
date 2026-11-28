@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
+### Added
+
+- UI kit 0.23.0: the button (DS component #7) gains `ghost`, `link` and `icon` variants, a filled danger confirm for dialogs, a `lg` size, fixed heights (28, 36 and 44px, and 44px at 600px wide or less), an icon before the label, `aria-pressed`, a menu trigger whose ▾ turns while open, disabled with a reason that stays focusable (a disabled button is a neutral grey box with faint text in both themes, never a faded colour), `<summary>` buttons, long labels that truncate (`hydrateButtons()` shows the full label as a tooltip whenever one is cut off), a `close` (×) icon, and `holdButton()` for busy. Buttons draw only the kit's own icons. Danger is a red outline on a page.
+
 ## [0.4.92] - unreleased
 
 ### Changed

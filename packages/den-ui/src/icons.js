@@ -40,6 +40,7 @@ export const ICONS = {
     '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M15 5v14"/>',
   // Issue 549: an arrow out of the edge (the folded panel's Show panel).
   panelShow: '<path d="M10 6l-6 6 6 6M4 12h11M19 5v14"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
 };
 
 /** An icon's <svg>, aria-hidden (the label is beside it). */
