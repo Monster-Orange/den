@@ -215,6 +215,8 @@ export const KIT_FILES: readonly string[] = [
   "update-pill.css",
   "pager.js",
   "pager.css",
+  "tabs.js",
+  "tabs.css",
   // Issue 95 (UI kit slice 1): the global shell (top bar, rail, pins,
   // collapse, ☰ drawer), the version chip, What's new, the Report form
   // and the kit's words, and the client entry (window.DenUI).
