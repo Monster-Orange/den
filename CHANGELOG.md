@@ -25,6 +25,8 @@ config and manifest changes a distribution must make to move to it under
 
 - When Peek loses its connection to an agent's terminal, it now says it's connecting until it's back, and stops saying that typing goes to the agent. Before, it kept looking live for the second before it reconnected, and a key typed then was lost with no sign. (issue 1902)
 
+- The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
+
 ## [0.4.92] - unreleased
 
 ### Changed
