@@ -43,7 +43,7 @@
   margin: 0;
   padding: 0 var(--space-3);
   border: 0;
-  border-left: 1px var(--edge-style, solid) var(--border);
+  border-inline-start: 1px var(--edge-style, solid) var(--border);
   border-radius: 0;
   background: transparent;
   color: var(--text);
@@ -59,13 +59,13 @@
     color var(--dur-fast) var(--ease);
 }
 .den-tab:first-child {
-  border-left: 0;
-  border-top-left-radius: calc(var(--radius-button) - 1px);
-  border-bottom-left-radius: calc(var(--radius-button) - 1px);
+  border-inline-start: 0;
+  border-start-start-radius: calc(var(--radius-button) - 1px);
+  border-end-start-radius: calc(var(--radius-button) - 1px);
 }
 .den-tab:last-child {
-  border-top-right-radius: calc(var(--radius-button) - 1px);
-  border-bottom-right-radius: calc(var(--radius-button) - 1px);
+  border-start-end-radius: calc(var(--radius-button) - 1px);
+  border-end-end-radius: calc(var(--radius-button) - 1px);
 }
 .den-tab-n {
   font-size: var(--fs-xs);
@@ -88,7 +88,7 @@
   color: var(--on-accent);
   font-weight: 500;
   box-shadow: 0 0 0 1px var(--accent-fill);
-  border-left-color: var(--accent-fill);
+  border-inline-start-color: var(--accent-fill);
 }
 .den-tab[aria-pressed="true"] .den-tab-n,
 .den-tab[aria-current="page"] .den-tab-n,
@@ -229,14 +229,16 @@
     transparent
   );
 }
-[dir="rtl"] .den-tabs-edge[data-den-tabs-edge="start"]::before {
+.den-tabs[data-den-tabs-dir="rtl"]
+  .den-tabs-edge[data-den-tabs-edge="start"]::before {
   background: linear-gradient(
     to left,
     var(--den-tabs-edge-bg, var(--surface)),
     transparent
   );
 }
-[dir="rtl"] .den-tabs-edge[data-den-tabs-edge="end"]::before {
+.den-tabs[data-den-tabs-dir="rtl"]
+  .den-tabs-edge[data-den-tabs-edge="end"]::before {
   background: linear-gradient(
     to right,
     var(--den-tabs-edge-bg, var(--surface)),
@@ -270,6 +272,14 @@
   )
   .den-tab-n {
   color: var(--bad);
+}
+@media (forced-colors: active) {
+  .den-tab[aria-pressed="true"],
+  .den-tab[aria-current="page"],
+  .den-tab[aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .den-tab {

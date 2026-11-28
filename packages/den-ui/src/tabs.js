@@ -114,6 +114,8 @@ const ON_ATTR = {
   panel: "aria-selected",
 };
 
+const HANDLES = new WeakMap();
+
 export function hydrateTabs(el, opts = {}) {
   const root = el?.matches?.("[data-den-tabs]")
     ? el
@@ -121,6 +123,8 @@ export function hydrateTabs(el, opts = {}) {
       el?.querySelector?.("[data-den-tabs]"));
   const none = { set() {}, chosen: () => "", destroy() {} };
   if (!root) return none;
+  if (root.hasAttribute("data-den-tabs-ready"))
+    return HANDLES.get(root) ?? none;
   const kind = KINDS.includes(root.dataset.denTabs)
     ? root.dataset.denTabs
     : "switch";
@@ -181,12 +185,16 @@ export function hydrateTabs(el, opts = {}) {
       return;
     }
     if (kind === "page") return;
+    const mod =
+      e.button !== 0 || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey;
+    if (kind === "panel" && mod) return;
     if (kind === "panel") e.preventDefault();
     choose(idOf(b));
   };
 
   const onKey = (e) => {
     if (kind === "page" || e.isComposing) return;
+    if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     const b = e.target.closest?.(".den-tab");
     if (kind === "panel" && e.key === " " && b && usable(b)) {
       e.preventDefault();
@@ -223,6 +231,14 @@ export function hydrateTabs(el, opts = {}) {
     const br = b.getBoundingClientRect();
     return br.left + br.width / 2 < rr.left + rr.width / 2 ? "left" : "right";
   };
+  function dirNow() {
+    const rtl = globalThis.getComputedStyle(root).direction === "rtl";
+    root.dataset.denTabsDir = rtl ? "rtl" : "ltr";
+    for (const b of edges) {
+      const start = b.dataset.denTabsEdge === "start";
+      if (b.firstChild) b.firstChild.textContent = start !== rtl ? "«" : "»";
+    }
+  }
   function edgesNow() {
     if (folded) {
       for (const b of edges) b.hidden = true;
@@ -282,6 +298,7 @@ export function hydrateTabs(el, opts = {}) {
   let need = 0;
   let folded = false;
   function measure() {
+    dirNow();
     if (!fold || !select) return edgesNow();
     if (!folded)
       need =
@@ -323,7 +340,7 @@ export function hydrateTabs(el, opts = {}) {
   measure();
   keep();
 
-  return {
+  const handle = {
     set(id) {
       const b = segs().find((s) => idOf(s) === String(id));
       if (b && usable(b)) show(String(id));
@@ -337,6 +354,10 @@ export function hydrateTabs(el, opts = {}) {
       row?.removeEventListener("focusin", onFocus);
       for (const b of edges) b.removeEventListener("click", onEdge);
       select?.removeEventListener("change", onSelect);
+      HANDLES.delete(root);
+      root.removeAttribute("data-den-tabs-ready");
     },
   };
+  HANDLES.set(root, handle);
+  return handle;
 }
