@@ -2690,6 +2690,7 @@
       "run": [
         "tests/unit/test-infra/gate-1217-clauses.test.ts",
         "tests/unit/test-infra/gate-1381.test.ts",
+        "tests/unit/test-infra/gate-1391-clauses.test.ts",
         "tests/unit/test-infra/gate-1407-clauses.test.ts",
         "tests/unit/test-infra/gate-142-runner.test.ts",
         "tests/unit/test-infra/gate-142-stubs.test.ts",
@@ -3045,6 +3046,11 @@
         "tests/unit/test-infra/gate-expect-shape.test.ts"
       ],
       "why": "tests that load gate/1381.mjs"
+    },
+    {
+      "when": ["gate/1391.mjs"],
+      "run": ["tests/unit/test-infra/gate-1391-clauses.test.ts"],
+      "why": "tests that load gate/1391.mjs"
     },
     {
       "when": ["gate/1407.mjs"],
