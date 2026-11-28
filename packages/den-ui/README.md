@@ -731,6 +731,8 @@ panel }`: `id` names it, `text` is its words, `href` its page, `count`
   and an arrow with such a tab hidden behind it shows a 6px `--bad` dot.
   The chosen tab and a focused tab are kept in view. A row that fits
   looks as it always did.
+- In a grid cell or a flex item, give the cell `min-width: 0`: else the
+  cell grows to the row's full width and the row never scrolls.
 - When even that can't help (narrower than its widest tab plus both
   arrows and fades), it folds into one native `<select>` with the same
   choices (counts in brackets) after the visible label, and goes back a
