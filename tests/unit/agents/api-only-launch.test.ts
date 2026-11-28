@@ -192,7 +192,7 @@ describe("D47: every den-claude agent's hook reads the rules", () => {
 
   it("with no rules, the hook is as before", () => {
     const pre = launch(planner)!.PreToolUse[0];
-    expect(pre.matcher).toBe("Bash|Read");
+    expect(pre.matcher).toBe("Bash|Read|Write|Edit|MultiEdit|NotebookEdit");
     expect(pre.hooks[0].command).not.toContain("--api-only");
   });
 

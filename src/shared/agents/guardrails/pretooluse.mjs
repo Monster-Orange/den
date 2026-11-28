@@ -560,6 +560,7 @@ function stage(raw) {
   }
   const words = [];
   const inputs = [];
+  const outputs = [];
   let stdoutRedirected = false;
   for (let j = k; j < raw.length; j++) {
     const w = raw[j];
@@ -568,6 +569,7 @@ function stage(raw) {
       // Claude Code shows stdout and stderr both, so only stdout sent to a
       // file leaves the chat: `>f`, `1>f`, `&>f`. `2>f`, `2>&1`, `>&2` don't.
       const toFd = r[2] === "&" && /^\d+$/.test(raw[j + 1] ?? "");
+      if (!toFd && raw[j + 1] !== undefined) outputs.push(raw[j + 1]);
       if ((r[1] === "" || r[1] === "1" || r[1] === "&") && !toFd)
         stdoutRedirected = true;
       j++;
@@ -584,7 +586,14 @@ function stage(raw) {
     }
     words.push(w);
   }
-  return { words, inputs, stdoutRedirected, background: false, assigns };
+  return {
+    words,
+    inputs,
+    outputs,
+    stdoutRedirected,
+    background: false,
+    assigns,
+  };
 }
 
 const base = (w) => String(w).slice(String(w).lastIndexOf("/") + 1);
@@ -682,6 +691,47 @@ export function decide(input, env = process.env) {
       home,
       background: ti.run_in_background === true,
     });
+  return null;
+}
+
+export function fromHelper(input) {
+  const set = (v) => typeof v === "string" && v.length > 0;
+  return !!input && (set(input.agent_id) || set(input.agent_type));
+}
+
+const WRITERS = new Set(["tee", "cp", "mv", "install", "ln", "rsync"]);
+
+export function handoffDecision(input, handoff) {
+  if (!handoff || !fromHelper(input)) return null;
+  const ti =
+    input.tool_input && typeof input.tool_input === "object"
+      ? input.tool_input
+      : {};
+  const cwd = typeof input.cwd === "string" ? input.cwd : process.cwd();
+  const target = path.resolve(handoff);
+  const hits = (f) =>
+    typeof f === "string" && f !== "" && path.resolve(cwd, f) === target;
+  const id = String(input.agent_id || input.agent_type).replace(
+    /[^A-Za-z0-9_-]/g,
+    "-",
+  );
+  const mine = path.join(path.dirname(target), "handoffs", `helper-${id}.md`);
+  const why = `Den blocked a write to ${target}: that is the agent's own handoff, and this is a helper. Write your handoff to ${mine} instead.`;
+  if (["Write", "Edit", "MultiEdit", "NotebookEdit"].includes(input.tool_name))
+    return hits(ti.file_path) || hits(ti.notebook_path) ? why : null;
+  if (input.tool_name !== "Bash") return null;
+  let pipelines;
+  try {
+    pipelines = parseShell(String(ti.command ?? ""));
+  } catch {
+    return null;
+  }
+  for (const stages of pipelines)
+    for (const st of stages) {
+      if (st.outputs.some(hits)) return why;
+      if (WRITERS.has(base(st.words[0] ?? "")) && st.words.slice(1).some(hits))
+        return why;
+    }
   return null;
 }
 
@@ -835,6 +885,7 @@ async function main() {
         reason = looksLikeGhWrite(command) ? PUBLIC_TEXT_FAILED : null;
       }
     }
+    reason ??= handoffDecision(input, arg("--handoff"));
     if (!process.argv.includes("--no-guardrails")) reason ??= decide(input);
   } catch {
     reason = null;

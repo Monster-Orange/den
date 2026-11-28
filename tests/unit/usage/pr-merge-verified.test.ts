@@ -474,3 +474,33 @@ describe("dropping an old mark clears its rotation", () => {
     expect(readRotation(files)?.due).toBe("compactions");
   });
 });
+
+describe("issue 765: a helper's merge is its own", () => {
+  it("a `gh pr merge` in a subagent's transcript never marks the agent merged", async () => {
+    const dir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), "den-prm-")),
+    );
+    tmps.push(dir);
+    const f = writeUsageFixture(dir);
+    const env = { HOME: dir, CLAUDE_CONFIG_DIR: path.join(dir, "claude") };
+    const rec = listRecords(f.stateDir).find((r) => r.id === "agent-3")!;
+    const sub = path.join(
+      f.projects,
+      "-work-north",
+      rec.resumeToken!,
+      "subagents",
+    );
+    fs.mkdirSync(sub, { recursive: true });
+    fs.copyFileSync(
+      transcriptWith("gh pr merge 103 --squash"),
+      path.join(sub, "agent-fork.jsonl"),
+    );
+    const rows = await agentUsage(listRecords(f.stateDir), {
+      env,
+      prState: async () => "MERGED",
+    });
+    const o = rows.find((r) => r.agent === "agent-3")!.outcome!;
+    expect(o.prOpened).toBe("https://github.com/acme/notes/pull/103");
+    expect(o.prMerged).toBeUndefined();
+  });
+});

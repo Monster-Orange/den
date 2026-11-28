@@ -26,6 +26,7 @@
  */
 import {
   dueFor,
+  fromHelper,
   noteCompaction,
   notePendingCompaction,
   readHandoff,
@@ -65,6 +66,7 @@ export function rotationHookOutput(
   if (stored && stored.after !== args.after)
     args = { ...args, after: stored.after };
   const i = input as Record<string, unknown>;
+  if (fromHelper(i)) return "";
   const event = i.hook_event_name;
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;

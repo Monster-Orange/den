@@ -152,8 +152,7 @@ const inboxFlags = (inbox: InboxHookArgs): string[] => [
   ...(inbox.call ? hookCallFlags(inbox.call) : []),
 ];
 
-/** The tools the PreToolUse hook sees: with D47 rules, the file tools too. */
-export const PRETOOL_MATCHER = "Bash|Read";
+export const PRETOOL_MATCHER = "Bash|Read|Write|Edit|MultiEdit|NotebookEdit";
 export const PRETOOL_MATCHER_API_ONLY =
   "Bash|Read|Write|Edit|MultiEdit|NotebookEdit|Grep|Glob";
 
@@ -192,6 +191,9 @@ export function hookCommands(
         path.join(dir, "pretooluse.mjs"),
         ...(apiOnly
           ? ["--api-only", apiOnly.rules, "--audit", apiOnly.audit]
+          : []),
+        ...(rotation
+          ? ["--handoff", path.join(rotation.files, "handoff.md")]
           : []),
         ...(gate ? ["--gate", gate.cli, "--gate-settings", gate.settings] : []),
       ],

@@ -347,6 +347,13 @@ export function launchRotation(
   return s;
 }
 
+export function fromHelper(input: unknown): boolean {
+  if (!input || typeof input !== "object") return false;
+  const i = input as Record<string, unknown>;
+  const set = (v: unknown) => typeof v === "string" && v.length > 0;
+  return set(i.agent_id) || set(i.agent_type);
+}
+
 /**
  * One compaction that happened (SessionStart with source "compact"; never
  * PreCompact, which runs even when nothing is compacted). `input` is the
@@ -363,9 +370,10 @@ export function noteCompaction(
     string,
     unknown
   >;
+  const prev = readRotation(filesDir);
+  if (fromHelper(i)) return prev ?? { compactions: 0, after };
   const conversation =
     typeof i.session_id === "string" && i.session_id ? i.session_id : undefined;
-  const prev = readRotation(filesDir);
   const fresh =
     !prev ||
     (conversation !== undefined &&
@@ -720,6 +728,7 @@ export function rotationInstruction(
     `Den: this session is done, because ${why} (session rotation).`,
     `Write your handoff now, to ${handoffFile(filesDir)}, with these headings, each filled in:`,
     "## Objective, ## State, ## Open items, ## How to QA, ## Next step.",
+    `If you are a helper or a fork of this agent, not the agent Den started, never write ${HANDOFF_FILE}: write your own handoff to ${path.join(filesDir, HANDOFFS_DIR, "helper-<your id>.md")}, then end your turn.`,
     ...(left.length ? leftRunningLines(filesDir, left) : []),
     "Write plainly and explain every ID. Then end your turn.",
     "Den relaunches your role from it in a fresh conversation.",

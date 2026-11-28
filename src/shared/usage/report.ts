@@ -128,7 +128,7 @@ async function mergeVerified(
 ): Promise<string | undefined> {
   if (!prState) return undefined;
   const seen = new Set<string>();
-  for (const c of stats.flatMap((s) => s.prMerges)) {
+  for (const c of stats.filter((s) => !s.subagent).flatMap((s) => s.prMerges)) {
     const ref = c.ref || outcome.prOpened || "";
     const key = `${c.repo ?? ""} ${ref}`;
     if (seen.has(key)) continue;
