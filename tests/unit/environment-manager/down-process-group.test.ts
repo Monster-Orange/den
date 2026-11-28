@@ -318,3 +318,48 @@ describe("down stops what a detached up started", () => {
     expect(r.outcome).toBe("nothing-recorded");
   });
 });
+
+const asRoot = process.getuid?.() === 0;
+(asRoot ? describe.skip : describe)(
+  "a failed save in a close handler still closes",
+  () => {
+    let lockedDir: string;
+    let logged: string[];
+    beforeEach(() => {
+      lockedDir = fs.mkdtempSync(path.join(tmp, "locked-"));
+      process.env.DEN_DAEMONS_FILE = path.join(lockedDir, "daemons.json");
+      logged = [];
+      jest.spyOn(console, "error").mockImplementation((...a: unknown[]) => {
+        logged.push(a.map(String).join(" "));
+      });
+    });
+    afterEach(() => {
+      fs.chmodSync(lockedDir, 0o700);
+      (console.error as jest.Mock).mockRestore?.();
+    });
+    const lock = () => fs.chmodSync(lockedDir, 0o500); // the save can't land
+
+    it("stopping the recorded group: onClose runs and the error names the file", async () => {
+      manifestWith({ up: IDLE });
+      const pgid = up();
+      lock();
+
+      const r = await down();
+
+      expect(alive(pgid)).toBe(false);
+      expect(r.exitCode).toBe(0);
+      expect(r.outcome).toBe("stopped");
+      expect(logged.join("\n")).toMatch(/couldn't save .*daemons\.json/);
+    });
+
+    it("after a declared down: onClose runs and the error names the file", async () => {
+      manifestWith({ up: IDLE, down: "true" });
+      lock();
+
+      const r = await down();
+
+      expect(r.exitCode).toBe(0);
+      expect(logged.join("\n")).toMatch(/couldn't save .*daemons\.json/);
+    });
+  },
+);
