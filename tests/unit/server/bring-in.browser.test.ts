@@ -645,27 +645,32 @@ describe("Bring in (AG-17.1)", () => {
     };
     let between = 0;
     let holding = false;
+    let oldRow: Record<string, unknown> | null = null;
     await p.route(
       (u) => u.pathname === "/api/sessions",
       async (r) => {
-        if (r.request().method() !== "GET" || !holding || between >= 2)
-          return r.continue();
+        if (r.request().method() !== "GET" || between >= 2) return r.continue();
         const res = await r.fetch();
         const body = (await res.json()) as {
           sessions?: Array<Record<string, unknown>>;
         };
-        body.sessions = (body.sessions ?? [])
-          .filter((x) => x.agent !== "fresh-3" || x.id === sid)
-          .map((x) => {
-            if (x.id !== sid) return x;
-            const { agent: _agent, ...rest } = x;
-            return {
-              ...rest,
-              kind: "session",
-              state: "running",
-              exited: false,
-            };
-          });
+        const rows = body.sessions ?? [];
+        if (!holding) {
+          oldRow = rows.find((x) => x.id === sid) ?? oldRow;
+          return r.fulfill({ response: res, json: body });
+        }
+        const { agent: _agent, ...shell } = oldRow ?? { id: sid };
+        body.sessions = [
+          ...rows.filter((x) => x.agent !== "fresh-3" && x.id !== sid),
+          {
+            ...shell,
+            id: sid,
+            workspace: "north",
+            kind: "session",
+            state: "running",
+            exited: false,
+          },
+        ];
         between += 1;
         await r.fulfill({ response: res, json: body });
       },
