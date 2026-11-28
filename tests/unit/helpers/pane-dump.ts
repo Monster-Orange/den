@@ -1,7 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
 
-/** Issue 1903 diagnosis: the test install's logs folder when a pane wait times out. */
 export function logsDump(stateDir: string): string[] {
   const files: string[] = [];
   const walk = (d: string, depth: number) => {

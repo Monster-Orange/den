@@ -485,46 +485,44 @@ describe("Bring in (AG-17.1)", () => {
     const ch = await done;
     expect(ch.status()).toBe(200);
     expect(((await ch.json()) as { fresh?: boolean }).fresh).toBe(true);
-    await p
-      .waitForFunction(
-        (old) => {
-          const panes = [...document.querySelectorAll(".pane")];
-          const text =
-            panes[0]?.querySelector(".xterm-rows")?.textContent ?? "";
-          return (
-            panes.length === 1 &&
-            panes[0].getAttribute("data-id") !== old &&
-            text.includes("Switched to planner") &&
-            text.includes(
-              "Nothing to resume yet; started fresh (same conversation id, folder and scope)",
-            )
-          );
-        },
-        sid,
-        { timeout: browserWaitMs() },
-      )
-      .catch(async (e: unknown) => {
-        const seen = await p
-          .evaluate((o) => {
-            const panes = [...document.querySelectorAll(".pane")].map((x) => ({
-              id: x.getAttribute("data-id"),
-              cols: x.getAttribute("data-pty-cols"),
-              isOld: x.getAttribute("data-id") === o,
-              text: (x.querySelector(".xterm-rows")?.textContent ?? "").slice(
-                -1500,
-              ),
-            }));
-            const toasts = [
-              ...document.querySelectorAll(".den-toast, [role=status]"),
-            ].map((x) => x.textContent ?? "");
-            return { url: location.href, panes, toasts };
-          }, sid)
-          .catch((x: unknown) => ({ error: String(x) }));
-        console.log(
-          `ISSUE-1903 DUMP\n${JSON.stringify({ seen, logs: logsDump(s!.stateDir), made: s!.made.length }, null, 2)}\nconsole:\n${lines.join("\n")}\npage errors:\n${errors.join("\n")}`,
+    const dumpAt = setTimeout(() => {
+      void p
+        .evaluate(() => ({
+          url: location.href,
+          ids: [...document.querySelectorAll("[data-id]")].map((x) => ({
+            tag: x.tagName,
+            id: x.getAttribute("data-id"),
+            cols: x.getAttribute("data-pty-cols"),
+            text: (x.textContent ?? "").slice(-1500),
+          })),
+          status: [
+            ...document.querySelectorAll("[role=status], [role=alert]"),
+          ].map((x) => x.textContent ?? ""),
+        }))
+        .catch((x: unknown) => ({ error: String(x) }))
+        .then((seen) =>
+          console.log(
+            `ISSUE-1903 DUMP\n${JSON.stringify({ old: sid, seen, logs: logsDump(s!.stateDir), made: s!.made.length }, null, 2)}\nconsole:\n${lines.join("\n")}\npage errors:\n${errors.join("\n")}`,
+          ),
         );
-        throw e;
-      });
+    }, browserWaitMs() - 1_500);
+    await p.waitForFunction(
+      (old) => {
+        const panes = [...document.querySelectorAll(".pane")];
+        const text = panes[0]?.querySelector(".xterm-rows")?.textContent ?? "";
+        return (
+          panes.length === 1 &&
+          panes[0].getAttribute("data-id") !== old &&
+          text.includes("Switched to planner") &&
+          text.includes(
+            "Nothing to resume yet; started fresh (same conversation id, folder and scope)",
+          )
+        );
+      },
+      sid,
+      { timeout: browserWaitMs() },
+    );
+    clearTimeout(dumpAt);
     const said = await p.evaluate(() => {
       const text =
         document.querySelector("section[data-id]")?.textContent ?? "";
