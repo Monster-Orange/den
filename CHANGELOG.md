@@ -15,6 +15,8 @@ config and manifest changes a distribution must make to move to it under
 
 - The Agents page pages its list with the UI kit's pager. Agents that need you always show in full above it; Done, Working, Idle and Stopped page by page number in the page's own order, with each band's and project's whole count, and a group cut by a page break shows "(continued)". The page is in the address, so a reload or Back keeps it, and each poll asks for that page only (`GET /api/sessions?view=agents`).
 
+- Den's own pages ask the sessions list for a page each, not the whole list. `GET /api/sessions` takes filters that apply before the page cut: `agents=ws/agent,…` (up to 20), `kind=agent|session`, `projects=a,b`, `repo=` (rows on that repo or on none) and `q=` (text in the name, persona, label, project or session title, up to 100 characters). Peek asks its own agent and the waiting ones; the services panel shows its service's agents 20 at a time with the whole count ("1–20 of 60", "Show 20 more"); the top bar lists 20 matches for what you type, with "{n} more on the Agents page"; Settings' app-key picker is a search over 20 agents and refuses a name not in its list. (issue 1926)
+
 ### Added
 
 - UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", « First, ‹ Previous, a page picker ("Page 3 of 17"), Next ›, Last » and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's.
