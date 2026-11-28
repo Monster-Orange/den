@@ -908,6 +908,12 @@
     "tests/unit/server/agents-pane-pty-size.browser.test.ts": [
       "src/ui/server/public/agents-page.js",
       "src/ui/server/public/agents-*.js"
+    ],
+    "tests/unit/server/kit-tabs-1977.browser.test.ts": [
+      "src/ui/server/public/panel.js",
+      "src/ui/server/public/report-den.js",
+      "src/ui/server/public/coach-tab.js",
+      "packages/den-ui/src/tabs.js"
     ]
   },
   "subjectless": [],
@@ -977,6 +983,7 @@
         "tests/unit/server/gate-chip.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/mode-layers.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
@@ -1166,6 +1173,7 @@
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/local-dev-output-panel.browser.test.ts",
@@ -1260,6 +1268,7 @@
         "tests/unit/server/fresh-create-ui.browser.test.ts",
         "tests/unit/server/graph-many-groups.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/local-dev-room.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
         "tests/unit/server/pane-reconnect.browser.test.ts",
@@ -1484,6 +1493,7 @@
         "tests/unit/server/gate-chip.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/mode-layers.browser.test.ts",
         "tests/unit/server/one-url-per-module.browser.test.ts",
@@ -1609,6 +1619,7 @@
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/local-dev-output-panel.browser.test.ts",
@@ -1729,6 +1740,7 @@
         "tests/unit/server/hub-switch.browser.test.ts",
         "tests/unit/server/i18n-layout.browser.test.ts",
         "tests/unit/server/i18n-pages.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/mode-layers.browser.test.ts",
@@ -1879,6 +1891,7 @@
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/local-dev-output-panel.browser.test.ts",
@@ -2069,6 +2082,7 @@
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/local-dev-output-panel.browser.test.ts",
@@ -2472,6 +2486,7 @@
         "tests/unit/server/i18n-pages.browser.test.ts",
         "tests/unit/server/i18n-shell.browser.test.ts",
         "tests/unit/server/kit-dialog.browser.test.ts",
+        "tests/unit/server/kit-tabs-1977.browser.test.ts",
         "tests/unit/server/light-contrast.browser.test.ts",
         "tests/unit/server/lk0-sudo.browser.test.ts",
         "tests/unit/server/local-dev-output-panel.browser.test.ts",
@@ -4228,6 +4243,16 @@
         "src/ui/server/workspace-routes.ts"
       ],
       "run": ["tests/unit/server/kit-dialog.browser.test.ts"],
+      "why": "starts Den as a process: its subject"
+    },
+    {
+      "when": [
+        "packages/den-ui/src/tabs.js",
+        "src/ui/server/public/coach-tab.js",
+        "src/ui/server/public/panel.js",
+        "src/ui/server/public/report-den.js"
+      ],
+      "run": ["tests/unit/server/kit-tabs-1977.browser.test.ts"],
       "why": "starts Den as a process: its subject"
     },
     {

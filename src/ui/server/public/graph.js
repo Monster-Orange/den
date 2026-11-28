@@ -1047,12 +1047,6 @@ function onClick(e) {
     hooks.addMissing?.(add.dataset.addDep);
     return;
   }
-  const tab = t.closest("[data-tab]");
-  if (tab) {
-    st.tab = tab.dataset.tab;
-    openDetail(st.sel, true);
-    return;
-  }
   const pinT = t.closest("[data-pin-toggle]");
   if (pinT && window.denShell) {
     const id = pinT.dataset.pinToggle;

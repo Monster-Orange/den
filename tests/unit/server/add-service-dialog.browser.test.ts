@@ -234,7 +234,7 @@ describe("issue 806: Add Service on the kit's dialog", () => {
     if (!browser) return;
     const { p, adds } = await open();
     await openDialog(p);
-    await p.click(`${DLG} [data-as-tab="gh"]`);
+    await p.click(`${DLG} [role="tab"][data-id="gh"]`);
     await p.locator(`${DLG} [data-as-gh="orchard"]`).click();
     await p.check(`${DLG} input[name="add-svc-mode"][value="managed"]`);
     await p.fill(`${DLG} #add-svc-branch`, "dev");
@@ -254,6 +254,26 @@ describe("issue 806: Add Service on the kit's dialog", () => {
     await p.context().close();
   }, 60_000);
 
+  it("Local and GitHub are the kit's panel tabs: → moves, keeps focus and shows the panel", async () => {
+    if (!browser) return;
+    const { p } = await open();
+    await openDialog(p);
+    const tabs = `${DLG} [data-den-tabs="panel"]`;
+    await p.locator(`${tabs} [role="tab"][data-id="local"]`).focus();
+    await p.keyboard.press("ArrowRight");
+    const gh = p.locator(`${tabs} [role="tab"][data-id="gh"]`);
+    await expect(gh.getAttribute("aria-selected")).resolves.toBe("true");
+    expect(await gh.evaluate((b) => document.activeElement === b)).toBe(true);
+    expect(await p.locator(`${DLG} #add-svc-panel-gh`).isHidden()).toBe(false);
+    expect(await p.locator(`${DLG} #add-svc-panel-local`).isHidden()).toBe(
+      true,
+    );
+    expect(
+      await p.locator(`${tabs} [role="tablist"]`).getAttribute("aria-label"),
+    ).toBeTruthy();
+    await p.context().close();
+  }, 60_000);
+
   it("a refused add says why inside the dialog, which stays open", async () => {
     if (!browser) return;
     const { p } = await open();
@@ -266,7 +286,7 @@ describe("issue 806: Add Service on the kit's dialog", () => {
         : r.fallback(),
     );
     await openDialog(p);
-    await p.click(`${DLG} [data-as-tab="gh"]`);
+    await p.click(`${DLG} [role="tab"][data-id="gh"]`);
     await p.locator(`${DLG} [data-as-gh="orchard"]`).click();
     await p.click(`${DLG} [data-as="add"]`);
     await p

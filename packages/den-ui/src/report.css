@@ -287,27 +287,6 @@
   text-decoration: underline;
   cursor: pointer;
 }
-.fb-tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.fb-tabs button {
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px var(--edge-style, solid) var(--border-strong, var(--border));
-  background: var(--surface, var(--bg));
-  color: var(--text);
-  font: 13px var(--sans);
-  cursor: pointer;
-}
-.fb-tabs button[aria-selected="true"] {
-  background: var(--accent-fill, var(--accent));
-  border-color: var(--accent-fill, var(--accent));
-  color: var(--on-accent);
-  font-weight: 600;
-}
 .fb-list {
   list-style: none;
   margin: 0;
