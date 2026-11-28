@@ -5,6 +5,9 @@ import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
 import { RETRY_MS } from "../../../packages/den-ui/src/savestate.js";
+import { kitT } from "../../../packages/den-ui/src/strings.js";
+
+const REFUSAL = "bad_value";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -53,7 +56,7 @@ window.list = mountChecks(document.getElementById("host"), {
     window.calls.push(values);
     if (window.mode === "hold") return new Promise((r) => held.push(r));
     if (window.mode === "network") return Promise.reject({ network: true });
-    if (window.mode === "refuse") return Promise.reject(new Error("Refused here."));
+    if (window.mode === "refuse") return Promise.reject(new Error("${REFUSAL}"));
     return Promise.resolve();
   },
 });
@@ -166,7 +169,7 @@ describe("the checkbox list in a browser", () => {
   it("a click anywhere on a row ticks its box", async () => {
     if (skip()) return;
     const p = await open();
-    await p.getByText("Third one.").click();
+    await p.locator("#jobs-2-help").click();
     await settle(p);
     expect(await ticked(p)).toEqual(["b", "c"]);
     expect(await calls(p)).toEqual([["b", "c"]]);
@@ -228,9 +231,9 @@ describe("the checkbox list in a browser", () => {
     await settle(p);
     expect(await ticked(p)).toEqual(["a", "b"]);
     expect(await state(p)).toBe("error");
-    expect(
-      await p.locator("#host").getByRole("status").textContent(),
-    ).toContain("Refused here.");
+    expect(await p.locator("#host").getByRole("status").textContent()).toBe(
+      kitT("en", "kit.checks.refused", { reason: REFUSAL }),
+    );
     await p.clock.runFor(RETRY_MS[RETRY_MS.length - 1] * 2);
     expect(await calls(p)).toHaveLength(2);
     await p.context().close();
@@ -239,7 +242,7 @@ describe("the checkbox list in a browser", () => {
   it("shows the host's empty line only while nothing is ticked", async () => {
     if (skip()) return;
     const p = await open();
-    const note = p.locator("#host").getByText("Nobody.");
+    const note = p.locator("#host [data-den-checks-note]");
     await expect(note.isVisible()).resolves.toBe(false);
     await p.locator('#host input[value="b"]').click();
     await settle(p);
