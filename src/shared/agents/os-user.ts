@@ -1038,6 +1038,7 @@ export const OS_LOGIN_OWED: readonly string[] = [
   "the Linux end-to-end run as root in CI",
   "the sign-in token passed by file handle, not the environment",
   "access lists on the folders above the person's home on macOS",
+  "owner and mode of the folders above the person's home on Linux",
 ];
 
 const ACL_WRITES = new Set([

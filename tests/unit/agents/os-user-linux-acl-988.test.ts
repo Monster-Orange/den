@@ -202,7 +202,16 @@ describe("issue 988: the Linux home's access lists leave the owed list", () => {
       "the Linux end-to-end run as root in CI",
       "the sign-in token passed by file handle, not the environment",
       "access lists on the folders above the person's home on macOS",
+      "owner and mode of the folders above the person's home on Linux",
     ]);
+  });
+});
+
+describe("issue 988 review: the folders above the Linux home are checked for named ACL entries only", () => {
+  it("OS_LOGIN_OWED lists their owner and mode, so setup and launch stay refused", () => {
+    expect(OS_LOGIN_OWED).toContain(
+      "owner and mode of the folders above the person's home on Linux",
+    );
   });
 });
 

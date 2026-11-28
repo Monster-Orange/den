@@ -11,8 +11,9 @@ run as the person, and setup and doctor say so.
 This Den version still owes checks before the login is safe to use: a sandbox
 policy for the agents' login, `own/` files read without following links, the
 Linux end-to-end run as root in CI, the sign-in token passed by file handle
-rather than the environment, and access lists on the folders above the
-person's home on macOS. Until that list (`OS_LOGIN_OWED`) is empty, `agents
+rather than the environment, access lists on the folders above the
+person's home on macOS, and the owner and mode of the folders above the
+person's home on Linux. Until that list (`OS_LOGIN_OWED`) is empty, `agents
 os-login setup` and `agents session` refuse with "the agents' own login isn't
 ready on this Den version yet", and name what is still to come. Each later
 slice removes its own item.
