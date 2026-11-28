@@ -19,6 +19,8 @@ config and manifest changes a distribution must make to move to it under
 
 ### Fixed
 
+- Den's tests wait for a workspace delete's pending agent moves before they remove their temp folders. A move that waited on a running agent's turn could write the agent's record after the test's cleanup and make its folder again. (issue 1892)
+
 - UI kit: the save-state line's Copy text is a 44px target on touch and at 480px wide or less, so a product no longer sizes `.den-savestate button` itself (issue 1976).
 - On the Graph page, a service's details popped out are now a dialog like Den's other pop-ups: named by the service, with Close, Esc, Report, and the keyboard back on the card when it shuts. Dock puts them back at the side.
 - UI kit: the Markdown editor takes size hooks a host sets on any ancestor: `--md-editor-min-height`, `--md-editor-max-height`, `--md-editor-grow` (fill a flex column) and `--md-font-size` and `--md-line-height`, so a product stops styling `.md-field` and `.cm-editor` itself (issue 1975).

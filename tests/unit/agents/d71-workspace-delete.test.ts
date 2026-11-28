@@ -137,6 +137,7 @@ describe("D71: a workspace delete and its agents", () => {
       await new Promise((res) => setTimeout(res, 200));
       return null;
     };
+    r.deps.exitWatchMs = 1_500;
     const d = resolveAgentsDeps(r.deps);
     const token = readRecord(r.stateDir, "planner")!.resumeToken!;
     const out = await disposeWorkspaceAgents(d, "north", "move", "south");
@@ -161,6 +162,9 @@ describe("D71: a workspace delete and its agents", () => {
       ["--session-id", token],
       ["--resume", token],
     ]);
+    await cleanupRigs();
+    await settle(3_000);
+    expect(fs.existsSync(r.dir)).toBe(false);
   });
 
   it("move: refused to the same workspace, or one that doesn't exist", async () => {

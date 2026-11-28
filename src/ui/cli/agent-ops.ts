@@ -8593,6 +8593,12 @@ export async function moveAgent(
   });
 }
 
+const afterTurnMoves = new Set<Promise<unknown>>();
+
+export async function afterTurnMovesSettled(): Promise<void> {
+  await Promise.allSettled([...afterTurnMoves]);
+}
+
 /** D71: a workspace's agents, for its delete to name. */
 export interface WorkspaceAgent {
   id: string;
@@ -8658,14 +8664,18 @@ export async function disposeWorkspaceAgents(
       } else {
         // Its turn may be long: it moves when it ends.
         // Never left behind: if Den can't wait for it, it stops and moves.
-        void moveAgent(d, a.id, ws, to, "after-turn").catch(async () => {
-          try {
-            await stopAgent(d, a.id, ws);
-            await moveAgent(d, a.id, ws, to, "now");
-          } catch {
-            /* it shows under No workspace, with Move */
-          }
-        });
+        const moving = moveAgent(d, a.id, ws, to, "after-turn").catch(
+          async () => {
+            try {
+              await stopAgent(d, a.id, ws);
+              await moveAgent(d, a.id, ws, to, "now");
+            } catch {
+              /* it shows under No workspace, with Move */
+            }
+          },
+        );
+        afterTurnMoves.add(moving);
+        void moving.finally(() => afterTurnMoves.delete(moving));
         done.moved.push({ id: a.id, pending: true });
       }
     }

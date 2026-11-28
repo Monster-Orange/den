@@ -18,6 +18,7 @@ import {
 } from "../../../../src/shared/den-config.js";
 import { validateCatalog } from "../../../../src/shared/agents/catalog.js";
 import type { AgentsDeps } from "../../../../src/ui/cli/agents-command.js";
+import { afterTurnMovesSettled } from "../../../../src/ui/cli/agent-ops.js";
 import {
   scriptedFactory,
   type ScriptedPty,
@@ -58,6 +59,7 @@ const hosts: SessionHost[] = [];
 
 /** Close every host and remove every temp dir the rigs made. */
 export async function cleanupRigs(): Promise<void> {
+  await afterTurnMovesSettled();
   for (const h of hosts.splice(0)) await h.close();
   for (const d of tmps.splice(0))
     fs.rmSync(d, { recursive: true, force: true });
