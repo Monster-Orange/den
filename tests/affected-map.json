@@ -2721,6 +2721,7 @@
         "tests/unit/test-infra/gate-93-bell-state-1905.test.ts",
         "tests/unit/test-infra/gate-93-pointer.test.ts",
         "tests/unit/test-infra/gate-974-probes.test.ts",
+        "tests/unit/test-infra/gate-981-898-406-expect.test.ts",
         "tests/unit/test-infra/gate-checks.test.ts",
         "tests/unit/test-infra/gate-cli-json-840.test.ts",
         "tests/unit/test-infra/gate-evidence.test.ts",
