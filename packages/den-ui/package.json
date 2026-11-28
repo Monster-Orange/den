@@ -46,6 +46,8 @@
     "./popover.css": "./src/popover.css",
     "./switch": "./src/switch.js",
     "./switch.css": "./src/switch.css",
+    "./checks": "./src/checks.js",
+    "./checks.css": "./src/checks.css",
     "./preview": "./src/preview.js",
     "./preview-frame": "./src/preview-frame.js",
     "./filter-bar": "./src/filter-bar.js",

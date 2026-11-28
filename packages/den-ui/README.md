@@ -688,6 +688,39 @@ never converted to HTML and back).
   motion. A transparent border shows the track in forced colours.
 - Under `style-src 'self'`: no inline styles, nothing injected.
 
+## The checkbox list (`den-checks`)
+
+- `src/checks.js`, `src/checks.css` (exports `./checks`, `./checks.css`;
+  `DenUI.checks(el, opts)` in the client entry): a fieldset of labelled
+  checkboxes, one name and one short line each, that saves on its own.
+
+      import { mountChecks } from "@monster-orange/den-ui/checks";
+      const list = mountChecks(el, {
+        legend: "Who writes GitHub issues",
+        items: [{ value: "planner", label: "Planner", help: "Splits goals into stories." }],
+        checked: ["planner"],
+        empty: "No agent can file or update issues.",
+        onSave: (values) => save(values),
+      });
+
+- `checksHtml({ id, legend, items, checked, disabled, note })` draws it:
+  a hidden legend, one whole-row `<label>` per item, the save line
+  (savestate.css's look) and the host's note. The words are the host's;
+  the kit says only "Saving…", "Saved", "Not saved. Retrying…" and
+  "Not saved: {reason}" (en, es, ja).
+- Each tick calls `onSave(values)` with the ticked values in the items'
+  order. Saves go one at a time; a tick during a save sends the newest
+  list when it ends. A reject with `network` or `retry` keeps the ticks
+  and retries on a back-off and when the browser is back online. Any
+  other reject puts the boxes back as last saved and shows its message.
+  `empty` is the host's line while nothing is ticked.
+- `list.values()`, `list.set(values)` (no call), `list.setDisabled(off,
+  note?)`, `list.destroy()`.
+- Rows are the settings row's sizes: 10px gap, accent-fill box, bold name,
+  muted help; on a phone (or a coarse pointer) each row is 44px with a 22px
+  box. Space ticks, Tab moves box to box. It links checks.css and
+  savestate.css beside the page's other kit sheets when they're missing.
+
 ## A list's filter bar and bulk bar
 
 Two parts for a list of things (issues 552 and 553). Both are data-only:

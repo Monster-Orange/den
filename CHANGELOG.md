@@ -6,6 +6,10 @@ config and manifest changes a distribution must make to move to it under
 
 ## [0.4.93] - unreleased
 
+### Changed
+
+- Settings › Agents › Who writes GitHub issues is now a checkbox for each agent job (Planner, Software engineer, Den's own agent and the rest), with a short line under each name, in English, Spanish and Japanese. There are no role codes to type. Each tick saves on its own. A refused save puts the box back and says why, and a lost connection keeps the tick and retries. When Den can't read the setting, the boxes are off and Try again reads it again. The stored value is the same list of roles, and roles with no box here are kept. The UI kit has a new checkbox list (`den-checks`: `checksHtml`, `mountChecks`, `DenUI.checks`). (issue 1964)
+
 ## [0.4.92] - unreleased
 
 ### Changed

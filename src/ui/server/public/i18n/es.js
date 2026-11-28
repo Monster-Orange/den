@@ -1637,7 +1637,27 @@
       "Cuando un agente ha esperado este tiempo, su grupo se reinicia aunque la carga siga alta, de unos pocos en unos pocos como antes. 0: la carga puede detener los reinicios mientras siga alta. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "Quién escribe issues de GitHub",
     "set.agents.issue_writes.d":
-      "Los roles cuyos agentes pueden crear issues, comentar, poner etiquetas y fijar hitos en los repositorios de GitHub de su propio proyecto, al momento y con registro. Separados por comas; vacío: ninguno. Sin definir: planner, orchestrator, lead, sde, builder, reviewer e install (el agente propio de __DEN_TITLE__). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "Los agentes con estos trabajos pueden crear y actualizar issues de GitHub en su propio proyecto sin preguntarte, para que los errores y lo pendiente queden anotados. __DEN_TITLE__ registra cada cambio que hacen. No pueden cerrar ni borrar un issue.",
+    "set.job.planner": "Planificador",
+    "set.job.planner.d": "Divide los objetivos en historias pequeñas y listas.",
+    "set.job.orchestrator": "Orquestador",
+    "set.job.orchestrator.d":
+      "Reparte las historias entre otros agentes y las sigue hasta el final.",
+    "set.job.sde": "Ingeniero de software",
+    "set.job.sde.d": "Construye una historia y abre un pull request.",
+    "set.job.reviewer": "Revisor",
+    "set.job.reviewer.d": "Revisa pull requests. Nunca fusiona.",
+    "set.job.tester": "Tester",
+    "set.job.tester.d": "Ejecuta las pruebas e informa de los fallos.",
+    "set.job.designer": "Diseñador",
+    "set.job.designer.d": "Diseña flujos y pantallas.",
+    "set.job.install": "El agente propio de __DEN_TITLE__",
+    "set.job.install.d": "Cuida de este __DEN_TITLE__.",
+    "set.jobs.none": "Ningún agente puede crear ni actualizar issues.",
+    "set.jobs.unread":
+      "__DEN_TITLE__ no pudo leer este ajuste, así que no se muestran las marcas.",
+    "set.jobs.viewOnly": "Puedes ver esto, pero no cambiarlo.",
+    "set.jobs.again": "Reintentar",
     "set.agents.issue_writes_per_hour":
       "Escrituras de issues de GitHub por hora",
     "set.agents.issue_writes_per_hour.d":
@@ -1897,7 +1917,8 @@
     "set.workspace.hub_delivery_loop.o.install": "Como en todas partes",
     "set.workspace.hub_delivery_loop.o.on": "Activado",
     "set.workspace.hub_delivery_loop.o.off": "Desactivado",
-    "set.workspace.agents_max_per_project": "Agentes por proyecto: este proyecto",
+    "set.workspace.agents_max_per_project":
+      "Agentes por proyecto: este proyecto",
     "set.workspace.agents_max_per_project.d":
       "Cuántos agentes de este proyecto pueden funcionar a la vez. Vacío o 0 usa Agentes por proyecto. Solo puede ser más bajo que eso. Un inicio por encima de esto se rechaza, y dice qué límite lo frena.",
     "set.workspace.hub_delivery_loop_extra":
@@ -2372,7 +2393,8 @@
     "ap.det.den_sandbox_on.off":
       "Un agente puesto en off en user.yml sigue en off.",
     "ap.do.repo_clone": "Clonar {source} en {path}",
-    "ap.do.project_agent_cap": "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Fijar el límite de agentes del proyecto {project}: {from} → {to}",
     "ap.det.project_agent_cap.now": "Ahora: {v}",
     "ap.det.project_agent_cap.then": "Después: {v}",
     "ap.do.project_mode":

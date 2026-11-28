@@ -2855,7 +2855,27 @@
       "Once an agent has waited this long, its batch restarts even if the load is still high, a few at a time as before. 0: the load may hold restarts as long as it stays high. __DEN_CLI__ config agents.resume.max_wait_seconds=600",
     "set.agents.issue_writes": "Who writes GitHub issues",
     "set.agents.issue_writes.d":
-      "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "Agents with these jobs can file and update GitHub issues in their own project without asking you, so bugs and follow-ups get written down. __DEN_TITLE__ records every change they make. They can't close or delete an issue.",
+    "set.job.planner": "Planner",
+    "set.job.planner.d": "Splits goals into small, ready stories.",
+    "set.job.orchestrator": "Orchestrator",
+    "set.job.orchestrator.d":
+      "Hands stories to other agents and follows them to done.",
+    "set.job.sde": "Software engineer",
+    "set.job.sde.d": "Builds one story and opens a pull request.",
+    "set.job.reviewer": "Reviewer",
+    "set.job.reviewer.d": "Reviews pull requests. Never merges.",
+    "set.job.tester": "Tester",
+    "set.job.tester.d": "Runs the tests and reports failures.",
+    "set.job.designer": "Designer",
+    "set.job.designer.d": "Designs flows and screens.",
+    "set.job.install": "__DEN_TITLE__'s own agent",
+    "set.job.install.d": "Looks after this __DEN_TITLE__.",
+    "set.jobs.none": "No agent can file or update issues.",
+    "set.jobs.unread":
+      "__DEN_TITLE__ couldn't read this setting, so the ticks aren't shown.",
+    "set.jobs.viewOnly": "You can see this but not change it.",
+    "set.jobs.again": "Try again",
     "set.agents.issue_writes_per_hour": "GitHub issue writes an hour",
     "set.agents.issue_writes_per_hour.d":
       "How many issue writes all agents together may make in an hour. Past it, an agent is told how long to wait. __DEN_CLI__ config agents.issue_writes_per_hour=60",
@@ -3316,7 +3336,8 @@
       "Each agent goes into the sandbox at its next start; one that runs now keeps running.",
     "ap.det.den_sandbox_on.off": "An agent set to off in user.yml stays off.",
     "ap.do.repo_clone": "Clone {source} into {path}",
-    "ap.do.project_agent_cap": "Set project {project}'s agent cap: {from} → {to}",
+    "ap.do.project_agent_cap":
+      "Set project {project}'s agent cap: {from} → {to}",
     "ap.det.project_agent_cap.now": "Now: {v}",
     "ap.det.project_agent_cap.then": "Then: {v}",
     "ap.do.project_mode": "Set project {project}'s mode: {from} → {to}",

@@ -1,0 +1,84 @@
+/* den-ui: the checkbox list (checks.js, issue 1964). Tokens only; the
+   sizes are the settings row's (setting-row.css). The whole row ticks.
+   Linked, never injected. The save line is savestate.css's. */
+.den-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-width: 32rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-family: var(--sans);
+  font-size: var(--fs-m);
+  line-height: var(--lh);
+  color: var(--text);
+}
+.den-checks-legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.den-checks-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.den-checks-box {
+  flex: none;
+  margin: 3px 0 0;
+  accent-color: var(--accent-fill);
+  cursor: pointer;
+}
+.den-checks-box:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: var(--focus-offset, 2px);
+}
+.den-checks-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.den-checks-name {
+  font-weight: 600;
+}
+.den-checks-help {
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.den-checks-note {
+  margin: 0;
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.den-checks-note[hidden] {
+  display: none;
+}
+.den-checks[data-disabled] .den-checks-row,
+.den-checks[data-disabled] .den-checks-box {
+  color: var(--faint);
+  cursor: not-allowed;
+}
+.den-checks[data-disabled] .den-checks-help {
+  color: var(--faint);
+}
+/* A phone: each row is a 44px target and the box is 22px. */
+@media (max-width: 720px), (pointer: coarse) {
+  .den-checks-row {
+    min-height: var(--tap);
+    align-items: center;
+  }
+  .den-checks-box {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+  }
+}

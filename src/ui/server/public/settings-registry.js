@@ -37,6 +37,7 @@ import {
   timeZones,
   upgradeTimes,
 } from "/kit/time.js";
+import { mountChecks } from "/kit/checks.js";
 import { qrSvg } from "./qr.js";
 import { openAgentModeMenu, renderPersonasSettings } from "./persona-ui.js";
 import { comboHtml, wireCombo } from "./combobox.js";
@@ -609,6 +610,128 @@ function drawSounds(host, ctx, io) {
  * the service worker, the subscription (alerts.js pushOn), and
  * alerts.phone on. Off: this device only stops; others keep theirs.
  */
+const DEN_JOBS = {
+  planner: ["Planner", "Splits goals into small, ready stories."],
+  orchestrator: [
+    "Orchestrator",
+    "Hands stories to other agents and follows them to done.",
+  ],
+  sde: ["Software engineer", "Builds one story and opens a pull request."],
+  reviewer: ["Reviewer", "Reviews pull requests. Never merges."],
+  tester: ["Tester", "Runs the tests and reports failures."],
+  designer: ["Designer", "Designs flows and screens."],
+  install: ["__DEN_TITLE__'s own agent", "Looks after this __DEN_TITLE__."],
+};
+
+export function issueWriteRoles(v) {
+  const list = Array.isArray(v) ? v : String(v ?? "").split(",");
+  return [...new Set(list.map((r) => String(r).trim()).filter(Boolean))];
+}
+
+const sentence = (id) => {
+  const w = String(id).replace(/[-_]+/g, " ").trim();
+  return w.charAt(0).toUpperCase() + w.slice(1);
+};
+
+export function issueWriteJobs(reg) {
+  const jobs = [];
+  const seen = new Set();
+  const add = (id, label, help) => {
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    jobs.push({ value: id, label, help });
+  };
+  for (const [id, [name, line]] of Object.entries(DEN_JOBS))
+    add(id, L(`set.job.${id}`, name), L(`set.job.${id}.d`, line));
+  for (const r of reg?.roles || [])
+    if (r?.id && !DEN_JOBS[r.id])
+      add(r.id, sentence(r.id), String(r.description || ""));
+  for (const p of reg?.personas || [])
+    if (p?.role && !DEN_JOBS[p.role]) add(p.role, sentence(p.role), "");
+  return jobs;
+}
+
+export function issueWriteSave(ticked, saved, jobs) {
+  const boxed = new Set(jobs.map((j) => j.value));
+  return issueWriteRoles([
+    ...ticked,
+    ...(saved || []).filter((r) => !boxed.has(r)),
+  ]);
+}
+
+let jobsLoad = null;
+function drawIssueWrites(host, ctx) {
+  const words = {
+    legend: L("set.agents.issue_writes", "Who writes GitHub issues"),
+    empty: L("set.jobs.none", "No agent can file or update issues."),
+    unread: L(
+      "set.jobs.unread",
+      "__DEN_TITLE__ couldn't read this setting, so the ticks aren't shown.",
+    ),
+    view: L("set.jobs.viewOnly", "You can see this but not change it."),
+    again: L("set.jobs.again", "Try again"),
+  };
+  const roles = ctx.data?.agent_issue_writes?.roles;
+  const viewOnly =
+    typeof document !== "undefined" &&
+    document.documentElement.dataset.denView === "read-only";
+  jobsLoad ??= ctx.shell
+    .api("GET", "/api/personas")
+    .catch(() => null)
+    .then((reg) => issueWriteJobs(reg));
+  void jobsLoad.then((items) => {
+    if (!host.isConnected && host.ownerDocument) return;
+    if (!Array.isArray(roles)) {
+      mountChecks(host, {
+        legend: words.legend,
+        items,
+        checked: [],
+        disabled: true,
+        note: words.unread,
+      });
+      host.insertAdjacentHTML(
+        "beforeend",
+        `<button type="button" class="den-btn sm" data-jobs-again>${escHtml(words.again)}</button>`,
+      );
+      host.querySelector("[data-jobs-again]").addEventListener("click", () => {
+        ctx.shell
+          .api("GET", "/api/settings")
+          .then((d) => {
+            ctx.data.agent_issue_writes = d?.agent_issue_writes ?? null;
+          })
+          .catch(() => null)
+          .finally(() => drawIssueWrites(host, ctx));
+      });
+      return;
+    }
+    let saved = issueWriteRoles(roles);
+    mountChecks(host, {
+      legend: words.legend,
+      items,
+      checked: saved,
+      disabled: viewOnly,
+      note: viewOnly ? words.view : "",
+      empty: words.empty,
+      lang: () => document.documentElement.lang || "en",
+      onSave: async (ticked) => {
+        const next = issueWriteSave(ticked, saved, items);
+        let reply;
+        try {
+          // busy-ok: each tick saves on its own; the list's save line shows the wait
+          reply = await ctx.shell.api("POST", "/api/settings", {
+            agent_issue_writes: { roles: next },
+          });
+        } catch (e) {
+          throw { network: !!e?.network, message: e?.message || "" };
+        }
+        for (const [k, v] of Object.entries(reply || {}))
+          if (k !== "ok" && v !== undefined) ctx.data[k] = v;
+        saved = next;
+      },
+    });
+  });
+}
+
 function drawPush(host, ctx, io) {
   const api = (m, p, b) => ctx.shell.api(m, p, b);
   // BUSY-1: the subscription's write goes through the working pop-up,
@@ -5516,35 +5639,27 @@ export const DEN_SETTINGS = [
     write: (v, ctx) => ctx.post({ git_reads: { at_once: v } }),
   },
   {
-    // issue_write: which persona roles write GitHub issues in their
-    // project's repos (user.yml agents.issue_writes). A person's only.
     id: "agents.issue_writes",
     category: "agents",
     label: "Who writes GitHub issues",
     description:
-      "The roles whose agents may create issues, comment, label and set milestones in their own project's GitHub repos, at once and recorded. Comma-separated; empty: none. Unset: planner, orchestrator, lead, sde, builder, reviewer and install (__DEN_TITLE__'s own agent). __DEN_CLI__ config agents.issue_writes=[planner,sde]",
+      "Agents with these jobs can file and update GitHub issues in their own project without asking you, so bugs and follow-ups get written down. __DEN_TITLE__ records every change they make. They can't close or delete an issue.",
     keywords: [
       "issue",
       "issues",
       "github",
       "role",
+      "job",
       "comment",
       "label",
       "agents.issue_writes",
     ],
     scope: "user",
     keys: ["agent_issue_writes.roles"],
-    control: { type: "text" },
-    read: (ctx) => (ctx.data.agent_issue_writes?.roles ?? []).join(", "),
+    control: { type: "custom", render: drawIssueWrites },
+    read: (ctx) => ctx.data.agent_issue_writes?.roles ?? [],
     write: (v, ctx) =>
-      ctx.post({
-        agent_issue_writes: {
-          roles: String(v ?? "")
-            .split(",")
-            .map((r) => r.trim())
-            .filter(Boolean),
-        },
-      }),
+      ctx.post({ agent_issue_writes: { roles: issueWriteRoles(v) } }),
   },
   {
     id: "agents.issue_writes_per_hour",
