@@ -111,6 +111,7 @@ import {
 import { HEALTH_POLL } from "./health-poll.js";
 import { MENU_LOAD } from "./menu-load.js";
 import { GIT_READS } from "./git-reads.js";
+import { PAGE_MAX_RANGE } from "./list-page.js";
 import {
   ISSUE_WRITES_PER_HOUR,
   ISSUE_WRITES_VISIBILITY_MINUTES,
@@ -134,6 +135,7 @@ export const PERSON_ONLY_SETTINGS = [
   "web_bridge",
   // Issue 406: how long the start waits for the owner's GitHub name.
   "web_github",
+  "web_lists",
   // den#143: how long `web up` waits for the server, on a busy machine too.
   "web_ready",
   // Issue 819: how many new-device requests and wrong codes are allowed.
@@ -362,6 +364,15 @@ const WEB_GITHUB: Record<string, Limit> = {
     min: 1,
     max: 600,
     int: false,
+  },
+};
+
+const WEB_LISTS: Record<string, Limit> = {
+  page_max: {
+    key: "list_page_max",
+    min: PAGE_MAX_RANGE.min,
+    max: PAGE_MAX_RANGE.max,
+    int: true,
   },
 };
 
@@ -910,6 +921,7 @@ export function patchCliRows(
     ) ??
     patchBlock(user, "web_bridge", "web", BRIDGE, bridgeRest, apply) ??
     patchBlock(user, "web_github", "web", WEB_GITHUB, body.web_github, apply) ??
+    patchBlock(user, "web_lists", "web", WEB_LISTS, body.web_lists, apply) ??
     patchBlock(user, "web_ready", "web", WEB_READY, body.web_ready, apply) ??
     patchBlock(
       user,

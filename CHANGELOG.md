@@ -49,6 +49,10 @@ config and manifest changes a distribution must make to move to it under
 
 - The terminal host no longer resizes an agent's terminal to the size it already has. A window that leads the size says it again when it comes back into view or takes focus. That used to reach the terminal as a resize, even though nothing changed. (issue 1910)
 
+### Changed
+
+- A shared server-side page for lists, for the list routes and MCP tools to use: `?limit` (50 by default), an opaque `?cursor` tied to its list, `?page=N` and `?at=first|last`, filters before the cut, and one answer shape `{ items, next, prev, total?, offset?, page?, pages? }` for a pager with First, Prev, Page N, Next and Last. A new setting, `web.list_page_max` (Settings › Server, `den config`, `setting_change`; 200 by default, 10 to 5000), caps how many rows one page may hold.
+
 ## [0.4.92] - unreleased
 
 ### Changed

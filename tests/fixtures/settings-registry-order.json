@@ -24,6 +24,7 @@
     ["server.bridge_listen", "server"],
     ["server.bridge_probe", "server"],
     ["server.owner_name_timeout", "server"],
+    ["server.list_page_max", "server"],
     ["server.github_watch_interval", "server"],
     ["server.github_watch_max_interval", "server"],
     ["server.github_api_budget_floor", "server"],

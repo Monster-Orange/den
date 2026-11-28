@@ -92,6 +92,7 @@ export const DOTTED: Record<string, [field: string, limit: string]> = {
     "web_github",
     "owner_name_timeout_seconds",
   ],
+  "web.list_page_max": ["web_lists", "page_max"],
   // The shared GitHub watcher's pace and API budget.
   "github.watch_interval_seconds": ["github", "watch_interval_seconds"],
   "github.watch_max_interval_seconds": ["github", "watch_max_interval_seconds"],

@@ -123,6 +123,7 @@ export const NARROW_SETTINGS: readonly string[] = [
   "web.crash_loop_max_wait_seconds",
   "web.bridge_probe_seconds",
   "web.owner_name_timeout_seconds",
+  "web.list_page_max",
   "web.ready_probe_seconds",
   "web.start_wait_seconds",
   "web.tools_probe_seconds",
