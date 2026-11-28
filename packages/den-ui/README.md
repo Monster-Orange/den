@@ -52,7 +52,12 @@ own copy, so a page never mixes two versions.
   turns the pill into a card. Knobs, set on `.den-upd`: `--upd-pad-y`
   (default 8px) and `--upd-top` (default: a 50px pill centred on a 48px
   bar, top -1px; for a 56px bar,
-  `calc(env(safe-area-inset-top, 0px) + 3px)`). It reads `--surface`,
+  `calc(env(safe-area-inset-top, 0px) + 3px)`). In the shell, with no top
+  bar (`--den-top-h: 0px`) the pill sits 8px down, and a bar shorter than
+  the pill never puts it above the window. A host places kit overlays
+  below its own bars with `--den-overlay-top` on `body` or `:root`, no kit
+  selector needed: the pill's top is then the safe area plus that (say
+  `body.focus { --den-overlay-top: calc(44px + 8px); }`). It reads `--surface`,
   `--text`, `--muted`, `--border-strong`, `--accent`, `--accent-text` and
   `--upd-shadow`.
 
