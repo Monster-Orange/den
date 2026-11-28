@@ -205,6 +205,75 @@ describe("issue 988: check and Doctor say when the agents' login could read the 
   });
 });
 
+describe("issue 988 review: logs fail closed", () => {
+  const P = "/Users/robin/.local/state/den/logs";
+
+  it("a logs folder the person doesn't own is named, even at 0700", () => {
+    expect(
+      problems(facts({ path: P, uid: 455, mode: 0o40700, acl: [] })),
+    ).toContain(P);
+  });
+
+  it("ACLs on the logs folder that can't be read are a problem", () => {
+    expect(
+      problems(
+        facts({ path: P, uid: 501, mode: 0o40700, acl: [], aclUnread: true }),
+      ),
+    ).toMatch(/can't read the ACL on the logs folder/);
+    const state = path.join(tmp, "unread-state");
+    fs.mkdirSync(path.join(state, "logs"), { recursive: true });
+    const f = readOsUserFacts({ ...LAYOUT, personHome: state }, state, {
+      exec: () => ({ status: 1, stdout: "" }),
+      personUid: 501,
+      stat: (p) => {
+        try {
+          const s = fs.statSync(p);
+          return { uid: s.uid, mode: s.mode };
+        } catch {
+          return null;
+        }
+      },
+      read: () => null,
+      chain: () => [],
+    });
+    expect(f.logsDir?.aclUnread).toBe(true);
+    expect(f.personHome?.aclUnread).toBe(true);
+  });
+
+  it("a service log that is a link isn't written through", async () => {
+    const dir = path.join(tmp, "linked");
+    fs.mkdirSync(dir, { recursive: true });
+    const target = path.join(tmp, "linked-target.txt");
+    fs.writeFileSync(target, "keep\n");
+    fs.chmodSync(target, 0o644);
+    const log = path.join(dir, "svc.log");
+    fs.symlinkSync(target, log);
+    await expect(runOnce(log)).rejects.toThrow(/link/);
+    expect(fs.readFileSync(target, "utf-8")).toBe("keep\n");
+    expect(mode(target)).toBe(0o644);
+  });
+
+  it("a rotated copy that is a link isn't written through, and a log that is a link isn't rotated", () => {
+    const dir = path.join(tmp, "rotlink");
+    fs.mkdirSync(dir, { recursive: true });
+    const target = path.join(tmp, "rotlink-target.txt");
+    fs.writeFileSync(target, "keep\n");
+    fs.chmodSync(target, 0o644);
+    const log = path.join(dir, "svc.log");
+    fs.writeFileSync(log, "x\n".repeat(200), { mode: 0o600 });
+    fs.symlinkSync(target, `${log}.1`);
+    expect(rotateIfOversized(log, 100, 50)).toBe(false);
+    expect(fs.readFileSync(target, "utf-8")).toBe("keep\n");
+    expect(mode(target)).toBe(0o644);
+    const big = path.join(tmp, "rotlink-big.txt");
+    fs.writeFileSync(big, "x\n".repeat(200));
+    const linkLog = path.join(dir, "linked.log");
+    fs.symlinkSync(big, linkLog);
+    expect(rotateIfOversized(linkLog, 100, 50)).toBe(false);
+    expect(fs.statSync(big).size).toBe(400);
+  });
+});
+
 describe("issue 988: the logs item leaves the owed list", () => {
   it("OS_LOGIN_OWED no longer lists the logs, and still lists the Linux home's access lists", () => {
     const owed = OS_LOGIN_OWED.join("\n");

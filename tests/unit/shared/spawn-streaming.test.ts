@@ -12,7 +12,13 @@ import { EventEmitter } from "events";
 jest.mock("child_process", () => ({ spawn: jest.fn() }));
 // Mock fs to avoid touching the real filesystem
 jest.mock("fs", () => ({
+  constants: jest.requireActual<typeof import("fs")>("fs").constants,
+  writeSync: jest.fn(),
+  fstatSync: jest.fn(() => ({ size: 41 })),
   default: {
+    constants: jest.requireActual<typeof import("fs")>("fs").constants,
+    writeSync: jest.fn(),
+    fstatSync: jest.fn(() => ({ size: 41 })),
     mkdirSync: jest.fn(),
     openSync: jest.fn(() => 3),
     fchmodSync: jest.fn(),
@@ -262,16 +268,19 @@ describe("spawnDaemon", () => {
       recursive: true,
       mode: 0o700,
     });
-    expect(mockFs.appendFileSync).toHaveBeenCalledWith(
-      "/tmp/test.log",
+    expect(mockFs.writeSync).toHaveBeenCalledWith(
+      3,
       expect.stringContaining("den start"),
-      { mode: 0o600 },
     );
-    // MUST be "a" (O_APPEND). Rotation truncates this file in place while the
+    // MUST be O_APPEND. Rotation truncates this file in place while the
     // detached child still holds this fd; only O_APPEND recomputes the offset
     // to EOF, so a plain write-mode fd would leave a huge sparse hole of NULs.
     // See src/shared/process/log-rotation.ts.
-    expect(mockFs.openSync).toHaveBeenCalledWith("/tmp/test.log", "a", 0o600);
+    const c = jest.requireActual<typeof import("fs")>("fs").constants;
+    const flags = (mockFs.openSync as jest.Mock).mock.calls[0]![1] as number;
+    expect(flags & c.O_APPEND).toBe(c.O_APPEND);
+    expect(flags & c.O_NOFOLLOW).toBe(c.O_NOFOLLOW);
+    expect(mockFs.openSync).toHaveBeenCalledWith("/tmp/test.log", flags, 0o600);
     expect(mockFs.fchmodSync).toHaveBeenCalledWith(3, 0o600);
     expect(mockFs.closeSync).toHaveBeenCalledWith(3); // fd returned by mock
   });

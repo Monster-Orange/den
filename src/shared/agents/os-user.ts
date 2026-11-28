@@ -526,7 +526,7 @@ export interface OsUserFacts {
   };
   group: { exists: boolean; members?: string[] };
   personUid: number;
-  personHome: (StatFacts & { acl: string[] }) | null;
+  personHome: (StatFacts & { acl: string[]; aclUnread?: boolean }) | null;
   sudoers: StatFacts | null;
   personRules: string[] | null;
   launcher: (StatFacts & { text: string }) | null;
@@ -534,7 +534,9 @@ export interface OsUserFacts {
   agentsDir: StatFacts | null;
   homeDir: StatFacts | null;
   stateDir: StatFacts | null;
-  logsDir?: (StatFacts & { path: string; acl: string[] }) | null;
+  logsDir?:
+    | (StatFacts & { path: string; acl: string[]; aclUnread?: boolean })
+    | null;
   dir: boolean;
   runtime?: string[];
 }
@@ -555,6 +557,10 @@ export function homeProblems(l: OsUserLayout, f: OsUserFacts): string[] {
   const h = f.personHome;
   if (!h) out.push(`your home ${l.personHome} couldn't be read`);
   else {
+    if (h.aclUnread)
+      out.push(
+        `the access lists on your home ${l.personHome} couldn't be read`,
+      );
     if ((h.mode & 0o077) !== 0)
       out.push(
         `your home ${l.personHome} is ${octal(h.mode)}: the agents' login could read your files (it should be 0700; \`agents os-login setup\` closes it)`,
@@ -577,6 +583,11 @@ export function logsProblems(l: OsUserLayout, f: OsUserFacts): string[] {
   const g = f.logsDir;
   if (!g) return [];
   const out: string[] = [];
+  if (g.uid !== f.personUid)
+    out.push(
+      `Den's service logs folder ${g.path} isn't yours (its owner is uid ${g.uid})`,
+    );
+  if (g.aclUnread) out.push(`can't read the ACL on the logs folder ${g.path}`);
   if ((g.mode & 0o077) !== 0)
     out.push(
       `Den's service logs folder ${g.path} is ${octal(g.mode)}: the agents' login could read the logs (Den makes it 0700 when it starts)`,
@@ -911,13 +922,16 @@ const lsAcl = (
   l: OsUserLayout,
   p: string,
   ok: (cmd: string, args: string[]) => string | null,
-): string[] =>
-  l.platform === "darwin"
-    ? (ok("/bin/ls", ["-led", p]) ?? "")
-        .split("\n")
-        .map((x) => /^\s*\d+:\s*(.+)$/.exec(x)?.[1]?.trim())
-        .filter((x): x is string => !!x)
-    : [];
+): { acl: string[]; aclUnread: boolean } => {
+  if (l.platform !== "darwin") return { acl: [], aclUnread: false };
+  const out = ok("/bin/ls", ["-led", "--", p]);
+  if (out === null) return { acl: [], aclUnread: true };
+  try {
+    return { acl: parseLsAcl(out, [p]).get(p) ?? [], aclUnread: false };
+  } catch {
+    return { acl: [], aclUnread: true };
+  }
+};
 
 function personHomeFacts(
   l: OsUserLayout,
@@ -926,7 +940,7 @@ function personHomeFacts(
 ): OsUserFacts["personHome"] {
   const st = d.stat(l.personHome);
   if (!st) return null;
-  return { ...st, acl: lsAcl(l, l.personHome, ok) };
+  return { ...st, ...lsAcl(l, l.personHome, ok) };
 }
 
 function logsDirFacts(
@@ -936,7 +950,7 @@ function logsDirFacts(
   ok: (cmd: string, args: string[]) => string | null,
 ): OsUserFacts["logsDir"] {
   const st = d.stat(p);
-  return st ? { ...st, path: p, acl: lsAcl(l, p, ok) } : null;
+  return st ? { ...st, path: p, ...lsAcl(l, p, ok) } : null;
 }
 
 export function machineReadDeps(): OsUserReadDeps {

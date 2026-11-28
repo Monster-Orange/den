@@ -9,7 +9,7 @@
 import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
-import { rotateIfOversized } from "./log-rotation.js";
+import { openLogNoFollow, rotateIfOversized } from "./log-rotation.js";
 import { getStateDir } from "../paths.js";
 
 import { product } from "../product.js";
@@ -83,23 +83,19 @@ export function spawnDaemon(
   // long-lived ones that never respawn.
   rotateIfOversized(logPath);
 
-  // Stamp the log so the tail starts reading from a clean boundary.
-  const ts = new Date().toISOString();
-  fs.appendFileSync(logPath, `\n\n─── ${product().cli} start ${ts} ───\n`, {
-    mode: 0o600,
-  });
-  // Where this run's output starts. The tail reads from here, not from "the
-  // end when tail opened": a fast command (a refused sudo, a typo) can write
-  // and exit before tail starts, and `-n 0` would drop those lines.
-  const startOffset = fs.statSync(logPath).size;
-
   // Open the log fd in the parent so we can hand it to the child.
-  // MUST stay "a" (O_APPEND): rotation truncates this file in place, and only
+  // MUST stay O_APPEND: rotation truncates this file in place, and only
   // O_APPEND recomputes the offset to EOF on every write. With plain O_WRONLY
   // the child would keep its old offset and write a multi-GB sparse hole of
   // NULs. See log-rotation.ts.
-  const logFd = fs.openSync(logPath, "a", 0o600);
-  fs.fchmodSync(logFd, 0o600);
+  const logFd = openLogNoFollow(logPath);
+  // Stamp the log so the tail starts reading from a clean boundary.
+  const ts = new Date().toISOString();
+  fs.writeSync(logFd, `\n\n─── ${product().cli} start ${ts} ───\n`);
+  // Where this run's output starts. The tail reads from here, not from "the
+  // end when tail opened": a fast command (a refused sudo, a typo) can write
+  // and exit before tail starts, and `-n 0` would drop those lines.
+  const startOffset = fs.fstatSync(logFd).size;
 
   const svcProc = spawn(command, [], {
     env,
