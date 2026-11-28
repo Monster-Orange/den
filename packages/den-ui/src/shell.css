@@ -1465,6 +1465,17 @@ body.den-has-shell .den-upd {
   bottom: auto;
   z-index: 1000;
 }
+/* A picker's menu, a list of names: a crumb's own menu, or a host's
+   (.den-pick). A sister app's menu, value for value (issue 898): as wide
+   as its longest name up to 320px, 8px clear of a phone's edges; past
+   that a name ends in an ellipsis (.den-mi-l). At most 70% of the
+   window's height, scrolling inside. Other pop-overs keep their own
+   width and height. */
+.den-pop.den-scope-menu,
+.den-pop.den-pick {
+  max-width: min(320px, calc(100vw - 16px));
+  max-height: min(70vh, calc(100vh - 72px));
+}
 /* A crumb's own menu drops below its ▾, inside the bar. */
 .den-scope-menu {
   position: absolute;

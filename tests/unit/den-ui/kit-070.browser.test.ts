@@ -113,6 +113,13 @@ if (!q.has("bare")) {
     document.documentElement.lang = "ja";
     document.documentElement.dataset.mode = "dark";
   }
+  if (q.has("long64")) {
+    projects.splice(0, 1, {
+      label: "Gate 898 a project whose name runs well past the row on any iPad",
+      href: "#garden",
+      current: true,
+    });
+  }
   // ?long: a host's long names (issue 303): 54+ characters each.
   const long = q.has("long");
   const crumbs = [
@@ -216,9 +223,10 @@ async function open(
   query = "",
   width = 1280,
   touch = false,
+  height = 800,
 ): Promise<Page> {
   const ctx = await b.newContext({
-    viewport: { width, height: 800 },
+    viewport: { width, height },
     ...(touch ? { hasTouch: true, isMobile: true } : {}),
     reducedMotion: "reduce",
   });
@@ -1720,6 +1728,87 @@ for (const engine of ["chromium", "webkit"]) {
         expect(row.labelRight).toBeLessThan(row.rowRight - 8);
         await t.context().close();
       }
+    });
+
+    it("a 64-character name is cut with an ellipsis in a capped menu, ✓ on its line (issue 898)", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      for (const width of [820, 1024]) {
+        const t = await open(b, "?long64", width, true);
+        await t.click('[data-scope="ws"]');
+        await t.waitForSelector('[role="menuitem"][aria-current="true"]');
+        const m = await t.$eval(
+          '[role="menuitem"][aria-current="true"]',
+          (r) => {
+            const l = r.firstElementChild as HTMLElement;
+            const lc = getComputedStyle(l);
+            const pop = r
+              .closest("#den-scope-ws-menu")!
+              .getBoundingClientRect();
+            const box = r.getBoundingClientRect();
+            const lb = l.getBoundingClientRect();
+            return {
+              popW: pop.width,
+              cut: l.scrollWidth > l.clientWidth,
+              overflow: lc.textOverflow,
+              wrap: lc.whiteSpace,
+              mark: getComputedStyle(r, "::after").content,
+              labelH: lb.height,
+              rowH: box.height,
+              labelRight: lb.right,
+              rowRight: box.right,
+            };
+          },
+        );
+        const at = `${engine} at ${width}`;
+        expect([at, m.popW <= 320]).toEqual([at, true]);
+        expect([at, m.cut, m.overflow, m.wrap]).toEqual([
+          at,
+          true,
+          "ellipsis",
+          "nowrap",
+        ]);
+        expect([at, m.mark]).toEqual([at, expect.stringMatching(/✓/)]);
+        expect(m.labelH).toBeLessThan(m.rowH);
+        expect(m.labelRight).toBeLessThan(m.rowRight - 8);
+        await t.context().close();
+      }
+    });
+
+    it("a pop-over with its own width keeps it; only a picker's menu is capped (issue 898)", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const t = await open(b, "", 1280);
+      const w = await t.evaluate(() => {
+        const mk = (cls: string) => {
+          const el = document.createElement("div");
+          el.className = cls;
+          el.style.width = "420px";
+          el.style.position = "fixed";
+          document.body.appendChild(el);
+          return el.getBoundingClientRect().width;
+        };
+        return { own: mk("den-pop"), pick: mk("den-pop den-pick") };
+      });
+      expect(w).toEqual({ own: 420, pick: 320 });
+      await t.context().close();
+    });
+
+    it("on a short window a menu is at most 70% of its height and scrolls inside (issue 898)", async () => {
+      const b = browsers[engine];
+      if (!b) return;
+      const h = 360;
+      const t = await open(b, "?many&nofilter", 1024, true, h);
+      await t.click('[data-scope="ws"]');
+      await t.waitForSelector("#den-scope-ws-menu [role=menuitem]");
+      const p = await t.$eval("#den-scope-ws-menu", (el) => ({
+        h: el.getBoundingClientRect().height,
+        scrolls: el.scrollHeight > el.clientHeight,
+        overflowY: getComputedStyle(el).overflowY,
+      }));
+      expect(p.h).toBeLessThanOrEqual(Math.ceil(h * 0.7));
+      expect([p.scrolls, p.overflowY]).toEqual([true, "auto"]);
+      await t.context().close();
     });
   });
 }

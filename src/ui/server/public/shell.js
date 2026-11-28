@@ -6522,7 +6522,7 @@
     closeMenu(false);
     if (again || !menu) return;
     var pop = document.createElement("div");
-    pop.className = "den-pop";
+    pop.className = "den-pop den-pick";
     pop.tabIndex = -1;
     pop.id = "den-pop-" + (anchor.dataset.scope || "menu");
     pop.setAttribute("role", "menu");
