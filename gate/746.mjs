@@ -137,8 +137,8 @@ function tokenFile(ctx, id) {
   return path.join(home, "actor-token", id, "token");
 }
 
-/** One agent asks to clear its own mode, with its own token; the call returns at its timeout. */
-function ask(ctx, id) {
+/** One agent asks to clear its own mode from its own shell (Den takes its token only from its processes), bounded at 15 s. */
+export async function ask(ctx, id) {
   const project = projectOf(ctx, id);
   if (!project) return { project, code: null, err: "no project in its record" };
   const file = tokenFile(ctx, id);
@@ -148,24 +148,23 @@ function ask(ctx, id) {
       code: null,
       err: "the stub has no token file of its own",
     };
-  const r = ctx.cli(
-    [
-      "mcp",
-      "--workspace",
-      project,
-      "--actor",
-      `agent:${id}`,
-      "--call",
-      "agent_mode",
-      JSON.stringify({ agent: id, ask: true, note: NOTE }),
-    ],
-    { timeout: 15000, env: { DEN_ACTOR_TOKEN_FILE: file } },
-  );
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  const bed = ctx.o?.bed || process.cwd();
+  const cmd = [
+    `cd ${q(bed)} &&`,
+    `DEN_ACTOR_TOKEN_FILE=${q(file)}`,
+    `perl -e 'alarm 15; exec @ARGV'`,
+    q(path.join(bed, "bin", "den-gate")),
+    `mcp --workspace ${q(project)}`,
+    `--actor ${q(`agent:${id}`)} --call agent_mode`,
+    q(JSON.stringify({ agent: id, ask: true, note: NOTE })),
+  ].join(" ");
+  const r = await ctx.agent(id).sh(cmd, 30000);
   return {
     project,
-    code: r.code,
-    err: (r.err || "").slice(-300),
-    out: (r.out || "").slice(-300),
+    code: r?.status ?? null,
+    err: (r?.err || "").slice(-300),
+    out: (r?.out || "").slice(-300),
   };
 }
 
@@ -178,8 +177,8 @@ export async function run(ctx, s) {
   // nobody else is there to) name the same agents: pick this run's by id.
   const before = heldIds(ctx);
   const asked = {
-    allow: ask(ctx, IDS.allow),
-    deny: ask(ctx, IDS.deny),
+    allow: await ask(ctx, IDS.allow),
+    deny: await ask(ctx, IDS.deny),
   };
   const after = heldIds(ctx);
   const mine = {};

@@ -88,6 +88,7 @@ import {
   type EdgeStripCountKind,
 } from "@kit/panel-fold.js";
 import { switchHtml, hydrateSwitch } from "@kit/switch.js";
+import { tabsHtml, hydrateTabs, type Tabs, type TabsItem } from "@kit/tabs.js";
 import { openPopover, placeBox, type Popover } from "@kit/popover.js";
 import {
   chosenCount,
@@ -356,6 +357,17 @@ pop.close(false);
 const spot: { top: number; left: number; side: "below" | "above" } = placeBox({ top: 0, bottom: 10, left: 0 }, 100, 50, 390, 800);
 void spot;
 void (foldBtn + stripHtml + swHtml);
+const tabItems: TabsItem[] = [
+  { id: "open", text: "Open", href: "/list?state=open", count: 3, alert: true },
+  { id: "closed", text: "Closed", disabled: false, panel: "closed-panel" },
+];
+const tabHtml: string = tabsHtml({ kind: "panel", label: "State", items: tabItems, chosen: "open", size: "m" });
+const tabs: Tabs = hydrateTabs(document.querySelector<HTMLElement>(".den-tabs"), {
+  onChange: (id: string) => id !== "closed",
+});
+tabs.set(tabs.chosen());
+tabs.destroy();
+void tabHtml;
 
 // The filter bar: the host's facets, counts and choices; the kit's words.
 const facets: FilterFacet[] = [

@@ -14,7 +14,7 @@ import homeStraysModule from "./home-strays.cjs";
 import tmpLeaksModule from "./tmp-leaks.cjs";
 
 const { homeStrays } = homeStraysModule;
-const { leaksIn, judge } = tmpLeaksModule;
+const { leaksIn, judge, historyIn, describeLeak } = tmpLeaksModule;
 import { reap } from "./child-reaper.mjs";
 
 export default function globalTeardown() {
@@ -69,6 +69,12 @@ export default function globalTeardown() {
     }
   }
   const tmp = stubs ? leaksIn(path.dirname(stubs)) : { leaks: [], own: [] };
+  const history = stubs ? historyIn(path.dirname(stubs)) : new Map();
+  const told = new Map(
+    judge(tmp.leaks, tmpLeakBaseline())
+      .over.flatMap((l) => l.dirs)
+      .map((d) => [d, describeLeak(d, history)]),
+  );
   for (const d of [...tmp.own, ...tmp.leaks.flatMap((l) => l.dirs)])
     fs.rmSync(d, { recursive: true, force: true });
   if (stubs && /\/den-test-global-\d+\/no-vendor-cli$/.test(stubs))
@@ -99,7 +105,10 @@ export default function globalTeardown() {
       `[jest] ${over.length} test file(s) left den-* folders in the temp folder (issue 1830): remove what a test makes in its afterAll, or make it in beforeAll. Removed now:`,
       ...over.flatMap((l) => [
         `  ${l.file} (${l.dirs.length}; the baseline allows ${l.allowed})`,
-        ...l.dirs.map((d) => `    ${d}`),
+        ...l.dirs.flatMap((d) => [
+          `    ${d}`,
+          ...(told.get(d) ?? []).map((t) => `      ${t}`),
+        ]),
       ]),
     ].join("\n");
     process.stderr.write(msg + "\n");

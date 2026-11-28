@@ -1,3 +1,4 @@
+/* eslint-env browser */
 /**
  * Live check for issue 93: a bell row opens on a click anywhere, with no
  * separate Open link. Two stub agents ask the person a long and a short
@@ -160,12 +161,74 @@ const browserName = (ctx) =>
     ? ctx.browser
     : (ctx.browser?.browserType?.().name?.() ?? "browser");
 
-async function openBell(ctx) {
+export const HEADER_WAIT_MS = 30000;
+
+const underBell = (p) =>
+  p
+    .evaluate(() => {
+      const b = document.getElementById("den-bell");
+      const r = b?.getBoundingClientRect();
+      const at = r
+        ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        : null;
+      if (!at) return null;
+      const [lead] =
+        typeof at.className === "string" ? at.className.split(" ") : [];
+      const cls = lead ? `.${lead}` : "";
+      const name = at.id ? `#${at.id}` : `${at.tagName.toLowerCase()}${cls}`;
+      return b.contains(at) ? `${name} (in the bell)` : name;
+    })
+    .catch(() => null);
+
+const bellState = (p) =>
+  p.evaluate(() => {
+    const b = document.getElementById("den-bell");
+    const pops = document.querySelectorAll("#den-bell-pop");
+    const pop = pops[0];
+    const r = pop?.getBoundingClientRect();
+    const a = document.activeElement;
+    return {
+      url: location.pathname + location.search,
+      ready: document.readyState,
+      button: !!b,
+      wired: b?.dataset.wired ?? null,
+      expanded: b?.getAttribute("aria-expanded") ?? null,
+      pops: pops.length,
+      popHidden: pop ? pop.hidden : null,
+      popBox: r ? [Math.round(r.width), Math.round(r.height)] : null,
+      header: !!pop?.contains(document.getElementById("den-bell-h")),
+      active: a ? a.id || a.tagName.toLowerCase() : null,
+    };
+  });
+
+export async function openBell(ctx) {
   const p = ctx.page;
   await p.goto(new URL(START, ctx.url).href);
   await ready(p);
+  const atClick = await underBell(p);
   await p.click("#den-bell");
-  await p.locator("#den-bell-pop .den-bell-hd").waitFor();
+  try {
+    await p.locator("#den-bell-h").waitFor({ timeout: HEADER_WAIT_MS });
+  } catch (e) {
+    const [wait] = String(e?.message ?? e).split("\n");
+    const state = await bellState(p).catch((err) => ({
+      unreadable: String(err?.message ?? err).slice(0, 160),
+    }));
+    const shot = `bell-closed-${browserName(ctx)}-${ctx.width}`;
+    await Promise.resolve()
+      .then(() => ctx.shot?.(shot))
+      .catch(() => null);
+    const said = {
+      ...state,
+      atClick,
+      errors: (p.__errs ?? []).slice(-3),
+      shot,
+      wait: wait.slice(0, 120),
+    };
+    throw new Error(
+      `the bell's header didn't show ${HEADER_WAIT_MS / 1000} s after the click: ${JSON.stringify(said)}`,
+    );
+  }
   await p
     .locator("#den-bell-pop .den-bell-row, #den-bell-pop .den-bell-empty")
     .first()
