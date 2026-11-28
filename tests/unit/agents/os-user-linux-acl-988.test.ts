@@ -86,6 +86,14 @@ describe("issue 988: an access list on the Linux home that lets someone else in 
     ).toBe("");
   });
 
+  it("the entry CI's runner image puts on /home still fails, on the home and on a folder above it", () => {
+    const e = "default:user:runner:rwx";
+    expect(said(home([e]))).toContain(e);
+    expect(
+      said(home([], { parents: [{ path: "/home", acl: [e], unread: false }] })),
+    ).toContain(e);
+  });
+
   it("an entry it can't read counts", () => {
     expect(said(home(["weird entry"]))).toContain("weird entry");
   });
@@ -191,6 +199,7 @@ describe("issue 988: the Linux home's access lists leave the owed list", () => {
     expect([...OS_LOGIN_OWED]).toEqual([
       "a sandbox policy for the agents' login",
       "own/ files read without following links (O_NOFOLLOW)",
+      "the Linux end-to-end run as root in CI",
       "the sign-in token passed by file handle, not the environment",
       "access lists on the folders above the person's home on macOS",
     ]);
