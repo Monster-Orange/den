@@ -168,14 +168,24 @@ describe("the kit's badge: a warn tint and a count in a tab (issue 1973)", () =>
 
   it("navItemHtml draws a soft warn badge on request", () => {
     const h = navItemHtml(
-      { label: "Agents", href: "/a", badge: { n: 2, warn: true, soft: true } },
+      {
+        id: "agents",
+        label: "Agents",
+        href: "/a",
+        badge: { n: 2, warn: true, soft: true },
+      },
       "item",
       "en",
     );
     expect(h).toContain('class="den-bdg warn soft" data-badge="warn"');
     expect(
       navItemHtml(
-        { label: "Agents", href: "/a", badge: { n: 2, warn: true } },
+        {
+          id: "agents",
+          label: "Agents",
+          href: "/a",
+          badge: { n: 2, warn: true },
+        },
         "item",
         "en",
       ),
