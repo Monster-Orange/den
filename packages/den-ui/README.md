@@ -141,9 +141,9 @@ syncPinToggles, folds }`.
   (`.den-bdg`, `.bad` when one is) and a chevron turned -90° when folded.
 - The badge (`.den-bdg`, in shell.css): plain is muted, `.bad` a bad
   tint, `.warn` the amber pill. `.warn.soft` is warn words on a solid
-  warn tint (`--warn-tint`, else 14% warn over `--surface`) and `.bad.strong` on-accent on solid bad. `.count` is a count
+  warn tint (`--warn-tint`, else 14% warn over `--surface`); in the rail (`badge: { warn: true, soft: true }`) it is regular weight. `.count` is a count
   inside a tab: a solid accent pill, 600 11px on an 18px line, at least
-  1.6em wide, `.count.bad` when it needs the person, and `.count.corner`
+  1.6em wide, 2px from its word and 2px each side, `.count.bad` when it needs the person, and `.count.corner`
   at the top end corner of an icon tab (the tab is `position: relative`).
   A host sizes `.count` from its own class, never a kit selector:
   `--den-bdg-fs`, `--den-bdg-lh`, `--den-bdg-pad` and `--den-bdg-min`.

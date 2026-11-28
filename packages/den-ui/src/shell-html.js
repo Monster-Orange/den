@@ -193,7 +193,7 @@ export function navItemHtml(n, navRole, lang) {
   const off = navOff(n.off);
   const extra = b
     ? '<span class="den-bdg' +
-      (b.bad ? " bad" : b.warn ? " warn" : "") +
+      (b.bad ? " bad" : b.warn ? (b.soft ? " warn soft" : " warn") : "") +
       '" data-badge="' +
       (b.bad ? "bad" : b.warn ? "warn" : "") +
       '" aria-hidden="true">' +

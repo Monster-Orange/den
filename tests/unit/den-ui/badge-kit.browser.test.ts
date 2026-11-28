@@ -4,6 +4,7 @@ import * as path from "path";
 import type { Browser, Page, Route } from "playwright";
 import { closeBrowserSuite } from "../../browser-teardown.js";
 import { launchBrowser } from "../helpers/browser.js";
+import { navItemHtml } from "../../../packages/den-ui/src/shell-html.js";
 
 const SRC = path.join(__dirname, "../../../packages/den-ui/src");
 const ORIGIN = "http://kit.test";
@@ -40,7 +41,8 @@ const PAGE = `<!doctype html>
 <span class="den-bdg bad" data-testid="bad">3</span>
 <span class="den-bdg warn soft" data-testid="warn-soft">3</span>
 <span style="background: var(--sunken)"><span class="den-bdg warn soft" data-testid="warn-soft-on-sunken">3</span></span>
-<span class="den-bdg bad strong" data-testid="bad-strong">3</span>
+<a class="den-ni" href="#">Agents <span class="den-bdg warn soft" data-testid="nav-soft">2</span></a>
+<button type="button">Related <span class="den-bdg count" data-testid="count-99">99+</span></button>
 <button type="button">Comments <span class="den-bdg count" data-testid="count">7</span></button>
 <button type="button">Checks <span class="den-bdg count bad" data-testid="count-bad">1</span></button>
 <div class="host-tabs"><button type="button">Comments <span class="den-bdg count" data-testid="count-small">7</span></button></div>
@@ -111,7 +113,7 @@ const tokens = (p: Page) =>
       ),
     ) as Promise<Record<string, string>>;
 
-describe("the kit's badge: tints, solid bad, and a count in a tab (issue 1973)", () => {
+describe("the kit's badge: a warn tint and a count in a tab (issue 1973)", () => {
   it("keeps the plain, warn and bad badges as they were", async () => {
     if (skip()) return;
     const p = await open();
@@ -156,13 +158,42 @@ describe("the kit's badge: tints, solid bad, and a count in a tab (issue 1973)",
     await p.context().close();
   });
 
-  it("bad strong: on-accent words on solid bad", async () => {
+  it("warn soft in the rail is regular weight; elsewhere it keeps 600", async () => {
     if (skip()) return;
     const p = await open();
-    const t = await tokens(p);
-    const s = await look(p, "bad-strong");
-    expect(s.bg).toBe(t.bad);
-    expect(s.color).toBe(t.onAccent);
+    expect((await look(p, "nav-soft")).weight).toBe("400");
+    expect((await look(p, "warn-soft")).weight).toBe("600");
+    await p.context().close();
+  });
+
+  it("navItemHtml draws a soft warn badge on request", () => {
+    const h = navItemHtml(
+      { label: "Agents", href: "/a", badge: { n: 2, warn: true, soft: true } },
+      "item",
+      "en",
+    );
+    expect(h).toContain('class="den-bdg warn soft" data-badge="warn"');
+    expect(
+      navItemHtml(
+        { label: "Agents", href: "/a", badge: { n: 2, warn: true } },
+        "item",
+        "en",
+      ),
+    ).toContain('class="den-bdg warn" data-badge="warn"');
+  });
+
+  it("count: tight, 2px from its word and 2px each side", async () => {
+    if (skip()) return;
+    const p = await open();
+    const one = await look(p, "count");
+    expect(one.w).toBeLessThanOrEqual(18);
+    const many = await look(p, "count-99");
+    expect(many.w).toBeLessThanOrEqual(24);
+    expect(
+      await p
+        .getByTestId("count")
+        .evaluate((e) => getComputedStyle(e).marginInlineStart),
+    ).toBe("2px");
     await p.context().close();
   });
 
