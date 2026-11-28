@@ -238,7 +238,7 @@ function pagesHtml(m, open) {
     (per ? perPicker(m, "den-pager-side") : "") +
     `<button class="den-pager-btn den-pager-opts" type="button" popovertarget="${pop}" aria-label="${esc(String(w.more ?? ""))}"><span aria-hidden="true">⋯</span></button>` +
     `</div>` +
-    `<div class="den-pager-menu" id="${pop}" popover="auto"><p class="den-pager-menu-range">${range}</p>` +
+    `<div class="den-pager-menu" id="${pop}" popover="auto" role="dialog" aria-label="${esc(String(w.more ?? ""))}"><p class="den-pager-menu-range">${range}</p>` +
     (per ? perPicker(m, "") : "") +
     `</div></nav>`
   );
