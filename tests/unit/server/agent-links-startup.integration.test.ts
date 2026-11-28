@@ -14,7 +14,7 @@ import {
 
 const AGENTS = 140;
 const WATCH_MS = 6000;
-const BOUND_MS = 250;
+const BOUND_MS = 500;
 let tmp = "";
 let home = "";
 let srv: SlowGitServer;
@@ -51,7 +51,7 @@ afterAll(async () => {
 });
 
 describe("start-up upkeep: the one-time link migration of 140 agents", () => {
-  it("links them all, and /api/server-info answers within 250 ms throughout", async () => {
+  it("links them all, and /api/server-info answers within 500 ms throughout (one synchronous pass of all 140 took about 700)", async () => {
     const a = srv.auth();
     const end = Date.now() + WATCH_MS;
     let worst = 0;

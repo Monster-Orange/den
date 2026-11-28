@@ -4,16 +4,24 @@ All notable changes to Den are documented here. Each release lists the
 config and manifest changes a distribution must make to move to it under
 **Migrations**.
 
-## [0.4.93] - unreleased
+## [0.4.94] - unreleased
+
+0.4.92 was never published: its changes shipped in 0.4.93.
+
+### Fixed
+
+- Change persona no longer closes the agent's pane now and then. A list read in the moment the old session still ran but no longer belonged to the agent showed it as a plain terminal, and the Agents page closed its pane before the new session was listed. The pane now waits for its agent's new session, for up to 15 s. (issue 1903)
+
+### Changed
+
+- Service logs are private to you: Den writes each one readable by your login only, in a folder only your login can open, and closes older logs the same way when the server starts.
+
+## [0.4.93] - 2026-11-28
 
 ### Added
 
 - UI kit 0.23.0: pagination (`pager.js`, `pager.css`), one row under a long list: "1–50 of 809", icon buttons for First, Previous, Next and Last (each word is the button's name and tooltip, and the icons mirror right to left), a page picker ("Page 3 of 17") and a per-page choice; "1–50" with Previous and Next for a list with no count; a compact row with a ⋯ sheet on a phone; ← and → keys; or a "Show 50 more" button that adds rows. It works as links with no script, and every word is the host's. More mode can hand its press to `onNavigate` (a list that redraws itself whole), and the 44px size follows a phone-width window or a touch screen, never the width of the box the pager sits in. The ⋯ menu and the short "3 / 17" picker appear only when the pager's box is 600px wide or less, in place of the full controls; above that the full row shows, in two lines when it must. A More list redrawn whole after its last chunk can keep its row with "All N shown" (`loaded: true`). A compact kind for a list inside a card (`compact: true`): ‹ [2] / 25 ›, with First and Last on a row wider than 600px. With `perDefault`, a list that fits one page keeps its row when the person chose another page size, so they can switch back.
 - UI kit 0.23.0: tabs, the segmented control (`tabs.js`, `tabs.css`), for page tabs (links), switches (buttons) and panel tabs (a tablist that shows one panel). It never wraps. Every word is the host's. A row that doesn't fit scrolls sideways, with « and » at its ends shown only while tabs are hidden on that side (a red dot when a hidden tab has an alert), and keeps the chosen and focused tab in view; only when even one tab can't fit between the arrows does it fold into one select with the same choices and a visible label.
-
-### Changed
-
-- Service logs are private to you: Den writes each one readable by your login only, in a folder only your login can open, and closes older logs the same way when the server starts.
 
 ### Fixed
 

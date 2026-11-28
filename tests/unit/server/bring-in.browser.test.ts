@@ -621,6 +621,114 @@ describe("Bring in (AG-17.1)", () => {
     expect(errors).toEqual([]);
   }, 90_000);
 
+  it("issue 1903: a list read that shows the old session as a plain shell, before the new one, leaves the pane to follow its agent", async () => {
+    if (skip() || !PTY) return;
+    const p = await page("/agents?ws=north");
+    await p.waitForSelector("#ag-bring");
+    const started = (await p.evaluate(() =>
+      (
+        window as unknown as {
+          denShell: { api(m: string, u: string, b: unknown): Promise<unknown> };
+        }
+      ).denShell.api("POST", "/api/workspaces/north/agents", {
+        persona: "reviewer",
+        id: "fresh-3",
+        runtime: "den-claude",
+      }),
+    )) as { agent: { sessionId: string } };
+    const sid = started.agent.sessionId;
+    const pty = s!.made[s!.made.length - 1];
+    const kill = pty.kill.bind(pty);
+    pty.kill = (sig: string) => {
+      kill(sig);
+      setTimeout(() => pty.exit(143), 5);
+    };
+    let between = 0;
+    let holding = false;
+    let oldRow: Record<string, unknown> | null = null;
+    await p.route(
+      (u) => u.pathname === "/api/sessions",
+      async (r) => {
+        if (r.request().method() !== "GET" || between >= 2) return r.continue();
+        const res = await r.fetch();
+        const body = (await res.json()) as {
+          sessions?: Array<Record<string, unknown>>;
+        };
+        const rows = body.sessions ?? [];
+        if (!holding) {
+          oldRow = rows.find((x) => x.id === sid) ?? oldRow;
+          return r.fulfill({ response: res, json: body });
+        }
+        const { agent: _agent, ...shell } = oldRow ?? { id: sid };
+        body.sessions = [
+          ...rows.filter((x) => x.agent !== "fresh-3" && x.id !== sid),
+          {
+            ...shell,
+            id: sid,
+            workspace: "north",
+            kind: "session",
+            state: "running",
+            exited: false,
+          },
+        ];
+        between += 1;
+        await r.fulfill({ response: res, json: body });
+      },
+    );
+    await p.goto(`${s!.base}/agents?ws=north&open=${sid}`);
+    await p.waitForSelector(`section[data-id="${sid}"][data-pty-cols]`);
+    const more = `section[data-id="${sid}"] [data-act="more"]`;
+    await p.waitForSelector(more);
+    await p.click(more);
+    await p.getByRole("menuitem", { name: "Change persona" }).click();
+    await p.waitForSelector("#ag-dlg[open]");
+    await p.click('#ag-persona [data-pid="planner"]');
+    await p.evaluate(() => {
+      const w = window as unknown as { paneGone?: boolean };
+      w.paneGone = false;
+      new MutationObserver(() => {
+        if (!document.querySelector("section[data-id]")) w.paneGone = true;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    const done = p.waitForResponse(
+      (r) =>
+        r.request().method() === "POST" &&
+        r.status() === 200 &&
+        new URL(r.url()).pathname ===
+          "/api/workspaces/north/agents/fresh-3/persona",
+      { timeout: 20_000 },
+    );
+    holding = true;
+    await p.click("#ag-go");
+    const asked = await p
+      .waitForSelector("#ag-pc-now", { timeout: 2_000 })
+      .catch(() => null);
+    if (asked) await p.click("#ag-pc-now");
+    expect((await done).status()).toBe(200);
+    await p.waitForFunction(
+      (old) => {
+        const panes = [...document.querySelectorAll("section[data-id]")];
+        const text = panes[0]?.textContent ?? "";
+        return (
+          panes.length === 1 &&
+          panes[0].getAttribute("data-id") !== old &&
+          text.includes("Switched to planner") &&
+          text.includes("Nothing to resume yet; started fresh")
+        );
+      },
+      sid,
+      { timeout: browserWaitMs() },
+    );
+    expect(between).toBe(2);
+    expect(
+      await p.evaluate(
+        () => (window as unknown as { paneGone?: boolean }).paneGone,
+      ),
+    ).toBe(false);
+    await p.context().close();
+    expect(errors).toEqual([]);
+  }, 90_000);
+
   it("D56: one started in ~ is listed apart, comes in only by the person's pick (naming its folder), and its row says where it started", async () => {
     if (skip() || !PTY) return;
     const home = path.dirname(s!.stateDir);
